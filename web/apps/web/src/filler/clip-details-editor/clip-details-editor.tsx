@@ -1,18 +1,46 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
-import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
+import { ClipDTOAudience } from "@loomarr/api/models/clipDTOAudience";
+import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicScope";
+import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
 import { Field } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis } from "../taxonomy-axes";
 import type { ClipDetailsEditorProps } from "./clip-details-editor.type";
+
+// Unclassified shows but cannot be picked: it means detection has not named the role yet.
+const ROLE_OPTIONS = [
+  { disabled: true, label: "Not identified yet", value: ClipDTORole.unclassified },
+  { label: "Commercial", value: ClipDTORole.commercial },
+  { label: "Bumper", value: ClipDTORole.bumper },
+  { label: "Station ID", value: ClipDTORole.station_id },
+  { label: "PSA", value: ClipDTORole.psa },
+  { label: "Trailer", value: ClipDTORole.trailer },
+  { label: "Interstitial", value: ClipDTORole.interstitial },
+  { label: "Political ad", value: ClipDTORole.political },
+  { label: "News & weather", value: ClipDTORole.news },
+];
+
+const AUDIENCE_OPTIONS = [
+  { label: "Not known", value: ClipDTOAudience[""] },
+  { label: "Kids", value: ClipDTOAudience.kids },
+  { label: "Family", value: ClipDTOAudience.family },
+  { label: "General", value: ClipDTOAudience.general },
+  { label: "Late night", value: ClipDTOAudience.late_night },
+];
+
+const SCOPE_OPTIONS = [
+  { label: "Not known", value: ClipDTOGeographicScope.unknown },
+  { label: "The whole country", value: ClipDTOGeographicScope.national },
+  { label: "A local area", value: ClipDTOGeographicScope.local },
+];
 
 const AXIS_LABEL: Record<TaxonomyAxis, string> = {
   product: "Products & topics",
@@ -55,13 +83,14 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
     editorRef.current?.focus();
   }, []);
   const [name, setName] = useState(clip?.name ?? "");
-  const [role, setRole] = useState(clip?.role ?? "commercial");
+  const [role, setRole] = useState<ClipDTORole>(clip?.role ?? ClipDTORole.commercial);
   const [era, setEra] = useState(clip?.era ? String(clip.era) : "");
-  // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
-  // the select's own domain rather than the DTO's — "" is a real option here.
-  const [audience, setAudience] = useState<string>(clip?.audience ?? "");
+  // ClipDTO's audience is optional AND includes "" for unset — "" is a real option here.
+  const [audience, setAudience] = useState<ClipDTOAudience>(clip?.audience ?? ClipDTOAudience[""]);
   const [brand, setBrand] = useState(clip?.brand ?? "");
-  const [geoScope, setGeoScope] = useState<ClipGeographyDTO["scope"]>(clip?.geographicScope ?? "unknown");
+  const [geoScope, setGeoScope] = useState<ClipDTOGeographicScope>(
+    clip?.geographicScope ?? ClipDTOGeographicScope.unknown,
+  );
   const [country, setCountry] = useState(clip?.country ?? "");
   const [network, setNetwork] = useState(clip?.network ?? "");
   // `station` on the clip is a directory id; the editor takes the call sign it held on the air date.
@@ -100,7 +129,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         ...(role === "unclassified" ? {} : { role: role as PatchClipInputBodyRole }),
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
-        audience: audience as ClipDTO["audience"],
+        audience,
         brand: brand.trim(),
         // The tag SET; the server grounds each and derives the category shadow.
         tags,
@@ -151,27 +180,13 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
           placeholder="Clip name"
           value={name}
         />
-        <div>
-          <Label htmlFor="tag-kind">Type</Label>
-          <Select value={role} onValueChange={(v) => setRole(v as ClipDTO["role"])}>
-            <SelectTrigger id="tag-kind">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unclassified" disabled>
-                Not identified yet
-              </SelectItem>
-              <SelectItem value="commercial">Commercial</SelectItem>
-              <SelectItem value="bumper">Bumper</SelectItem>
-              <SelectItem value="station_id">Station ID</SelectItem>
-              <SelectItem value="psa">PSA</SelectItem>
-              <SelectItem value="trailer">Trailer</SelectItem>
-              <SelectItem value="interstitial">Interstitial</SelectItem>
-              <SelectItem value="political">Political ad</SelectItem>
-              <SelectItem value="news">News &amp; weather</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <BrowserSelectControl
+          appearance="field"
+          label="Type"
+          onValueChange={setRole}
+          options={ROLE_OPTIONS}
+          value={role}
+        />
         <Field
           id="tag-era"
           keyboardType="number-pad"
@@ -181,23 +196,13 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
           placeholder="e.g. 1977"
           value={era}
         />
-        <div>
-          <Label htmlFor="tag-audience">Audience</Label>
-          {/* Radix reserves "" for clearing, so an "unset" sentinel stands in for the
-                empty audience and maps back to "" in state. */}
-          <Select value={audience || "unset"} onValueChange={(v) => setAudience(v === "unset" ? "" : v)}>
-            <SelectTrigger id="tag-audience">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unset">Not known</SelectItem>
-              <SelectItem value="kids">Kids</SelectItem>
-              <SelectItem value="family">Family</SelectItem>
-              <SelectItem value="general">General</SelectItem>
-              <SelectItem value="late_night">Late night</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <BrowserSelectControl
+          appearance="field"
+          label="Audience"
+          onValueChange={setAudience}
+          options={AUDIENCE_OPTIONS}
+          value={audience}
+        />
         <Field
           description="The advertiser or sponsor shown in the clip."
           id="tag-brand"
@@ -213,20 +218,13 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         <summary className="cursor-pointer text-sm font-medium">Location and broadcast details</summary>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label htmlFor="tag-geographic-scope">Applies to</Label>
-            <Select
+            <BrowserSelectControl
+              appearance="field"
+              label="Applies to"
+              onValueChange={setGeoScope}
+              options={SCOPE_OPTIONS}
               value={geoScope}
-              onValueChange={(value) => setGeoScope(value as ClipGeographyDTO["scope"])}
-            >
-              <SelectTrigger id="tag-geographic-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unknown">Not known</SelectItem>
-                <SelectItem value="national">The whole country</SelectItem>
-                <SelectItem value="local">A local area</SelectItem>
-              </SelectContent>
-            </Select>
+            />
           </div>
           <div className="sm:col-span-2">
             <LocationPicker
