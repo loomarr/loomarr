@@ -167,6 +167,30 @@ describe("GuideCompact tap areas (Q-N6)", () => {
     expect(html).not.toMatch(/>9\sPM</);
   });
 
+  // #2745: a cell too narrow for a word printed one letter and an ellipsis at 2 hours. It has no
+  // visible title; its accessible name still says what it is.
+  it("prints a title only in a cell wide enough to hold one", () => {
+    const html = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideCompact
+          filter="all"
+          layout={layout}
+          myChannels={{ favouriteIds: [], recentIds: [] }}
+          nowMs={FROM + 90 * MINUTE}
+          onFilterChange={vi.fn()}
+          onSelect={vi.fn()}
+          onWatch={vi.fn()}
+        />
+      </LoomarrProvider>,
+    );
+    expect(html).toContain(">middle · middle<");
+    expect(html).toContain(">rest · rest<");
+    for (const narrow of ["opening", "brief", "closing"]) {
+      expect(html).not.toContain(`>${narrow} · ${narrow}<`);
+      expect(html).toContain(`aria-label="1 Channel 1, ${narrow} · ${narrow},`);
+    }
+  });
+
   it("lets the selected cell win an overlap, then the narrower of two cells", () => {
     const byName = render("middle");
     const z = (name: string) => byName.get(name)?.zIndex ?? -1;

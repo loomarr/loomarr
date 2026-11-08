@@ -34,6 +34,32 @@ describe("DiscoveryFeedbackControls", () => {
     expect(onClear).toHaveBeenCalledOnce();
   });
 
+  it("leaves the effect note to a list that states it once, keeping the row's own choice", () => {
+    const { rerender } = render(
+      <DiscoveryFeedbackControls
+        name="The Velvet Cartographer"
+        scope={{ scope: "household" }}
+        effectNote={false}
+        onSet={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/future suggestions only/i)).not.toBeInTheDocument();
+
+    rerender(
+      <DiscoveryFeedbackControls
+        name="The Velvet Cartographer"
+        scope={{ scope: "household" }}
+        effective={event}
+        effectNote={false}
+        onSet={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Household: Never.")).toBeInTheDocument();
+    expect(screen.queryByText(/future suggestions only/i)).not.toBeInTheDocument();
+  });
+
   it("explains inherited household state and only offers a Channel override", () => {
     const onSet = vi.fn();
     render(

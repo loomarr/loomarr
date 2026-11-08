@@ -75,6 +75,16 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByRole("button", { name: "Remove The Velvet Cartographer" })).toBeInTheDocument();
   });
 
+  // #2744: every row repeated the same footnote under its feedback buttons.
+  it("says once, above the rows, that feedback affects future suggestions only", () => {
+    stubEditor();
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer, satelliteChoir]} />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(screen.getAllByText(/future suggestions only/i)).toHaveLength(1);
+  });
+
   it("keeps a series row's Tab order: grip, seasons, feedback, then remove (#1896)", async () => {
     // A narrow column stacks the row, and remove comes last there too (#1899), so keyboard order
     // is the reading order at every width. tests/visual/lineup-layout.spec.ts checks the layout.
