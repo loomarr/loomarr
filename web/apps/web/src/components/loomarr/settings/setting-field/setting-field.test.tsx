@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -101,13 +101,12 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Every 6 hours");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Every 6 hours");
     expect(screen.queryByLabelText("Custom check interval")).not.toBeInTheDocument();
 
-    await userEvent.click(schedule);
-    expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
+    expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
+    await userEvent.selectOptions(schedule, "Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("6");
     fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });
     expect(onChange).toHaveBeenLastCalledWith("28800s");
@@ -129,13 +128,13 @@ describe("SettingField", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Look for new clips"));
-    const options = await screen.findAllByRole("option");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       ...downloadSchedulePresets.map((preset) => preset.label),
       "Custom",
     ]);
-    await userEvent.click(screen.getByRole("option", { name: "Every 12 hours" }));
+    await userEvent.selectOptions(schedule, "Every 12 hours");
     expect(onChange).toHaveBeenLastCalledWith("12h0m0s");
   });
 
@@ -156,11 +155,10 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Custom");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("5");
-    await userEvent.click(schedule);
-    const options = await screen.findAllByRole("option");
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Every 3 hours", "Custom"]);
   });
 
@@ -357,14 +355,13 @@ describe("SettingField", () => {
         onChange={onChange}
       />,
     );
-    // The trigger shows the capitalized LABEL, not the raw value.
-    const trigger = screen.getByLabelText("Library flavor");
-    expect(trigger).toHaveTextContent("Jellyfin");
+    // The select shows the capitalized LABEL, not the raw value.
+    const select = screen.getByRole("combobox", { name: "Library flavor" });
+    expect(select).toHaveDisplayValue("Jellyfin");
 
-    await userEvent.click(trigger);
     // Options show labels ("Emby"), not "emby".
-    expect(await screen.findByRole("option", { name: "Emby" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Emby" }));
+    expect(screen.getByRole("option", { name: "Emby" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Emby");
     // …but the stored value stays lowercase (the BE contract).
     expect(onChange).toHaveBeenCalledWith("emby");
   });

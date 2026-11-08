@@ -3,12 +3,11 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { Badge, CompactSelect, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { SettingFieldProps } from "./setting-field.type";
@@ -43,6 +42,12 @@ const durationParts = (raw: string): { amount: number; unit: DurationUnit } => {
   if (seconds % 60 === 0) return { amount: seconds / 60, unit: "minutes" };
   return { amount: seconds, unit: "seconds" };
 };
+
+const DURATION_UNIT_OPTIONS = (["days", "hours", "minutes", "seconds"] as const).map((unit) => ({
+  label: unit,
+  value: unit,
+}));
+const SCHEDULE_UNIT_OPTIONS = DURATION_UNIT_OPTIONS.filter((option) => option.value !== "seconds");
 
 const durationRaw = (amount: number, unit: DurationUnit): string => {
   const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
@@ -144,26 +149,20 @@ const SettingField = ({
     }
     if (entry.kind === SettingKind.enum) {
       return (
-        <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
-          <SelectTrigger
-            id={id}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Prefer the registry-owned {value,label} options (config-design §5) so the
-                dropdown shows "OpenAI"/"Emby", not the raw stored value. Fall back to the
-                bare value list for any enum that ships no labels. */}
-            {(entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))).map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          // Prefer the registry-owned {value,label} options (config-design §5) so the dropdown
+          // shows "OpenAI"/"Emby", not the raw stored value. Fall back to the bare value list for
+          // any enum that ships no labels.
+          options={entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.filler_download_schedule) {
@@ -174,9 +173,13 @@ const SettingField = ({
       const current = durationParts(value);
       return (
         <div className="flex flex-col gap-2">
-          <Select
-            value={preset}
+          <CompactSelect
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
             disabled={pinned || disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            label={label}
             onValueChange={(next) => {
               if (next === CUSTOM_PRESET) {
                 setEditingCustomSchedule(true);
@@ -185,24 +188,9 @@ const SettingField = ({
               setEditingCustomSchedule(false);
               onChange(next);
             }}
-          >
-            <SelectTrigger
-              id={id}
-              aria-describedby={describedBy}
-              aria-labelledby={labelledBy}
-              aria-invalid={invalid ? "true" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_PRESET}>Custom</SelectItem>
-            </SelectContent>
-          </Select>
+            options={[...presets, { label: "Custom", value: CUSTOM_PRESET }]}
+            value={preset}
+          />
           {preset === CUSTOM_PRESET && (
             <div className="flex gap-2">
               <NumberField
@@ -211,22 +199,14 @@ const SettingField = ({
                 disabled={pinned || disabledReason !== undefined}
                 onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
               />
-              <Select
-                value={current.unit}
+              <CompactSelect
                 disabled={pinned || disabledReason !== undefined}
-                onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-              >
-                <SelectTrigger aria-label="Custom check interval unit" className="w-32 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["days", "hours", "minutes"] as const).map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                label="Custom check interval unit"
+                onValueChange={(unit) => onChange(durationRaw(current.amount, unit))}
+                options={SCHEDULE_UNIT_OPTIONS}
+                value={current.unit}
+                width={128}
+              />
             </div>
           )}
         </div>
@@ -245,22 +225,14 @@ const SettingField = ({
             invalid={invalid}
             onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
           />
-          <Select
-            value={current.unit}
+          <CompactSelect
             disabled={pinned || disabledReason !== undefined}
-            onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-          >
-            <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["days", "hours", "minutes", "seconds"] as const).map((unit) => (
-                <SelectItem key={unit} value={unit}>
-                  {unit}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            label={`${label} unit`}
+            onValueChange={(unit) => onChange(durationRaw(current.amount, unit))}
+            options={DURATION_UNIT_OPTIONS}
+            value={current.unit}
+            width={128}
+          />
         </div>
       );
     }
