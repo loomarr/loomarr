@@ -407,7 +407,7 @@
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
-      "legacyUi": 4
+      "legacyUi": 3
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 144
@@ -509,7 +509,7 @@
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "tailwindClasses": 211,
-      "legacyUi": 3
+      "legacyUi": 1
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 71
@@ -649,8 +649,8 @@
       "tailwindClasses": 2
     },
     "src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 2
+      "tailwindClasses": 8,
+      "legacyUi": 1
     },
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 159,

@@ -2,12 +2,13 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { BrowserTabs } from "../index";
+import { BrowserSelectControl, BrowserTabs } from "../index";
 
 vi.mock("@loomarr/design-system", () => ({
   Hint: ({ children }: { children: ReactNode }) => children,
   MenuList: () => null,
-  SelectControl: () => null,
+  SelectControl: ({ label }: { label: string }) => <button aria-label={label} type="button" />,
+  Text: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Tabs: ({
     label,
     onValueChange,
@@ -60,5 +61,38 @@ describe("browser selection adapter", () => {
 
     expect(surf).toHaveFocus();
     expect(onValueChange).toHaveBeenCalledWith("surf");
+  });
+
+  const levels = [
+    { label: "Last hour", value: "1h" },
+    { label: "Last day", value: "24h" },
+  ];
+
+  it("prints a field select's label above it", () => {
+    render(
+      <BrowserSelectControl
+        appearance="field"
+        label="Time range"
+        onValueChange={vi.fn()}
+        options={levels}
+        value="1h"
+      />,
+    );
+    expect(screen.getByText("Time range")).toBeInTheDocument();
+  });
+
+  it("only announces the label when it is hidden", () => {
+    render(
+      <BrowserSelectControl
+        appearance="field"
+        label="Time range"
+        labelHidden
+        onValueChange={vi.fn()}
+        options={levels}
+        value="1h"
+      />,
+    );
+    expect(screen.queryByText("Time range")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Time range" })).toBeInTheDocument();
   });
 });
