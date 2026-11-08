@@ -40,7 +40,7 @@ clients show them beside the data.
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_tags`](#library_tags), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_spoken_safety_runs`](#filler_spoken_safety_runs), [`filler_spoken_safety_events`](#filler_spoken_safety_events), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -539,6 +539,62 @@ A title's tags (the source's keywords), in the order the source gave them. Repla
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `name` | The tag. | `TEXT` · key |
 | `position` | Where the tag came in the source's list, from 0. | `INTEGER` |
+
+### library_sources
+
+A title's present files, one row each, with the copy that plays marked. Replaced whenever the title is written; deleted with the title.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `path` | The file's full path. | `TEXT` · key |
+| `container` | The file format its header names, such as matroska; empty until the header is read. | `TEXT` |
+| `size_bytes` | The file's size in bytes. | `INTEGER` |
+| `bitrate` | The file's overall bitrate in bits per second; 0 when unknown. | `INTEGER` |
+| `duration_ms` | The file's length in milliseconds from its header; 0 until the header is read. | `INTEGER` |
+| `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
+| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest). | `BOOLEAN` |
+
+### library_streams
+
+Each track inside a title's files (video, audio, subtitles), one row each, with labels worked out once so every reader uses the same words. Replaced whenever the title is written.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_sources.item_id` |
+| `path` | The file the track is in (a library_sources path). | `TEXT` · key · → `library_sources.path` |
+| `stream_index` | The track's position among all the file's streams, as the header numbers it. | `INTEGER` · key |
+| `kind` | video, audio or subtitle. | `TEXT` |
+| `codec` | The codec the header names, such as hevc or eac3. | `TEXT` |
+| `profile` | The codec profile, such as Main 10 or DTS-HD MA; empty when the header gives none. | `TEXT` |
+| `title` | The track's own title, if the file gives one. | `TEXT` |
+| `is_default` | True when the file marks the track to play by default. | `BOOLEAN` |
+| `forced` | True for a forced subtitle track. | `BOOLEAN` |
+| `language` | The track's language as a two-letter code where one exists (en), else as the file gives it; empty when unknown. | `TEXT` |
+| `language_name` | The language's English name, such as English; empty when unknown. | `TEXT` |
+| `channels` | An audio track's channel count; 0 otherwise. | `INTEGER` |
+| `channel_layout` | An audio track's channel layout, such as 5.1(side). | `TEXT` |
+| `sample_rate` | An audio track's sample rate in Hz. | `INTEGER` |
+| `audio_format` | An audio track's format in plain words, such as Dolby Digital Plus. | `TEXT` |
+| `width` | A video track's width in pixels. | `INTEGER` |
+| `height` | A video track's height in pixels. | `INTEGER` |
+| `frame_rate` | A video track's frame rate as the header gives it, such as 24000/1001. | `TEXT` |
+| `pixel_format` | A video track's pixel format, such as yuv420p10le. | `TEXT` |
+| `color_transfer` | A video track's transfer characteristic, such as smpte2084. | `TEXT` |
+| `resolution` | A video track's resolution label, such as 1080p or 4K (reading the width too, so a wide film is not undersold). | `TEXT` |
+| `hdr` | A video track's dynamic range, such as HDR10 or HLG; empty for standard range. | `TEXT` |
+
+### library_art
+
+A title's artwork references, one row each. Replaced whenever the title is written; deleted with the title.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `kind` | What the image is, such as poster, fanart or logo. | `TEXT` · key |
+| `season` | The season a season poster belongs to; 0 for the title's own artwork. | `INTEGER` · key |
+| `position` | The order among images of the same kind and season, from 0. | `INTEGER` · key |
+| `ref` | Where the image is, a file beside the media or an address. | `TEXT` |
 
 ### library_catalog
 

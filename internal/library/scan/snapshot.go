@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,7 +63,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	10: a movie's or series' origin carries how it is listed; the store projects its row (0047).
 //	12: every title, episodes too, is listed with its facts and who supplied each (decision 40).
 //	13: an episode with a TVDB id asks the catalog for TMDB's view of it (decision 53).
-const writeVersion = 13
+//	14: every title's files, tracks and artwork are listed with it (decisions 41, 44).
+const writeVersion = 14
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -201,7 +203,77 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 	for _, id := range item.ExternalIDs {
 		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
 	}
+	for _, a := range facts.Artwork {
+		it.Art = append(it.Art, store.LibraryArt{Kind: a.Kind, Ref: a.Ref})
+	}
+	it.Sources = librarySources(item)
 	return it, true
+}
+
+// librarySources is each of an item's present files with its tracks, in path order, the copy
+// that plays marked (decision 37).
+func librarySources(item inventory.Item) []store.LibrarySource {
+	managed := map[inventory.OriginKey]bool{}
+	for _, o := range item.Origins {
+		managed[o.Key] = readOriginExtension(o.Observation.Extension).Managed
+	}
+	type file struct {
+		src     store.LibrarySource
+		managed bool
+	}
+	var files []file
+	for _, s := range item.Sources {
+		for _, o := range s.Origins {
+			if !strings.HasPrefix(string(o.Key.Authority), authorityPrefix) || !o.MissingAt.IsZero() || o.Locator.Path == "" {
+				continue
+			}
+			f := o.Observation.Facts
+			src := store.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
+				Bitrate: f.Bitrate, DurationMs: f.DurationMillis}
+			for _, st := range f.Streams {
+				src.Streams = append(src.Streams, libraryStream(st))
+			}
+			files = append(files, file{src: src, managed: managed[o.Key]})
+			break
+		}
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
+	best := playingCopy(len(files), func(i int) bool { return files[i].managed }, func(i int) int {
+		for _, st := range files[i].src.Streams {
+			if st.Kind == string(inventory.StreamVideo) {
+				return st.Width * st.Height
+			}
+		}
+		return 0
+	}, func(i int) int64 { return files[i].src.SizeBytes })
+	out := make([]store.LibrarySource, len(files))
+	for i, f := range files {
+		out[i] = f.src
+		out[i].Plays = i == best
+	}
+	return out
+}
+
+// libraryStream is a header stream with its labels.
+func libraryStream(st inventory.Stream) store.LibraryStream {
+	out := store.LibraryStream{
+		Index: st.Index, Kind: string(st.Kind), Codec: st.Codec, Profile: st.Profile, Title: st.Title,
+		Default: st.Disposition.Default, Forced: st.Disposition.Forced,
+		Channels: st.Channels, ChannelLayout: st.ChannelLayout, SampleRate: st.SampleRate,
+		Width: st.Width, Height: st.Height, FrameRate: st.FrameRate, PixelFormat: st.PixelFormat,
+		ColorTransfer: st.ColorTransfer,
+	}
+	out.Language, out.LanguageName = languageLabel(st.Language)
+	switch st.Kind {
+	case inventory.StreamVideo:
+		out.Resolution, out.HDR = resolutionLabel(st.Width, st.Height), hdrLabel(st.ColorTransfer, st.HDR)
+	case inventory.StreamAudio:
+		out.AudioFormat = audioFormatLabel(st.Codec, st.Profile)
+	}
+	return out
 }
 
 // readOriginExtension reads originExtensionOf back; an origin written before it says nothing.

@@ -169,6 +169,59 @@ tables:
       name: The tag.
       position: Where the tag came in the source's list, from 0.
 
+  - name: library_sources
+    about: >
+      A title's present files, one row each, with the copy that plays marked. Replaced whenever the
+      title is written; deleted with the title.
+    columns:
+      item_id: The title (a library_items id).
+      path: The file's full path.
+      container: The file format its header names, such as matroska; empty until the header is read.
+      size_bytes: The file's size in bytes.
+      bitrate: The file's overall bitrate in bits per second; 0 when unknown.
+      duration_ms: The file's length in milliseconds from its header; 0 until the header is read.
+      edition: Which version of the title this file is, such as a director's cut; empty for the usual one.
+      plays: True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest).
+
+  - name: library_streams
+    about: >
+      Each track inside a title's files (video, audio, subtitles), one row each, with labels worked out
+      once so every reader uses the same words. Replaced whenever the title is written.
+    columns:
+      item_id: The title (a library_items id).
+      path: The file the track is in (a library_sources path).
+      stream_index: The track's position among all the file's streams, as the header numbers it.
+      kind: video, audio or subtitle.
+      codec: The codec the header names, such as hevc or eac3.
+      profile: The codec profile, such as Main 10 or DTS-HD MA; empty when the header gives none.
+      title: The track's own title, if the file gives one.
+      is_default: True when the file marks the track to play by default.
+      forced: True for a forced subtitle track.
+      language: The track's language as a two-letter code where one exists (en), else as the file gives it; empty when unknown.
+      language_name: The language's English name, such as English; empty when unknown.
+      channels: An audio track's channel count; 0 otherwise.
+      channel_layout: An audio track's channel layout, such as 5.1(side).
+      sample_rate: An audio track's sample rate in Hz.
+      audio_format: An audio track's format in plain words, such as Dolby Digital Plus.
+      width: A video track's width in pixels.
+      height: A video track's height in pixels.
+      frame_rate: A video track's frame rate as the header gives it, such as 24000/1001.
+      pixel_format: A video track's pixel format, such as yuv420p10le.
+      color_transfer: A video track's transfer characteristic, such as smpte2084.
+      resolution: A video track's resolution label, such as 1080p or 4K (reading the width too, so a wide film is not undersold).
+      hdr: A video track's dynamic range, such as HDR10 or HLG; empty for standard range.
+
+  - name: library_art
+    about: >
+      A title's artwork references, one row each. Replaced whenever the title is written; deleted with
+      the title.
+    columns:
+      item_id: The title (a library_items id).
+      kind: What the image is, such as poster, fanart or logo.
+      season: The season a season poster belongs to; 0 for the title's own artwork.
+      position: The order among images of the same kind and season, from 0.
+      ref: Where the image is, a file beside the media or an address.
+
   - name: library_catalog
     about: >
       What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is

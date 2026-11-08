@@ -54,6 +54,55 @@ type LibraryItem struct {
 	Genres  []string
 	Studios []string
 	Tags    []string
+	// Sources are its present files (decision 41), one marked Plays; Art its artwork references.
+	Sources []LibrarySource
+	Art     []LibraryArt
+}
+
+// LibrarySource is one file of a title, with its tracks.
+type LibrarySource struct {
+	Path      string
+	Container string
+	SizeBytes int64
+	Bitrate   int64
+	// DurationMs is the header's length; 0 until it is read.
+	DurationMs int64
+	// Edition labels a version of the title ("" the default; decision 54).
+	Edition string
+	// Plays marks the copy that plays (decision 37).
+	Plays   bool
+	Streams []LibraryStream
+}
+
+// LibraryStream is one track of a file: raw values, and labels computed once (decision 44).
+type LibraryStream struct {
+	Index                 int
+	Kind                  string
+	Codec, Profile, Title string
+	Default, Forced       bool
+	// Language is the ISO 639-1 code where one exists (else as the file says it); LanguageName
+	// its English name.
+	Language, LanguageName string
+	Channels               int
+	ChannelLayout          string
+	SampleRate             int
+	// AudioFormat names an audio track's format, such as "Dolby Digital Plus".
+	AudioFormat string
+	Width       int
+	Height      int
+	FrameRate   string
+	PixelFormat string
+	// ColorTransfer is raw; Resolution ("1080p", "4K") and HDR ("HDR10", "HLG", "") are labels.
+	ColorTransfer string
+	Resolution    string
+	HDR           string
+}
+
+// LibraryArt is one artwork reference: a poster, fanart or logo; Season numbers a season poster.
+type LibraryArt struct {
+	Kind   string
+	Season int
+	Ref    string
 }
 
 // LibraryFrom names the provider each resolved fact came from ("" unknown; RatingFromShow).

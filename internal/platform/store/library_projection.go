@@ -109,9 +109,10 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 	return nil
 }
 
-// saveLibraryItemRows replaces an item's ids, genres, studios and tags.
+// saveLibraryItemRows replaces an item's ids, genres, studios, tags, files, tracks and artwork.
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
-	for _, table := range []string{"library_ids", "library_genres", "library_studios", "library_tags"} {
+	for _, table := range []string{"library_streams", "library_sources", "library_art",
+		"library_ids", "library_genres", "library_studios", "library_tags"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
 		}
@@ -139,6 +140,51 @@ func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it Libra
 				return fmt.Errorf("save %s: %w", table, err)
 			}
 		}
+	}
+	return s.saveLibraryFilesAndArt(ctx, tx, it)
+}
+
+// saveLibraryFilesAndArt writes an item's files with their tracks, and its artwork.
+func (s *sqlStore) saveLibraryFilesAndArt(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
+	paths := map[string]bool{}
+	for _, src := range it.Sources {
+		if src.Path == "" || paths[src.Path] {
+			continue
+		}
+		paths[src.Path] = true
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_sources (item_id, path, container, size_bytes,
+			bitrate, duration_ms, edition, plays) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+			it.ID, src.Path, src.Container, src.SizeBytes, src.Bitrate, src.DurationMs, src.Edition, src.Plays); err != nil {
+			return fmt.Errorf("save library source: %w", err)
+		}
+		indexes := map[int]bool{}
+		for _, st := range src.Streams {
+			if indexes[st.Index] {
+				continue
+			}
+			indexes[st.Index] = true
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_streams (item_id, path, stream_index, kind,
+				codec, profile, title, is_default, forced, language, language_name, channels, channel_layout,
+				sample_rate, audio_format, width, height, frame_rate, pixel_format, color_transfer, resolution, hdr)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				it.ID, src.Path, st.Index, st.Kind, st.Codec, st.Profile, st.Title, st.Default, st.Forced,
+				st.Language, st.LanguageName, st.Channels, st.ChannelLayout, st.SampleRate, st.AudioFormat,
+				st.Width, st.Height, st.FrameRate, st.PixelFormat, st.ColorTransfer, st.Resolution, st.HDR); err != nil {
+				return fmt.Errorf("save library stream: %w", err)
+			}
+		}
+	}
+	positions := map[[2]any]int{}
+	for _, a := range it.Art {
+		if a.Kind == "" || a.Ref == "" {
+			continue
+		}
+		key := [2]any{a.Kind, a.Season}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_art (item_id, kind, season, position, ref)
+			VALUES (?, ?, ?, ?, ?)`), it.ID, a.Kind, a.Season, positions[key], a.Ref); err != nil {
+			return fmt.Errorf("save library art: %w", err)
+		}
+		positions[key]++
 	}
 	return nil
 }
@@ -177,8 +223,8 @@ func (s *sqlStore) linkEpisodes(ctx context.Context, tx *sql.Tx, it LibraryItem)
 	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_items SET series_id = ?,
 		rating = CASE WHEN rating = '' OR rating_from = ? THEN ? ELSE rating END,
 		rating_from = CASE WHEN rating = '' OR rating_from = ? THEN ? ELSE rating_from END
-		WHERE kind = 'episode' AND EXISTS (SELECT 1 FROM inventory_item_origins o WHERE o.item_id = ?
-			AND o.authority_id = library_items.series_authority AND o.external_item_id = library_items.series_key)`),
+		WHERE kind = 'episode' AND (series_authority, series_key) IN
+			(SELECT authority_id, external_item_id FROM inventory_item_origins WHERE item_id = ?)`),
 		it.ID, RatingFromShow, it.Rating, RatingFromShow, from, it.ID); err != nil {
 		return fmt.Errorf("link series episodes: %w", err)
 	}

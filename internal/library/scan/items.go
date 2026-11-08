@@ -46,28 +46,34 @@ type ItemFile struct {
 	managed bool
 }
 
-// markExtras marks every file but the one that plays as an extra copy (decision 37): the file its
-// arr lists, else the sharpest picture, else the biggest file. One file is never an extra.
+// markExtras marks every file but the one that plays as an extra copy (decision 37). One file is
+// never an extra.
 func markExtras(files []ItemFile) {
 	if len(files) < 2 {
 		return
 	}
-	pixels := func(f ItemFile) int {
-		if f.Picture == nil {
+	best := playingCopy(len(files), func(i int) bool { return files[i].managed }, func(i int) int {
+		if files[i].Picture == nil {
 			return 0
 		}
-		return f.Picture.Width * f.Picture.Height
-	}
-	best := 0
-	for i, f := range files[1:] {
-		b := files[best]
-		if c := cmp.Or(compareBool(f.managed, b.managed), cmp.Compare(pixels(f), pixels(b)), cmp.Compare(f.Size, b.Size)); c > 0 {
-			best = i + 1
-		}
-	}
+		return files[i].Picture.Width * files[i].Picture.Height
+	}, func(i int) int64 { return files[i].Size })
 	for i := range files {
 		files[i].Extra = i != best
 	}
+}
+
+// playingCopy is which of a title's n copies plays (decision 37): the file its arr lists, else
+// the sharpest picture, else the biggest file; the first of equals.
+func playingCopy(n int, managed func(int) bool, pixels func(int) int, size func(int) int64) int {
+	best := 0
+	for i := 1; i < n; i++ {
+		if c := cmp.Or(compareBool(managed(i), managed(best)), cmp.Compare(pixels(i), pixels(best)),
+			cmp.Compare(size(i), size(best))); c > 0 {
+			best = i
+		}
+	}
+	return best
 }
 
 func compareBool(a, b bool) int {
