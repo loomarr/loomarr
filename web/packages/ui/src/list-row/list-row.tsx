@@ -10,8 +10,14 @@ import type { ListGroupProps, ListRowProps } from "./list-row.type";
 // A real list, so a screen reader announces "list, 3 items" before reading rows that otherwise only
 // look like one. The group owns each item and the hairline BETWEEN items: the mock's line under the
 // last row doubles against the group's own border, so it is not drawn.
-const ListGroup = ({ children, ...aria }: ListGroupProps) => (
-  <Surface {...aria} overflow="hidden" padding={0} role="list">
+const ListGroup = ({ children, framed = true, ...aria }: ListGroupProps) => (
+  <Surface
+    {...aria}
+    {...(framed ? {} : { backgroundColor: "transparent", borderRadius: 0, borderWidth: 0 })}
+    overflow="hidden"
+    padding={0}
+    role="list"
+  >
     {Children.toArray(children).map((child, index) => (
       <Surface
         backgroundColor="transparent"

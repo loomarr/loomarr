@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ServicesPanel } from "./services-panel";
 
 const loomarr = { name: "loomarr", ok: true, target: "v0.9.3 · sqlite schema 21" };

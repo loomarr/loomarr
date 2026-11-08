@@ -1,5 +1,6 @@
 import { formatRelative } from "@loomarr/core/format";
-import { PanelRow } from "@/components/ui/panel-row";
+import { Surface } from "@loomarr/design-system";
+import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ActivityFeedProps } from "./activity-feed.type";
 
@@ -34,22 +35,30 @@ const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProp
         Nothing yet. Activity shows up here as Loomarr acquires titles and builds channels.
       </p>
     ) : (
-      <ul>
+      <ListGroup framed={false}>
         {entries.map((e) => (
-          <PanelRow key={e.id} className="gap-3">
-            <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap">
-              {/* `at` is unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
-              {formatRelative(e.at * 1000, now)}
-            </span>
-            <span
-              role="img"
-              aria-label={e.level}
-              className={cn("size-1.5 shrink-0 rounded-full", LEVEL_DOT[e.level] ?? "bg-static-500")}
-            />
-            <span className="min-w-0 flex-1 text-sm">{e.text}</span>
+          <PanelRow key={e.id}>
+            <Surface
+              alignItems="center"
+              backgroundColor="transparent"
+              borderWidth={0}
+              flexDirection="row"
+              gap={12}
+            >
+              <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap">
+                {/* `at` is unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
+                {formatRelative(e.at * 1000, now)}
+              </span>
+              <span
+                role="img"
+                aria-label={e.level}
+                className={cn("size-1.5 shrink-0 rounded-full", LEVEL_DOT[e.level] ?? "bg-static-500")}
+              />
+              <span className="min-w-0 flex-1 text-sm">{e.text}</span>
+            </Surface>
           </PanelRow>
         ))}
-      </ul>
+      </ListGroup>
     )}
   </section>
 );
