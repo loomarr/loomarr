@@ -37,6 +37,7 @@ import RadioTower from "lucide-react-native/icons/radio-tower";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import RotateCw from "lucide-react-native/icons/rotate-cw";
+import Scissors from "lucide-react-native/icons/scissors";
 import Search from "lucide-react-native/icons/search";
 import Settings from "lucide-react-native/icons/settings";
 import SkipBack from "lucide-react-native/icons/skip-back";
@@ -117,6 +118,8 @@ const icons = {
   seekForward: withSeconds(RotateCw, "10"),
   settings: Settings,
   skipForward: SkipForward,
+  // Cutting one recording into its clips (filler's Split into clips).
+  split: Scissors,
   // The player's Start over (§9.4): back to the programme's start.
   startOver: StepBack,
   stop: Square,
