@@ -106,6 +106,33 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	}
 }
 
+// #2781: on a fresh install an optional service nobody set up is "not set up", not failing. The
+// checklist says so with notSetUp, and a service with any connection setting set is a real failure.
+func TestSetupStatus_UnconfiguredServiceIsNotSetUpRatherThanFailing(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		Settings:     &fakeSettings{},
+		LiveSettings: mapSettings{"seerr.url": "http://seerr.lan:5055"},
+	})
+	resp := do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
+	var body struct{ Checks []api.SetupCheck }
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	checks := map[string]api.SetupCheck{}
+	for _, check := range body.Checks {
+		checks[check.Name] = check
+	}
+	if tmdb, ok := checks["tmdb"]; !ok || tmdb.OK || !tmdb.NotSetUp {
+		t.Errorf("tmdb = %+v (present %t), want not ok and not set up", tmdb, ok)
+	}
+	if requester := checks["requester"]; requester.OK || requester.NotSetUp {
+		t.Errorf("requester = %+v, want a real failure, not 'not set up'", requester)
+	}
+	if media := checks["media_server"]; media.NotSetUp {
+		t.Errorf("media_server = %+v, a passing check is never 'not set up'", media)
+	}
+}
+
 // Sonarr and Radarr are their own optional connections (#2151 decision 29): a connected one is a
 // row that fixes in its own card, and one never connected is no row rather than a red dot.
 func TestSystemServices_ArrRowOnlyWhenConnected(t *testing.T) {

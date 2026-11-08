@@ -43,7 +43,10 @@ const ConnectionBlock = ({
   action,
   footer,
 }: ConnectionBlockProps) => {
-  const failing = verdict !== undefined && !verdict.ok;
+  // An optional service nobody has set up is not failing (#2781): neutral dot, "Not set up".
+  // A required one stays red, because the app cannot work without it.
+  const notSetUp = optional && verdict !== undefined && !verdict.ok && verdict.notSetUp === true;
+  const failing = verdict !== undefined && !verdict.ok && !notSetUp;
   // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
   // sent by the backend: it is display text assembled from state the client already holds,
   // and a `summary` field on `SetupCheck` would put copy in the API for no new information.
@@ -55,7 +58,9 @@ const ConnectionBlock = ({
       ? "not tested yet"
       : verdict.ok
         ? "OK"
-        : "needs attention";
+        : notSetUp
+          ? "Not set up"
+          : "needs attention";
 
   return (
     <Collapsible.Root
@@ -76,7 +81,7 @@ const ConnectionBlock = ({
             "flex size-5 shrink-0 items-center justify-center rounded-full border",
             verdict?.ok && "border-lock bg-lock-tint-15 text-lock",
             failing && "border-onair-300 text-onair-300",
-            verdict === undefined && "border-border text-static-400",
+            (verdict === undefined || notSetUp) && "border-border text-static-400",
           )}
           aria-hidden
         >
@@ -93,7 +98,7 @@ const ConnectionBlock = ({
             "ml-auto truncate text-xs",
             verdict?.ok && !testing && "text-lock",
             failing && !testing && "text-onair-300",
-            (testing || verdict === undefined) && "text-static-400",
+            (testing || verdict === undefined || notSetUp) && "text-static-400",
           )}
         >
           {summary}
@@ -119,7 +124,7 @@ const ConnectionBlock = ({
                     role="status"
                     className={cn(
                       "flex items-center gap-1.5 text-sm",
-                      verdict.ok ? "text-lock" : "text-onair-300",
+                      verdict.ok ? "text-lock" : notSetUp ? "text-static-400" : "text-onair-300",
                     )}
                   >
                     {failing && <X className="size-3.5 shrink-0" aria-hidden />}

@@ -84,5 +84,17 @@ const Untested: Story = {
   args: { title: "Tunarr", open: true, action: testBtn, children: fields },
 };
 
+// An optional service a fresh install has not touched (#2781) — neutral "Not set up", not red.
+const NotSetUp: Story = {
+  args: {
+    title: "TMDB",
+    optional: true,
+    verdict: { ok: false, notSetUp: true, hint: "set your TMDB API key" },
+    open: true,
+    action: testBtn,
+    children: fields,
+  },
+};
+
 export default meta;
-export { BrokenCollapsed, BrokenOpen, HealthyCollapsed, HealthyOpen, Testing, Untested };
+export { BrokenCollapsed, BrokenOpen, HealthyCollapsed, HealthyOpen, NotSetUp, Testing, Untested };

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -56,6 +57,10 @@ type SetupCheck struct {
 	// looking for which one. Empty when the probe has no configurable endpoint (TMDB) or the
 	// setting is unset.
 	Target string `json:"target,omitempty" doc:"The URL or path this check probed"`
+	// NotSetUp is true when the check is not OK because nobody has set this service up yet
+	// (#2781): none of its connection settings are set. That is not a failure — an optional
+	// service a fresh install has not touched must not read as broken.
+	NotSetUp bool `json:"notSetUp,omitempty" doc:"True when not OK only because none of this service's connection settings are set yet"`
 }
 
 // connectionChecklist is the ordered set of connection probes surfaced by
@@ -66,18 +71,24 @@ type SetupCheck struct {
 // (§12, V31) can show `emby.lan:8096` beside a red dot. Nil where there is nothing to
 // show — TMDB is a fixed vendor endpoint nobody configures, so a "target" there would be a
 // constant dressed up as diagnostics.
+// configuredBy lists the settings whose being set means the operator has started connecting this
+// service; none set is "not set up" (#2781).
 var connectionChecklist = []struct {
 	name, docHref string
 	target        *settings.StringKey
+	configuredBy  []settings.StringKey
 }{
-	{"media_server", "troubleshooting#media-server", &settings.LibraryURL},
-	{"requester", "troubleshooting#seerr", &settings.SeerrURL},
-	{"sonarr", "troubleshooting#sonarr-radarr", &settings.SonarrURL},
-	{"radarr", "troubleshooting#sonarr-radarr", &settings.RadarrURL},
-	{"tunarr", "troubleshooting#tunarr", &settings.TunarrURL},
-	{"llm", "troubleshooting#llm", &settings.LLMURL},
-	{"tmdb", "troubleshooting#tmdb", nil},
-	{"filler", "troubleshooting#filler", &settings.FillerDir},
+	{"media_server", "troubleshooting#media-server", &settings.LibraryURL,
+		[]settings.StringKey{settings.LibraryURL, settings.LibraryToken}},
+	{"requester", "troubleshooting#seerr", &settings.SeerrURL,
+		[]settings.StringKey{settings.SeerrURL, settings.SonarrURL, settings.RadarrURL}},
+	{"sonarr", "troubleshooting#sonarr-radarr", &settings.SonarrURL, []settings.StringKey{settings.SonarrURL}},
+	{"radarr", "troubleshooting#sonarr-radarr", &settings.RadarrURL, []settings.StringKey{settings.RadarrURL}},
+	{"tunarr", "troubleshooting#tunarr", &settings.TunarrURL, []settings.StringKey{settings.TunarrURL}},
+	{"llm", "troubleshooting#llm", &settings.LLMURL,
+		[]settings.StringKey{settings.LLMURL, settings.LLMModel, settings.LLMAPIKey}},
+	{"tmdb", "troubleshooting#tmdb", nil, []settings.StringKey{settings.TMDBAPIKey}},
+	{"filler", "troubleshooting#filler", &settings.FillerDir, []settings.StringKey{settings.FillerDir}},
 }
 
 type setupStatusOutput struct {
@@ -128,7 +139,10 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 			if c.target != nil {
 				target = s.configValue(*c.target)
 			}
-			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target})
+			checks = append(checks, SetupCheck{
+				Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target,
+				NotSetUp: !ok && !s.anyConfigured(c.configuredBy),
+			})
 		}
 	}
 
@@ -171,6 +185,20 @@ func (s *Server) configValue(key settings.StringKey) string {
 		return ""
 	}
 	return key.Get(s.liveSettings)
+}
+
+// anyConfigured reports whether any of keys is set. Without live settings (unit tests) it cannot
+// tell, so it answers true: a failure is never softened into "not set up" on a guess.
+func (s *Server) anyConfigured(keys []settings.StringKey) bool {
+	if s.liveSettings == nil {
+		return true
+	}
+	for _, key := range keys {
+		if strings.TrimSpace(key.Get(s.liveSettings)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type tunarrConnectOutput struct {

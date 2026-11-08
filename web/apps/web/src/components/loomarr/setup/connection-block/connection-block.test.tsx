@@ -100,6 +100,25 @@ describe("ConnectionBlock", () => {
     expect(fix.getAttribute("href")).toMatch(/^\/help\?/);
   });
 
+  it("shows an optional service that is not set up without a red cross or Fix link", async () => {
+    withRouter(
+      <ConnectionBlock
+        title="TMDB"
+        optional
+        open
+        onToggle={() => {}}
+        verdict={{ ok: false, notSetUp: true, hint: "set your TMDB API key" }}
+        docHref="troubleshooting#tmdb"
+      >
+        <p>{bodyText}</p>
+      </ConnectionBlock>,
+    );
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("set your TMDB API key");
+    expect(status).not.toHaveClass("text-onair-300");
+    expect(screen.queryByRole("link", { name: /fix/i })).not.toBeInTheDocument();
+  });
+
   it("shows a passing verdict as 'Connection OK' and no Fix link", async () => {
     withRouter(
       <ConnectionBlock title="TMDB" open onToggle={() => {}} verdict={{ ok: true }}>
@@ -127,6 +146,11 @@ describe("ConnectionBlock", () => {
     ["not tested yet", {}],
     ["OK", { verdict: { ok: true } }],
     ["needs attention", { verdict: { ok: false } }],
+    // #2781: an optional service nobody set up is neutral, not failing…
+    ["Not set up", { optional: true, verdict: { ok: false, notSetUp: true } }],
+    // …but a required one is still red, and a set-up optional failure still needs attention.
+    ["needs attention", { verdict: { ok: false, notSetUp: true } }],
+    ["needs attention", { optional: true, verdict: { ok: false } }],
     // testing wins over the standing verdict — a probe in flight is the newer truth.
     ["testing…", { verdict: { ok: true }, testing: true }],
   ])("summarises the connection as %s in the header", async (expected, props) => {
