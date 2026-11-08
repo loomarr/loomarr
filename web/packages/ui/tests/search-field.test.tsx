@@ -37,11 +37,21 @@ afterEach(() => {
 });
 
 let latest = "";
-const Controlled = () => {
+const Controlled = ({ clearLabel }: { clearLabel?: string }) => {
   const [query, setQuery] = useState("Mo");
   latest = query;
-  return <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />;
+  return (
+    <SearchField
+      clearLabel={clearLabel}
+      label="Search people"
+      onChangeText={setQuery}
+      placeholder="Name"
+      value={query}
+    />
+  );
 };
+
+type Clickable = { click(): void };
 
 describe("SearchField", () => {
   it("is one input named by its visible label, with a decorative magnifier", async () => {
@@ -54,5 +64,19 @@ describe("SearchField", () => {
     expect(doc.body.textContent).toContain("Search people");
     // The glyph is the only image, and it is hidden from assistive tech.
     expect(doc.body.querySelectorAll('[role="img"]').length).toBe(0);
+    // No clear button unless one is named.
+    expect(doc.body.querySelector('[aria-label="Clear search"]')).toBeNull();
+  });
+
+  it("empties the query from its named clear button, which then goes away", async () => {
+    await mount(<Controlled clearLabel="Clear search" />);
+
+    const clear = doc.body.querySelector('[aria-label="Clear search"]') as unknown as Clickable | null;
+    expect(clear).not.toBeNull();
+    await act(async () => clear?.click());
+
+    expect(latest).toBe("");
+    expect(doc.body.querySelector("input")?.value).toBe("");
+    expect(doc.body.querySelector('[aria-label="Clear search"]')).toBeNull();
   });
 });
