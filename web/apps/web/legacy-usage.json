@@ -348,7 +348,7 @@
       "tailwindClasses": 5
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 83
+      "tailwindClasses": 82
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
       "tailwindClasses": 117,
@@ -582,7 +582,7 @@
       "tailwindClasses": 14
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 76,
+      "tailwindClasses": 68,
       "legacyUi": 1
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
