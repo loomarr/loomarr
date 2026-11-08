@@ -706,8 +706,7 @@
       "tailwindClasses": 3
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 52,
-      "legacyUi": 1
+      "tailwindClasses": 52
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 17
@@ -717,12 +716,10 @@
       "legacyUi": 1
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "tailwindClasses": 64,
-      "legacyUi": 1
+      "tailwindClasses": 63
     },
     "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 1
+      "tailwindClasses": 15
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
       "tailwindClasses": 26,
