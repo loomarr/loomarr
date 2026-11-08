@@ -37,6 +37,7 @@ type libraryStore interface {
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
 	store.LibraryCollectionStore
+	store.LibraryPeopleStore
 	inventory.Repository
 	posterRefs
 }
@@ -186,6 +187,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
+		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(filmographer.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,

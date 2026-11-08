@@ -205,8 +205,13 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 }
 
 func (e *Enricher) sleep(ctx context.Context, d time.Duration) error {
-	if e.Sleep != nil {
-		return e.Sleep(ctx, d)
+	return sleepFor(ctx, e.Sleep, d)
+}
+
+// sleepFor waits d with sleep, or on the clock when sleep is nil; it ends early with ctx.
+func sleepFor(ctx context.Context, sleep func(context.Context, time.Duration) error, d time.Duration) error {
+	if sleep != nil {
+		return sleep(ctx, d)
 	}
 	t := time.NewTimer(d)
 	defer t.Stop()

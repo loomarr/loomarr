@@ -183,6 +183,26 @@ tables:
       name: Their name.
       tmdb_id: Their TMDB person id; empty when unlinked.
       photo: The web address of their headshot; empty when no source had one.
+      filmography_at_ms: When their filmography was last fetched, in Unix milliseconds; 0 means never.
+      filmography_retry_at_ms: >
+        After a failed filmography fetch, the time before which it is not tried again, in Unix
+        milliseconds; 0 for none.
+
+  - name: library_filmography
+    about: >
+      The movies and series of the people who directed or created a title, are among a title's ten
+      top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first.
+      Fetched when a person first qualifies and monthly after; deleted with the person. A title the
+      library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+    columns:
+      person_id: The person (a library_people id).
+      position: Where the title comes in their filmography, newest first, from 0.
+      kind: movie or series.
+      tmdb_id: The title's TMDB id.
+      title: The title's name, in the household's language when TMDB has it.
+      year: The year it came out; 0 when unknown.
+      role: What they did on it, one of actor, creator, director or writer.
+      character_name: An actor's part; empty for crew or when unknown.
 
   - name: library_credits
     about: >
