@@ -1,7 +1,6 @@
 import {
   Action,
   Badge,
-  BrandMark,
   Field,
   ProgressTrack,
   StatusDot,
@@ -13,6 +12,7 @@ import {
 import { type ComponentProps, useState } from "react";
 import { Pressable } from "react-native";
 
+import { StatePanel } from "../../state-panel";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { folderName, heldTitle, scanHeadline } from "../library-words";
 import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
@@ -80,18 +80,12 @@ const StatusLine = ({
 
 // No folder chosen yet: the shelf is dead air until Loomarr knows where the media is.
 const DeadAir = ({ onOpenSettings }: { onOpenSettings: () => void }) => (
-  <Surface alignItems="center" gap="control" padding="section">
-    <BrandMark contained={false} decorative size={6} width={120} />
-    <Text textAlign="center" textRole="title">
-      Dead air — tell Loomarr where your media is.
-    </Text>
-    <Text textAlign="center" textRole="body" tone="secondary">
-      Point it at your movie and show folders and your shelf fills up on its own.
-    </Text>
-    <Action onPress={onOpenSettings} tone="primary">
-      Tell Loomarr where your media is
-    </Action>
-  </Surface>
+  <StatePanel
+    action={{ label: "Tell Loomarr where your media is", onPress: onOpenSettings }}
+    description="Point it at your movie and show folders and your shelf fills up on its own."
+    kind="empty"
+    title="Dead air"
+  />
 );
 
 const subtitle = (title: LibraryShelfTitle) => {

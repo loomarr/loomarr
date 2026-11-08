@@ -193,7 +193,8 @@ describe("LibraryShelf", () => {
       status: { health: "needs_folders", scan: IDLE, held: [], offline: [] },
       titles: [],
     });
-    expect(host.textContent).toContain("Dead air — tell Loomarr where your media is.");
+    expect(host.textContent).toContain("Dead air");
+    expect(host.textContent).toContain("Point it at your movie and show folders");
     expect(host.textContent).not.toContain("Search");
     act(() => button("Tell Loomarr where your media is").click());
     expect(props.onOpenSettings).toHaveBeenCalled();
