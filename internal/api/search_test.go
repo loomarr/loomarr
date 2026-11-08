@@ -50,14 +50,14 @@ func TestSearchScopesFollowLiveConfiguration(t *testing.T) {
 		wantScope string
 	}{
 		{name: "library configured", path: "/v1/search?q=marigold&scope=library", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
-		{name: "library missing", path: "/v1/search?q=marigold&scope=library", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusNotImplemented},
+		// The Library is Loomarr's own (#2151 step 15e): no media server still searches it.
+		{name: "library without a media server", path: "/v1/search?q=marigold&scope=library", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "library"},
 		{name: "tmdb configured", path: "/v1/search?q=marigold&scope=tmdb", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
 		{name: "tmdb missing", path: "/v1/search?q=marigold&scope=tmdb", cfg: libraryConfig(), wantCode: http.StatusNotImplemented},
 		{name: "all with both", path: "/v1/search?q=marigold&scope=all", cfg: libraryConfig("tmdb.api_key", "key"), wantCode: http.StatusOK, wantScope: "all"},
 		{name: "all narrows to library", path: "/v1/search?q=marigold&scope=all", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
-		{name: "library triple incomplete", path: "/v1/search?q=marigold&scope=library", cfg: map[string]string{"library.flavor": "jellyfin", "library.url": "http://library"}, wantCode: http.StatusNotImplemented},
-		{name: "default narrows to tmdb", path: "/v1/search?q=marigold", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
-		{name: "neither configured", path: "/v1/search?q=marigold", cfg: map[string]string{}, wantCode: http.StatusNotImplemented},
+		{name: "default with a TMDB key is all", path: "/v1/search?q=marigold", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "all"},
+		{name: "nothing configured searches the library", path: "/v1/search?q=marigold", cfg: map[string]string{}, wantCode: http.StatusOK, wantScope: "library"},
 	}
 
 	for _, tt := range tests {
@@ -95,29 +95,26 @@ func TestSearchConfigurationHotApplies(t *testing.T) {
 	cfg := map[string]string{}
 	handler, search := newConfiguredSearchHandler(t, cfg)
 
-	resp := searchRequest(handler, "/v1/search?q=marigold")
-	if resp.Code != http.StatusNotImplemented {
-		t.Fatalf("unconfigured search = %d, want 501", resp.Code)
+	if resp := searchRequest(handler, "/v1/search?q=marigold&scope=tmdb"); resp.Code != http.StatusNotImplemented {
+		t.Fatalf("TMDB search without a key = %d, want 501", resp.Code)
 	}
 
 	cfg["tmdb.api_key"] = "key"
-	resp = searchRequest(handler, "/v1/search?q=marigold")
-	if resp.Code != http.StatusOK {
-		t.Fatalf("search after setting TMDB key = %d, want 200", resp.Code)
+	if resp := searchRequest(handler, "/v1/search?q=marigold&scope=tmdb"); resp.Code != http.StatusOK {
+		t.Fatalf("TMDB search after setting the key = %d, want 200", resp.Code)
+	}
+	if resp := searchRequest(handler, "/v1/search?q=marigold"); resp.Code != http.StatusOK {
+		t.Fatalf("default search with the key = %d, want 200", resp.Code)
 	}
 
 	delete(cfg, "tmdb.api_key")
-	for key, value := range libraryConfig() {
-		cfg[key] = value
-	}
-	resp = searchRequest(handler, "/v1/search?q=marigold")
-	if resp.Code != http.StatusOK {
-		t.Fatalf("search after switching to library = %d, want 200", resp.Code)
+	if resp := searchRequest(handler, "/v1/search?q=marigold"); resp.Code != http.StatusOK {
+		t.Fatalf("default search after removing the key = %d, want 200", resp.Code)
 	}
 
 	requests := search.Requests()
-	if len(requests) != 2 || requests[0].Scope != "tmdb" || requests[1].Scope != "library" {
-		t.Fatalf("hot-applied scopes = %+v, want tmdb then library", requests)
+	if len(requests) != 3 || requests[0].Scope != "tmdb" || requests[1].Scope != "all" || requests[2].Scope != "library" {
+		t.Fatalf("hot-applied scopes = %+v, want tmdb, all, then library", requests)
 	}
 }
 

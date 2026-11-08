@@ -165,7 +165,7 @@ func Generate(ctx context.Context, lib *Library, dir, ffmpeg string, log *slog.L
 		made++
 		log.Info("demo asset generated", "file", rel)
 	}
-	if err := l.linkItems(lib); err != nil {
+	if err := l.linkLibrary(lib); err != nil {
 		return err
 	}
 	log.Info("demo assets ready", "dir", dir, "generated", made, "total", len(jobs))
@@ -182,38 +182,68 @@ func tempName(out string) string {
 	return strings.TrimSuffix(out, ext) + ".partial" + ext
 }
 
-// Item is the path the stand-in server reports for one playable item (a film or an episode). It
-// is a symlink to the item's file: an invented item's format file, or an open item's download.
-// Every item gets its own path, as on a real server, so nothing keyed on a media path sees two
-// titles collapse into one, at the cost of no disk.
-func (l Layout) Item(itemID string) string { return filepath.Join(l.Dir, "items", itemID+".mp4") }
+// Movies and Shows are the demo's media folders, laid out as a household's are. Each title's
+// folder and file names carry its ids, so Loomarr's own scan grounds every title with no arr and
+// no search, and plays the files it found (#2151 step 16: playout reads only the Library's
+// files). A film names its TMDB id; a show names both, since the stand-in TMDB keys it on the
+// same number as its TVDB id: the scan fetches it by TMDB and keys it by TVDB, as the media
+// server did.
+func (l Layout) Movies() string { return filepath.Join(l.Dir, "library", "movies") }
+func (l Layout) Shows() string  { return filepath.Join(l.Dir, "library", "shows") }
 
-// linkItems (re)creates the per-item symlinks.
-func (l Layout) linkItems(lib *Library) error {
-	if err := os.MkdirAll(filepath.Join(l.Dir, "items"), 0o755); err != nil {
-		return err
-	}
-	link := func(t Title, itemID string) error {
-		p := l.Item(itemID)
-		target := filepath.Join("..", "media", "programmes", itemID+".mp4")
-		if !t.Open {
-			target = filepath.Join("..", "video", t.Format+".mp4")
+// FilmFile and EpisodeFile are one playable item's file, which the stand-in server reports as its
+// path too. Each is a hard link to the item's encoded file (an invented title's format file, or
+// an open title's download): every item has its own path, as on a real server, at the cost of no
+// disk, and the scan, which never follows a symlink, reads it as the file it is.
+func (l Layout) FilmFile(t Title) string {
+	name := fmt.Sprintf("%s (%d) {tmdb-%d}", fileSafe(t.Name), t.Year, t.ProviderID())
+	return filepath.Join(l.Movies(), name, name+".mp4")
+}
+func (l Layout) EpisodeFile(t Title, e Episode) string {
+	show := fmt.Sprintf("%s (%d) {tmdb-%d} {tvdb-%d}", fileSafe(t.Name), t.Year, t.ProviderID(), t.ProviderID())
+	return filepath.Join(l.Shows(), show, fmt.Sprintf("Season %02d", e.Season),
+		fmt.Sprintf("%s - S%02dE%02d.mp4", fileSafe(t.Name), e.Season, e.Number))
+}
+
+// fileSafe replaces the characters a file name can't hold on every platform the demo runs on.
+func fileSafe(name string) string {
+	return strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '-'
 		}
-		if cur, err := os.Readlink(p); err == nil && cur == target {
+		return r
+	}, name)
+}
+
+// linkLibrary (re)creates the media folders' hard links.
+func (l Layout) linkLibrary(lib *Library) error {
+	link := func(t Title, itemID, p string) error {
+		target := l.PackProgramme(itemID)
+		if !t.Open {
+			target = l.Video(t.Format)
+		}
+		want, err := os.Stat(target)
+		if err != nil {
+			return err
+		}
+		if cur, err := os.Stat(p); err == nil && os.SameFile(cur, want) {
 			return nil
 		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
 		_ = os.Remove(p)
-		return os.Symlink(target, p)
+		return os.Link(target, p)
 	}
 	for _, t := range lib.Titles {
 		if t.Kind == Movie {
-			if err := link(t, t.ID()); err != nil {
+			if err := link(t, t.ID(), l.FilmFile(t)); err != nil {
 				return err
 			}
 			continue
 		}
 		for _, e := range lib.EpisodesOf(t) {
-			if err := link(t, e.ID); err != nil {
+			if err := link(t, e.ID, l.EpisodeFile(t, e)); err != nil {
 				return err
 			}
 		}
@@ -235,7 +265,7 @@ func (l Layout) resetIfStale(content Content) error {
 	if json.Unmarshal(raw, &m) == nil && m.Version == AssetVersion && m.Content == content {
 		return nil
 	}
-	for _, sub := range []string{"video", "filler", "art", "items", ".work"} {
+	for _, sub := range []string{"video", "filler", "art", "library", ".work"} {
 		if err := os.RemoveAll(filepath.Join(l.Dir, sub)); err != nil {
 			return err
 		}

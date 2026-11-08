@@ -52,8 +52,8 @@ An era applies at the playable programme boundary. A movie is judged by its rele
 a series entry is judged once by its own first-air year and every expanded episode is judged again
 by that episode's production year. This is what makes `1989–1999 Simpsons` mean episodes from that
 period instead of every episode of a series that happened to begin in 1989. An episode whose year
-is unavailable passes the era check: scope is a taste filter rather than a safety boundary, and a
-stale pre-year episode cache must not empty a Channel until its next refresh. An explicit
+is unavailable passes the era check: scope is a taste filter rather than a safety boundary, and an
+episode the catalog has no year for must not empty a Channel. An explicit
 per-Lineup season window still narrows independently and wins by intersection.
 
 `scope.genres` matches case-insensitively across two vocabularies. The suggester writes TMDB's,
@@ -220,8 +220,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 - `ceiling` is a **closed ordered ladder** spanning both TV and film systems: `TV-Y < TV-Y7 < TV-G/G < TV-PG/PG < TV-14/PG-13 < TV-MA/R/NC-17`. Enforcement compares the item's `OfficialRating` (same field name on Emby and Jellyfin) mapped into the ladder; unmappable strings are treated as unrated.
 - **The ceiling is enforced TWICE: on the entry, and again on every expanded episode.** A series entry is gated at its *series* rating in `filterEntries` — but that rating is a lossy **summary**, so `resolveEntry` re-checks each episode as it expands (`episodeVerdict`), and an episode rated above the ceiling is dropped even though its parent cleared the gate. A series whose *every* episode is refused resolves to **nothing**, never a pending slot: a pending slot means "approved, still acquiring", which advertises the title and (under PodFill) holds airtime for it — a show the ceiling refused is not late, it is excluded.
   - ⚠ **This paragraph used to say the opposite, and called it safe.** It described entry-only gating as "a small, deliberate safety *narrowing* … at worst a below-ceiling series with an occasional harder episode is admitted" — which is not a narrowing, it is the leak, stated as if it were the mitigation. Live proof (2026-08-10, maintainer's library): `90s Cartoon Classics`, `ceiling: TV-PG`, aired **King of the Hill** — a TV-PG series whose 275 episodes are 253 × TV-PG, **2 × TV-14**, and 20 × unrated. TMDB lists *both* TV-PG and TV-14 for the show. South Park and Futurama were dropped correctly at the entry gate, which is what made the leak look like correct behaviour.
-  - **An episode with no rating of its own INHERITS its parent's** rather than failing closed — the one place §4's "never guess" is deliberately not applied. The parent has already cleared the ceiling as a whole title, so inheriting falls back to a check that just ran rather than guessing at unknown content; blank episode ratings are a metadata gap (20 of those 275) and refusing them would silently drop ~7% of an approved show. It is also what makes the change safe to deploy: `store.SeriesEpisodes` persists `[]ResolvedProgram`, so every cached row predating this field decodes as unrated, and a fail-closed reading would have emptied every kids channel until the refresh sweep repopulated the cache — trading a content leak for dead air, which §9 forbids just as firmly. The asymmetry still holds where it counts: an episode that **is** rated is judged on its own rating and can never be lifted by a permissive parent.
-  - The rating/genres/year an *entry* is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand). Episode ratings and production years ride the episode cache (`library.ListEpisodes` requests `OfficialRating,ProductionYear`), so both gates stay pure entry/slot-set filters with no per-reconcile library I/O.
+  - **An episode with no rating of its own INHERITS its parent's** rather than failing closed — the one place §4's "never guess" is deliberately not applied. The parent has already cleared the ceiling as a whole title, so inheriting falls back to a check that just ran rather than guessing at unknown content; blank episode ratings are a metadata gap (20 of those 275) and refusing them would silently drop ~7% of an approved show. The asymmetry still holds where it counts: an episode that **is** rated is judged on its own rating and can never be lifted by a permissive parent.
+  - The rating/genres/year an *entry* is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand). Episode ratings and production years come with the series' episodes from the Library's tables (`LibraryEpisodes`), so both gates stay pure entry/slot-set filters.
 - **Kids ceilings (`TV-Y`…`TV-PG`) default `unrated: "exclude"`** — an item with missing or unmappable rating metadata is *excluded*, never guessed at. Metadata gaps are the real-world failure mode; a kids' channel must be safe against them by construction. Adult/general channels default `allow`. An explicit `exclude` binds with or without a ceiling;
   with no ceiling all mapped ratings remain eligible. Episode parent-rating inheritance still applies.
 - **Transparency at review:** the proposal shows the policy's effect — so gaps are visible *before* approval, and the fix (rate your media, or relax the policy) is a human decision.
@@ -283,26 +283,18 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   not expose rating vote counts, so cohort coverage is the only supported confidence gate: this
   slice makes no absolute-confidence claim and performs no scheduler-time enrichment call.
 
-  One episode-evidence codec owns the rating and text/tag domain. The Library adapter and durable
-  `SeriesEpisodes` cache both decode provider/cache JSON through it, while durable writes invoke the
-  same sanitizer, so neither live responses nor legacy blobs can bypass newer bounds. Malformed
-  editorial rating/text/tag JSON becomes unavailable evidence and unknown fields are ignored. A
-  malformed mixed-type tag array makes the entire tag field unavailable; no successfully decoded
-  prefix survives. Exact or Unicode-case-fold duplicate editorial
-  members are also unavailable: the decoder preserves/counts object-member occurrences instead of
-  accepting a map-iteration or last-member winner. Editorial corruption does not discard neighboring
-  valid live episodes, while malformed playable structure still omits that live item. Every cached series episode must be an object
-  in which each required playable member is present: a non-blank Library item id, positive runtime,
-  non-negative season, positive episode number, and an episode end of zero or at least the starting
-  episode. Absence is not interpreted as an explicit zero, and every required numeric member must
-  have an actual JSON number type. Every non-null database value is decoded: an empty string, null
-  document, wrong document shape, null/empty rows, exact or case-fold duplicates of those required playable members, and malformed or
-  invalid playable identity, numbering, or runtime fail the whole cache read because scheduling
-  cannot safely invent those facts or emit a blank/zero-duration slot.
-  The Library adapter drops live items without a non-blank id, positive runtime, or present valid
-  season/episode numbering. The durable write interface rejects the entire write when the same
-  playable contract is violated; editorial repair remains tolerant. A valid `[]` alone represents
-  an enumerated series with no playable episodes.
+  One episode-evidence codec owns the rating and text/tag domain. A lineup's series expands from
+  the Library's tables (`LibraryEpisodes`, #2151 step 16), and the episode resolver runs every row
+  through the same playable check and sanitizer the media-server adapter's JSON decoding uses, so no
+  source can bypass the bounds. Malformed editorial rating/text/tag JSON becomes unavailable
+  evidence and unknown fields are ignored. A malformed mixed-type tag array makes the entire tag
+  field unavailable; no successfully decoded prefix survives. Exact or Unicode-case-fold duplicate
+  editorial members are also unavailable: the decoder preserves/counts object-member occurrences
+  instead of accepting a map-iteration or last-member winner. Editorial corruption does not discard
+  neighboring valid episodes, while an episode without a non-blank Library item id, positive
+  runtime, non-negative season, positive episode number, and an episode end of zero or at least the
+  starting episode is dropped, because scheduling cannot safely invent those facts or emit a
+  blank/zero-duration slot. A series with no playable episodes expands to nothing.
 
   `holiday` applies the §6 holiday judgment to the episode title, bounded overview, tags and
   original air date, restricted to the selected holiday ids (empty means all built-ins), and

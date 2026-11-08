@@ -58,13 +58,10 @@ type EngineStore interface {
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
-// AvailabilityStore is the title and episode cache used to resolve scheduled
-// content. It is separate from EngineStore because availability is independently
-// replaceable in tests and at composition time.
+// AvailabilityStore is the title store used to resolve scheduled content. It is separate from
+// EngineStore because availability is independently replaceable in tests and at composition time.
 type AvailabilityStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-	GetSeriesEpisodes(ctx context.Context, libraryID string) (store.SeriesEpisodes, error)
-	UpsertSeriesEpisodes(ctx context.Context, episodes store.SeriesEpisodes) error
 }
 
 // PodFiller answers the backend-specific views of a channel's matched filler
@@ -402,9 +399,9 @@ type storeAvailability struct {
 	//
 	// The TTL is deliberately SHORT. It exists to collapse the repeats inside one operation
 	// (the thing that was costing 72 calls), not to serve as a real cache — the durable answer
-	// for episode enumeration is the persisted store, refreshed by the library-scan job. Set
-	// it longer and this quietly becomes a cache with no invalidation signal, which is the bug
-	// this comment used to describe as a safety property.
+	// for episode enumeration is the Library's own tables. Set it longer and this quietly
+	// becomes a cache with no invalidation signal, which is the bug this comment used to
+	// describe as a safety property.
 	//
 	// Guarded by a mutex: the guide resolves channels concurrently, and a map is not safe
 	// under that on its own.
@@ -412,10 +409,7 @@ type storeAvailability struct {
 	titleMemo map[provision.Key]titleLookup
 	durMemo   map[string]memoEntry[int64]
 	epsMemo   map[string]memoEntry[schedule.EpisodeResolution]
-	// episodeMaxAge keeps cache policy inside this adapter. Nil/zero retains the
-	// documented default while composition can supply the live setting.
-	episodeMaxAge func() time.Duration
-	now           func() time.Time
+	now       func() time.Time
 }
 
 // memoTTL bounds every memoized answer. Long enough to collapse the repeated resolves within
@@ -479,15 +473,6 @@ func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur Duratio
 		epsMemo:   map[string]memoEntry[schedule.EpisodeResolution]{},
 		now:       time.Now,
 	}
-}
-
-// WithEpisodeMaxAge supplies the live cache-age policy without exposing cache
-// mechanics to schedule.Availability callers or their test adapters.
-func WithEpisodeMaxAge(a Availability, maxAge func() time.Duration) Availability {
-	if sa, ok := a.(*storeAvailability); ok {
-		sa.episodeMaxAge = maxAge
-	}
-	return a
 }
 
 // WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
@@ -656,17 +641,9 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 		return schedule.EpisodeResolution{}
 	}
 
-	// THREE tiers, cheapest first. Enumerating a show is the most expensive library call there
-	// is, and a series in the lineup is re-resolved on every layout pass.
-	//
-	// PROFILED: a multi-series channel pays one enumeration PER SHOW, and that was ~90% of the
-	// Guide's latency — Star Trek Classics (4 shows) spent 232ms here while a 25-film movie
-	// channel spent 1ms.
-	//
-	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
-	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
-	//	                      behaving exactly like today rather than emptying channels
+	// A series in the lineup is re-resolved on every layout pass, so the memo collapses the
+	// repeats within one layout. Behind it the Library's tables answer (#2151 step 16): its
+	// largest show reads in under 10ms, so no persisted cache sits between them.
 	now := s.clock()
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
@@ -675,57 +652,12 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 	}
 	s.mu.Unlock()
 
-	// Tier 2. A store read replaces a media-server round-trip: this is the whole point of the
-	// cache. A cached EMPTY list is a HIT, not a miss — ErrNotFound is the only "never asked",
-	// so a genuinely-empty show does not re-enumerate on every request.
-	var cached []schedule.ResolvedProgram
-	var hasCached bool
-	var cacheFresh bool
-	if s.store != nil {
-		if se, err := s.store.GetSeriesEpisodes(s.ctx, rec.LibraryID); err == nil {
-			cached, hasCached = se.Episodes, true
-			cacheFresh = !s.episodeCacheAged(se.FetchedAt, now)
-			if cacheFresh {
-				result := schedule.EpisodeResolution{Programs: cached}
-				s.memoEpisodes(rec.LibraryID, result, now)
-				return result
-			}
-		}
+	var result schedule.EpisodeResolution
+	if eps, err := s.episodes(s.ctx, rec.LibraryID); err == nil {
+		result.Programs = eps
 	}
-
-	// Tier 3. Never enumerated (or the store is unavailable) — ask the library and write the
-	// answer back, so the next request and the next restart both take tier 2.
-	eps, err := s.episodes(s.ctx, rec.LibraryID)
-	if err != nil {
-		if hasCached && len(cached) > 0 {
-			result := schedule.EpisodeResolution{Programs: cached, EditorialUnavailable: true}
-			s.memoEpisodes(rec.LibraryID, result, now)
-			return result
-		}
-		result := schedule.EpisodeResolution{}
-		s.memoEpisodes(rec.LibraryID, result, now)
-		return result
-	} else if s.store != nil {
-		// Best-effort: a write failure costs a re-fetch next time, never correctness, so it
-		// must not fail the resolve that is otherwise complete.
-		_ = s.store.UpsertSeriesEpisodes(s.ctx, store.SeriesEpisodes{
-			LibraryID: rec.LibraryID, Episodes: eps, FetchedAt: now,
-		})
-	}
-
-	result := schedule.EpisodeResolution{Programs: eps}
 	s.memoEpisodes(rec.LibraryID, result, now)
 	return result
-}
-
-func (s *storeAvailability) episodeCacheAged(fetchedAt, now time.Time) bool {
-	age := 24 * time.Hour
-	if s.episodeMaxAge != nil {
-		if configured := s.episodeMaxAge(); configured > 0 {
-			age = configured
-		}
-	}
-	return fetchedAt.IsZero() || !fetchedAt.After(now.Add(-age))
 }
 
 // memoEpisodes records an episode list in the in-process memo. The empty result is memoized

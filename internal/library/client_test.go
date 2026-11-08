@@ -39,7 +39,7 @@ func TestLookupPresent(t *testing.T) {
 func TestLookupDetailParsesPrimarySourceSize(t *testing.T) {
 	c, demo := demoClient(t, Emby)
 	film := testkit.FirstMovie()
-	path := demo.Layout.Item(film.ID())
+	path := demo.Layout.FilmFile(film)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

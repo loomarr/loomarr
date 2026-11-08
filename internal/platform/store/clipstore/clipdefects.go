@@ -51,7 +51,7 @@ func (s *Store) upsertClipDefects(ctx context.Context, q storedb.Querier, r Clip
 		   judgement_json = excluded.judgement_json, judge_failures = excluded.judge_failures,
 		   verdict = excluded.verdict, verdict_reason = excluded.verdict_reason, measured_at = excluded.measured_at`),
 		r.ClipHash, r.Readings.Version, r.Assessment.Version, r.Era, string(r.Assessment.Outcome),
-		string(readings), string(assessment), judgement, r.JudgeFailures, string(r.Verdict), r.VerdictReason,
+		string(readings), string(assessment), storedb.OptionalJSON(judgement), r.JudgeFailures, string(r.Verdict), r.VerdictReason,
 		epoch(r.MeasuredAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip defects %s: %w", r.ClipHash, err)
@@ -182,7 +182,7 @@ func scanClipDefects(row interface{ Scan(...any) error }) (ClipDefectRecord, err
 	var r ClipDefectRecord
 	var readings, assessment, judgement, verdict string
 	var measuredAt int64
-	if err := row.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &judgement, &r.JudgeFailures, &verdict,
+	if err := row.Scan(&r.ClipHash, &r.Era, &readings, &assessment, (*storedb.OptionalJSON)(&judgement), &r.JudgeFailures, &verdict,
 		&r.VerdictReason, &measuredAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return r, err

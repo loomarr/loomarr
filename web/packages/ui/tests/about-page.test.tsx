@@ -81,7 +81,12 @@ describe("AboutPage", () => {
   // The bug-report facts wait behind one disclosure, like a title's technical details.
   it("keeps the technical details closed until asked", () => {
     const { host, cleanup } = render();
-    expect(host.textContent).not.toContain("9871fef2ac10");
+    // Closed, the details are mounted but hidden until found (find-in-page can still reach them).
+    const hiddenCommit = () =>
+      Array.from(host.querySelectorAll('[hidden="until-found"]')).some((n) =>
+        n.textContent?.includes("9871fef2ac10"),
+      );
+    expect(hiddenCommit()).toBe(true);
     const toggle = Array.from(host.querySelectorAll("[aria-expanded]")).find((n) =>
       n.textContent?.includes("Technical details"),
     );
@@ -89,6 +94,7 @@ describe("AboutPage", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     act(() => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(hiddenCommit()).toBe(false);
     expect(host.textContent).toContain("9871fef2ac10");
     cleanup();
   });

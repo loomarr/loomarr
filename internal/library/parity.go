@@ -129,3 +129,14 @@ func (c *Client) serverFilesPage(ctx context.Context, start int) (serverFilesRes
 	}
 	return page, nil
 }
+
+// externalIDs is a server item's provider ids, namespaces lowercased and blanks dropped.
+func externalIDs(ids map[string]string) []inventory.ExternalID {
+	out := make([]inventory.ExternalID, 0, len(ids))
+	for namespace, value := range ids {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, inventory.ExternalID{Namespace: strings.ToLower(namespace), Value: value})
+		}
+	}
+	return out
+}
