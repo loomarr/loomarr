@@ -61,7 +61,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	9: NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
 //	10: a movie's or series' origin carries how it is listed; the store projects its row (0047).
 //	12: every title, episodes too, is listed with its facts and who supplied each (decision 40).
-const writeVersion = 12
+//	13: an episode with a TVDB id asks the catalog for TMDB's view of it (decision 53).
+const writeVersion = 13
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.

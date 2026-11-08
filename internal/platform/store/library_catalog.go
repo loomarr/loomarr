@@ -67,8 +67,8 @@ type LibraryCatalogStore interface {
 	// FailLibraryCatalog holds a key back from fetching until retryAt.
 	FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error
 	// RewriteLibraryCatalogFiles forgets the identity digest of every present file of each title
-	// whose details come from key (a series' episodes too), so the scanner writes them again, and
-	// lists them.
+	// whose details come from key (a series' episodes too; for an episode key, each episode that
+	// has its id), so the scanner writes them again, and lists them.
 	RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCatalogKey) ([]LibraryFilePath, error)
 }
 

@@ -3,6 +3,8 @@ package scan
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -186,5 +188,55 @@ func TestUpdateDetailsFetchesTheTitleNow(t *testing.T) {
 	}
 	if err := lib.UpdateDetails(ctx, "90000999"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("an unknown title = %v, want not found", err)
+	}
+}
+
+// An episode known by its own TVDB id, here from an NFO with no plot and no arr, asks the catalog
+// for TMDB's view of it; once fetched, the episode is written again with TMDB's details, which
+// the NFO's only fill in for (decision 59).
+func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	rel := "Golf Show/Season 01/Golf Show S01E02.mkv"
+	h.file(rel, 10)
+	doc := `<episodedetails><title>The Back Nine</title><season>1</season><episode>2</episode>` +
+		`<uniqueid type="tvdb" default="true">90090902</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, "Golf Show", "Season 01", "Golf Show S01E02.nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	origin := fileOrigin(h.root, rel)
+	if got := h.origin(h.item(origin), origin).Observation.Facts.Overview; got != "" {
+		t.Fatalf("before the fetch overview = %q, want none", got)
+	}
+
+	catalog := &fakeCatalog{records: map[string]mp.Record{"90090902": {
+		Source: mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB},
+		Kind:   mp.KindEpisode,
+		IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090902"},
+			{Namespace: mp.NamespaceTMDB, Value: "90090992"}},
+		Descriptive: &mp.Descriptive{Title: "Back Nine", Overview: "The course turns against them."},
+	}}}
+	e := &Enricher{
+		Store: h.st, Provider: catalog,
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.fetched) != 1 || catalog.fetched[0] != "episode:90090902" {
+		t.Fatalf("fetched %v, want the episode by its TVDB id", catalog.fetched)
+	}
+	facts := h.origin(h.item(origin), origin).Observation.Facts
+	if facts.Overview != "The course turns against them." || facts.Name != "Back Nine" {
+		t.Fatalf("after the fetch name %q, overview %q; want TMDB's", facts.Name, facts.Overview)
+	}
+	if facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
+		t.Fatalf("numbering = S%dE%d, want the file's S1E2 (TMDB's record carries none)", facts.SeasonNumber, facts.EpisodeNumber)
 	}
 }
