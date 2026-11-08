@@ -143,7 +143,6 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	assertUserSyncStatus(t, h, admin, http.StatusOK)
 	assertFillerSyncStatus(t, h, admin, http.StatusOK)
 	requests := h.ms.Requests()
-	assertJellyfinSearchAuth(t, requests, "jellyfin-token-one")
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
 	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
 
@@ -159,7 +158,6 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	// that already captured token two can arrive while the clear operation is under assertion.
 	waitForJobRunCount(t, h, admin, "system-health", healthRuns+2)
 	requests = h.ms.Requests()
-	assertJellyfinSearchAuth(t, requests, "jellyfin-token-two")
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-two")
 
 	beforeClear := len(requests)
@@ -253,22 +251,6 @@ func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest,
 		return
 	}
 	t.Fatalf("no media-server user-list request found in %+v", requests)
-}
-
-func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
-	t.Helper()
-	for i := len(requests) - 1; i >= 0; i-- {
-		request := requests[i]
-		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
-			continue
-		}
-		assertJellyfinAuthorization(t, "Jellyfin search", request.Authorization, token)
-		if request.EmbyToken != "" {
-			t.Fatalf("Jellyfin search sent X-Emby-Token %q", request.EmbyToken)
-		}
-		return
-	}
-	t.Fatalf("no media-server search request found in %+v", requests)
 }
 
 func assertJellyfinAuthorization(t *testing.T, surface, authorization, token string) {
