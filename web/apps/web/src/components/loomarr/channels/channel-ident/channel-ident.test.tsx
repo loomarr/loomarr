@@ -32,6 +32,12 @@ describe("ChannelIdent", () => {
     expect(screen.getByText("SR")).toBeInTheDocument();
   });
 
+  it("is a flat tint behind the monogram, never hatched (#2762)", () => {
+    render(<ChannelIdent name="Space Relay Classics" number={2} />);
+    const mark = screen.getByText("SR").parentElement as HTMLElement;
+    expect(mark.style.backgroundImage).toBe("");
+  });
+
   it("renders the logo instead when one exists", () => {
     render(<ChannelIdent name="Space Relay Classics" number={2} logo="/icon.png" />);
     expect(screen.getByRole("img", { name: /Space Relay Classics logo/ })).toBeInTheDocument();

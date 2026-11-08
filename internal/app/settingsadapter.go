@@ -560,6 +560,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		ShowWhen:     e.Setting.ShowWhen,
 		RequiredFor:  string(e.Setting.Required),
 		Doc:          e.Setting.Doc,
+		Detail:       e.Setting.Detail,
 		UpdatedBy:    e.UpdatedBy,
 		Set:          e.Set,
 		Preview:      e.Preview,
