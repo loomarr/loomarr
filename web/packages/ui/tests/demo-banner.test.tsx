@@ -53,7 +53,7 @@ describe("DemoBanner", () => {
     );
 
     expect(doc.body.querySelector('[role="region"]')?.getAttribute("aria-label")).toBe("Demo tour");
-    expect(text()).toContain("You're exploring Loomarr with invented channels.");
+    expect(text()).toContain("You're exploring the Loomarr demo.");
     expect(text()).toContain("Step 1 of 3");
     const link = doc.body.querySelector('a[href="/watch/ch-1"]');
     expect(link?.textContent).toBe("Watch a channel live");
