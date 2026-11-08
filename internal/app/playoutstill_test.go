@@ -28,7 +28,7 @@ func (r *recordedAirings) RecordAiring(_ context.Context, _ string, _ provision.
 
 func stillResolver(slots []schedule.Slot, now time.Time, airings airingRecorder) *playoutResolver {
 	accepted := &stubChannels{}
-	accepted.ch.Desired = slots
+	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
 	return &playoutResolver{
 		channels: accepted,
 		now:      func() time.Time { return now },
