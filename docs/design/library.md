@@ -266,9 +266,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   has settled, `library_needs_you` says how many titles Needs you holds, at most once a day and
   only when one is new since the last notice: `scan.NeedsNotice` marks each title it counted
   (`library_items.needs_noticed`), so a restart neither repeats a notice nor loses one.
-- **Library → Items** (step 10, decisions 22 and 25) reads a small list the importer keeps as it
-  writes, rather than decoding every inventory observation: `library_items` holds each movie and
-  series it wrote (id, kind, resolved name, sort name, year), and each `library_files` row records
+- **Library → Items** (step 10, decisions 22 and 25) reads a small list kept in step with the
+  inventory, rather than decoding every inventory observation: `library_items` holds each movie and
+  series (id, kind, resolved name, sort name, year). The store rewrites an item's row in the same
+  transaction as each inventory write that touches it (a snapshot, an origin marked unseen),
+  through a projector the scanner installs, since only the scanner reads its origins' extension
+  (0047). The row comes from the newest present scan origin; an origin written before it carried
+  how its title is listed leaves the row as it was. Each `library_files` row records
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it

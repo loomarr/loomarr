@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -36,6 +37,9 @@ type sqlStore struct {
 	// explicitly single-instance, so the process is the complete lock domain.
 	// Postgres does not use this mutex; it takes a database-wide advisory lock.
 	settingLock sync.Mutex
+	// libraryProjector keeps the Library's rows in step with each inventory write (#2151
+	// decision 43); nil until the scanner installs it.
+	libraryProjector atomic.Pointer[LibraryProjector]
 	// secretKeyLock serializes SQLite DEK initialization and rotation. PostgreSQL
 	// additionally takes a transaction-scoped advisory lock across replicas.
 	secretKeyLock sync.Mutex

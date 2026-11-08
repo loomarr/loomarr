@@ -132,6 +132,9 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 			return "", fmt.Errorf("delete followed inventory item: %w", err)
 		}
 	}
+	if err := s.projectLibrary(ctx, tx, at, itemID, orphan); err != nil {
+		return "", err
+	}
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("commit inventory snapshot: %w", err)
 	}
@@ -499,20 +502,27 @@ func (s *sqlStore) MarkInventoryUnseen(
 		return fmt.Errorf("begin inventory missing reconciliation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, s.ph(`SELECT external_item_id FROM inventory_item_origins
-		WHERE authority_id = ?`), string(authority))
+	rows, err := tx.QueryContext(ctx, s.ph(`SELECT external_item_id, item_id, missing_at IS NULL
+		FROM inventory_item_origins WHERE authority_id = ?`), string(authority))
 	if err != nil {
 		return fmt.Errorf("read inventory authority origins: %w", err)
 	}
 	var missing []string
+	// gone is each item an origin of which was present until now: its library row is projected again.
+	var gone []inventory.ItemID
 	for rows.Next() {
 		var externalItemID string
-		if err := rows.Scan(&externalItemID); err != nil {
+		var itemID inventory.ItemID
+		var present bool
+		if err := rows.Scan(&externalItemID, &itemID, &present); err != nil {
 			_ = rows.Close()
 			return fmt.Errorf("scan inventory authority origin: %w", err)
 		}
 		if !seenIDs[externalItemID] {
 			missing = append(missing, externalItemID)
+			if present {
+				gone = append(gone, itemID)
+			}
 		}
 	}
 	if err := rows.Close(); err != nil {
@@ -530,6 +540,9 @@ func (s *sqlStore) MarkInventoryUnseen(
 			WHERE authority_id = ? AND external_item_id = ?`), epoch(at), string(authority), externalItemID); err != nil {
 			return fmt.Errorf("mark inventory source origin missing: %w", err)
 		}
+	}
+	if err := s.projectLibrary(ctx, tx, at, gone...); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

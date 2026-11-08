@@ -92,7 +92,8 @@ type LibraryItemPage struct {
 
 // LibraryItemStore keeps the Library's list of movies and series.
 type LibraryItemStore interface {
-	// SaveLibraryItems writes items whole.
+	// SaveLibraryItems writes items whole, outside any inventory write: for fixtures. The scanner's
+	// rows come from the LibraryProjection, in step with the inventory.
 	SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error
 	// ListLibraryItems lists items with at least one present file, by sort name.
 	ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error)
@@ -127,30 +128,9 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		return fmt.Errorf("save library items: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog,
-		origin_authority, origin_key, grounded, match_basis, match_app, match_page, set_key, updated_at_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
-		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
-		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
-		grounded = excluded.grounded, match_basis = excluded.match_basis, match_app = excluded.match_app,
-		match_page = excluded.match_page, set_key = excluded.set_key, updated_at_ms = excluded.updated_at_ms`))
-	if err != nil {
-		return fmt.Errorf("save library items: %w", err)
-	}
-	defer func() { _ = stmt.Close() }()
 	for _, it := range items {
-		if it.ID == "" || it.Kind == "" {
-			return fmt.Errorf("save library items: id and kind are required")
-		}
-		sortName := it.SortName
-		if sortName == "" {
-			sortName = strings.ToLower(it.Name)
-		}
-		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(),
-			it.Origin.Authority, it.Origin.Key, it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page,
-			it.Set.String(), at.UnixMilli()); err != nil {
-			return fmt.Errorf("save library item: %w", err)
+		if err := s.saveLibraryItem(ctx, tx, it, at); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {

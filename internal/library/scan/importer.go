@@ -37,7 +37,6 @@ type ImportStore interface {
 	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
 	CheckLibraryRoot(ctx context.Context, check store.LibraryRootCheck, at time.Time) (bool, error)
 	store.LibraryFileStore
-	SaveLibraryItems(ctx context.Context, items []store.LibraryItem, at time.Time) error
 }
 
 // Posters puts a title's poster in the image service (#2151 step 10). ref is what precedence
@@ -630,10 +629,6 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			queue[i].row.SeriesID = s.itemID
 		}
 	}
-	if err := im.Store.SaveLibraryItems(ctx, b.items, now); err != nil {
-		return result, nil, err
-	}
-
 	removed, present := removals(prev, found, inScope)
 	if walk.Complete {
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
