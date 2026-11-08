@@ -1,11 +1,10 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
-import { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
+import { Action, Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
+import { Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { ignoreFailure, useChannelSave } from "../use-channel-save";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
@@ -101,15 +100,15 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
         }}
       >
         <MenuTrigger>
-          <Button
+          <Action
+            icon="more"
+            layout="icon"
+            // The menu's trigger props land on a real button, which Base UI's trigger can drive.
+            render={<button onClick={swallow} type="button" />}
             variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label={`Actions for ${channel.name}`}
-            onClick={swallow}
           >
-            <MoreVertical className="size-4" aria-hidden />
-          </Button>
+            {`Actions for ${channel.name}`}
+          </Action>
         </MenuTrigger>
 
         <MenuContent align="start" width={236}>
