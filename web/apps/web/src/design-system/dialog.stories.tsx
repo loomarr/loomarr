@@ -1,4 +1,5 @@
 import {
+  Action,
   Dialog,
   DialogClose,
   DialogContent,
@@ -9,7 +10,6 @@ import {
   DialogTrigger,
 } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Button } from "@/components/ui/button";
 
 // The design-system Dialog, open. It portals into the story root rather than `document.body`, so
 // the visual suite, which snapshots `#storybook-root`, sees the real popup and not a lookalike.
@@ -23,7 +23,7 @@ const DialogWorkshop = ({ layout = "padded", size = "default", spread = false }:
   <div style={{ height: "100vh", width: "100vw" }}>
     <Dialog defaultOpen>
       <DialogTrigger>
-        <Button variant="outline">Edit task</Button>
+        <Action variant="outline">Edit task</Action>
       </DialogTrigger>
       <DialogContent layout={layout} portalContainer={document.getElementById("storybook-root")} size={size}>
         <DialogHeader>
@@ -34,12 +34,12 @@ const DialogWorkshop = ({ layout = "padded", size = "default", spread = false }:
           Every 6 hours, starting at midnight.
         </p>
         <DialogFooter spread={spread}>
-          {spread ? <Button variant="destructive">Remove task</Button> : null}
+          {spread ? <Action variant="destructive">Remove task</Action> : null}
           <div style={{ display: "flex", gap: 8 }}>
             <DialogClose>
-              <Button variant="outline">Cancel</Button>
+              <Action variant="outline">Cancel</Action>
             </DialogClose>
-            <Button>Save</Button>
+            <Action variant="suggest">Save</Action>
           </div>
         </DialogFooter>
       </DialogContent>
