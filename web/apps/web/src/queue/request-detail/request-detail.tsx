@@ -92,7 +92,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {fix && (
               <Action
                 accessibilityRole="link"
-                render={<Link to="/guide" search={{ job: journey.jobId }} />}
+                render={<Link to="/requests/new" search={{ job: journey.jobId }} />}
                 variant="outline"
               >
                 {fix}

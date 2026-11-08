@@ -27,7 +27,7 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
       description={description}
       action={{
         label: "Request a channel",
-        onClick: () => void navigate({ to: "/guide", search: { new: "1" } }),
+        onClick: () => void navigate({ to: "/requests/new" }),
       }}
     />
   );
@@ -253,7 +253,7 @@ const NeedsYouList = () => {
                 action: fix && (
                   <Action
                     accessibilityRole="link"
-                    render={<Link to="/guide" search={{ job: e.journey.jobId }} />}
+                    render={<Link to="/requests/new" search={{ job: e.journey.jobId }} />}
                     variant="outline"
                   >
                     {fix}

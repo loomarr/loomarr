@@ -2,31 +2,23 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
-import { isOriginating, parseOriginationSearch } from "@/suggest/origination-flow";
+import { legacyGuideOrigination } from "@/suggest/origination-flow";
 
-// The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
-// the app's one origination door. Readable by any authenticated user: the guide is
-// viewer-facing, and GET /v1/guide is likewise not admin-gated.
+// The channels surface (§12) — headed "Channels", the cross-channel time grid. Readable by any
+// authenticated user: the guide is viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// The search params are origination's state (OriginationSearch), and part of the route
-// contract. The wizard's guided first channel hands off with `?intent=` (§13's blank-page
-// killer), so the handoff lands on a filled form rather than an empty grid with the operator
-// wondering where their template went; Requests links `?new=1` and `?job=`, Home `?manual=1`.
-const GuideScreen = () => <GuidePage search={Route.useSearch()} />;
+// Channel origination used to live here, in this route's search params (`/guide?new=1`, `?job=`,
+// `?manual=1`, `?intent=`). It has its own route now (`/requests/new`), so an old URL of that kind
+// is sent there with its params, rather than opening a grid it no longer answers to.
+const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  validateSearch: parseOriginationSearch,
-  // Arriving with no origination params resumes what this tab was doing: the Job it follows, or
-  // a draft kept across the AI/TMDB setup trip. Only on ENTRY: Close stays on the route and must
-  // not reopen the panel, and a hover preload must not redirect.
-  // The remembered run is read on entry only, and imported then: it validates the saved draft with
-  // a zod schema that the first download doesn't otherwise carry.
-  beforeLoad: async ({ search, cause }) => {
-    if (cause !== "enter" || isOriginating(search)) return;
-    const { rememberedOrigination } = await import("@/suggest/remembered-origination");
-    const remembered = rememberedOrigination();
-    if (remembered) throw redirect({ to: "/guide", search: remembered, replace: true });
+  // The raw search stays raw: the page reads none of it, and a legacy URL is read in `beforeLoad`.
+  validateSearch: (search: Record<string, unknown>) => search,
+  beforeLoad: ({ search }) => {
+    const origination = legacyGuideOrigination(search);
+    if (origination) throw redirect({ to: "/requests/new", search: origination, replace: true });
   },
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole

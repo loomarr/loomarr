@@ -16,10 +16,10 @@ describe("HomePage (#1659)", () => {
     // The sections that need something on the air stay away.
     expect(screen.queryByRole("heading", { name: "Tonight" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Settings → This server" })).toBeInTheDocument();
-    // The Guide's add panel, through the same `new` search the Requests page's door uses.
+    // The request page, the same one the Requests page's door opens.
     await userEvent.click(screen.getByRole("link", { name: "Add your first channel" }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/guide"));
-    expect(router.state.location.search).toEqual({ new: "1" });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/new"));
+    expect(router.state.location.search).toEqual({});
   });
 
   it("lists tonight's highlights once a channel is on", async () => {

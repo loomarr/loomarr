@@ -168,11 +168,12 @@ describe("Channel ideas on a member's Home (#1659)", () => {
 
     await screen.findByText("Picked from your library");
     const editFirst = await within(card("Comedy Movies")).findByRole("link", { name: "Edit first" });
-    expect(editFirst).toHaveAttribute("href", "/guide?manual=%221%22&ideaId=genre%3Acomedy");
+    // The request page's own path, with the flag as a plain 1 (#2746).
+    expect(editFirst).toHaveAttribute("href", "/requests/new?manual=1&ideaId=genre%3Acomedy");
 
     expect(screen.getByRole("link", { name: /describe your own channel/i })).toHaveAttribute(
       "href",
-      "/guide?manual=%221%22",
+      "/requests/new?manual=1",
     );
   });
 

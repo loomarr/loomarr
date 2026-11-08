@@ -31,7 +31,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
     const template = CHANNEL_TEMPLATES.find((t) => t.id === id);
     if (!template) return;
     setChosen(id);
-    complete.finish({ to: "/guide", intent: template.description });
+    complete.finish({ to: "/requests/new", intent: template.description });
   };
 
   return (
