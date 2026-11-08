@@ -333,6 +333,9 @@ type UserStore interface {
 	UserLastSeen(ctx context.Context) (map[string]time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
+	// DisableUser sets the disabled flag and deletes the user's sessions, paired devices and
+	// approved pairings in one transaction (§11, ADR 0043). ErrNotFound when the user is absent.
+	DisableUser(ctx context.Context, userID string, at time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 	// Contact addresses are optional and independent from usernames/credential paths (§11).
 	GetContactAddresses(ctx context.Context, userID string) (contact.Set, error)
@@ -352,13 +355,11 @@ type UserStore interface {
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error
-	RevokeDevicePairingsForUser(ctx context.Context, userID string) error
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
-	RevokeDeviceTokensForUser(ctx context.Context, userID string) error
 }
 
 // ClipStore is the filler clip catalog (§10).
