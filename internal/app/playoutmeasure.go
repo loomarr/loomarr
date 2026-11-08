@@ -113,11 +113,7 @@ type naturalBreaks struct {
 // has none: measurement reads files directly, never through the media server.
 func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandidate {
 	ctx, r := n.ctx, n.r
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
-	input := r.lib.ResolveInput(ctx, libraryItemID, pm, library.StatReadableFile)
+	input := r.itemInput(ctx, r.lib, libraryItemID)
 	if input.Kind != library.InputFile {
 		return nil
 	}

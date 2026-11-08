@@ -58,6 +58,21 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("%s: ok = %v, %v; want no answer", name, ok, err)
 		}
 	}
+	// The file the title plays: its source marked plays, while the file is present.
+	if path, ok, err := st.LibraryPlayingFile(ctx, "m1"); err != nil || !ok || path != "/media/film/a.mkv" {
+		t.Errorf("playing file = %q, %v, %v; want the listed file", path, ok, err)
+	}
+	if _, ok, err := st.LibraryPlayingFile(ctx, "90000001"); err != nil || ok {
+		t.Errorf("a media-server id: ok = %v, %v; want no answer", ok, err)
+	}
+	gone := file("/media/film/a.mkv", LibraryHeaderRead)
+	gone.MissingAt = at
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{gone}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := st.LibraryPlayingFile(ctx, "m1"); err != nil || ok {
+		t.Errorf("a title whose file went missing: ok = %v, %v; want no answer", ok, err)
+	}
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/media/film/a.mkv", LibraryHeaderPending)}); err != nil {
 		t.Fatal(err)
 	}

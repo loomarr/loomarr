@@ -200,6 +200,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		codecs: st,
 		// The Library's tracks for a file the scanner read: audio selection's first answer.
 		libraryAudio: st,
+		libraryFile:  st,
 		cycles:       newCycleCache(time.Now),
 		tier:         func() string { return settings.PlayoutQualityTier.Get(set) },
 		encoder:      func() string { return settings.PlayoutEncoder.Get(set) },
