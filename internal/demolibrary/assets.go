@@ -110,7 +110,7 @@ func Generate(ctx context.Context, lib *Library, dir, ffmpeg string, log *slog.L
 		}
 	} else {
 		m.Licence = "Generated files: same licence as the Loomarr repository. Pack media and the frames cut from it: each file's own licence, below"
-		d := newDownloader(log)
+		d := newDownloader(log, lib.pack.Mirror)
 		var total int64
 		for _, f := range lib.pack.files() {
 			dest := l.PackProgramme(f.itemID)

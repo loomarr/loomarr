@@ -23,14 +23,20 @@ type downloader struct {
 	attempts int
 	backoff  time.Duration // doubled after each failed attempt
 	log      *slog.Logger
+	// mirror, when set, is a base URL holding every pinned file under its SHA-256. It is tried
+	// first; the file's own URL is the fallback. Either way the bytes must match the pin.
+	mirror string
 }
 
-func newDownloader(log *slog.Logger) downloader {
+// mirrorAttempts is how often the mirror is tried before falling back to a file's own URL.
+const mirrorAttempts = 2
+
+func newDownloader(log *slog.Logger, mirror string) downloader {
 	// No overall timeout: a 300 MB file on a slow link is legitimate. A stalled transfer still
 	// ends, because the response header and each read are bounded by the transport.
 	return downloader{client: &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: time.Minute, IdleConnTimeout: time.Minute,
-	}}, attempts: 5, backoff: 2 * time.Second, log: log}
+	}}, attempts: 5, backoff: 2 * time.Second, log: log, mirror: mirror}
 }
 
 // errHashMismatch is a download whose bytes are not the pinned file.
@@ -48,23 +54,41 @@ func (d downloader) fetch(ctx context.Context, m PackMedia, dest string) error {
 		}
 	}
 	partial := dest + ".partial"
-	d.log.Info("demo pack file downloading", "url", m.URL, "bytes", m.Size)
+	var last error
+	if d.mirror != "" {
+		// The same bytes by pin, so a partial download resumes from either source.
+		if last = d.fetchFrom(ctx, m, d.mirror+m.SHA256, mirrorAttempts, partial); last == nil {
+			return os.Rename(partial, dest)
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	if last = d.fetchFrom(ctx, m, m.URL, d.attempts, partial); last == nil {
+		return os.Rename(partial, dest)
+	}
+	return fmt.Errorf("download %s: %w", m.URL, last)
+}
+
+// fetchFrom makes partial hold m's pinned bytes from url, in up to attempts tries.
+func (d downloader) fetchFrom(ctx context.Context, m PackMedia, url string, attempts int, partial string) error {
+	d.log.Info("demo pack file downloading", "url", url, "bytes", m.Size)
 	var last error
 	wait := d.backoff
-	for attempt := 1; attempt <= d.attempts; attempt++ {
-		last = d.transfer(ctx, m, partial)
+	for attempt := 1; attempt <= attempts; attempt++ {
+		last = d.transfer(ctx, m, url, partial)
 		if last == nil {
 			last = verifyFile(partial, m)
 			if last == nil {
-				return os.Rename(partial, dest)
+				return nil
 			}
 			_ = os.Remove(partial) // wrong bytes: the next attempt starts from zero
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		d.log.Warn("demo pack download failed", "url", m.URL, "attempt", attempt, "of", d.attempts, "err", last)
-		if attempt < d.attempts {
+		d.log.Warn("demo pack download failed", "url", url, "attempt", attempt, "of", attempts, "err", last)
+		if attempt < attempts {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -73,11 +97,11 @@ func (d downloader) fetch(ctx context.Context, m PackMedia, dest string) error {
 			wait *= 2
 		}
 	}
-	return fmt.Errorf("download %s: %w", m.URL, last)
+	return last
 }
 
 // transfer appends the rest of the file to partial, resuming from its current length.
-func (d downloader) transfer(ctx context.Context, m PackMedia, partial string) error {
+func (d downloader) transfer(ctx context.Context, m PackMedia, url, partial string) error {
 	var have int64
 	if info, err := os.Stat(partial); err == nil {
 		have = info.Size()
@@ -91,7 +115,7 @@ func (d downloader) transfer(ctx context.Context, m PackMedia, partial string) e
 	if have == m.Size {
 		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
@@ -111,7 +135,7 @@ func (d downloader) transfer(ctx context.Context, m PackMedia, partial string) e
 		flags |= os.O_TRUNC // the server ignored the range: start over
 		have = 0
 	default:
-		return fmt.Errorf("GET %s: %s", m.URL, resp.Status)
+		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
 	f, err := os.OpenFile(partial, flags, 0o644)
 	if err != nil {

@@ -683,6 +683,8 @@ classify() {
         # A glob, because release verification reads a literal path here as a command CI may run,
         # and this one runs a container on a household backup. Only a maintainer runs it.
         scripts/migration-rehearsal.*) select_gate contracts ;;
+        # A glob for the same reason: it publishes release assets, and only a maintainer runs it.
+        scripts/mirror-demo-pack.*) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
         # make db-view, run by hand; compose-verify renders its Compose file.
         scripts/db-view.sh) select_gate contracts ;;
