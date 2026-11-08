@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -56,21 +59,28 @@ func TestLibraryBoxSetsCacheUsesFullConnectionGeneration(t *testing.T) {
 	}
 }
 
-type ownCollectionsFake []store.LibraryCollectionMember
+type ownCollectionsFake struct {
+	members []store.LibraryCollectionMember
+	colls   []store.LibraryCollection
+}
 
 func (f ownCollectionsFake) LibraryCollectionMemberIDs(context.Context) ([]store.LibraryCollectionMember, error) {
-	return f, nil
+	return f.members, nil
+}
+
+func (f ownCollectionsFake) ListLibraryCollections(context.Context) ([]store.LibraryCollection, error) {
+	return f.colls, nil
 }
 
 // The household's own collections stamp a title under each key it can be known by, with no media
 // server configured; a configured one that can't be read still fails the pass open.
 func TestLibraryBoxSetsIndexesTheHouseholdsCollections(t *testing.T) {
-	own := ownCollectionsFake{
+	own := ownCollectionsFake{members: []store.LibraryCollectionMember{
 		{CollectionID: "own-1", Kind: "series", TMDBID: "90000003", TVDBID: "90000002"},
 		{CollectionID: "own-1", Kind: "movie", TMDBID: "90000001"},
 		{CollectionID: "own-2", Kind: "movie", TMDBID: "90000001"},
 		{CollectionID: "own-2", Kind: "movie"},
-	}
+	}}
 	none := &libraryBoxSets{
 		lib: library.NewDynamic(func() library.Connection { return library.Connection{} }, "device-1"),
 		own: own, ttl: time.Hour,
@@ -95,6 +105,73 @@ func TestLibraryBoxSetsIndexesTheHouseholdsCollections(t *testing.T) {
 	}
 	if _, ok, err := partial.BoxSets(context.Background(), "movie:tmdb:90000001"); err == nil || ok {
 		t.Errorf("a configured media server that can't be read: ok = %v, %v; want the pass unresolved", ok, err)
+	}
+}
+
+// boxSetServer is a media server holding two collections: emby-coll-1, which the household's
+// own-1 was imported from, and emby-coll-2, which was not imported.
+func boxSetServer(t *testing.T) *library.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		q := r.URL.Query()
+		switch {
+		case q.Get("IncludeItemTypes") == "BoxSet":
+			_, _ = w.Write([]byte(`{"Items":[{"Id":"emby-coll-1","Name":"Harbor Films","ChildCount":2},` +
+				`{"Id":"emby-coll-2","Name":"Lighthouse Films","ChildCount":1}]}`))
+		case q.Get("ParentId") == "emby-coll-1":
+			_, _ = w.Write([]byte(`{"Items":[{"Id":"e1","Name":"A","Type":"Movie","ProviderIds":{"Tmdb":"90000011"}}]}`))
+		case q.Get("ParentId") == "emby-coll-2":
+			_, _ = w.Write([]byte(`{"Items":[{"Id":"e2","Name":"B","Type":"Movie","ProviderIds":{"Tmdb":"90000012"}}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"Items":[]}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return library.New(library.Emby, srv.URL, "token", "device-1")
+}
+
+var importedOwn = ownCollectionsFake{
+	members: []store.LibraryCollectionMember{{CollectionID: "own-1", Kind: "movie", TMDBID: "90000011"}},
+	colls: []store.LibraryCollection{
+		{ID: "own-1", Name: "Harbor Films", ImportedFrom: "emby", ImportedID: "emby-coll-1", Members: []string{"m1", "m2"}},
+		{ID: "own-3", Name: "Rainy Days", Members: []string{"m3"}},
+	},
+}
+
+// The collection scope reads the household's collections first (#2151 step 15e): a media-server
+// collection the household's was imported from stands only under the household's id, and the
+// media server adds just the ones it never imported.
+func TestLibraryBoxSetsLeaveImportedCollectionsToTheHousehold(t *testing.T) {
+	sets := &libraryBoxSets{lib: boxSetServer(t), own: importedOwn, ttl: time.Hour}
+	for key, want := range map[provision.Key][]string{
+		"movie:tmdb:90000011": {"own-1"},
+		"movie:tmdb:90000012": {"emby-coll-2"},
+	} {
+		got, ok, err := sets.BoxSets(context.Background(), key)
+		if err != nil || !ok || !slices.Equal(got, want) {
+			t.Errorf("%s = %v, %v, %v; want %v", key, got, ok, err, want)
+		}
+	}
+}
+
+// The scope.collections picker lists the household's collections first, then the media server's
+// that were never imported; with no media server, the household's alone, without an error.
+func TestLibraryCollectionsListTheHouseholdsFirst(t *testing.T) {
+	got, err := libraryCollections{own: importedOwn, lib: boxSetServer(t)}.Collections(context.Background())
+	want := []api.LibraryCollection{
+		{ID: "own-1", Name: "Harbor Films", ChildCount: 2},
+		{ID: "own-3", Name: "Rainy Days", ChildCount: 1},
+		{ID: "emby-coll-2", Name: "Lighthouse Films", ChildCount: 1},
+	}
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("picker = %+v, %v; want %+v", got, err, want)
+	}
+
+	none := library.NewDynamic(func() library.Connection { return library.Connection{} }, "device-1")
+	got, err = libraryCollections{own: ownCollectionsFake{}, lib: none}.Collections(context.Background())
+	if err != nil || len(got) != 0 {
+		t.Errorf("no collections and no media server = %+v, %v; want none and no error", got, err)
 	}
 }
 
