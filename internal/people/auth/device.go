@@ -47,6 +47,7 @@ type DeviceStore interface {
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
 	CreateDeviceToken(ctx context.Context, token identitystore.DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (identitystore.DeviceToken, error)
+	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]identitystore.DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
 	GetUser(ctx context.Context, id string) (identitystore.User, error)
@@ -224,6 +225,13 @@ func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (Device
 		// Same rule sessions follow: disabling a user must take effect immediately everywhere,
 		// including on a TV that has not been touched in weeks.
 		return DevicePrincipal{}, store.ErrNotFound
+	}
+	// Record the use, so the paired-devices list shows what is actually in use and a TV's use
+	// counts as its owner's last-seen (#1667). Nothing called this before #2446, so a device's
+	// last_seen_at never moved. Throttled like sessions; best-effort, as a failure must never
+	// fail the request that carried the token.
+	if now := m.now(); touchDue(dt.LastSeenAt, now) {
+		_ = m.store.TouchDeviceToken(ctx, id, now)
 	}
 	return DevicePrincipal{ID: id, User: user}, nil
 }
