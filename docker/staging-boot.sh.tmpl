@@ -92,20 +92,29 @@ if [ "$STAGING_GPU" = nvidia ]; then
 		"${APT[@]}" install -y nvidia-container-toolkit
 	fi
 	nvidia-ctk runtime configure --runtime=docker
-	# Vultr's driver comes without the video-encode library, so NVENC cannot load. Add the encode and
-	# decode packages that match the installed driver branch (libnvidia-compute-<branch>).
-	compute="$(dpkg-query -W -f='${Package}\n' 'libnvidia-compute-*' 2>/dev/null | head -1 || true)"
-	if [ -n "$compute" ]; then
-		"${APT[@]}" install -y "${compute/compute/encode}" "${compute/compute/decode}"
-	else
-		dpkg -l | grep -i nvidia || true
-		find / -xdev -name 'libnvidia-ml.so*' 2>/dev/null | head -5
+	# Loomarr's ffmpeg is built against an NVENC SDK that needs driver 610 or newer, and Vultr's image
+	# has the 580 branch without the encode library. Install NVIDIA's current open driver with its
+	# encode and decode libraries from NVIDIA's repository, which the image already lists, then swap
+	# the kernel modules: nothing uses the GPU yet, so no reboot is needed.
+	driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
+	if [ "${driver%%.*}" -lt 610 ]; then
+		dpkg -l | grep -E '^ii +(nvidia|libnvidia)' | awk '{print $2, $3}'
+		"${APT[@]}" update
+		"${APT[@]}" install -y nvidia-headless-open libnvidia-encode libnvidia-decode
+		systemctl stop nvidia-persistenced 2>/dev/null || true
+		modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia
+		modprobe nvidia
+		modprobe nvidia_uvm
+		systemctl start nvidia-persistenced 2>/dev/null || true
+		nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
 	fi
 	# The tailnet container restarts with Docker and keeps its identity in /var/lib/tailscale.
 	systemctl restart docker
 	# Evidence for the log: NVENC needs libnvidia-encode on the host and mounted into the container.
 	ldconfig -p | grep -E 'libnvidia-(encode|nvcuvid)' || echo 'host: no libnvidia-encode in the linker cache'
 	nvidia-ctk --version || true
+	# What the toolkit will hand a container, by the host's own lookup.
+	nvidia-container-cli list | grep -E 'encode|nvcuvid|libcuda\.' || echo 'toolkit: no NVENC library to inject'
 	grep -v -E '^\s*(#|$)' /etc/nvidia-container-runtime/config.toml || true
 	docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,video,utility debian:stable-slim \
 		sh -c 'ls /usr/lib/x86_64-linux-gnu | grep -E "libnvidia-(encode|nvcuvid)|libcuda" || echo "container: no NVENC library"' || true
