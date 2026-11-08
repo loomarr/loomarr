@@ -51,7 +51,10 @@ describe("StartupReportPage", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Current Health" })).toBeInTheDocument();
-    expect(await screen.findByText("Needs attention")).toBeInTheDocument();
+    // The one status vocabulary: the degraded headline and the warning row both say it, and the
+    // passing row says OK.
+    expect(await screen.findAllByText("Needs attention")).toHaveLength(2);
+    expect(screen.getByText("OK")).toBeInTheDocument();
     expect(screen.getByText("Continuously monitored")).toBeInTheDocument();
     expect(screen.queryByText(/Next check expected/)).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Current health checks" });

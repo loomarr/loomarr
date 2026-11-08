@@ -4,7 +4,7 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, StatusDot, type StatusTone, StatusWord } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -292,7 +292,9 @@ const TasksPage = () => {
                                 ) : isZero(job.nextRun) ? (
                                   "—"
                                 ) : job.overdue ? (
-                                  <span title="Due, but waiting for a free worker">Overdue</span>
+                                  <span title="Due, but waiting for a free worker">
+                                    <StatusWord kind="overdue" />
+                                  </span>
                                 ) : (
                                   formatUntil(job.nextRun ?? zero)
                                 )}

@@ -5,6 +5,9 @@ import type { ReactNode } from "react";
 interface ConnectionVerdict {
   ok: boolean;
   hint?: string;
+  // The service was never pointed at anything (its check probed no target). Reads "Not set up"
+  // rather than "Needs attention" — nothing is broken, it just is not wired.
+  notSetUp?: boolean;
 }
 
 interface ConnectionBlockProps {

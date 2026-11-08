@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
@@ -126,7 +127,9 @@ describe("ConnectionBlock", () => {
   it.each([
     ["not tested yet", {}],
     ["OK", { verdict: { ok: true } }],
-    ["needs attention", { verdict: { ok: false } }],
+    ["Needs attention", { verdict: { ok: false } }],
+    // An optional service nobody has wired up is not a failure: no red cross, just "Not set up".
+    ["Not set up", { optional: true, verdict: { ok: false, notSetUp: true } }],
     // testing wins over the standing verdict — a probe in flight is the newer truth.
     ["testing…", { verdict: { ok: true }, testing: true }],
   ])("summarises the connection as %s in the header", async (expected, props) => {
@@ -153,7 +156,7 @@ describe("ConnectionBlock", () => {
       </ConnectionBlock>,
     );
 
-    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent("needs attention");
+    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent("Needs attention");
     expect(screen.getByRole("status")).toHaveTextContent(/connection refused/i);
   });
 });

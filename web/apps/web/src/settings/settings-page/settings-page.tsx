@@ -192,7 +192,12 @@ const SettingsPage = ({
             // verdict, so a block reports its health without a click (like the wizard).
             const live = testResult[block.check];
             const standing = standingFor(block.check);
-            const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            // A check that probed nothing was never pointed at a service: "Not set up", not broken.
+            const verdict =
+              live ??
+              (standing
+                ? { ok: standing.ok, hint: standing.hint, notSetUp: !standing.ok && !standing.target }
+                : undefined);
             const blockFooter =
               typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer;
             const checkLabel =

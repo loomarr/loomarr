@@ -1,7 +1,8 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { parseDocHref } from "@loomarr/core/anchor";
+import { StatusWord, type StatusWordKind } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Check, ChevronDown, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
@@ -43,19 +44,21 @@ const ConnectionBlock = ({
   action,
   footer,
 }: ConnectionBlockProps) => {
-  const failing = verdict !== undefined && !verdict.ok;
+  const failing = verdict !== undefined && !verdict.ok && !verdict.notSetUp;
   // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
   // sent by the backend: it is display text assembled from state the client already holds,
   // and a `summary` field on `SetupCheck` would put copy in the API for no new information.
   // The mock's own vocabulary — pass/fail/running — with "not tested yet" standing in for
   // its `c.target`, which we do not carry.
-  const summary = testing
-    ? "testing…"
-    : verdict === undefined
-      ? "not tested yet"
+  const word: StatusWordKind | undefined =
+    testing || verdict === undefined
+      ? undefined
       : verdict.ok
-        ? "OK"
-        : "needs attention";
+        ? "ok"
+        : verdict.notSetUp
+          ? "notSetUp"
+          : "attention";
+  const pending = testing ? "testing…" : "not tested yet";
 
   return (
     <Collapsible.Root
@@ -67,36 +70,13 @@ const ConnectionBlock = ({
       render={<section className="border-border overflow-hidden rounded-lg border" />}
     >
       <Collapsible.Trigger className="group hover:bg-static-800 flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors">
-        {/* Status dot: green + check when the probe passes; red-ringed when it fails;
-            neutral (muted, empty) when untested. It carries the resting signal so the
-            header alone says "this one's fine" or "look here" — paired with the text
-            summary below, because a dot is colour-only and shape-only. */}
-        <span
-          className={cn(
-            "flex size-5 shrink-0 items-center justify-center rounded-full border",
-            verdict?.ok && "border-lock bg-lock-tint-15 text-lock",
-            failing && "border-onair-300 text-onair-300",
-            verdict === undefined && "border-border text-static-400",
-          )}
-          aria-hidden
-        >
-          {verdict?.ok ? <Check className="size-3" /> : failing ? <X className="size-3" /> : null}
-        </span>
         <span className="text-sm font-medium">{title}</span>
         {optional && <span className="text-static-400 text-xs">optional</span>}
-        {/* The resting summary, so a COLLAPSED block still says where it stands. The dot
-            alone cannot distinguish "failed" from "never tested" for anyone who does not
-            read colour, and the full hint lives in the body — this is the one-line version.
-            `ml-auto` here (and not on the chevron) right-aligns it as the mock does. */}
-        <span
-          className={cn(
-            "ml-auto truncate text-xs",
-            verdict?.ok && !testing && "text-lock",
-            failing && !testing && "text-onair-300",
-            (testing || verdict === undefined) && "text-static-400",
-          )}
-        >
-          {summary}
+        {/* The resting status, so a COLLAPSED block still says where it stands: the shared
+            StatusWord vocabulary (dot + word), never a colour alone. The full hint lives in the
+            body — this is the one-line version. `ml-auto` right-aligns it as the mock does. */}
+        <span className="ml-auto min-w-0 truncate text-xs">
+          {word ? <StatusWord kind={word} /> : <span className="text-static-400">{pending}</span>}
         </span>
         <ChevronDown
           className="text-muted-foreground size-4 shrink-0 transition-transform group-data-[panel-open]:rotate-180"
@@ -119,7 +99,7 @@ const ConnectionBlock = ({
                     role="status"
                     className={cn(
                       "flex items-center gap-1.5 text-sm",
-                      verdict.ok ? "text-lock" : "text-onair-300",
+                      verdict.ok ? "text-lock" : verdict.notSetUp ? "text-static-400" : "text-onair-300",
                     )}
                   >
                     {failing && <X className="size-3.5 shrink-0" aria-hidden />}

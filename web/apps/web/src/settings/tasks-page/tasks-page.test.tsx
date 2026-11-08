@@ -271,7 +271,10 @@ describe("TasksPage", () => {
     await expandGroup("Acquisitions");
 
     const row = screen.getByText("Reconcile acquisitions").closest("tr") as HTMLElement;
-    expect(within(row).getByText("Overdue")).toHaveAttribute("title", "Due, but waiting for a free worker");
+    expect(within(row).getByText("Overdue").closest("[title]")).toHaveAttribute(
+      "title",
+      "Due, but waiting for a free worker",
+    );
     expect(within(row).queryByText("expired")).not.toBeInTheDocument();
   });
 
