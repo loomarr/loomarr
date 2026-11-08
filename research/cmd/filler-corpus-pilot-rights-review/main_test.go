@@ -14,7 +14,7 @@ func TestRunPreparesLockedPilotPacket(t *testing.T) {
 	csvPath := filepath.Join(temp, "worksheet.csv")
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"--pilot", "../../../internal/fillercorpus/corpus/pilot/locked.json",
+		"--pilot", "../../corpus/pilot/locked.json",
 		"--out", jsonPath,
 		"--csv-out", csvPath,
 		"--prepared-at", "2026-08-26T14:06:00Z",

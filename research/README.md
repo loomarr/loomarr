@@ -15,9 +15,8 @@ while that core moves on. Its evidence stays recorded in `docs/engineering/`.
 - `make research-verify` compiles the module with every build tag. No CI job runs it.
 - [`docs/filler-certification.md`](docs/filler-certification.md) is the operator guide to the
   corpus, review and certification workflow.
-- Two tests read the main repository's pilot corpus by relative path
-  (`../../../internal/fillercorpus/corpus/pilot/locked.json`), so they see the current copy of
-  that file, not the pinned one.
+- [`corpus/`](corpus) holds the pilot and seed inventories the `filler-corpus-*` targets read.
+  The server never reads them, so they live here with the tools rather than under `internal/`.
 
 To use current core code in a tool again, move that tool back into the main module in its own
 change. Don't re-point the requirement at a newer core: nothing here is kept compatible with it.

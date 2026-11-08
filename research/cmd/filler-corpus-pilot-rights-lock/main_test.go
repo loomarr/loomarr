@@ -13,7 +13,7 @@ import (
 )
 
 func TestRunLocksNonAuthorizingPilotReview(t *testing.T) {
-	pilotRaw, err := os.ReadFile("../../../internal/fillercorpus/corpus/pilot/locked.json")
+	pilotRaw, err := os.ReadFile("../../corpus/pilot/locked.json")
 	if err != nil {
 		t.Fatal(err)
 	}
