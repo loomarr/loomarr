@@ -107,6 +107,9 @@ func (s *Suggester) groundPickNames(
 			groundedKeys[key] = true
 			ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, feedback)
 			mergeDecisionTrace(trace, &ranked.Trace)
+			if len(ranked.Candidates) == 0 {
+				continue // the household said never: naming the title does not bring it back
+			}
 			surfaced[key] = candidate
 			proposed.MediaType = string(candidate.MediaType)
 			proposed.Key = string(key)

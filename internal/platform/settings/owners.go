@@ -22,7 +22,7 @@ func ownerFor(setting Setting) Owner {
 		switch setting.Key {
 		case "diagnostics.dir", "diagnostics.retention", "diagnostics.max_storage_mb":
 			return OwnerDiagnostics
-		case "request.ttl", "downloading.ttl", "episodes.max_age", "job.workers", "job.timeout",
+		case "request.ttl", "downloading.ttl", "job.workers", "job.timeout",
 			"jobs.retention", "proposals.retention", "activity.retention", "setup.completed":
 			return OwnerAdvanced
 		default:
