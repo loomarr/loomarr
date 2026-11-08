@@ -107,7 +107,7 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 26
     },
     "src/components/loomarr/channels/now-next-strip/now-next-strip.tsx": {
       "tailwindClasses": 16
@@ -166,7 +166,7 @@
       "tailwindClasses": 159
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 46
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "tailwindClasses": 31
@@ -332,8 +332,7 @@
       "tailwindClasses": 38
     },
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
-      "tailwindClasses": 16,
-      "legacyUi": 1
+      "tailwindClasses": 16
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "tailwindClasses": 37,
