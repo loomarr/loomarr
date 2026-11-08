@@ -56,7 +56,12 @@ type Store interface {
 	PurgeClientCrashReports(ctx context.Context, before time.Time, keep int) (int, error)
 	MaintainQualityLedger(ctx context.Context, now time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	RecordTableRows(ctx context.Context, at, before time.Time) (int, error)
 }
+
+// tableRowHistory is how long the nightly row counts are kept: over a year, so a table's growth
+// can be compared with the same season last year.
+const tableRowHistory = 400 * 24 * time.Hour
 
 // Service runs the purges.
 type Service struct {
@@ -293,6 +298,10 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 		if n > 0 && s.log != nil {
 			s.log.Info("expired sessions purged", "rows", n)
 		}
+	}
+	// After the purges, so each table's count is what retention keeps (#2793).
+	if _, err := s.store.RecordTableRows(ctx, s.now(), s.now().Add(-tableRowHistory)); err != nil {
+		errs = append(errs, fmt.Errorf("record table rows: %w", err))
 	}
 	// Last, so it returns what every purge above freed.
 	var freed int64

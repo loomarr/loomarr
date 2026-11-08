@@ -767,6 +767,7 @@ type Store interface {
 	NotificationStore
 	DiagnosticStore
 	ClientCrashStore
+	TableRowStore
 	SettingStore
 	SecretProtectionStore
 	CountStore

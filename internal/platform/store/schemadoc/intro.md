@@ -38,6 +38,25 @@ clients show them beside the data.
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
 (each table's retention says when).
 
+## Which tables are growing
+
+Every night, after its clean-up, the housekeeping task records how many rows each table holds in
+`database_table_rows`, and keeps 400 days of counts. A table that keeps growing month after month
+is one nothing trims. This lists the ten that grew most over the last 30 days, on SQLite or
+Postgres:
+
+```sql
+SELECT latest.table_name, latest.row_count AS rows_now,
+       latest.row_count - COALESCE(earlier.row_count, 0) AS grew_by
+FROM database_table_rows latest
+LEFT JOIN database_table_rows earlier
+  ON earlier.table_name = latest.table_name
+ AND earlier.recorded_at = latest.recorded_at - 30 * 86400
+WHERE latest.recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)
+ORDER BY grew_by DESC
+LIMIT 10;
+```
+
 ## Reading the values
 
 - **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
