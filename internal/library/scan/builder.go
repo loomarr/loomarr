@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -25,12 +24,6 @@ type builder struct {
 	seen map[inventory.OriginKey]bool
 	// series is each series folder the pass found, and whether one of its episodes was written.
 	series map[string]*seriesSeen
-	// items is each movie and series the pass wrote, for Library → Items.
-	items []store.LibraryItem
-	// matches is what said which title each origin the pass resolved is. Header reads resolve
-	// concurrently, so it is guarded.
-	matchMu sync.Mutex
-	matches map[inventory.OriginKey]store.LibraryMatch
 }
 
 type seriesSeen struct {
@@ -42,25 +35,11 @@ type seriesSeen struct {
 	itemID string
 }
 
-// listed records a movie or series the pass wrote, under its resolved name.
+// listed finishes a movie or series the pass wrote: its library row came with the write (the
+// store's LibraryProjection); its poster and its set's record are asked for here.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
 	facts := snapshot.Observation.Facts
-	ids := make([]mp.ExternalID, 0, len(snapshot.ExternalIDs))
-	for _, x := range snapshot.ExternalIDs {
-		ids = append(ids, mp.ExternalID{Namespace: mp.Namespace(x.Namespace), Value: x.Value})
-	}
-	b.matchMu.Lock()
-	m := b.matches[snapshot.Origin]
-	b.matchMu.Unlock()
 	set := setKey(facts.Relationships)
-	b.items = append(b.items, store.LibraryItem{
-		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
-		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
-		Catalog: catalogKey(mp.Kind(snapshot.Kind), ids),
-		Set:     set,
-		Origin:  libraryOrigin(snapshot.Origin),
-		Match:   m,
-	})
 	b.poster(ctx, id, facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
@@ -145,8 +124,7 @@ type identity struct {
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
-		series:  map[string]*seriesSeen{},
-		matches: map[inventory.OriginKey]store.LibraryMatch{},
+		series: map[string]*seriesSeen{},
 	}
 }
 
@@ -247,7 +225,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			series = append(series, *s.managed)
 		}
 	}
-	resolved := b.resolve(ctx, snapshot.Origin, precedence.Input{Kind: id.kind, Records: records, Series: series})
+	resolved, m := b.resolve(ctx, snapshot.Origin, precedence.Input{Kind: id.kind, Records: records, Series: series})
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel)
@@ -255,7 +233,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	coverage["sources"] = inventory.CoveragePresent
 	snapshot.Kind = kindOf(id.kind)
 	snapshot.Observation.Facts, snapshot.Observation.Coverage = facts, coverage
-	snapshot.Observation.Extension = originExtensionOf(resolved, len(id.managed.records) > 0)
+	snapshot.Observation.Extension = originExtensionOf(id.kind, resolved, len(id.managed.records) > 0, m)
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	return snapshot
 }
@@ -276,23 +254,22 @@ func withFurtherIDs(ids []inventory.ExternalID, further []mp.Record) []inventory
 // the link as a record of its own, below what the files say (decision 27). One whose ids then name
 // a cached catalog record is resolved again with it, so its details come from the catalog
 // (decision 7); one not cached yet is written without, and again once the Enricher fetches it.
-func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) precedence.Resolved {
+func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) (precedence.Resolved, store.LibraryMatch) {
 	if rec, ok := b.im.linkRecord(ctx, in.Kind, origin); ok {
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
 	resolved := b.im.Resolver.Resolve(in)
 	// The catalog record below adds details, never identity: what decides is known now.
+	var m store.LibraryMatch
 	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
-		b.matchMu.Lock()
-		b.matches[origin] = match(resolved, in.Records)
-		b.matchMu.Unlock()
+		m = match(resolved, in.Records)
 	}
 	rec, ok := b.im.catalogRecord(ctx, catalogKey(in.Kind, pickedIDs(resolved.IDs)))
 	if !ok {
-		return resolved
+		return resolved, m
 	}
 	in.Records = append(append([]mp.Record(nil), in.Records...), rec)
-	return b.im.Resolver.Resolve(in)
+	return b.im.Resolver.Resolve(in), m
 }
 
 // sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
@@ -333,7 +310,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 				}
 			}
 		}
-		resolved := b.resolve(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records})
+		resolved, m := b.resolve(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records})
 		facts, coverage := itemFacts(resolved)
 		if facts.Name == "" {
 			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))
@@ -343,7 +320,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			Origin: seriesOrigin(b.root, s.dir), Kind: kindSeries,
 			Observation: inventory.Observation[inventory.ItemFacts]{
 				SchemaVersion: 1, ObservedAt: now, Coverage: coverage, Facts: facts,
-				Extension: originExtensionOf(resolved, false),
+				Extension: originExtensionOf(mp.KindSeries, resolved, false, m),
 			},
 			ExternalIDs: externalIDs(resolved.IDs),
 		}

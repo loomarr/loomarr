@@ -782,6 +782,7 @@ type Store interface {
 	LibraryRootStore
 	LibraryFileStore
 	LibraryItemStore
+	LibraryProjection
 	LibraryCatalogStore
 	LibraryNeedsStore
 	LibraryCollectionStore

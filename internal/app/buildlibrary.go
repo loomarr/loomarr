@@ -33,6 +33,7 @@ type libraryStore interface {
 	store.LibraryRootStore
 	store.LibraryFileStore
 	store.LibraryItemStore
+	store.LibraryProjection
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
 	store.LibraryCollectionStore
@@ -91,6 +92,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	if st == nil {
 		return libraryServices{}
 	}
+	// The Library's rows follow every inventory write from here on (#2151 decision 43).
+	st.ProjectLibraryWith(scan.ProjectLibraryItem)
 	pathMap := func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) }
 	roots := &scan.Roots{
 		Store:   st,

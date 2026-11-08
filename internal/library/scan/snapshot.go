@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Item kinds the scanner writes. Movie, series and episode match the media server's kinds, so the
@@ -58,7 +59,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	7: a multi-episode file carries every episode's ids, not only its first's.
 //	8: extras are not titles (0047); the digest drops what only an extra used.
 //	9: NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
-const writeVersion = 9
+//	10: a movie's or series' origin carries how it is listed; the store projects its row (0047).
+const writeVersion = 10
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -105,15 +107,67 @@ type originExtension struct {
 	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
 	// title has several (decision 37).
 	Managed bool `json:"managed,omitempty"`
+	// Listed is how a movie or series is listed in the Library; nil for an episode, and for an
+	// origin written before write version 10, whose row stays as it was until it is written again.
+	Listed *listedExtension `json:"listed,omitempty"`
 }
 
-// originExtensionOf is r's provenance, and whether an arr lists the file, as an origin's
-// Observation.Extension.
-func originExtensionOf(r precedence.Resolved, managed bool) json.RawMessage {
-	raw, _ := json.Marshal(originExtension{From: DetailsFrom{
+// listedExtension is what a title's library row needs that its facts do not say.
+type listedExtension struct {
+	Catalog store.LibraryCatalogKey `json:"catalog,omitzero"`
+	Match   store.LibraryMatch      `json:"match,omitzero"`
+}
+
+// originExtensionOf is r's provenance, whether an arr lists the file, and for a movie or series
+// how it is listed (m is what said which title it is), as an origin's Observation.Extension.
+func originExtensionOf(kind mp.Kind, r precedence.Resolved, managed bool, m store.LibraryMatch) json.RawMessage {
+	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
-	}, Managed: managed})
+	}, Managed: managed}
+	if kind == mp.KindMovie || kind == mp.KindSeries {
+		ext.Listed = &listedExtension{Catalog: catalogKey(kind, pickedIDs(r.IDs)), Match: m}
+	}
+	raw, _ := json.Marshal(ext)
 	return raw
+}
+
+// ProjectLibraryItem is the scanner's store.LibraryProjector: a movie's or series' library row,
+// from its newest present scanner origin (or, with none present, its newest scanner origin). An
+// item with no scanner origin, or whose origin predates write version 10, is not listed by it.
+func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
+	if item.Kind != kindMovie && item.Kind != kindSeries {
+		return store.LibraryItem{}, false
+	}
+	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
+	better := func(o, than inventory.ItemOrigin) bool {
+		if o.MissingAt.IsZero() != than.MissingAt.IsZero() {
+			return o.MissingAt.IsZero()
+		}
+		if !o.Observation.ObservedAt.Equal(than.Observation.ObservedAt) {
+			return o.Observation.ObservedAt.After(than.Observation.ObservedAt)
+		}
+		return o.Key.ExternalItemID < than.Key.ExternalItemID
+	}
+	var best *inventory.ItemOrigin
+	for i, o := range item.Origins {
+		if strings.HasPrefix(string(o.Key.Authority), authorityPrefix) && (best == nil || better(o, *best)) {
+			best = &item.Origins[i]
+		}
+	}
+	if best == nil {
+		return store.LibraryItem{}, false
+	}
+	listed := readOriginExtension(best.Observation.Extension).Listed
+	if listed == nil {
+		return store.LibraryItem{}, false
+	}
+	facts := best.Observation.Facts
+	return store.LibraryItem{
+		ID: string(item.ID), Kind: string(item.Kind), Name: facts.Name,
+		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
+		Catalog: listed.Catalog, Set: setKey(facts.Relationships),
+		Origin: libraryOrigin(best.Key), Match: listed.Match,
+	}, true
 }
 
 // readOriginExtension reads originExtensionOf back; an origin written before it says nothing.
