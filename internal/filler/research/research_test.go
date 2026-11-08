@@ -45,11 +45,12 @@ type fixtureProvider struct {
 	content  string
 	messages []llm.Message
 	options  llm.ChatOptions
+	site     string
 }
 
 func (p *fixtureProvider) Name() string { return "fixture" }
-func (p *fixtureProvider) Chat(_ context.Context, messages []llm.Message, options llm.ChatOptions) (llm.Response, error) {
-	p.messages, p.options = messages, options
+func (p *fixtureProvider) Chat(ctx context.Context, messages []llm.Message, options llm.ChatOptions) (llm.Response, error) {
+	p.messages, p.options, p.site = messages, options, llm.CallSite(ctx)
 	return llm.Response{Content: p.content}, nil
 }
 
@@ -82,6 +83,20 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 	}
 	if len(provider.options.Tools) != 0 {
 		t.Fatalf("model received tools: %+v", provider.options.Tools)
+	}
+}
+
+// The OpenAI client logs and counts each call by its site; an unnamed call shows up as
+// "unknown" in the LLM call log (#1474).
+func TestResearchNamesItsLLMCallSite(t *testing.T) {
+	provider := &fixtureProvider{content: `{"decade":1970,"confidence":70,"explanation":"Likely.","citationIds":[1]}`}
+	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
+	if _, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Twirlpop Classic Commercial",
+		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic"}); err != nil {
+		t.Fatal(err)
+	}
+	if provider.site != "filler.research" {
+		t.Fatalf("call site = %q, want filler.research", provider.site)
 	}
 }
 
