@@ -412,8 +412,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   allowed to change it.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
-  finds them in one grouped query (`HAVING`), and `GET /v1/library/needs` returns them as
-  `problems` (each with `extraBytes`, what its extra copies take) after the titles nobody can
+  finds them per title through the file indexes, an extra copy being a `library_sources` row no
+  edition plays, and `GET /v1/library/needs` returns them as `problems` (each with `extraBytes`,
+  the size of those rows) after the titles nobody can
   identify. Both count towards `needsYou`, the nav badge. Needs you words them in plain words
   ("Night Ferry has 2 episodes that can't be played", "Paper Kites has an extra copy") with
   See why, which opens the title. The title's page gives an unplayable title a warning card with
