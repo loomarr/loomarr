@@ -195,6 +195,7 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 		return
 	}
 
+	var catalogued func(clipID, ext string) bool // built on the first library source only
 	for _, src := range srcs {
 		select {
 		case <-ctx.Done():
@@ -236,7 +237,10 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 			if s.libraries == nil {
 				continue // no media server configured; the row simply does no work
 			}
-			res, err := s.libraries.Scan(ctx, src.URI, watch)
+			if catalogued == nil {
+				catalogued = cataloguedClips(s.dir, inferior)
+			}
+			res, err := s.libraries.Scan(ctx, src.URI, watch, catalogued)
 			if err != nil {
 				// ⚠ ErrLibraryUnreachableStorage is logged like any other failure HERE, but it
 				// stays a distinct error so the Sources row can say "mount the volume" rather
