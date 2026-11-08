@@ -1,11 +1,10 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Check, Loader2, LocateFixed, Lock } from "lucide-react";
+import { Check, Loader2, Lock } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LocationPickerProps } from "./location-picker.type";
 
@@ -254,15 +253,14 @@ const LocationPicker = ({
           )}
         </div>
         {allowDetection && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void detect()}
+          <Action
             disabled={locked || detecting}
+            onPress={() => void detect()}
+            style={{ flexShrink: 0 }}
+            variant="outline"
           >
-            {detecting ? <Loader2 className="animate-spin" aria-hidden /> : <LocateFixed aria-hidden />}
             {detecting ? "Finding…" : "Use my location"}
-          </Button>
+          </Action>
         )}
       </div>
       {evidence?.approximate && (

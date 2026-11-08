@@ -1,6 +1,4 @@
-import { Badge } from "@loomarr/design-system";
-import { Mail, QrCode } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Badge } from "@loomarr/design-system";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
 const deliveryCopy = {
@@ -96,25 +94,22 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                 {pending && (
                   <div className="flex flex-wrap gap-2">
                     {canSend && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={retry ? "default" : "outline"}
+                      <Action
+                        accessibilityLabel={`${action} to ${name}`}
                         disabled={
                           sendingId === value.id ||
                           delivery?.status === "queued" ||
                           delivery?.status === "sending"
                         }
-                        aria-label={`${action} to ${name}`}
-                        onClick={() => onSendEmail(value.id)}
+                        onPress={() => onSendEmail(value.id)}
+                        variant={retry ? "suggest" : "outline"}
                       >
-                        <Mail aria-hidden />
                         {sendingId === value.id ? "Queuing…" : action}
-                      </Button>
+                      </Action>
                     )}
-                    <Button type="button" size="sm" variant="ghost" onClick={() => onShare(value)}>
-                      <QrCode className="size-4" aria-hidden /> Share QR or link
-                    </Button>
+                    <Action onPress={() => onShare(value)} variant="ghost">
+                      Share QR or link
+                    </Action>
                   </div>
                 )}
               </div>

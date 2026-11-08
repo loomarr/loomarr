@@ -4,15 +4,14 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Card, Field } from "@loomarr/design-system";
+import { Action, Badge, Card, Field } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
@@ -404,27 +403,25 @@ const TaxonEditor = ({
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {current ? (
-          <Button
-            variant="ghost"
-            size="sm"
+          <Action
             disabled={busy}
-            onClick={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            onPress={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            variant="ghost"
           >
             Review removal
-          </Button>
+          </Action>
         ) : (
           <span className="mr-auto" />
         )}
         {review ? (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => setReview(undefined)}>
+            <Action disabled={busy} onPress={() => setReview(undefined)} variant="outline">
               Back
-            </Button>
-            <Button
-              variant={review.action === "delete" ? "destructive" : "default"}
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || review.impact.deleteBlocked}
-              onClick={applyReview}
+              onPress={applyReview}
+              variant={review.action === "delete" ? "destructive" : "suggest"}
             >
               {busy
                 ? "Applying…"
@@ -433,20 +430,20 @@ const TaxonEditor = ({
                   : editor.mode === "create"
                     ? "Confirm add"
                     : "Confirm update"}
-            </Button>
+            </Action>
           </>
         ) : (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
+            <Action disabled={busy} onPress={onClose} variant="outline">
               Cancel
-            </Button>
-            <Button
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-              onClick={() => requestReview("save", saveCommand())}
+              onPress={() => requestReview("save", saveCommand())}
+              variant="suggest"
             >
               {busy ? "Checking impact…" : "Review changes"}
-            </Button>
+            </Action>
           </>
         )}
       </div>
@@ -595,9 +592,14 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                       <p className="text-muted-foreground mt-1 text-xs">{AXIS_COPY[axis].example}</p>
                     </div>
                     {isAdmin ? (
-                      <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
-                        <Plus className="size-4" aria-hidden /> Add
-                      </Button>
+                      <Action
+                        icon="plus"
+                        onPress={() => setEditor({ mode: "create", axis })}
+                        style={{ flexShrink: 0 }}
+                        variant="outline"
+                      >
+                        Add
+                      </Action>
                     ) : null}
                   </div>
                   {byAxis[axis].length === 0 ? (
