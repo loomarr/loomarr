@@ -93,6 +93,8 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		case "series":
 			it.Rating, it.From.Rating = "TV-PG", "tmdb"
 			it.Genres, it.Studios = []string{"Drama", "Comedy", "Drama"}, []string{"Network"}
+			it.Countries = []string{"Canada", "Ireland"}
+			it.Tagline, it.Trailer = "Keep the lamps lit.", "https://www.youtube.com/watch?v=show9000"
 			it.IDs = []LibraryID{{"tmdb", "90000701"}, {"tvdb", "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
@@ -163,6 +165,15 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got := names("library_studios"); len(got) != 1 || got[0] != "Network" {
 		t.Fatalf("studios = %v", got)
+	}
+	if got := names("library_countries"); len(got) != 2 || got[0] != "Canada" || got[1] != "Ireland" {
+		t.Fatalf("countries = %v, want Canada, Ireland in order", got)
+	}
+	var tagline, trailer string
+	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT tagline, trailer FROM library_items WHERE id = ?`),
+		string(show)).Scan(&tagline, &trailer); err != nil || tagline != "Keep the lamps lit." ||
+		trailer != "https://www.youtube.com/watch?v=show9000" {
+		t.Fatalf("tagline, trailer = %q, %q, %v", tagline, trailer, err)
 	}
 	var ids int
 	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COUNT(*) FROM library_ids WHERE item_id = ?`), string(show)).Scan(&ids); err != nil || ids != 2 {

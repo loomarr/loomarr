@@ -319,8 +319,8 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	}
 }
 
-// A series record cached before series records counted their orderings is fetched again on the
-// next tick, fresh as it is; a movie record of the same age is left until its refresh.
+// A series record cached in an older shape is fetched again on the next tick, fresh as it is; a
+// movie record of the same age, already in the movie's current shape, is left until its refresh.
 func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -329,8 +329,10 @@ func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 	if err := h.st.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{series, movie}); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []store.LibraryCatalogKey{series, movie} {
-		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, 0, time.Now()); err != nil {
+	for k, version := range map[store.LibraryCatalogKey]int{
+		series: catalogVersions[series.Kind] - 1, movie: catalogVersions[movie.Kind],
+	} {
+		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, version, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}

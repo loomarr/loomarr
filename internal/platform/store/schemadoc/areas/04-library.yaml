@@ -132,6 +132,8 @@ tables:
         unknown.
       score_from: The app that supplied the score; empty when unknown.
       runtime_from: The app that supplied the running time; empty when unknown.
+      tagline: The one-line pitch printed on a poster; empty when unknown.
+      trailer: The web page that plays the title's trailer; empty when it has none.
 
   - name: library_ids
     about: >
@@ -158,6 +160,16 @@ tables:
     columns:
       item_id: The title (a library_items id).
       name: The studio or network.
+      position: Where it came in the source's list, from 0.
+
+  - name: library_countries
+    about: >
+      A title's production countries, as the source names them, in the order it gave them. Replaced
+      whenever the title is written; deleted with the title. An episode has none of its own; its
+      show's apply.
+    columns:
+      item_id: The title (a library_items id).
+      name: The country.
       position: Where it came in the source's list, from 0.
 
   - name: library_tags

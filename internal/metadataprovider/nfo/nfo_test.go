@@ -77,7 +77,7 @@ func TestParse_Movie(t *testing.T) {
 			Title: "The Copper Orchard", OriginalTitle: "Le Verger de Cuivre", SortTitle: "Copper Orchard",
 			Overview:     "A clockmaker inherits an orchard whose trees keep perfect time.",
 			PremiereDate: "2016-05-20", Year: 2016, Genres: []string{"Drama", "Fantasy"},
-			Network: "Ironbell Pictures", Runtime: 112 * time.Minute,
+			Studios: []string{"Ironbell Pictures"}, Runtime: 112 * time.Minute,
 			Keywords: []string{"Clockwork"}, Tagline: "Every tree keeps time.", Countries: []string{"France"},
 			// Kodi's YouTube add-on link reads as the page it plays.
 			Trailer: "https://www.youtube.com/watch?v=AbCdEfGhIjK", Edition: "Director's Cut",

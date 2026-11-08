@@ -122,7 +122,7 @@ func (s *Sonarr) seriesRecord(ctx context.Context, ep endpoint, series sonarrSer
 			PremiereDate: date(series.FirstAired),
 			Year:         series.Year,
 			Genres:       series.Genres,
-			Network:      strings.TrimSpace(series.Network),
+			Studios:      named(series.Network),
 			Status:       strings.TrimSpace(series.Status),
 			Runtime:      minutes(series.Runtime),
 		},

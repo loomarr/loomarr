@@ -316,7 +316,7 @@ func recordFrom(kind mp.Kind, doc document) mp.Record {
 			PremiereDate:  firstDate(doc.Premiered, doc.Aired),
 			Year:          positive(doc.Year),
 			Genres:        cleanAll(doc.Genres),
-			Network:       firstNonEmpty(cleanAll(doc.Studios)),
+			Studios:       cleanAll(doc.Studios),
 			Status:        clean(doc.Status),
 			Runtime:       time.Duration(leadingMinutes(doc.Runtime)) * time.Minute,
 			Keywords:      cleanAll(doc.Tags),
@@ -577,13 +577,6 @@ func cleanAll(values []string) []string {
 		}
 	}
 	return out
-}
-
-func firstNonEmpty(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
 }
 
 func firstDate(candidates ...string) string {
