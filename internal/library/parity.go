@@ -22,8 +22,10 @@ type ServerFile struct {
 	// Path is the file as the media server sees it; the path map makes it Loomarr's.
 	Path        string
 	ExternalIDs []inventory.ExternalID
-	// SeriesIDs are an episode's show's ids; Season and Episode its numbering.
+	// SeriesIDs are an episode's show's ids, SeriesItemID the show's media-server item id; Season
+	// and Episode its numbering.
 	SeriesIDs       []inventory.ExternalID
+	SeriesItemID    string
 	Season, Episode int
 	DurationMillis  int64
 }
@@ -89,7 +91,8 @@ func (c *Client) ServerFiles(ctx context.Context) ([]ServerFile, error) {
 			ItemID: item.ID, Kind: kind, Name: item.Name, ExternalIDs: externalIDs(item.ProviderIDs),
 		}
 		if kind == "episode" {
-			file.SeriesIDs, file.Season, file.Episode = series[item.SeriesID], item.ParentIndexNumber, item.IndexNumber
+			file.SeriesIDs, file.SeriesItemID = series[item.SeriesID], item.SeriesID
+			file.Season, file.Episode = item.ParentIndexNumber, item.IndexNumber
 		}
 		if len(item.MediaSources) == 0 {
 			file.Path, file.DurationMillis = item.Path, item.RunTimeTicks/10_000

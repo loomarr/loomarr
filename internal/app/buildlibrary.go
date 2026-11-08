@@ -38,6 +38,7 @@ type libraryStore interface {
 	store.LibraryNeedsStore
 	store.LibraryCollectionStore
 	store.LibraryPeopleStore
+	store.LibraryIDMapStore
 	inventory.Repository
 	posterRefs
 }
@@ -169,6 +170,10 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
+	if deps.lib != nil {
+		mapper := &scan.IDMapper{Store: st, ServerFiles: serverFiles(deps.lib), Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(mapper.Run)
+	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		CollectionStore: st, SetRecords: st}
@@ -197,6 +202,16 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		deps.owner.goRunAfterBuild(matcher.Run)
 	}
 	return libraryServices{roots: lib, hooks: hooks}
+}
+
+// serverFiles lists the media server's catalog for the cutover's id map, or says none is connected.
+func serverFiles(lib *library.Client) func(context.Context) ([]library.ServerFile, error) {
+	return func(ctx context.Context) ([]library.ServerFile, error) {
+		if _, err := lib.Snapshot().Connection().Validate(); err != nil {
+			return nil, scan.ErrNoServerCatalog
+		}
+		return lib.ServerFiles(ctx)
+	}
 }
 
 // tmdbSearcher is TMDB's title search, as Needs you searches it.
