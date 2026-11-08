@@ -4,20 +4,11 @@ import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEve
 import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  AlertTriangle,
-  Check,
-  Clipboard,
-  Download,
-  ListFilter,
-  Radio,
-  RadioTower,
-  Square,
-} from "lucide-react";
+import { AlertTriangle, Check, Clipboard, ListFilter, Radio } from "lucide-react";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -172,32 +163,32 @@ const EventDetail = ({
           </p>
         </div>
         <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
-          <Button
+          <Action
+            icon={copied ? "success" : "copy"}
+            layout="icon"
+            onPress={copyLog}
+            style={{ flexShrink: 0 }}
             variant="ghost"
-            size="icon"
-            className="shrink-0"
-            aria-label={copied ? "Copied log details" : "Copy log details"}
-            onClick={copyLog}
           >
-            {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-          </Button>
+            {copied ? "Copied log details" : "Copy log details"}
+          </Action>
         </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
         {event.processRunId && onOpenProcess && (
-          <Button variant="outline" size="sm" onClick={() => onOpenProcess(event.processRunId ?? "")}>
-            <RadioTower aria-hidden /> Open process output
-          </Button>
+          <Action icon="process" onPress={() => onOpenProcess(event.processRunId ?? "")} variant="outline">
+            Open process output
+          </Action>
         )}
         {event.channelId && onOpenRelated && (
-          <Button variant="outline" size="sm" onClick={() => onOpenRelated("channel", event.channelId ?? "")}>
+          <Action onPress={() => onOpenRelated("channel", event.channelId ?? "")} variant="outline">
             Open related Channel
-          </Button>
+          </Action>
         )}
         {event.jobId && onOpenRelated && (
-          <Button variant="outline" size="sm" onClick={() => onOpenRelated("job", event.jobId ?? "")}>
+          <Action onPress={() => onOpenRelated("job", event.jobId ?? "")} variant="outline">
             Open related Job
-          </Button>
+          </Action>
         )}
       </div>
       <details className="border-border bg-background rounded-md border p-3">
@@ -270,9 +261,9 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
               <Radio aria-hidden className="text-caution size-4" />
               Active until {formatTime(capture.endsAt ?? Date.now())}
             </span>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => void stopCapture()}>
-              <Square aria-hidden /> Stop
-            </Button>
+            <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
+              Stop
+            </Action>
           </>
         ) : (
           <>
@@ -287,14 +278,14 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
                 <SelectItem value="15">15 minutes</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              variant="outline"
-              size="sm"
+            <Action
               disabled={busy || query.isError}
-              onClick={() => void startCapture()}
+              icon="capture"
+              onPress={() => void startCapture()}
+              variant="outline"
             >
-              <Radio aria-hidden /> Start capture
-            </Button>
+              Start capture
+            </Action>
           </>
         )}
       </div>
@@ -398,14 +389,14 @@ const ApplicationDiagnostics = ({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Action
             disabled={downloadState === "working"}
-            onClick={() => void download()}
+            icon="download"
+            onPress={() => void download()}
+            variant="outline"
           >
-            <Download aria-hidden /> {downloadState === "working" ? "Preparing…" : "Download logs"}
-          </Button>
+            {downloadState === "working" ? "Preparing…" : "Download logs"}
+          </Action>
         </div>
       </div>
 

@@ -1,8 +1,8 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedbackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type DiscoveryFeedbackAction = "keep" | "less" | "never" | "surprise";
@@ -80,23 +80,22 @@ const DiscoveryFeedbackControls = ({
       <fieldset className="flex flex-wrap gap-1 border-0 p-0">
         <legend className="sr-only">Taste feedback for {name}</legend>
         {actions.map(({ action, label }) => (
-          <Button
+          <Action
             key={action}
-            type="button"
-            variant={selected === action ? "secondary" : "ghost"}
-            size="sm"
-            disabled={disabled}
+            accessibilityLabel={`${label} — ${name}`}
             aria-pressed={selected === action}
-            aria-label={`${label} — ${name}`}
-            onClick={() => onSet(action)}
+            disabled={disabled}
+            onPress={() => onSet(action)}
+            selected={selected === action}
+            tone="secondary"
           >
             {compact && action === "less" ? "Less" : compact && action === "surprise" ? "Surprise" : label}
-          </Button>
+          </Action>
         ))}
         {canClear && (
-          <Button type="button" variant="link" size="sm" disabled={disabled} onClick={onClear}>
+          <Action disabled={disabled} onPress={onClear} variant="link">
             Undo
-          </Button>
+          </Action>
         )}
       </fieldset>
       <p className="text-muted-foreground text-xs">
