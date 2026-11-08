@@ -568,13 +568,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Writers name library items** (step 15c). The availability scan, discovery's presence and the
   channel engine's rating heal ask the Library first (`LibraryTitles`, `LibraryTitleByProviderID`:
   movies and series with a present file, by their TMDB and TVDB ids), so a title that confirms or
-  is found owned records its library item id. Since step 16, presence and the rating heal ask the
-  Library alone. The ids already stored are the rewrite's.
-- **Collection scopes read the household's collections first** (step 15e). The scope.collections
-  picker lists the household's collections, then only the media server's that were never imported
-  (`imported_id`); the reconcile's membership index does the same, so an imported collection is
-  known only by the household's id the rewrite pointed scopes at. With no media server, the
-  household's alone, without an error.
+  is found owned records its library item id. Since step 16, all three ask the Library alone. The
+  ids already stored are the rewrite's.
+- **Collection scopes read the household's collections** (step 15e, household-only since step
+  16). The scope.collections picker and the reconcile's membership index list the household's
+  collections alone, so an imported collection is known only by the household's id the rewrite
+  pointed scopes at. The media server's hand-made collections were imported by the rewrite and its
+  TMDB ones are the Library's ready-made sets, so it is never asked.
 - **Title search reads the Library** (step 15e, Library-only since step 16). Like the collections
   picker and channel ideas, it needs no media server: only TMDB search waits on its key.
   Library-scope search, which `/v1/search` and the suggester's tools share, answers with the
@@ -584,10 +584,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **The provisioning backstop reads the Library** (step 15e, Library-only since step 16). Its last
   look before a title is given up as unavailable confirms one the Library holds, under its library
   item id.
-- **Channel ideas ask the Library first** (step 15e). Home's channel ideas draw from the Library's
-  movies and series with their year and genres (`LibraryTitles`, `LibraryItemFacts`), then only the
-  media server's titles the Library doesn't hold, by provider id, so no title counts twice in a
-  facet. With no media server, the Library's alone.
+- **Channel ideas read the Library** (step 15e, Library-only since step 16). Home's channel ideas
+  draw from the Library's movies and series with their year and genres (`LibraryTitles`,
+  `LibraryItemFacts`).
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
@@ -634,7 +633,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Titles read only the Library** (step 16). Title search, discovery's and movie collections'
   in-library marking, approval additions, the proposal outlook, the rating heal and the backstop's
   last look all answer from `SearchLibraryTitles` and `LibraryTitleByProviderID`; the media server
-  is never asked. Approval additions and the proposal outlook no longer need one connected.
+  is never asked. Approval additions and the proposal outlook no longer need one connected. The
+  availability scan (`LibraryTitles`), channel ideas and the collection picker and index read only
+  the Library and the household's collections too.
 
 ## Search
 

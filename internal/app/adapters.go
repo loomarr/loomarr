@@ -387,37 +387,24 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	return t.Rating, true, nil
 }
 
-// libraryBoxSets adapts library.Client to channels.BoxSetResolver: it answers "which
-// media-server collections is this title in?" for the reconcile-time stamp backing
-// scope.collections (programming-design §2.2).
+// libraryBoxSets adapts the household's collections to channels.BoxSetResolver: it answers "which
+// collections is this title in?" for the reconcile-time stamp backing scope.collections
+// (programming-design §2.2), from the household's collections alone (#2151 step 16).
 //
-// ⚠ It builds a REVERSE INDEX once and caches it, rather than querying per key. The obvious
-// per-key implementation does not exist on the wire — the media server answers "what is in
-// collection X", never "what collections is item Y in" — so a per-entry resolve would mean
-// re-listing every collection's members for every entry, which is the N+1 the whole stamping
-// design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
+// It builds a REVERSE INDEX in one read and caches it, rather than querying per key. Membership is
+// indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member carrying both
+// provider ids must be findable under whichever key the lineup entry was born with — the same
+// parity problem the availability scan solves, and the same solution.
 //
-// Membership is indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member
-// carrying both provider ids must be findable under whichever key the lineup entry was born
-// with — the same parity problem the availability scan solves, and the same solution.
-//
-// The household's own collections (#2151 step 12) are indexed beside the media server's, under
-// their Loomarr ids, so a scope can name either until the cutover imports the media server's.
-// With no media server configured at all, the household's alone are the whole answer; a media
-// server that is configured but can't be read still fails the pass open.
-//
-// The cache is refreshed on a TTL: a collection edited in Emby or in the Library takes effect
-// within it, which is consistent with the stamp only being read at reconcile anyway.
+// The cache is refreshed on a TTL: a collection edited in the Library takes effect within it,
+// which is consistent with the stamp only being read at reconcile anyway.
 type libraryBoxSets struct {
-	lib *library.Client
-	// own is the household's collections; nil leaves them out.
 	own ownCollections
 	ttl time.Duration
 
-	mu         sync.Mutex
-	index      map[provision.Key][]string
-	fetched    time.Time
-	generation library.ConnectionGeneration
+	mu      sync.Mutex
+	index   map[provision.Key][]string
+	fetched time.Time
 }
 
 func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
@@ -433,62 +420,26 @@ func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]stri
 func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	lib := a.lib.Snapshot()
-	connection := lib.Connection()
-	generation, err := connection.Generation()
-	noServer := connection == (library.Connection{})
-	if err != nil && (a.own == nil || !noServer) {
-		return nil, err
+	now := time.Now()
+	if a.index != nil && now.Sub(a.fetched) < a.ttl {
+		return a.index, nil
 	}
-	if index, ok := a.cachedIndex(generation, time.Now()); ok {
-		return index, nil
-	}
-	idx := make(map[provision.Key][]string)
-	imported := map[string]bool{}
-	if a.own != nil {
-		members, err := a.own.LibraryCollectionMemberIDs(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range members {
-			for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
-				idx[k] = append(idx[k], m.CollectionID)
-			}
-		}
-		if imported, err = importedCollections(ctx, a.own); err != nil {
-			return nil, err
-		}
-	}
-	if noServer {
-		a.index, a.fetched, a.generation = idx, time.Now(), generation
-		return idx, nil
-	}
-	colls, err := lib.Collections(ctx)
+	members, err := a.own.LibraryCollectionMemberIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range colls {
-		if imported[c.ID] {
-			continue // the household's copy stands for it; scopes were rewritten to that (step 15b)
-		}
-		members, err := lib.CollectionMembers(ctx, c.ID)
-		if err != nil {
-			// One unreadable collection must not discard the whole index — the rest is still
-			// true, and a missing membership only ever admits a title (§2.2 fail-open).
-			continue
-		}
-		for _, m := range members {
-			for _, k := range provisionbackstop.ScanItemKeys(m) {
-				idx[k] = append(idx[k], c.ID)
-			}
+	idx := make(map[provision.Key][]string)
+	for _, m := range members {
+		for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
+			idx[k] = append(idx[k], m.CollectionID)
 		}
 	}
-	a.index, a.fetched, a.generation = idx, time.Now(), generation
+	a.index, a.fetched = idx, now
 	return idx, nil
 }
 
-// ownMember reads a household collection's title as the media server's search result, so its keys
-// come from the one derivation the BoxSet members use.
+// ownMember reads a household collection's title as a search result, so its keys come from the
+// one derivation every title uses.
 func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	r := library.SearchResult{MediaType: library.Movie}
 	if m.Kind == "series" {
@@ -499,15 +450,6 @@ func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	return r
 }
 
-func (a *libraryBoxSets) cachedIndex(
-	generation library.ConnectionGeneration, now time.Time,
-) (map[provision.Key][]string, bool) {
-	if a.index == nil || a.generation != generation || now.Sub(a.fetched) >= a.ttl {
-		return nil, false
-	}
-	return a.index, true
-}
-
 // ownCollections is the household's collections (#2151 step 12), as the collection scope reads
 // them.
 type ownCollections interface {
@@ -515,34 +457,16 @@ type ownCollections interface {
 	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
 }
 
-// importedCollections is the media server's id of each collection the household's were imported
-// from at the cutover (step 15b).
-func importedCollections(ctx context.Context, own ownCollections) (map[string]bool, error) {
-	colls, err := own.ListLibraryCollections(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]bool{}
-	for _, c := range colls {
-		if c.ImportedID != "" {
-			out[c.ImportedID] = true
-		}
-	}
-	return out, nil
-}
-
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
-// picker (programming-design §2.2). The household's collections come first (#2151 step 15e); the
-// media server adds only the ones not imported from it, and its absence or failure leaves the
-// household's.
+// picker (programming-design §2.2): the household's collections (#2151 step 16). The media
+// server's hand-made collections were imported by the cutover rewrite, and its TMDB ones are the
+// Library's ready-made sets, so it is never asked.
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
-// operator who just made a collection and opened the picker expects to see it. The list is one
-// cheap call; the index is the expensive one.
+// operator who just made a collection and opened the picker expects to see it.
 type libraryCollections struct {
 	own ownCollections
-	lib *library.Client
 }
 
 func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
@@ -551,27 +475,8 @@ func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryColle
 		return nil, err
 	}
 	out := make([]api.LibraryCollection, 0, len(own))
-	imported := map[string]bool{}
 	for _, c := range own {
 		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
-		if c.ImportedID != "" {
-			imported[c.ImportedID] = true
-		}
-	}
-	if a.lib == nil {
-		return out, nil
-	}
-	colls, err := a.lib.Collections(ctx)
-	if err != nil {
-		if len(out) > 0 || errors.Is(err, library.ErrConnectionRequired) {
-			return out, nil
-		}
-		return nil, err
-	}
-	for _, c := range colls {
-		if !imported[c.ID] {
-			out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: c.ChildCount})
-		}
 	}
 	return out, nil
 }
