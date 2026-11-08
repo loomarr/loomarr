@@ -507,7 +507,10 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await expect(providerSwitch).not.toBeChecked();
     const childList = provider.locator('ul[aria-label="Sources under Archive.org"]');
     await expect(childList).toBeHidden();
-    await expect(provider.locator(`input[aria-label="Use ${sourceName}"]`)).toBeDisabled();
+    // The design-system switch is a pressable, so it says disabled in ARIA rather than natively.
+    await expect(
+      provider.getByRole("switch", { name: `Use ${sourceName}`, includeHidden: true }),
+    ).toHaveAttribute("aria-disabled", "true");
 
     await providerSwitch.click();
     await expect(childList).toBeVisible();
