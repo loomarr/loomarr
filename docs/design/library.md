@@ -614,6 +614,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   still names a media-server library is rewritten on the next filler sync to its folder: the
   library's folders as the media server reports them, through the path map, with a row for each
   extra folder. A name with no mapped folder is logged once and does no work.
+- **Playout reads only the Library's files** (step 16). A programme, its still, its first-play
+  measurement and its channel's codec vote all read the library item's playing file
+  (`LibraryPlayingFile`). The media server's stream, the `library.path_map` translation of its
+  paths and its path cache no longer play anything. An item whose file is gone airs the offline card.
 
 ## Cached series episodes
 
