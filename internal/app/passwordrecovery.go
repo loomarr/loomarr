@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 )
 
 type passwordRecoveryCoordinator struct {
@@ -56,12 +56,12 @@ func (c *passwordRecoveryCoordinator) Preview(
 	ctx context.Context,
 	grant string,
 	rateKey string,
-) (recovery.Record, error) {
+) (access.RecoveryRecord, error) {
 	if c == nil || c.recovery == nil {
-		return recovery.Record{}, auth.ErrInvalidPasswordRecovery
+		return access.RecoveryRecord{}, auth.ErrInvalidPasswordRecovery
 	}
 	if c.redeemLimiter != nil && !c.redeemLimiter.Allow("preview|"+rateKey) {
-		return recovery.Record{}, auth.ErrRateLimited
+		return access.RecoveryRecord{}, auth.ErrRateLimited
 	}
 	return c.recovery.Preview(ctx, grant)
 }

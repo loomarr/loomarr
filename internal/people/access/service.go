@@ -1,4 +1,4 @@
-package invitation
+package access
 
 import (
 	"context"

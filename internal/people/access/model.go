@@ -1,5 +1,6 @@
-// Package invitation owns administrator admission decisions and their bearer grants (§11).
-package invitation
+// Package access owns how a person gets into Loomarr and back in (§11): an administrator's
+// invitation and its bearer grants, and local-password recovery and its grants (recovery.go).
+package access
 
 import (
 	"crypto/sha256"

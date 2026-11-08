@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -23,15 +23,15 @@ func TestInvitationRedemption_PublicPreviewRequiresExplicitSubmitAndIssuesSessio
 	ctx := context.Background()
 	at := time.Date(2030, 3, 17, 12, 0, 0, 0, time.UTC)
 	const bearer = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	admin := invitation.NewService(st, testkit.LibraryAccountResolver{}, func() string { return "invitation-1" },
+	admin := access.NewService(st, testkit.LibraryAccountResolver{}, func() string { return "invitation-1" },
 		func() (string, error) { return bearer, nil }, func() time.Time { return at })
-	created, err := admin.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLocal, Username: "Ada", Role: invitation.RoleAdmin,
+	created, err := admin.Create(ctx, access.CreateCommand{
+		Kind: access.KindLocal, Username: "Ada", Role: access.RoleAdmin,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := admin.Regenerate(ctx, created.ID, invitation.ConveyanceQR); err != nil {
+	if _, err := admin.Regenerate(ctx, created.ID, access.ConveyanceQR); err != nil {
 		t.Fatal(err)
 	}
 	mgr := auth.NewManager(st, time.Hour, func() time.Time { return at.Add(time.Minute) })

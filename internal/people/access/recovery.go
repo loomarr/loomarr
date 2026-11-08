@@ -1,41 +1,42 @@
-// Package recovery owns local-password recovery records and their bearer grants (§11).
-package recovery
+package access
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 )
 
-const (
-	Expiry    = 30 * time.Minute
-	Retention = 30 * 24 * time.Hour
-)
-
-type Status string
+// Local-password recovery records and their bearer grants (§11): the second kind of grant this
+// package issues, beside an invitation's.
 
 const (
-	StatusPending  Status = "pending"
-	StatusRedeemed Status = "redeemed"
-	StatusExpired  Status = "expired"
-	StatusRevoked  Status = "revoked"
+	RecoveryExpiry    = 30 * time.Minute
+	RecoveryRetention = 30 * 24 * time.Hour
 )
 
-// Record is a local person's durable password-recovery lifecycle. It contains no credential or
+type RecoveryStatus string
+
+const (
+	RecoveryPending  RecoveryStatus = "pending"
+	RecoveryRedeemed RecoveryStatus = "redeemed"
+	RecoveryExpired  RecoveryStatus = "expired"
+	RecoveryRevoked  RecoveryStatus = "revoked"
+)
+
+// RecoveryRecord is a local person's durable password-recovery lifecycle. It contains no credential or
 // bearer material.
-type Record struct {
+type RecoveryRecord struct {
 	ID         string
 	UserID     string
-	Status     Status
+	Status     RecoveryStatus
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	TerminalAt time.Time
 }
 
-// Grant is the durable half of a recovery bearer. TokenHash is the only token material stored.
-type Grant struct {
+// RecoveryGrant is the durable half of a recovery bearer. TokenHash is the only token material stored.
+type RecoveryGrant struct {
 	TokenHash  string
 	RecoveryID string
 	CreatedAt  time.Time
@@ -44,26 +45,26 @@ type Grant struct {
 	RevokedAt  time.Time
 }
 
-func (r Record) Validate() error {
+func (r RecoveryRecord) Validate() error {
 	if err := identifier("recovery id", r.ID); err != nil {
 		return err
 	}
 	if err := identifier("user id", r.UserID); err != nil {
 		return err
 	}
-	if r.CreatedAt.IsZero() || !r.ExpiresAt.Equal(r.CreatedAt.Add(Expiry)) {
+	if r.CreatedAt.IsZero() || !r.ExpiresAt.Equal(r.CreatedAt.Add(RecoveryExpiry)) {
 		return fmt.Errorf("password recovery requires the fixed thirty-minute expiry")
 	}
 	switch r.Status {
-	case StatusPending:
+	case RecoveryPending:
 		if !r.TerminalAt.IsZero() {
 			return fmt.Errorf("pending password recovery cannot be terminal")
 		}
-	case StatusExpired:
+	case RecoveryExpired:
 		if !r.TerminalAt.Equal(r.ExpiresAt) {
 			return fmt.Errorf("expired password recovery terminates at expiry")
 		}
-	case StatusRedeemed, StatusRevoked:
+	case RecoveryRedeemed, RecoveryRevoked:
 		if r.TerminalAt.IsZero() {
 			return fmt.Errorf("terminal password recovery requires a terminal time")
 		}
@@ -73,7 +74,7 @@ func (r Record) Validate() error {
 	return nil
 }
 
-func (g Grant) Validate() error {
+func (g RecoveryGrant) Validate() error {
 	decoded, err := hex.DecodeString(g.TokenHash)
 	if err != nil || len(decoded) != sha256.Size {
 		return fmt.Errorf("password recovery grant requires a SHA-256 token hash")
@@ -81,7 +82,7 @@ func (g Grant) Validate() error {
 	if err := identifier("recovery id", g.RecoveryID); err != nil {
 		return err
 	}
-	if g.CreatedAt.IsZero() || !g.ExpiresAt.After(g.CreatedAt) || g.ExpiresAt.After(g.CreatedAt.Add(Expiry)) {
+	if g.CreatedAt.IsZero() || !g.ExpiresAt.After(g.CreatedAt) || g.ExpiresAt.After(g.CreatedAt.Add(RecoveryExpiry)) {
 		return fmt.Errorf("password recovery grant expiry must be positive and no longer than thirty minutes")
 	}
 	if !g.ConsumedAt.IsZero() && !g.RevokedAt.IsZero() {
@@ -90,20 +91,9 @@ func (g Grant) Validate() error {
 	return nil
 }
 
-func (r Record) EffectiveStatus(now time.Time) Status {
-	if r.Status == StatusPending && !now.Before(r.ExpiresAt) {
-		return StatusExpired
+func (r RecoveryRecord) EffectiveStatus(now time.Time) RecoveryStatus {
+	if r.Status == RecoveryPending && !now.Before(r.ExpiresAt) {
+		return RecoveryExpired
 	}
 	return r.Status
-}
-
-func HashGrant(plaintext string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(plaintext)))
-}
-
-func identifier(name, value string) error {
-	if value == "" || len(value) > 200 || strings.ContainsAny(value, "\r\n") {
-		return fmt.Errorf("%s must contain 1..200 safe characters", name)
-	}
-	return nil
 }

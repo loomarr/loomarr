@@ -11,8 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -98,7 +98,7 @@ func buildOperations(
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
-	invitationService, _ := authResult.invitations.(*invitation.Service)
+	invitationService, _ := authResult.invitations.(*access.Service)
 	recoveryService := authResult.passwordRecovery
 	destinationRepository := notifications.NewProtectedRepository(st, protection).
 		WithCredentialRedactor(secretRedactor)
@@ -343,11 +343,11 @@ func buildAuth(
 		}
 	}, st, manager, time.Now, log)
 	result.password = auth.NewPasswordService(st, newID, time.Now)
-	var invitationLibrary invitation.LibraryAccountResolver
+	var invitationLibrary access.LibraryAccountResolver
 	if libraryClient != nil {
 		invitationLibrary = invitationLibraryResolver{client: libraryClient}
 	}
-	result.invitations = invitation.NewService(st, invitationLibrary, newID, nil, time.Now)
+	result.invitations = access.NewService(st, invitationLibrary, newID, nil, time.Now)
 	result.invitationRedemption = auth.NewInvitationRedemptionService(
 		st, libraryClient, manager, newID, time.Now,
 	)

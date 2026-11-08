@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 )
 
 // Role is a user's authorization level (§11).
@@ -89,10 +89,10 @@ func (s *Store) UpsertUser(ctx context.Context, u User) error {
 }
 
 func (s *Store) CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error {
-	kind := invitation.KindLocal
-	identityKey := invitation.NormalizeLocalIdentity(u.Name)
+	kind := access.KindLocal
+	identityKey := access.NormalizeLocalIdentity(u.Name)
 	if u.MediaServerLinked {
-		kind = invitation.KindLibrary
+		kind = access.KindLibrary
 		identityKey = u.ID
 	}
 	return s.withInvitationIdentityLock(ctx, kind, identityKey, func(ctx context.Context) error {

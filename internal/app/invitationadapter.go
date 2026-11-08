@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -15,15 +15,15 @@ type invitationLibraryResolver struct{ client *library.Client }
 func (r invitationLibraryResolver) ResolveLibraryAccount(
 	ctx context.Context,
 	id string,
-) (invitation.LibraryAccount, error) {
+) (access.LibraryAccount, error) {
 	users, err := r.client.ListUsers(ctx)
 	if err != nil {
-		return invitation.LibraryAccount{}, err
+		return access.LibraryAccount{}, err
 	}
 	for _, user := range users {
 		if user.ID == id {
-			return invitation.LibraryAccount{ID: user.ID, Name: user.Name, Disabled: user.Disabled}, nil
+			return access.LibraryAccount{ID: user.ID, Name: user.Name, Disabled: user.Disabled}, nil
 		}
 	}
-	return invitation.LibraryAccount{}, store.ErrNotFound
+	return access.LibraryAccount{}, store.ErrNotFound
 }

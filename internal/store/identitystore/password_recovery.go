@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/people/recovery"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -17,11 +17,11 @@ const passwordRecoverySelect = `SELECT id, user_id, status, created_at, expires_
 const passwordRecoveryGrantSelect = `SELECT token_hash, recovery_id, created_at, expires_at,
  consumed_at, revoked_at FROM password_recovery_grants`
 
-func (s *Store) CreatePasswordRecovery(ctx context.Context, value recovery.Record) error {
+func (s *Store) CreatePasswordRecovery(ctx context.Context, value access.RecoveryRecord) error {
 	if err := value.Validate(); err != nil {
 		return fmt.Errorf("validate password recovery: %w", err)
 	}
-	if value.Status != recovery.StatusPending {
+	if value.Status != access.RecoveryPending {
 		return fmt.Errorf("new password recovery must be pending")
 	}
 	return s.withPasswordRecoveryLock(ctx, value.UserID, func(ctx context.Context) error {
@@ -29,7 +29,7 @@ func (s *Store) CreatePasswordRecovery(ctx context.Context, value recovery.Recor
 	})
 }
 
-func (s *Store) createPasswordRecovery(ctx context.Context, value recovery.Record) error {
+func (s *Store) createPasswordRecovery(ctx context.Context, value access.RecoveryRecord) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("create password recovery: begin: %w", err)
@@ -82,11 +82,11 @@ func (s *Store) GetPasswordRecovery(
 	ctx context.Context,
 	id string,
 	now time.Time,
-) (recovery.Record, error) {
+) (access.RecoveryRecord, error) {
 	value, err := scanPasswordRecovery(s.h.QueryRowContext(ctx, s.h.Rebind(passwordRecoverySelect+
 		` WHERE id = ?`), id))
 	if err != nil {
-		return recovery.Record{}, err
+		return access.RecoveryRecord{}, err
 	}
 	return effectivePasswordRecovery(value, now), nil
 }
@@ -96,7 +96,7 @@ func (s *Store) GetPasswordRecoveryByGrant(
 	ctx context.Context,
 	tokenHash string,
 	now time.Time,
-) (recovery.Record, error) {
+) (access.RecoveryRecord, error) {
 	const byGrant = `SELECT r.id, r.user_id, r.status, r.created_at, r.expires_at, r.terminal_at
 		FROM password_recoveries r
 		JOIN password_recovery_grants g ON g.recovery_id = r.id
@@ -111,7 +111,7 @@ func (s *Store) GetPasswordRecoveryByGrant(
 func (s *Store) AddPasswordRecoveryGrant(
 	ctx context.Context,
 	recoveryID string,
-	grant recovery.Grant,
+	grant access.RecoveryGrant,
 	at time.Time,
 ) error {
 	if err := grant.Validate(); err != nil {
@@ -165,14 +165,14 @@ func (s *Store) RevokePasswordRecoveryGrant(ctx context.Context, tokenHash strin
 func (s *Store) ListPasswordRecoveryGrants(
 	ctx context.Context,
 	recoveryID string,
-) ([]recovery.Grant, error) {
+) ([]access.RecoveryGrant, error) {
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(passwordRecoveryGrantSelect+
 		` WHERE recovery_id = ? ORDER BY created_at, token_hash`), recoveryID)
 	if err != nil {
 		return nil, fmt.Errorf("list password recovery grants: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var values []recovery.Grant
+	var values []access.RecoveryGrant
 	for rows.Next() {
 		value, err := scanPasswordRecoveryGrant(rows)
 		if err != nil {
@@ -191,13 +191,13 @@ func (s *Store) RedeemPasswordRecovery(
 	grantHash string,
 	passwordHash string,
 	at time.Time,
-) (recovery.Record, error) {
+) (access.RecoveryRecord, error) {
 	if grantHash == "" || passwordHash == "" || at.IsZero() {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery requires prepared credentials")
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery requires prepared credentials")
 	}
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: begin: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -213,50 +213,50 @@ func (s *Store) RedeemPasswordRecovery(
 		grantHash, epoch(at), epoch(at), false, false))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return recovery.Record{}, ErrNotFound
+			return access.RecoveryRecord{}, ErrNotFound
 		}
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: load grant: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: load grant: %w", err)
 	}
 
 	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE password_recoveries
 		SET status = 'redeemed', terminal_at = ?
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`), epoch(at), value.ID, epoch(at))
 	if err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: claim: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: claim: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return recovery.Record{}, ErrNotFound
+		return access.RecoveryRecord{}, ErrNotFound
 	}
 	result, err = tx.ExecContext(ctx, s.h.Rebind(`UPDATE users SET password_hash = ?, updated_at = ?
 		WHERE id = ? AND disabled = ? AND media_server_linked = ?`),
 		passwordHash, epoch(at), value.UserID, false, false)
 	if err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: update verifier: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: update verifier: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return recovery.Record{}, ErrNotFound
+		return access.RecoveryRecord{}, ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM sessions WHERE user_id = ?`), value.UserID); err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: revoke sessions: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: revoke sessions: %w", err)
 	}
 	result, err = tx.ExecContext(ctx, s.h.Rebind(`UPDATE password_recovery_grants SET consumed_at = ?
 		WHERE token_hash = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), grantHash)
 	if err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: consume grant: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: consume grant: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return recovery.Record{}, ErrNotFound
+		return access.RecoveryRecord{}, ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE password_recovery_grants SET revoked_at = ?
 		WHERE recovery_id IN (SELECT id FROM password_recoveries WHERE user_id = ?)
 		  AND token_hash <> ? AND consumed_at = 0 AND revoked_at = 0`),
 		epoch(at), value.UserID, grantHash); err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: revoke outstanding grants: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: revoke outstanding grants: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return recovery.Record{}, fmt.Errorf("redeem password recovery: commit: %w", err)
+		return access.RecoveryRecord{}, fmt.Errorf("redeem password recovery: commit: %w", err)
 	}
-	value.Status = recovery.StatusRedeemed
+	value.Status = access.RecoveryRedeemed
 	value.TerminalAt = at
 	return value, nil
 }
@@ -281,26 +281,26 @@ func (s *Store) PurgeTerminalPasswordRecoveries(
 	return int(count), nil
 }
 
-func effectivePasswordRecovery(value recovery.Record, now time.Time) recovery.Record {
-	if value.EffectiveStatus(now) == recovery.StatusExpired {
-		value.Status = recovery.StatusExpired
+func effectivePasswordRecovery(value access.RecoveryRecord, now time.Time) access.RecoveryRecord {
+	if value.EffectiveStatus(now) == access.RecoveryExpired {
+		value.Status = access.RecoveryExpired
 		value.TerminalAt = value.ExpiresAt
 	}
 	return value
 }
 
-func scanPasswordRecovery(sc scannable) (recovery.Record, error) {
-	var value recovery.Record
+func scanPasswordRecovery(sc scannable) (access.RecoveryRecord, error) {
+	var value access.RecoveryRecord
 	var status string
 	var createdAt, expiresAt, terminalAt int64
 	err := sc.Scan(&value.ID, &value.UserID, &status, &createdAt, &expiresAt, &terminalAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return recovery.Record{}, ErrNotFound
+		return access.RecoveryRecord{}, ErrNotFound
 	}
 	if err != nil {
-		return recovery.Record{}, err
+		return access.RecoveryRecord{}, err
 	}
-	value.Status = recovery.Status(status)
+	value.Status = access.RecoveryStatus(status)
 	value.CreatedAt = fromEpoch(createdAt)
 	value.ExpiresAt = fromEpoch(expiresAt)
 	if terminalAt > 0 {
@@ -309,15 +309,15 @@ func scanPasswordRecovery(sc scannable) (recovery.Record, error) {
 	return value, nil
 }
 
-func scanPasswordRecoveryGrant(sc scannable) (recovery.Grant, error) {
-	var value recovery.Grant
+func scanPasswordRecoveryGrant(sc scannable) (access.RecoveryGrant, error) {
+	var value access.RecoveryGrant
 	var createdAt, expiresAt, consumedAt, revokedAt int64
 	err := sc.Scan(&value.TokenHash, &value.RecoveryID, &createdAt, &expiresAt, &consumedAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return recovery.Grant{}, ErrNotFound
+		return access.RecoveryGrant{}, ErrNotFound
 	}
 	if err != nil {
-		return recovery.Grant{}, err
+		return access.RecoveryGrant{}, err
 	}
 	value.CreatedAt = fromEpoch(createdAt)
 	value.ExpiresAt = fromEpoch(expiresAt)

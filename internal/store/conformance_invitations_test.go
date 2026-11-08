@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 )
 
 func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
@@ -66,10 +66,10 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 		t.Fatalf("create reserved local user = %v, want ErrInvitationIdentityConflict", err)
 	}
 
-	linked := invitation.Invitation{
-		ID: "reserved-library", Kind: invitation.KindLibrary, LibraryUserID: "library-user-1",
-		DisplayName: "Katherine", IdentityKey: "library-user-1", Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	linked := access.Invitation{
+		ID: "reserved-library", Kind: access.KindLibrary, LibraryUserID: "library-user-1",
+		DisplayName: "Katherine", IdentityKey: "library-user-1", Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: now, ExpiresAt: now.Add(access.Expiry),
 	}
 	if err := s.CreateInvitation(ctx, linked, nil); err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 		t.Fatalf("get unreserved user: %v", err)
 	}
 
-	expired := localInvitationFixture("expired-reservation", "Annie", now.Add(-invitation.Expiry))
+	expired := localInvitationFixture("expired-reservation", "Annie", now.Add(-access.Expiry))
 	if err := s.CreateInvitation(ctx, expired, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 		t.Fatalf("replace expired reservation: %v", err)
 	}
 	gotExpired, err := s.GetInvitation(ctx, expired.ID, now)
-	if err != nil || gotExpired.Status != invitation.StatusExpired || !gotExpired.TerminalAt.Equal(expired.ExpiresAt) {
+	if err != nil || gotExpired.Status != access.StatusExpired || !gotExpired.TerminalAt.Equal(expired.ExpiresAt) {
 		t.Fatalf("expired reservation = %+v, %v", gotExpired, err)
 	}
 }
@@ -164,18 +164,18 @@ func testInvitationRegenerateAndRevoke(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateInvitation(ctx, value, nil); err != nil {
 		t.Fatal(err)
 	}
-	first := invitation.Grant{
-		TokenHash: invitation.HashGrant("first-plaintext"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
-		CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	first := access.Grant{
+		TokenHash: access.HashGrant("first-plaintext"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceQR,
+		CreatedAt: now, ExpiresAt: now.Add(access.Expiry),
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, first, now); err != nil {
 		t.Fatal(err)
 	}
 	secondAt := now.Add(time.Minute)
-	second := invitation.Grant{
-		TokenHash: invitation.HashGrant("second-plaintext"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+	second := access.Grant{
+		TokenHash: access.HashGrant("second-plaintext"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceCopy,
 		CreatedAt: secondAt, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, second, secondAt); err != nil {
@@ -194,16 +194,16 @@ func testInvitationRegenerateAndRevoke(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	got, err := s.GetInvitation(ctx, value.ID, revokedAt)
-	if err != nil || got.Status != invitation.StatusRevoked || !got.TerminalAt.Equal(revokedAt) {
+	if err != nil || got.Status != access.StatusRevoked || !got.TerminalAt.Equal(revokedAt) {
 		t.Fatalf("revoked invitation = %+v, %v", got, err)
 	}
 	grants, err = s.ListInvitationGrants(ctx, value.ID)
 	if err != nil || grants[1].RevokedAt.IsZero() {
 		t.Fatalf("revoke did not invalidate every outstanding grant: %+v, %v", grants, err)
 	}
-	third := invitation.Grant{
-		TokenHash: invitation.HashGrant("third-plaintext"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+	third := access.Grant{
+		TokenHash: access.HashGrant("third-plaintext"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceCopy,
 		CreatedAt: revokedAt, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, third, revokedAt); !errors.Is(err, ErrNotFound) {
@@ -220,9 +220,9 @@ func testInvitationGrantPreviewDoesNotConsume(t *testing.T, newStore NewStoreFun
 	if err := s.CreateInvitation(ctx, value, nil); err != nil {
 		t.Fatal(err)
 	}
-	grant := invitation.Grant{
-		TokenHash: invitation.HashGrant("preview-plaintext"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
+	grant := access.Grant{
+		TokenHash: access.HashGrant("preview-plaintext"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceQR,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, grant, now); err != nil {
@@ -245,7 +245,7 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 
-	if _, err := s.GetInvitationByGrant(ctx, invitation.HashGrant("unknown"), now); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetInvitationByGrant(ctx, access.HashGrant("unknown"), now); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown grant preview = %v, want ErrNotFound", err)
 	}
 
@@ -253,9 +253,9 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 	if err := s.CreateInvitation(ctx, revoked, nil); err != nil {
 		t.Fatal(err)
 	}
-	revokedGrant := invitation.Grant{
-		TokenHash: invitation.HashGrant("revoked"), InvitationID: revoked.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+	revokedGrant := access.Grant{
+		TokenHash: access.HashGrant("revoked"), InvitationID: revoked.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceCopy,
 		CreatedAt: now, ExpiresAt: revoked.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, revoked.ID, revokedGrant, now); err != nil {
@@ -268,14 +268,14 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 		t.Fatalf("revoked grant preview = %v, want ErrNotFound", err)
 	}
 
-	expiredAt := now.Add(-invitation.Expiry)
+	expiredAt := now.Add(-access.Expiry)
 	expired := localInvitationFixture("preview-expired", "Expired", expiredAt)
 	if err := s.CreateInvitation(ctx, expired, nil); err != nil {
 		t.Fatal(err)
 	}
-	expiredGrant := invitation.Grant{
-		TokenHash: invitation.HashGrant("expired"), InvitationID: expired.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
+	expiredGrant := access.Grant{
+		TokenHash: access.HashGrant("expired"), InvitationID: expired.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceQR,
 		CreatedAt: expiredAt, ExpiresAt: expired.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, expired.ID, expiredGrant, expiredAt); err != nil {
@@ -289,9 +289,9 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 	if err := s.CreateInvitation(ctx, consumed, nil); err != nil {
 		t.Fatal(err)
 	}
-	consumedGrant := invitation.Grant{
-		TokenHash: invitation.HashGrant("consumed"), InvitationID: consumed.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+	consumedGrant := access.Grant{
+		TokenHash: access.HashGrant("consumed"), InvitationID: consumed.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceEmail,
 		CreatedAt: now, ExpiresAt: consumed.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, consumed.ID, consumedGrant, now); err != nil {
@@ -329,9 +329,9 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateInvitation(ctx, value, address); err != nil {
 		t.Fatal(err)
 	}
-	grant := invitation.Grant{
-		TokenHash: invitation.HashGrant("emailed-plaintext"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+	grant := access.Grant{
+		TokenHash: access.HashGrant("emailed-plaintext"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceEmail,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, grant, now); err != nil {
@@ -386,7 +386,7 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("winning grant = %+v, %v", grants, err)
 	}
 	got, err := s.GetInvitation(ctx, value.ID, now.Add(time.Minute))
-	if err != nil || got.Status != invitation.StatusRedeemed || got.RedeemedBy != user.ID {
+	if err != nil || got.Status != access.StatusRedeemed || got.RedeemedBy != user.ID {
 		t.Fatalf("redeemed invitation = %+v, %v", got, err)
 	}
 }
@@ -400,18 +400,18 @@ func testInvitationSiblingGrantLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateInvitation(ctx, value, nil); err != nil {
 		t.Fatal(err)
 	}
-	copyGrant := invitation.Grant{
-		TokenHash: invitation.HashGrant("copied-grant"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+	copyGrant := access.Grant{
+		TokenHash: access.HashGrant("copied-grant"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceCopy,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, value.ID, copyGrant, now); err != nil {
 		t.Fatal(err)
 	}
 	emailAt := now.Add(time.Minute)
-	emailGrant := invitation.Grant{
-		TokenHash: invitation.HashGrant("email-grant"), InvitationID: value.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+	emailGrant := access.Grant{
+		TokenHash: access.HashGrant("email-grant"), InvitationID: value.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceEmail,
 		CreatedAt: emailAt, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.AddInvitationGrant(ctx, value.ID, emailGrant, emailAt); err != nil {
@@ -437,7 +437,7 @@ func testInvitationRetention(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	oldCreated := now.Add(-invitation.Retention - invitation.Expiry - time.Hour)
+	oldCreated := now.Add(-access.Retention - access.Expiry - time.Hour)
 	oldExpired := localInvitationFixture("old-expired", "Old Expired", oldCreated)
 	if err := s.CreateInvitation(ctx, oldExpired, nil); err != nil {
 		t.Fatal(err)
@@ -449,7 +449,7 @@ func testInvitationRetention(t *testing.T, newStore NewStoreFunc) {
 	if err := s.RevokeInvitation(ctx, oldRevoked.ID, oldCreated.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	recentExpired := localInvitationFixture("recent-expired", "Recent Expired", now.Add(-invitation.Expiry))
+	recentExpired := localInvitationFixture("recent-expired", "Recent Expired", now.Add(-access.Expiry))
 	if err := s.CreateInvitation(ctx, recentExpired, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func testInvitationRetention(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	purged, err := s.PurgeTerminalInvitations(ctx, now.Add(-invitation.Retention))
+	purged, err := s.PurgeTerminalInvitations(ctx, now.Add(-access.Retention))
 	if err != nil || purged != 2 {
 		t.Fatalf("purge invitations = %d, %v; want two old terminal decisions", purged, err)
 	}
@@ -474,10 +474,10 @@ func testInvitationRetention(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-func localInvitationFixture(id, username string, now time.Time) invitation.Invitation {
-	return invitation.Invitation{
-		ID: "invitation-" + id, Kind: invitation.KindLocal, Username: username,
-		IdentityKey: invitation.NormalizeLocalIdentity(username), Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+func localInvitationFixture(id, username string, now time.Time) access.Invitation {
+	return access.Invitation{
+		ID: "invitation-" + id, Kind: access.KindLocal, Username: username,
+		IdentityKey: access.NormalizeLocalIdentity(username), Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: now, ExpiresAt: now.Add(access.Expiry),
 	}
 }

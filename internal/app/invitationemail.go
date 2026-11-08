@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -25,7 +25,7 @@ import (
 const notificationWorkerLimit = 100
 
 type invitationDeliveryCoordinator struct {
-	invitations   *invitation.Service
+	invitations   *access.Service
 	notifications *notifications.Service
 }
 
@@ -41,7 +41,7 @@ func (c *invitationDeliveryCoordinator) SendEmail(
 	if err != nil {
 		return notifications.DeliverySummary{}, err
 	}
-	if value.Status != invitation.StatusPending {
+	if value.Status != access.StatusPending {
 		return notifications.DeliverySummary{}, fmt.Errorf("invitation is not pending")
 	}
 	if strings.TrimSpace(requestID) == "" || len(requestID) > 100 || strings.ContainsAny(requestID, "\r\n") {
@@ -72,7 +72,7 @@ func (c *invitationDeliveryCoordinator) LatestEmail(
 }
 
 type invitationEmailRouter struct {
-	invitations  *invitation.Service
+	invitations  *access.Service
 	recovery     *auth.PasswordRecoveryService
 	destinations notifications.DestinationSource
 }
@@ -170,7 +170,7 @@ func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.
 }
 
 type invitationEmailMaterializer struct {
-	invitations *invitation.Service
+	invitations *access.Service
 	recovery    *auth.PasswordRecoveryService
 	contacts    productEmailRecipientReader
 	publicURL   func() string
@@ -255,7 +255,7 @@ func (m invitationEmailMaterializer) Materialize(
 		m.invitations != nil:
 		address, err = m.invitations.Contact(ctx, delivery.Intent.ReferenceID)
 		if err == nil {
-			issued, issueErr := m.invitations.IssueSibling(ctx, delivery.Intent.ReferenceID, invitation.ConveyanceEmail)
+			issued, issueErr := m.invitations.IssueSibling(ctx, delivery.Intent.ReferenceID, access.ConveyanceEmail)
 			err = issueErr
 			issuedPlaintext, expiresAt = issued.Plaintext, issued.ExpiresAt
 			revoke = func(revokeCtx context.Context) error {
@@ -371,7 +371,7 @@ func buildAccountDelivery(
 	repository notifications.Repository,
 	providerAdapters []notifications.Adapter,
 	set resolved,
-	invitationService *invitation.Service,
+	invitationService *access.Service,
 	recoveryService *auth.PasswordRecoveryService,
 	registry *jobs.Registry,
 	log *slog.Logger,

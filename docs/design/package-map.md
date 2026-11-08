@@ -89,10 +89,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/encode` | `platform/config` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `metadataprovider` | — |
+| `people/access` | `people/contact` |
 | `people/contact` | — |
-| `people/invitation` | `people/contact` |
 | `people/notifications` | `platform/httpx` |
-| `people/recovery` | — |
 | `platform/config` | — |
 | `platform/diagnostics` | `platform/storagegovernor` |
 | `platform/holidayvocab` | — |
@@ -108,7 +107,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `proposals`, `proposals/quality`, `provision`, `store`, `tmdb` |
 | `provision` | — |
-| `store` | `channels/schedule`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
+| `store` | `channels/schedule`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
 | `tmdb` | `catalog`, `platform/httpx`, `platform/metrics`, `provision` |
 
 ## How the area pages are made

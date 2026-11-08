@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -169,10 +169,10 @@ func TestCreateLocal_RejectsDuplicateUsername(t *testing.T) {
 
 func TestCreateLocal_RejectsInvitedUsername(t *testing.T) {
 	svc, st := newPasswordService(t)
-	reserved := invitation.Invitation{
-		ID: "invite-grace", Kind: invitation.KindLocal, Username: "Grace",
-		IdentityKey: invitation.NormalizeLocalIdentity("Grace"), Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	reserved := access.Invitation{
+		ID: "invite-grace", Kind: access.KindLocal, Username: "Grace",
+		IdentityKey: access.NormalizeLocalIdentity("Grace"), Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: now, ExpiresAt: now.Add(access.Expiry),
 	}
 	if err := st.CreateInvitation(context.Background(), reserved, nil); err != nil {
 		t.Fatal(err)

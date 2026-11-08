@@ -169,7 +169,7 @@ var areas = []area{
 			"password recovery, contact addresses and notifications, plus the encryption of the secrets " +
 			"Loomarr keeps in its database.",
 		Packages: []string{
-			"people/auth", "people/invitation", "people/recovery", "people/contact",
+			"people/auth", "people/access", "people/contact",
 			"people/secretprotection", "people/notifications",
 		},
 		MayImport: map[string]string{

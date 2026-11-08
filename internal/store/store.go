@@ -17,10 +17,9 @@ import (
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
@@ -622,15 +621,15 @@ type NotificationStore interface {
 
 // InvitationStore owns administrator admission decisions and hashed grants (§11).
 type InvitationStore interface {
-	CreateInvitation(ctx context.Context, value invitation.Invitation, address *contact.Address) error
-	GetInvitation(ctx context.Context, id string, now time.Time) (invitation.Invitation, error)
-	GetInvitationByGrant(ctx context.Context, tokenHash string, now time.Time) (invitation.Invitation, error)
-	ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error)
+	CreateInvitation(ctx context.Context, value access.Invitation, address *contact.Address) error
+	GetInvitation(ctx context.Context, id string, now time.Time) (access.Invitation, error)
+	GetInvitationByGrant(ctx context.Context, tokenHash string, now time.Time) (access.Invitation, error)
+	ListInvitations(ctx context.Context, now time.Time) ([]access.Invitation, error)
 	GetInvitationContactAddress(ctx context.Context, invitationID string) (contact.Address, error)
-	ReplaceInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
-	AddInvitationGrant(ctx context.Context, invitationID string, grant invitation.Grant, at time.Time) error
+	ReplaceInvitationGrant(ctx context.Context, invitationID string, grant access.Grant, at time.Time) error
+	AddInvitationGrant(ctx context.Context, invitationID string, grant access.Grant, at time.Time) error
 	RevokeInvitationGrant(ctx context.Context, tokenHash string, at time.Time) error
-	ListInvitationGrants(ctx context.Context, invitationID string) ([]invitation.Grant, error)
+	ListInvitationGrants(ctx context.Context, invitationID string) ([]access.Grant, error)
 	RevokeInvitation(ctx context.Context, invitationID string, at time.Time) error
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
 	RedeemInvitation(
@@ -639,18 +638,18 @@ type InvitationStore interface {
 		user User,
 		session Session,
 		at time.Time,
-	) (invitation.Invitation, error)
+	) (access.Invitation, error)
 }
 
 // PasswordRecoveryStore owns local-password recovery lifecycles and hashed grants (§11).
 type PasswordRecoveryStore interface {
-	CreatePasswordRecovery(context.Context, recovery.Record) error
-	GetPasswordRecovery(context.Context, string, time.Time) (recovery.Record, error)
-	GetPasswordRecoveryByGrant(context.Context, string, time.Time) (recovery.Record, error)
-	AddPasswordRecoveryGrant(context.Context, string, recovery.Grant, time.Time) error
+	CreatePasswordRecovery(context.Context, access.RecoveryRecord) error
+	GetPasswordRecovery(context.Context, string, time.Time) (access.RecoveryRecord, error)
+	GetPasswordRecoveryByGrant(context.Context, string, time.Time) (access.RecoveryRecord, error)
+	AddPasswordRecoveryGrant(context.Context, string, access.RecoveryGrant, time.Time) error
 	RevokePasswordRecoveryGrant(context.Context, string, time.Time) error
-	ListPasswordRecoveryGrants(context.Context, string) ([]recovery.Grant, error)
-	RedeemPasswordRecovery(context.Context, string, string, time.Time) (recovery.Record, error)
+	ListPasswordRecoveryGrants(context.Context, string) ([]access.RecoveryGrant, error)
+	RedeemPasswordRecovery(context.Context, string, string, time.Time) (access.RecoveryRecord, error)
 	PurgeTerminalPasswordRecoveries(context.Context, time.Time) (int, error)
 }
 

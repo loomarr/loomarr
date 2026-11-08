@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -86,10 +86,10 @@ type createInvitationInput struct {
 type createInvitationOutput struct{ Body invitationBody }
 
 func (s *Server) createInvitation(ctx context.Context, in *createInvitationInput) (*createInvitationOutput, error) {
-	value, err := s.invitations.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.Kind(in.Body.Kind), Username: in.Body.Username,
+	value, err := s.invitations.Create(ctx, access.CreateCommand{
+		Kind: access.Kind(in.Body.Kind), Username: in.Body.Username,
 		LibraryUserID: in.Body.LibraryUserID, ContactEmail: in.Body.ContactEmail,
-		Role: invitation.Role(in.Body.Role),
+		Role: access.Role(in.Body.Role),
 	})
 	if err != nil {
 		return nil, invitationMutationError(err)
@@ -163,7 +163,7 @@ func (s *Server) issueInvitationGrant(ctx context.Context, in *issueInvitationGr
 		return nil, errUnprocessable("Recipient address required",
 			"Set the recipient-reachable address in Settings → General before creating a link.")
 	}
-	issued, err := s.invitations.Regenerate(ctx, in.ID, invitation.Conveyance(in.Body.Conveyance))
+	issued, err := s.invitations.Regenerate(ctx, in.ID, access.Conveyance(in.Body.Conveyance))
 	if err != nil {
 		return nil, invitationMutationError(err)
 	}
@@ -203,7 +203,7 @@ func (s *Server) revokeInvitation(ctx context.Context, in *invitationIDInput) (*
 	return &struct{}{}, nil
 }
 
-func (s *Server) invitationResponse(ctx context.Context, value invitation.Invitation) (invitationBody, error) {
+func (s *Server) invitationResponse(ctx context.Context, value access.Invitation) (invitationBody, error) {
 	body := invitationBody{
 		ID: value.ID, Kind: string(value.Kind), Username: value.Username,
 		LibraryUserID: value.LibraryUserID, DisplayName: value.DisplayName,

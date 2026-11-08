@@ -19,11 +19,10 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -984,11 +983,11 @@ type PasswordService interface {
 // InvitationService is the narrow administrator-facing seam of the Invitation module.
 // Durable grant hashes and provider lookup mechanics remain behind it.
 type InvitationService interface {
-	Create(context.Context, invitation.CreateCommand) (invitation.Invitation, error)
-	Get(context.Context, string) (invitation.Invitation, error)
-	List(context.Context) ([]invitation.Invitation, error)
+	Create(context.Context, access.CreateCommand) (access.Invitation, error)
+	Get(context.Context, string) (access.Invitation, error)
+	List(context.Context) ([]access.Invitation, error)
 	Contact(context.Context, string) (contact.Address, error)
-	Regenerate(context.Context, string, invitation.Conveyance) (invitation.IssuedGrant, error)
+	Regenerate(context.Context, string, access.Conveyance) (access.IssuedGrant, error)
 	Revoke(context.Context, string) error
 }
 
@@ -1002,7 +1001,7 @@ type InvitationDeliveryService interface {
 // InvitationRedemptionService is the public credential-proof seam. Bearers are
 // accepted only in request bodies and never enter a route, query, or durable DTO.
 type InvitationRedemptionService interface {
-	Preview(context.Context, string) (invitation.Invitation, error)
+	Preview(context.Context, string) (access.Invitation, error)
 	RedeemLocal(context.Context, string, string) (string, time.Time, identitystore.User, error)
 	RedeemLibrary(context.Context, string, string, string) (string, time.Time, identitystore.User, error)
 }
@@ -1011,7 +1010,7 @@ type InvitationRedemptionService interface {
 // Bearers remain body-only and successful reset deliberately issues no replacement session.
 type PasswordRecoveryService interface {
 	Request(context.Context, string, string) error
-	Preview(context.Context, string, string) (recovery.Record, error)
+	Preview(context.Context, string, string) (access.RecoveryRecord, error)
 	Redeem(context.Context, string, string, string) error
 }
 

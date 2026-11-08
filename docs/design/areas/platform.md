@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **people** · 12 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention
+- **people** · 9 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention
 - **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
 - **library** · 5 imports — the store persists inventory, provision and episode-evidence values, and settings parses the media-server connection
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
@@ -29,7 +29,7 @@ One area of the [package map](../package-map.md#start-here).
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`platform/holidayvocab`** · 8 importers · → `platform/textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
-- **`platform/housekeeping`** · 1 importer · → `people/invitation`, `people/notifications`, `people/recovery`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
+- **`platform/housekeeping`** · 1 importer · → `people/access`, `people/notifications`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`platform/httpx`** · 13 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
@@ -59,11 +59,11 @@ One area of the [package map](../package-map.md#start-here).
   Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`platform/web`** · 1 importer
   Embeds the built SPA and serves it same-origin at / (main doc §12).
-- **`store`** · 17 importers · → `channels/schedule`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`store`** · 17 importers · → `channels/schedule`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`store/catalogstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
-- **`store/identitystore`** · 4 importers · → `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `store/storedb`
+- **`store/identitystore`** · 4 importers · → `people/access`, `people/contact`, `people/notifications`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`store/storedb`** · 4 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.

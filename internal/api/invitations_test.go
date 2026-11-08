@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -32,9 +32,9 @@ func newInvitationHarness(t *testing.T, config invitationHarnessConfig) *invitat
 	now := time.Unix(1_900_000_000, 0).UTC()
 	bearer := strings.Repeat("a", 64)
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		service := invitation.NewService(
+		service := access.NewService(
 			defaults.Store,
-			testkit.LibraryAccountResolver{Accounts: map[string]invitation.LibraryAccount{
+			testkit.LibraryAccountResolver{Accounts: map[string]access.LibraryAccount{
 				"library-42": {ID: "library-42", Name: "Adela Hale"},
 			}},
 			func() string { return "invitation-1" },

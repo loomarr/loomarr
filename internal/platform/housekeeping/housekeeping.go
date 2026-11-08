@@ -18,9 +18,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -136,7 +135,7 @@ func (s *Service) PurgeNotifications(ctx context.Context) (int, error) {
 // PurgeInvitations applies the fixed §11 audit window to terminal and long-expired admission
 // decisions. Active Invitations remain available for redemption.
 func (s *Service) PurgeInvitations(ctx context.Context) (int, error) {
-	n, err := s.store.PurgeTerminalInvitations(ctx, s.now().Add(-invitation.Retention))
+	n, err := s.store.PurgeTerminalInvitations(ctx, s.now().Add(-access.Retention))
 	if err != nil {
 		return 0, err
 	}
@@ -148,7 +147,7 @@ func (s *Service) PurgeInvitations(ctx context.Context) (int, error) {
 
 // PurgePasswordRecoveries applies the same fixed 30-day account-security audit window.
 func (s *Service) PurgePasswordRecoveries(ctx context.Context) (int, error) {
-	n, err := s.store.PurgeTerminalPasswordRecoveries(ctx, s.now().Add(-recovery.Retention))
+	n, err := s.store.PurgeTerminalPasswordRecoveries(ctx, s.now().Add(-access.RecoveryRetention))
 	if err != nil {
 		return 0, err
 	}

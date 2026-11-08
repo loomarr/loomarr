@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -21,8 +21,8 @@ var (
 // InvitationRedemptionStore is the complete durable authority needed by the
 // public activation flow. Redemption itself remains one store transaction.
 type InvitationRedemptionStore interface {
-	GetInvitationByGrant(context.Context, string, time.Time) (invitation.Invitation, error)
-	RedeemInvitation(context.Context, string, identitystore.User, identitystore.Session, time.Time) (invitation.Invitation, error)
+	GetInvitationByGrant(context.Context, string, time.Time) (access.Invitation, error)
+	RedeemInvitation(context.Context, string, identitystore.User, identitystore.Session, time.Time) (access.Invitation, error)
 }
 
 // InvitationRedemptionService proves the invited credential before asking the
@@ -50,14 +50,14 @@ func NewInvitationRedemptionService(
 
 // Preview resolves a usable bearer without consuming it or creating allowlist
 // state. Possession of the bearer authorizes seeing its reserved identity.
-func (s *InvitationRedemptionService) Preview(ctx context.Context, bearer string) (invitation.Invitation, error) {
+func (s *InvitationRedemptionService) Preview(ctx context.Context, bearer string) (access.Invitation, error) {
 	grantHash, err := invitationGrantHash(bearer)
 	if err != nil {
-		return invitation.Invitation{}, err
+		return access.Invitation{}, err
 	}
 	value, err := s.store.GetInvitationByGrant(ctx, grantHash, s.now())
 	if errors.Is(err, store.ErrNotFound) {
-		return invitation.Invitation{}, ErrInvalidInvitation
+		return access.Invitation{}, ErrInvalidInvitation
 	}
 	return value, err
 }
@@ -71,7 +71,7 @@ func (s *InvitationRedemptionService) RedeemLocal(
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
-	if value.Kind != invitation.KindLocal {
+	if value.Kind != access.KindLocal {
 		return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 	}
 	if len(password) < MinPasswordLen {
@@ -90,7 +90,7 @@ func (s *InvitationRedemptionService) RedeemLocal(
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
-	if _, err := s.store.RedeemInvitation(ctx, invitation.HashGrant(bearer), user, session, at); err != nil {
+	if _, err := s.store.RedeemInvitation(ctx, access.HashGrant(bearer), user, session, at); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 		}
@@ -109,7 +109,7 @@ func (s *InvitationRedemptionService) RedeemLibrary(
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
-	if value.Kind != invitation.KindLibrary {
+	if value.Kind != access.KindLibrary {
 		return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 	}
 	if s.lib == nil {
@@ -138,7 +138,7 @@ func (s *InvitationRedemptionService) RedeemLibrary(
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
-	if _, err := s.store.RedeemInvitation(ctx, invitation.HashGrant(bearer), user, session, at); err != nil {
+	if _, err := s.store.RedeemInvitation(ctx, access.HashGrant(bearer), user, session, at); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 		}
@@ -152,5 +152,5 @@ func invitationGrantHash(bearer string) (string, error) {
 	if err != nil || len(decoded) != 32 {
 		return "", ErrInvalidInvitation
 	}
-	return invitation.HashGrant(bearer), nil
+	return access.HashGrant(bearer), nil
 }
