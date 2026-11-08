@@ -77,6 +77,7 @@ cat >"${test_root}/mock-bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
+  *'/compare/main...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'*) printf '%s\n' "${MOCK_COMPARE_STATUS:-behind}" ;;
   *'/actions/runs?'*) cat "${MOCK_RUNS}" ;;
   *'/actions/runs/12345/jobs'*) cat "${MOCK_JOBS}" ;;
   *'/actions/runs/12345/artifacts'*) cat "${MOCK_ARTIFACTS}" ;;
@@ -100,7 +101,8 @@ got=$(
   MOCK_RUNS="${test_root}/runs.json" \
   MOCK_JOBS="${test_root}/jobs.json" \
   MOCK_ARTIFACTS="${test_root}/artifacts.json" \
-  GH_TOKEN=test REPO=loomarr/loomarr GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  GH_TOKEN=test REPO=loomarr/loomarr GITHUB_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+  PRODUCER_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     "${promotion}" locate
 )
 want=$'found=true\nrun-id=12345\nartifact-id=987\nartifact-name=loomarr-android-ccache-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-12345'
@@ -109,13 +111,30 @@ if [[ "${got}" != "${want}" ]]; then
   exit 1
 fi
 
+# A merge group can pass CI and still be discarded by the queue; its cache never belongs to main.
+for status in ahead diverged; do
+  got=$(
+    PATH="${test_root}/mock-bin:${PATH}" \
+    MOCK_COMPARE_STATUS="${status}" \
+    MOCK_RUNS="${test_root}/runs.json" \
+    MOCK_JOBS="${test_root}/jobs.json" \
+    MOCK_ARTIFACTS="${test_root}/artifacts.json" \
+    GH_TOKEN=test REPO=loomarr/loomarr PRODUCER_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      "${promotion}" locate
+  )
+  [[ "${got}" == 'found=false' ]] || {
+    printf 'android-ccache-promotion-test: producer %s of main got %s\n' "${status}" "${got}" >&2
+    exit 1
+  }
+done
+
 jq '.jobs[0].conclusion = "skipped"' "${test_root}/jobs.json" >"${test_root}/jobs-skipped.json"
 got=$(
   PATH="${test_root}/mock-bin:${PATH}" \
   MOCK_RUNS="${test_root}/runs.json" \
   MOCK_JOBS="${test_root}/jobs-skipped.json" \
   MOCK_ARTIFACTS="${test_root}/artifacts.json" \
-  GH_TOKEN=test REPO=loomarr/loomarr GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  GH_TOKEN=test REPO=loomarr/loomarr PRODUCER_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     "${promotion}" locate
 )
 [[ "${got}" == 'found=false' ]] || {
@@ -129,7 +148,7 @@ if PATH="${test_root}/mock-bin:${PATH}" \
   MOCK_RUNS="${test_root}/runs-ambiguous.json" \
   MOCK_JOBS="${test_root}/jobs.json" \
   MOCK_ARTIFACTS="${test_root}/artifacts.json" \
-  GH_TOKEN=test REPO=loomarr/loomarr GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  GH_TOKEN=test REPO=loomarr/loomarr PRODUCER_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     "${promotion}" locate >/dev/null 2>&1; then
   echo 'android-ccache-promotion-test: locate accepted ambiguous merge-group runs' >&2
   exit 1

@@ -470,8 +470,9 @@ comparison regressed from 16m15s to 19m07s without adding cache hits. Set
 GitHub scopes pull-request caches to their merge refs and merge-queue caches to disposable queue
 refs, so neither can warm the next queue candidate. After a successful Android queue producer lands,
 it instead hands its bounded ccache tree to `android-ccache-promotion.yml` through a one-day immutable
-artifact. The queue-produced `push` to the exact same main commit is the trusted publisher: it proves
-the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
+artifact. The promotion starts when that merge-group `CI` run completes successfully (`workflow_run`),
+because the run can finish after the merge (#2288). It publishes only a commit main already contains,
+and proves the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
 It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
 requests, and queue jobs restore but never spend time saving an unreachable cache.
