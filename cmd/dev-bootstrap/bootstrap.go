@@ -1,6 +1,7 @@
-// Package devbootstrap prepares an isolated agent worktree for UI development.
-// It is invoked by the repository harness, never by the application at startup.
-package devbootstrap
+package main
+
+// The preparation itself: an isolated agent worktree for UI development. It is invoked by the
+// repository harness, never by the application at startup.
 
 import (
 	"context"

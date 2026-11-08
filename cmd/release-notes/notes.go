@@ -1,6 +1,7 @@
-// Package releasenotes categorizes GitHub-generated release notes without allowing
-// a language model to invent release content.
-package releasenotes
+package main
+
+// The notes model: GitHub-generated release notes are categorized without allowing a language
+// model to invent release content.
 
 import (
 	"bufio"

@@ -27,7 +27,7 @@ cmd/demo-library	24
 internal/provisionbackstop	23
 internal/people/invitation	20
 internal/channels/approval	19
-internal/platform/devbootstrap	17
+cmd/dev-bootstrap	17
 internal	15
 internal/playout/backendtransition	15
 internal/channels/recurate	14

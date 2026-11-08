@@ -1,4 +1,4 @@
-package devbootstrap
+package main
 
 import (
 	"context"

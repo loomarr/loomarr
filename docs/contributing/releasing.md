@@ -75,7 +75,7 @@ runs `scripts/check-release-docs-gate.sh` right after it renders the notes and b
 the GitHub Release. It fails that workflow — publishing no Release — when the rendered notes
 contain a New Features, Improvements, Bug Fixes, or Security Fixes entry and the tag range
 touched nothing under `docs/`, `docs-site/`, or `README.md`. It reuses the same seven-category
-classification the release notes already show (`internal/platform/releasenotes`) rather than a second
+classification the release notes already show (`cmd/release-notes`) rather than a second
 taxonomy, and it is unconditional like every other step in that workflow: fixing the docs, or
 the PR classification that misled it, is the only way past it. A release that only ships
 Documentation, Dependencies, or Maintenance changes is not held to a docs change it has no

@@ -11,7 +11,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/config"
-	"github.com/loomarr/loomarr/internal/platform/devbootstrap"
 )
 
 func main() {
@@ -19,7 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("dev-bootstrap: load config: %v", err)
 	}
-	if err := devbootstrap.ValidateTarget(os.Getenv("LOOMARR_REPO_ROOT"), cfg.DatabaseURL); err != nil {
+	if err := ValidateTarget(os.Getenv("LOOMARR_REPO_ROOT"), cfg.DatabaseURL); err != nil {
 		log.Fatalf("dev-bootstrap: %v", err)
 	}
 	if err := ensureDevEncryptionKey(cfg.DataDir); err != nil {
@@ -32,7 +31,7 @@ func main() {
 	}
 	defer func() { _ = st.Close() }()
 
-	result, err := devbootstrap.Ensure(ctx, st)
+	result, err := Ensure(ctx, st)
 	if err != nil {
 		log.Fatalf("dev-bootstrap: %v", err)
 	}
