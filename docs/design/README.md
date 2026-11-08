@@ -38,7 +38,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [dependencies](dependencies.md) | every dependency and bundled tool, with its reason | 14 | here |
 | [package-map](package-map.md) | generated area index with the two main flows; each area's packages and imports are on its own page in [areas/](areas/) | 2 (map), 14.2 | here |
 | [acquisition](acquisition.md) | title identity, provisioning state machine, requesters, outbound client rules | 3, 4, 6 | here |
-| [library](library.md) | media-server contract, media inventory, series episode cache, search | 5 (inventory), 6, 7.2 | here |
+| [library](library.md) | media-server contract, media inventory, series episodes, search | 5 (inventory), 6, 7.2 | here |
 | [storage](storage.md) | one store with two backends, Postgres concurrency, retention, backup | 5, 16 (backup) | here |
 | [suggester](suggester.md) | grounding, reference-backed Intent, explicit policy, providers, model selection and residency | 6 (reference source), 8, 8.1, 8.2 | here |
 | [proposal-workflow](proposal-workflow.md) | approval ordering, Proposal Jobs, the Journey, failures, date interpretation, decision traces | 8 (execution, human-in-the-loop, traces) | here |
