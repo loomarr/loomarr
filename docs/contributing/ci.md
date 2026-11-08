@@ -713,10 +713,19 @@ that do not consume it. Fresh consecutive merge-group passes remain required.
 
 The weights are now regenerated, never hand-kept: `make go-race-weights RUNS="..."`
 (`scripts/go-race-weights-refresh.sh`) takes the median `ok` time of every package across the
-successful race-lane jobs of the given merge-group runs, rounded up. Regenerated from runs
+race-lane jobs of the given merge-group runs, rounded up. A lane that timed out still counts for the
+packages that finished in it: `ok` is printed only for a whole run, and the lane over its timeout is
+the one that needs re-measuring. Regenerated from runs
 36330002206, 36330402570, 36330935829, 36331908558 and 36333318208 (#1570), the real costs were
 about 2.4× the earlier weights (`internal/platform/store` 516s against 242), and the old unitless budgets
 had been passing on those stale inputs.
+
+Race lanes build modernc's SQLite with `-gcflags=modernc.org/...=-d=checkptr=0`
+(`scripts/go-test-packages.sh`). `-race` turns on checkptr everywhere, and modernc is C translated to
+Go, with unsafe pointer arithmetic on nearly every line: checkptr there doubled the cost of every
+migration (#2716). The race detector still instruments modernc, and checkptr stays on for every other
+package. Tests copy a migrated SQLite template rather than migrating a fresh file
+(`testkit.MigratedSQLiteDSN`, enforced by `internal/migratedstore_test.go`).
 
 The budgets derive from #1570's target, a Go-only merge-queue run in at most ten minutes
 (`./scripts/go-shard.sh --budgets`). The measured queue time outside a lane's test step is 131s:
