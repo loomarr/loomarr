@@ -179,6 +179,16 @@ type ClassProbeConfig struct {
 	// Curve is the tone curve the live chain maps HDR with; the HDR cells are keyed by it. Empty =
 	// Hable.
 	Curve ToneCurve
+	// now times the progress samples; nil is time.Now (a test seam: a fixture's speed must not
+	// depend on how loaded the machine running the test is).
+	now func() time.Time
+}
+
+func (cfg ClassProbeConfig) clock() func() time.Time {
+	if cfg.now == nil {
+		return time.Now
+	}
+	return cfg.now
 }
 
 func (cfg ClassProbeConfig) curve() ToneCurve {
@@ -560,14 +570,15 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 	run := cfg.Manager.Begin(diagnostics.ProcessSpec{
 		Purpose: "capacity_probe", Target: fmt.Sprintf("%s@%dp", class, height), Executable: cfg.FFmpeg, Args: args,
 	})
-	start := time.Now()
+	now := cfg.clock()
+	start := now()
 	if err := proctree.StartAtNice(cmd, probeNice); err != nil {
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}
 		return ClassCost{}, err
 	}
-	samples := readProbeSamples(stdout, start, cmd.Process.Pid)
+	samples := readProbeSamples(stdout, func() time.Duration { return now().Sub(start) }, cmd.Process.Pid)
 	waitErr := cmd.Wait()
 	windowEnded := errors.Is(ctx.Err(), context.DeadlineExceeded)
 	if run != nil {
@@ -590,7 +601,8 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 	return cost, nil
 }
 
-func readProbeSamples(r io.Reader, start time.Time, pid int) []probeSample {
+// readProbeSamples reads ffmpeg's progress, timing each sample by elapsed (wall time since start).
+func readProbeSamples(r io.Reader, elapsed func() time.Duration, pid int) []probeSample {
 	var samples []probeSample
 	var out time.Duration
 	scanner := bufio.NewScanner(r)
@@ -608,7 +620,7 @@ func readProbeSamples(r io.Reader, start time.Time, pid int) []probeSample {
 			if out <= 0 {
 				continue
 			}
-			s := probeSample{wall: time.Since(start), out: out}
+			s := probeSample{wall: elapsed(), out: out}
 			s.cpu, s.hasC = processCPUTime(pid)
 			samples = append(samples, s)
 		}
