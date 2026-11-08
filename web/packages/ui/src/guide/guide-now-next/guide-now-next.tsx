@@ -77,11 +77,10 @@ const NowNextItem = ({
       : row.next
         ? guideAiringLabel(row.next)
         : "Later tonight";
-  const spoken = `${number} ${name}. On now: ${row.title}.${
-    row.next ? ` Next at ${nextTime}: ${guideAiringLabel(row.next)}` : ""
-  }`;
+  // No label of its own: the row is named by what it draws, so a voice-control user can say what
+  // they see (WCAG 2.5.3). A written label added words that are not on screen ("On now", "Next at").
   return (
-    <Pressable accessibilityLabel={spoken} accessibilityRole="button" onPress={() => onWatch(channelId)}>
+    <Pressable accessibilityRole="button" onPress={() => onWatch(channelId)}>
       <Surface
         backgroundColor="surfaceRaised"
         borderColor="borderDecorative"
