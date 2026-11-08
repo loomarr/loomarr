@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   channelNumber,
+  countryLabel,
   formatAgo,
   formatClipDuration,
   formatCompactCount,
@@ -21,6 +22,7 @@ import {
   parseMmSs,
   pluralize,
   tidyGoDuration,
+  topicLabel,
 } from "./format";
 
 describe("Go-duration wire strings", () => {
@@ -282,6 +284,27 @@ describe("humanizeRelaxation", () => {
       from: "5m",
       to: "none",
     });
+  });
+});
+
+describe("countryLabel", () => {
+  it("spells a country code out", () => {
+    expect(countryLabel("CA")).toBe("Canada");
+    expect(countryLabel("us")).toBe("United States");
+  });
+
+  it("shows an unknown code as written rather than blanking it", () => {
+    expect(countryLabel("ZZ")).toBe("Unknown Region");
+    expect(countryLabel("")).toBe("");
+    expect(countryLabel("Canada")).toBe("Canada");
+  });
+});
+
+describe("topicLabel", () => {
+  it("turns slugs into words", () => {
+    expect(topicLabel("family-cue")).toBe("Family cue");
+    expect(topicLabel("fast_food")).toBe("Fast food");
+    expect(topicLabel("toys")).toBe("Toys");
   });
 });
 

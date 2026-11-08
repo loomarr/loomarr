@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The two legal channel broadcast codecs (§9.1 V50). Kept as plain strings to match
@@ -224,7 +225,7 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, ch.IntentJSON, ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
+	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
 		epoch(ch.PlayoutAnchor), epoch(ch.ReconcileDeadline), ch.UpdatedAt}
@@ -472,7 +473,7 @@ func scanChannel(sc scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.IntentJSON, &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

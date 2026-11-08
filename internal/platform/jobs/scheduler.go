@@ -463,6 +463,31 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 	return out, nil
 }
 
+// Starved returns the overdue jobs that have waited past their next run by more than twice their
+// own interval, in registration order. It is the Current Health reading of Overdue: one late
+// claim is ordinary queueing, two missed intervals means a worker is not getting to the job.
+//
+// ⚠ The interval is the job's OWN cadence (the gap from its due tick to the tick after), so an
+// every-minute sweep counts as starved after minutes while a weekly scan is given two weeks.
+func (s *Scheduler) Starved(ctx context.Context) ([]JobStatus, error) {
+	statuses, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	var out []JobStatus
+	for _, status := range statuses {
+		if !status.Overdue {
+			continue
+		}
+		interval := s.nextRun(s.jobs[status.Name], status.NextRun).Sub(status.NextRun)
+		if interval > 0 && now.Sub(status.NextRun) > 2*interval {
+			out = append(out, status)
+		}
+	}
+	return out, nil
+}
+
 func (s *Scheduler) setRunning(name string, v bool) {
 	s.mu.Lock()
 	s.running[name] = v
