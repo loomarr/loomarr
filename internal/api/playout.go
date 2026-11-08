@@ -271,7 +271,7 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		if r.Context().Err() != nil {
 			return
 		}
-		s.log.Warn("playout: second session produced no startup transport", "channel", channelID,
+		s.log.Error("playout: second session produced no startup transport", "channel", channelID,
 			"err", startErr)
 		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
 			"Loomarr couldn't produce media for this channel in time.")
@@ -319,7 +319,7 @@ func (s *Server) writeRawTuneError(w http.ResponseWriter, r *http.Request, chann
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy", atCapacityDetail)
 		return
 	}
-	s.log.Warn("playout: attach failed", "channel", channelID, "err", err)
+	s.log.Error("playout: attach failed", "channel", channelID, "err", err)
 	s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
 		"Loomarr couldn't start encoding this channel. Check the playout log for details.")
 }
@@ -562,7 +562,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 			// is not a failure. The metrics middleware counts it as 499, not a 5xx.
 			s.log.Debug("playout: hls playlist cancelled by client", "channel", channelID)
 		} else {
-			s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
+			s.log.Error("playout: hls playlist failed", "channel", channelID, "err", err)
 		}
 		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel", "Loomarr couldn't start this channel's in-app stream.")
 		return

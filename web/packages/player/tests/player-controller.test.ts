@@ -7,6 +7,7 @@ import {
   playableCatalog,
 } from "@loomarr/player";
 import { describe, expect, it, vi } from "vitest";
+import { ServerUnreachable, StartFailure } from "../src/start-failure";
 
 const channels: PlayerChannel[] = [
   { id: "thirty", inAppPlayable: true, name: "Thirty", number: 30 },
@@ -316,6 +317,70 @@ describe("player controller", () => {
     await controller.retry();
     expect(controller.getSnapshot()).toMatchObject({ status: "tuning", tuneReason: "retry" });
     expect(source.mint).toHaveBeenCalledTimes(2);
+  });
+
+  describe("what stopped the picture", () => {
+    it("is the server when the play URL can't be minted, and Retry asks for a play URL again", async () => {
+      const source: PlayerSourcePort = {
+        mint: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("Service Unavailable"))
+          .mockResolvedValueOnce({ uri: "https://loomarr.test/ten.m3u8" }),
+      };
+      const { controller } = harness(source);
+
+      await controller.reconcile(channels);
+      expect(controller.getSnapshot()).toMatchObject({ failureCause: "server", status: "failed" });
+
+      await controller.retry();
+      expect(source.mint).toHaveBeenCalledTimes(2);
+      expect(controller.getSnapshot().failureCause).toBeUndefined();
+    });
+
+    it("is the server when the start request can't reach it", async () => {
+      const source: PlayerSourcePort = {
+        mint: vi.fn().mockResolvedValue({ uri: "https://loomarr.test/ten.m3u8" }),
+        start: vi.fn().mockRejectedValue(new ServerUnreachable()),
+      };
+      const { controller } = harness(source, { recovery: { backoffMs: [] } });
+
+      await controller.reconcile(channels);
+
+      expect(controller.getSnapshot()).toMatchObject({ failureCause: "server", status: "failed" });
+    });
+
+    it("is the channel when the server answered but the channel never started", async () => {
+      const source: PlayerSourcePort = {
+        mint: vi.fn().mockResolvedValue({ uri: "https://loomarr.test/ten.m3u8" }),
+        start: vi.fn().mockRejectedValue(new StartFailure("No encoder ran.", 502)),
+      };
+      const { controller } = harness(source);
+
+      await controller.reconcile(channels);
+
+      expect(controller.getSnapshot()).toMatchObject({ failureCause: "channel", status: "failed" });
+    });
+
+    it("is the channel when the transport reports a refused start", async () => {
+      const { controller, emit } = harness();
+      await controller.reconcile(channels);
+      const attemptId = controller.getSnapshot().attemptId ?? 0;
+
+      emit({ attemptId, error: "No encoder ran.", startStatus: 503, type: "error" });
+
+      expect(controller.getSnapshot()).toMatchObject({ failureCause: "channel", status: "failed" });
+    });
+
+    it("is the stream when playback ends after it had started", async () => {
+      const { controller, emit } = harness(undefined, { recovery: { backoffMs: [] } });
+      await controller.reconcile(channels);
+      const attemptId = controller.getSnapshot().attemptId ?? 0;
+      emit({ attemptId, type: "playing" });
+
+      emit({ attemptId, error: "The stream stopped. Try again in a moment.", type: "error" });
+
+      expect(controller.getSnapshot()).toMatchObject({ failureCause: "stream", status: "failed" });
+    });
   });
 
   it("aborts tuning and pauses when the playable catalog becomes empty", async () => {
