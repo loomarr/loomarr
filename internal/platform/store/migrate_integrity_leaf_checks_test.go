@@ -42,6 +42,8 @@ func TestIntegrityLeafChecksMigration(t *testing.T) {
 	for _, table := range integrityLeafRebuilt {
 		before[table] = tableShape(t, db, table)
 	}
+	// The one column the migration drops: it only ever held 'ready'.
+	before["filler_ready_events"] = strings.Replace(before["filler_ready_events"], "outcome TEXT 1 'ready' 0; ", "", 1)
 	for _, stmt := range []string{
 		`INSERT INTO library_files (path, root, size_bytes, modified_ns, kind, seen_at_ms) VALUES ('/m/a.mkv', '/m', 1, 1, '', 1)`,
 		`INSERT INTO filler_curated_offers (source_id, list_version, offered_at) VALUES ('s1', 'v1', 1)`,

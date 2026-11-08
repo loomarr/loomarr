@@ -22,8 +22,8 @@ ALTER TABLE filler_curated_offers ADD CONSTRAINT filler_curated_offers_local_sta
     CHECK (local_state IN ('', 'on', 'operator', 'off'));
 ALTER TABLE filler_enrichment_axes ADD CONSTRAINT filler_enrichment_axes_state_check
     CHECK (state IN ('complete', 'unsupported', 'stale'));
-ALTER TABLE filler_ready_events ADD CONSTRAINT filler_ready_events_outcome_check
-    CHECK (outcome IN ('ready'));
+-- outcome only ever held 'ready' (every row is a clip becoming ready).
+ALTER TABLE filler_ready_events DROP COLUMN outcome;
 ALTER TABLE interactive_operations
     ADD CONSTRAINT interactive_operations_kind_check CHECK (kind IN ('filler_split', 'llm_pull')),
     ADD CONSTRAINT interactive_operations_status_check CHECK (status IN ('queued', 'running', 'success', 'error'));

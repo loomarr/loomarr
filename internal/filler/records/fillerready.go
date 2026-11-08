@@ -49,15 +49,15 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var existingClip, existingAcquisition, existingKind, existingRef, existingPlacement, existingOutcome string
+	var existingClip, existingAcquisition, existingKind, existingRef, existingPlacement string
 	readyEventExists := false
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT clip_hash, acquisition_id, enrollment_kind,
-		enrollment_ref, placement, outcome FROM filler_ready_events WHERE id = ?`), e.ID).
-		Scan(&existingClip, &existingAcquisition, &existingKind, &existingRef, &existingPlacement, &existingOutcome)
+		enrollment_ref, placement FROM filler_ready_events WHERE id = ?`), e.ID).
+		Scan(&existingClip, &existingAcquisition, &existingKind, &existingRef, &existingPlacement)
 	if err == nil {
 		if existingClip == e.ClipHash && existingAcquisition == e.AcquisitionID &&
 			existingKind == string(e.Enrollment.Kind) && existingRef == e.Enrollment.Reference &&
-			existingPlacement == string(e.Placement) && existingOutcome == "ready" {
+			existingPlacement == string(e.Placement) {
 			readyEventExists = true
 		} else {
 			return fmt.Errorf("%w: ready event id conflicts", filler.ErrReadyStale)
@@ -138,8 +138,8 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 
 	if !readyEventExists {
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_ready_events
-			(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, outcome, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)`), e.ID, e.ClipHash, e.AcquisitionID,
+			(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`), e.ID, e.ClipHash, e.AcquisitionID,
 			string(e.Enrollment.Kind), e.Enrollment.Reference, string(e.Placement), epoch(e.CreatedAt)); err != nil {
 			return fmt.Errorf("record filler ready event %s: %w", e.ID, err)
 		}

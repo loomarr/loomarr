@@ -1436,7 +1436,6 @@ A record written when a clip becomes ready to air, at the same moment it joins t
 | `enrollment_kind` | What let the clip into filler: acquisition (a download run) or source (a clip folder or source the operator chose). | `TEXT` |
 | `enrollment_ref` | The download run id or source id behind enrollment_kind. | `TEXT` |
 | `placement` | Where it may be scheduled, break_body or bookend. | `TEXT` |
-| `outcome` | The outcome recorded; always ready. | `TEXT` |
 | `created_at` | When the clip became ready, in Unix seconds. | `INTEGER` |
 
 ### filler_curated_offers

@@ -226,7 +226,7 @@ SELECT clip_hash, axis, state, value_json, evidence_kind, evidence_rank,
 DROP TABLE filler_enrichment_axes_old;
 CREATE INDEX idx_filler_enrichment_axes_state_axis ON filler_enrichment_axes (state, axis);
 
--- filler_ready_events
+-- filler_ready_events: outcome only ever held 'ready' (every row is a clip becoming ready), so it goes
 DROP INDEX idx_filler_ready_events_recent;
 DROP INDEX idx_filler_ready_events_clip;
 ALTER TABLE filler_ready_events RENAME TO filler_ready_events_old;
@@ -237,13 +237,12 @@ CREATE TABLE filler_ready_events (
     enrollment_kind TEXT    NOT NULL,
     enrollment_ref  TEXT    NOT NULL,
     placement       TEXT    NOT NULL,
-    outcome         TEXT    NOT NULL DEFAULT 'ready' CHECK (outcome IN ('ready')),
     created_at      INTEGER NOT NULL
 );
 INSERT INTO filler_ready_events (id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref,
-    placement, outcome, created_at)
+    placement, created_at)
 SELECT id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref,
-    placement, outcome, created_at
+    placement, created_at
   FROM filler_ready_events_old;
 DROP TABLE filler_ready_events_old;
 CREATE INDEX idx_filler_ready_events_recent ON filler_ready_events (created_at DESC, id DESC);

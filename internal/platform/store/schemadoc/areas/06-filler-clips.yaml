@@ -461,7 +461,6 @@ tables:
         source the operator chose).
       enrollment_ref: The download run id or source id behind enrollment_kind.
       placement: Where it may be scheduled, break_body or bookend.
-      outcome: The outcome recorded; always ready.
       created_at: When the clip became ready, in Unix seconds.
 
   - name: filler_curated_offers
