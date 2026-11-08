@@ -1,7 +1,6 @@
 import type { SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelSeriesScope } from "./channel-series-scope";
 
@@ -36,9 +35,7 @@ const withStubbedSearch = (): Decorator => (Story) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <Story />
-      </TooltipProvider>
+      <Story />
     </QueryClientProvider>
   );
 };

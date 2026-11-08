@@ -135,6 +135,8 @@ export {
   semanticThemes,
   typography,
 } from "./src/tokens";
+export type { TooltipProps } from "./src/tooltip";
+export { Tooltip } from "./src/tooltip";
 export type { ViewportInsets } from "./src/viewport";
 export {
   emptyViewportInsets,

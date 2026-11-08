@@ -2,7 +2,7 @@ import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { ListDiagnosticProcessesParams } from "@loomarr/api/models/listDiagnosticProcessesParams";
 import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosticProcessesStatus";
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { StatusDot, type StatusTone, Tooltip } from "@loomarr/design-system";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, Check, Clipboard, Download, ExternalLink } from "lucide-react";
@@ -11,7 +11,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
@@ -168,20 +167,15 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         >
           Wrap
         </Button>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={follow ? "secondary" : "outline"}
-                size="sm"
-                aria-pressed={follow}
-                onClick={() => setFollow(!follow)}
-              >
-                Follow tail
-              </Button>
-            }
-          />
-          <TooltipContent>Keep the newest output line in view</TooltipContent>
+        <Tooltip content="Keep the newest output line in view">
+          <Button
+            variant={follow ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={follow}
+            onClick={() => setFollow(!follow)}
+          >
+            Follow tail
+          </Button>
         </Tooltip>
         <Button
           variant={timestamps ? "secondary" : "outline"}

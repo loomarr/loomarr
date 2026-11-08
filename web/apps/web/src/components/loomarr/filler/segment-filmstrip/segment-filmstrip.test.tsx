@@ -2,7 +2,6 @@ import type { ImageDTO } from "@loomarr/api/models/imageDTO";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { SegmentFilmstrip } from "./segment-filmstrip";
 import type { FilmstripSegment } from "./segment-filmstrip.type";
 
@@ -22,12 +21,10 @@ const artwork: ImageDTO = {
   width: 320,
 };
 
-const renderStrip = (node: React.ReactNode) => render(<TooltipProvider delay={0}>{node}</TooltipProvider>);
-
 describe("SegmentFilmstrip", () => {
   it("renders real stills in time order and reports a chosen clip", async () => {
     const onSelect = vi.fn();
-    renderStrip(
+    render(
       <SegmentFilmstrip
         segments={[
           seg("second", 30_000, 60_000, { name: "Second" }),
@@ -51,7 +48,7 @@ describe("SegmentFilmstrip", () => {
   });
 
   it("keeps duration proportions while giving every clip a usable minimum width", () => {
-    renderStrip(
+    render(
       <SegmentFilmstrip
         segments={[seg("short", 0, 10_000, { name: "Short" }), seg("long", 10_000, 40_000, { name: "Long" })]}
       />,
@@ -65,7 +62,7 @@ describe("SegmentFilmstrip", () => {
   });
 
   it("scrolls a 50-clip reel instead of squeezing it into tiny targets", () => {
-    renderStrip(
+    render(
       <SegmentFilmstrip
         segments={Array.from({ length: 50 }, (_, index) =>
           seg(`clip-${index}`, index * 30_000, (index + 1) * 30_000, { name: `Clip ${index + 1}` }),
@@ -79,7 +76,7 @@ describe("SegmentFilmstrip", () => {
   });
 
   it("shows unassigned time rather than hiding a gap", () => {
-    renderStrip(
+    render(
       <SegmentFilmstrip
         segments={[
           seg("first", 0, 10_000, { name: "First" }),
@@ -92,7 +89,7 @@ describe("SegmentFilmstrip", () => {
   });
 
   it("shows the same useful details on hover and keyboard focus", async () => {
-    renderStrip(
+    render(
       <SegmentFilmstrip
         segments={[
           seg("toy", 65_000, 95_000, {
@@ -109,7 +106,7 @@ describe("SegmentFilmstrip", () => {
     await userEvent.hover(clip);
     const descriptionId = clip.getAttribute("aria-describedby");
     expect(descriptionId).toBeTruthy();
-    expect(screen.getByRole("tooltip")).toHaveAttribute("id", descriptionId);
+    expect(await screen.findByRole("tooltip")).toHaveAttribute("id", descriptionId);
     expect(await screen.findByText(/commercial · animation · english/i)).toBeInTheDocument();
     expect(screen.getByText(/may have missed a cut/i)).toBeInTheDocument();
     expect(screen.getByText(/click to play this exact clip/i)).toBeInTheDocument();
@@ -120,7 +117,7 @@ describe("SegmentFilmstrip", () => {
   });
 
   it("marks the active clip and handles empty duration honestly", () => {
-    const { rerender } = renderStrip(
+    const { rerender } = render(
       <SegmentFilmstrip
         segments={[seg("one", 0, 5000, { name: "One" }), seg("two", 5000, 9000, { name: "Two" })]}
         activeKey="two"
@@ -129,11 +126,7 @@ describe("SegmentFilmstrip", () => {
     expect(screen.getByRole("button", { name: /Two/ })).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("button", { name: /One/ })).not.toHaveAttribute("aria-current");
 
-    rerender(
-      <TooltipProvider delay={0}>
-        <SegmentFilmstrip segments={[seg("zero", 1000, 1000)]} />
-      </TooltipProvider>,
-    );
+    rerender(<SegmentFilmstrip segments={[seg("zero", 1000, 1000)]} />);
     expect(screen.queryByRole("list", { name: /detected clips/i })).toBeNull();
   });
 });

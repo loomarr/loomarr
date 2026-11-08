@@ -1,13 +1,8 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
-import { render as rtlRender, screen } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { SettingsFields } from "./settings-fields";
-
-// Fields carry FieldHelp (i) tooltips → need a TooltipProvider ancestor in isolation.
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind">): SettingEntry => ({
   group: "ai",
@@ -67,9 +62,7 @@ describe("SettingsFields — conditional fields (ShowWhen)", () => {
 
     // Simulate the parent recording the provider edit.
     rerender(
-      <TooltipProvider>
-        <SettingsFields entries={aiEntries()} values={{ "llm.provider": "openai" }} onChange={vi.fn()} />
-      </TooltipProvider>,
+      <SettingsFields entries={aiEntries()} values={{ "llm.provider": "openai" }} onChange={vi.fn()} />,
     );
     expect(screen.getByLabelText("LLM URL")).toBeInTheDocument();
   });

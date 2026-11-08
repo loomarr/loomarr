@@ -2,11 +2,11 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration } from "@loomarr/core/format";
+import { Tooltip } from "@loomarr/design-system";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 // FillerClipList — one explicit channel override list (prefer or exclude).
@@ -130,26 +130,21 @@ const FillerClipList = ({
                     </>
                   )}
                 </div>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0"
-                        disabled={disabled}
-                        aria-label={
-                          gone
-                            ? "Remove this clip, which is no longer in your catalog"
-                            : `Remove ${clip?.name ?? id}`
-                        }
-                        onClick={() => remove(id)}
-                      />
+                <Tooltip content="Remove">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0"
+                    disabled={disabled}
+                    aria-label={
+                      gone
+                        ? "Remove this clip, which is no longer in your catalog"
+                        : `Remove ${clip?.name ?? id}`
                     }
+                    onClick={() => remove(id)}
                   >
                     <X aria-hidden />
-                  </TooltipTrigger>
-                  <TooltipContent>Remove</TooltipContent>
+                  </Button>
                 </Tooltip>
               </li>
             );

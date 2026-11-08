@@ -1,15 +1,8 @@
 import type { ChannelHealth, PlayoutStatus } from "@loomarr/api";
 import { screen } from "@testing-library/react";
-import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { render } from "@/test/render";
 import { PlayoutPanel } from "./playout-panel";
-
-// The channel-id affordance uses the app-wide Tooltip, whose provider is mounted at __root.tsx in
-// the running app. In isolation the test supplies it — same as any component under test that uses a
-// Radix tooltip.
-const renderPanel = (ui: ReactElement) => render(<TooltipProvider>{ui}</TooltipProvider>);
 
 // The merged dashboard playout panel: GPU/LLM-contention header + one row per channel. What is
 // pinned here is the merge's promises — the human channel label (not the raw id), the id kept
@@ -43,44 +36,40 @@ const status = (over: Partial<PlayoutStatus> = {}): PlayoutStatus =>
 
 describe("PlayoutPanel", () => {
   it("shows the human channel label, not the raw id", () => {
-    renderPanel(<PlayoutPanel status={status()} />);
+    render(<PlayoutPanel status={status()} />);
     expect(screen.getByText("#3 · 1980s Action Heroes")).toBeInTheDocument();
     // The raw id is not shown as plain row text — it lives behind the info affordance.
     expect(screen.queryByText("ch_9bd1fd7609b5f925")).not.toBeInTheDocument();
   });
 
   it("keeps the raw id reachable behind an info control", () => {
-    renderPanel(<PlayoutPanel status={status()} />);
+    render(<PlayoutPanel status={status()} />);
     // The affordance is labelled with the id so it is discoverable + accessible without opening it.
     expect(screen.getByRole("button", { name: /Channel id ch_9bd1fd7609b5f925/ })).toBeInTheDocument();
   });
 
   it("falls back to the id when the channel has no name", () => {
-    renderPanel(<PlayoutPanel status={status({ channels: [channel({ name: "", number: 0 })] })} />);
+    render(<PlayoutPanel status={status({ channels: [channel({ name: "", number: 0 })] })} />);
     expect(screen.getByText("ch_9bd1fd7609b5f925")).toBeInTheDocument();
   });
 
   it("folds in throughput and cold-start on the row", () => {
-    renderPanel(<PlayoutPanel status={status()} />);
+    render(<PlayoutPanel status={status()} />);
     expect(screen.getByText(/2 viewers/)).toBeInTheDocument();
     expect(screen.getByText(/transcode · h264_nvenc/)).toBeInTheDocument();
     expect(screen.getByText(/1\.3s to play/)).toBeInTheDocument();
   });
 
   it("accepts a task-specific title while keeping the dashboard default", () => {
-    const { rerender } = renderPanel(<PlayoutPanel status={status()} />);
+    const { rerender } = render(<PlayoutPanel status={status()} />);
     expect(screen.getByRole("heading", { name: "Playout" })).toBeInTheDocument();
 
-    rerender(
-      <TooltipProvider>
-        <PlayoutPanel title="Current playback" status={status()} />
-      </TooltipProvider>,
-    );
+    rerender(<PlayoutPanel title="Current playback" status={status()} />);
     expect(screen.getByRole("heading", { name: "Current playback" })).toBeInTheDocument();
   });
 
   it("flags GPU contention with a badge", () => {
-    renderPanel(
+    render(
       <PlayoutPanel
         status={status({
           gpu: { name: "GPU", vramGiB: 12, llmModel: "qwen3:8b", llmVramGiB: 5.6, contended: true },
@@ -91,7 +80,7 @@ describe("PlayoutPanel", () => {
   });
 
   it("reports retained VAAPI hardware capability without requiring VRAM telemetry", () => {
-    renderPanel(
+    render(
       <PlayoutPanel
         status={status({
           capability: { encoder: "h264_vaapi", hardware: true, maxChannels: 3 },
@@ -105,7 +94,7 @@ describe("PlayoutPanel", () => {
   });
 
   it("reports a capability probe that selected software", () => {
-    renderPanel(
+    render(
       <PlayoutPanel
         status={status({
           capability: { encoder: "libx264", hardware: false, maxChannels: 1 },
@@ -118,18 +107,18 @@ describe("PlayoutPanel", () => {
   });
 
   it("says so when no channel is streaming", () => {
-    renderPanel(<PlayoutPanel status={status({ channels: [] })} />);
+    render(<PlayoutPanel status={status({ channels: [] })} />);
     expect(screen.getByText("No channels are streaming right now.")).toBeInTheDocument();
   });
 
   it("distinguishes a Tunarr-backed install from unhealthy channels", () => {
-    renderPanel(<PlayoutPanel status={status({ running: false, channels: [] })} />);
+    render(<PlayoutPanel status={status({ running: false, channels: [] })} />);
     expect(screen.getByText(/Tunarr is\./)).toBeInTheDocument();
     expect(screen.getByText("Tunarr")).toBeInTheDocument();
   });
 
   it("names Loomarr as the owner of internal playback", () => {
-    renderPanel(<PlayoutPanel status={status()} />);
+    render(<PlayoutPanel status={status()} />);
     expect(screen.getByText("Loomarr")).toBeInTheDocument();
   });
 });

@@ -1,3 +1,4 @@
+import { Tooltip } from "@loomarr/design-system";
 import { GripVertical, PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   type CSSProperties,
@@ -9,7 +10,6 @@ import {
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const MIN_DETAIL_WIDTH = 288;
@@ -110,38 +110,18 @@ const DiagnosticsSplitPane = ({
       <div className="min-w-0 overflow-x-hidden">{primary}</div>
       {collapsed ? (
         <div className={cn(desktopFlex, "items-start justify-center pt-1")}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Show details"
-                  onClick={() => setCollapsed(false)}
-                >
-                  <PanelRightOpen aria-hidden />
-                </Button>
-              }
-            />
-            <TooltipContent>Show details</TooltipContent>
+          <Tooltip content="Show details">
+            <Button variant="ghost" size="icon" aria-label="Show details" onClick={() => setCollapsed(false)}>
+              <PanelRightOpen aria-hidden />
+            </Button>
           </Tooltip>
         </div>
       ) : (
         <div className={cn(desktopFlex, "min-h-0 flex-col items-center")}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Hide details"
-                  onClick={() => setCollapsed(true)}
-                >
-                  <PanelRightClose aria-hidden />
-                </Button>
-              }
-            />
-            <TooltipContent>Hide details</TooltipContent>
+          <Tooltip content="Hide details">
+            <Button variant="ghost" size="icon" aria-label="Hide details" onClick={() => setCollapsed(true)}>
+              <PanelRightClose aria-hidden />
+            </Button>
           </Tooltip>
           <div className="group relative flex min-h-24 flex-1 items-center justify-center self-stretch">
             <hr

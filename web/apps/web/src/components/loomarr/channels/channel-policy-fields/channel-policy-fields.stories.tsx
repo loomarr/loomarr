@@ -1,27 +1,18 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { disjointProgrammingDatesPolicy } from "@loomarr/fixtures";
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { eraDates } from "@/lib/era-dates";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelPolicyFields } from "./channel-policy-fields";
 
 const noop = () => {};
 
-// Each field's help is now an (i) FieldHelp tooltip, which needs a TooltipProvider ancestor
-// (mounted at the app root in the real app; supplied here for isolation).
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
-
 // A channel's ChannelPolicy as plain-language editable fields (programming-design §8).
 const meta = {
   title: "Channels/ChannelPolicyFields",
   component: ChannelPolicyFields,
   args: { onChange: noop },
-  decorators: [withTooltip, widthFrame(480)],
+  decorators: [widthFrame(480)],
 } satisfies Meta<typeof ChannelPolicyFields>;
 
 type Story = StoryObj<typeof meta>;

@@ -1,17 +1,8 @@
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelAutoCurate } from "./channel-auto-curate";
 
 const noop = () => {};
-
-// The opt-in's help is an (i) FieldHelp tooltip, which needs a TooltipProvider ancestor
-// (mounted at the app root in the real app; supplied here for isolation).
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
 
 // The per-channel auto-curate opt-in (programming-design §8.2). The states below are the three
 // the component actually distinguishes — and "opted in, inheriting" vs "opted in, overridden"
@@ -21,7 +12,7 @@ const meta = {
   title: "Channels/ChannelAutoCurate",
   component: ChannelAutoCurate,
   args: { onChange: noop },
-  decorators: [withTooltip, widthFrame(480)],
+  decorators: [widthFrame(480)],
 } satisfies Meta<typeof ChannelAutoCurate>;
 
 type Story = StoryObj<typeof meta>;

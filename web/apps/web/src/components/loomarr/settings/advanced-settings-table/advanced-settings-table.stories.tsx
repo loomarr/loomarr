@@ -1,19 +1,10 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { AdvancedSettingsTable } from "./advanced-settings-table";
 
 const noop = () => {};
-
-// Rows render a SettingField, whose doc is a FieldHelp (i) tooltip — same TooltipProvider
-// requirement as the field's own stories.
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key">): SettingEntry => ({
   group: "system.jobs",
@@ -59,7 +50,7 @@ const meta = {
   title: "Settings/AdvancedSettingsTable",
   component: AdvancedSettingsTable,
   args: { entries, query: "", onQueryChange: noop, values: {}, onEdit: noop },
-  decorators: [withTooltip, widthFrame(880)],
+  decorators: [widthFrame(880)],
 } satisfies Meta<typeof AdvancedSettingsTable>;
 
 type Story = StoryObj<typeof meta>;

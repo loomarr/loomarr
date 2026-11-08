@@ -12,7 +12,6 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
@@ -72,9 +71,7 @@ const mount = (props: ComponentProps<typeof AiModelSettings>) => {
   });
   return render(
     <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <RouterHarness initialPath="/settings" content={<AiModelSettings {...props} />} />
-      </TooltipProvider>
+      <RouterHarness initialPath="/settings" content={<AiModelSettings {...props} />} />
     </QueryClientProvider>,
   );
 };

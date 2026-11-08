@@ -9,7 +9,6 @@ import { useColorScheme } from "react-native";
 // `body` rule in styles.css paints the dark (§2.1) canvas inside the story iframe.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
-import { TooltipProvider } from "../src/components/ui";
 import "../src/styles.css";
 
 type WorkshopTheme = { mode: "dark" | "light" | "system" };
@@ -45,9 +44,6 @@ const preview: Preview = {
     backgrounds: { disable: true },
     controls: { expanded: true },
   },
-  // Mirror the app root (__root.tsx): a single TooltipProvider so any story with an
-  // icon-only button's tooltip renders exactly as it does in the app — including the same
-  // 300ms delay, which this decorator used to leave at the library default.
   decorators: [
     withThemeFromJSXProvider({
       Provider: WorkshopThemeProvider,
@@ -58,11 +54,6 @@ const preview: Preview = {
         system: { mode: "system" },
       },
     }),
-    (Story) => (
-      <TooltipProvider delay={300}>
-        <Story />
-      </TooltipProvider>
-    ),
   ],
 };
 

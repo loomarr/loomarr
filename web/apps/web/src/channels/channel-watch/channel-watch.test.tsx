@@ -11,7 +11,6 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import type { LivePlaybackState } from "@/components/ui/video-player";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
@@ -80,9 +79,7 @@ const makeWrapper = () => {
   // The player chrome is the shared @loomarr/ui one, which main.tsx themes app-wide.
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <LoomarrProvider theme="dark">
-        <TooltipProvider>{children}</TooltipProvider>
-      </LoomarrProvider>
+      <LoomarrProvider theme="dark">{children}</LoomarrProvider>
     </QueryClientProvider>
   );
 };

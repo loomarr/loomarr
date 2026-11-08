@@ -1,7 +1,7 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
+import { Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import type { FilmstripSegment, SegmentFilmstripProps } from "./segment-filmstrip.type";
@@ -95,23 +95,42 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
             const tags = (item.tags ?? []).slice(0, 3);
             return (
               <li key={item.key} className="min-h-0 min-w-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-describedby={tooltipId}
-                        aria-current={activeKey === item.key ? "true" : undefined}
-                        onClick={(event) => onSelect?.(item.key, event.currentTarget)}
-                        className={cn(
-                          "group border-border bg-static-900 relative size-full overflow-hidden rounded-md border text-left",
-                          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
-                          // The current block is neutral (#1909); the amber outline above is focus.
-                          activeKey === item.key && "ring-foreground ring-2",
-                          item.unsplittable && "border-caution/70",
-                        )}
-                      />
-                    }
+                <Tooltip
+                  id={tooltipId}
+                  side="bottom"
+                  align="start"
+                  width={256}
+                  content={
+                    <>
+                      <p className="truncate text-sm font-medium">{name}</p>
+                      <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
+                        {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
+                        {formatClipDuration(item.durationMs)}
+                      </p>
+                      {tags.length > 0 || item.language ? (
+                        <p className="text-muted-foreground mt-2">
+                          {[...tags, item.language ? languageName(item.language) : ""]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      ) : null}
+                      {item.attention ? <p className="text-caution mt-2">{item.attention}</p> : null}
+                      <p className="text-static-300 mt-2">Click to play this exact clip.</p>
+                    </>
+                  }
+                >
+                  <button
+                    type="button"
+                    aria-describedby={tooltipId}
+                    aria-current={activeKey === item.key ? "true" : undefined}
+                    onClick={(event) => onSelect?.(item.key, event.currentTarget)}
+                    className={cn(
+                      "group border-border bg-static-900 relative size-full overflow-hidden rounded-md border text-left",
+                      "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
+                      // The current block is neutral (#1909); the amber outline above is focus.
+                      activeKey === item.key && "ring-foreground ring-2",
+                      item.unsplittable && "border-caution/70",
+                    )}
                   >
                     {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
                         the start time is the part the tile shows only to assistive tech. */}
@@ -129,23 +148,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         {formatClipDuration(item.durationMs)}
                       </span>
                     </span>
-                  </TooltipTrigger>
-                  <TooltipContent id={tooltipId} className="w-64 p-3" side="bottom" align="start">
-                    <p className="truncate text-sm font-medium">{name}</p>
-                    <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
-                      {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
-                      {formatClipDuration(item.durationMs)}
-                    </p>
-                    {tags.length > 0 || item.language ? (
-                      <p className="text-muted-foreground mt-2">
-                        {[...tags, item.language ? languageName(item.language) : ""]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    ) : null}
-                    {item.attention ? <p className="text-caution mt-2">{item.attention}</p> : null}
-                    <p className="text-static-300 mt-2">Click to play this exact clip.</p>
-                  </TooltipContent>
+                  </button>
                 </Tooltip>
               </li>
             );

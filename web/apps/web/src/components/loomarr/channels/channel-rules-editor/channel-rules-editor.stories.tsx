@@ -1,19 +1,10 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { ruleVocabularyFixture } from "@loomarr/fixtures";
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelRulesEditor } from "./channel-rules-editor";
 
 const noop = () => {};
-
-// Each row's remove button carries a tooltip (Radix), which needs a TooltipProvider
-// ancestor — mounted at the app root in the real app, supplied here for isolation.
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
 
 // ChannelRulesEditor — the "Programming rules" chip list (programming-design §6.5/§6.6):
 // token-based WHEN/WHAT/HOW rows, reorderable by drag, priority derived from list order.
@@ -21,7 +12,7 @@ const meta = {
   title: "Channels/ChannelRulesEditor",
   component: ChannelRulesEditor,
   args: { onChange: noop, vocabulary: ruleVocabularyFixture },
-  decorators: [withTooltip, widthFrame(680)],
+  decorators: [widthFrame(680)],
 } satisfies Meta<typeof ChannelRulesEditor>;
 
 type Story = StoryObj<typeof meta>;

@@ -13,7 +13,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -25,9 +24,7 @@ import { ChannelLineupEditor } from "./channel-lineup-editor";
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
-    </QueryClientProvider>
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
 };
 

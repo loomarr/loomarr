@@ -5,18 +5,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { server } from "@/test/msw/server";
 import { FillerClipList } from "./filler-clip-list";
 
 // The remove buttons are Tooltip triggers, and the add-search hits GET /v1/filler.
 const renderList = (ui: ReactElement) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{ui}</TooltipProvider>
-    </QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 };
 
 beforeEach(() => {

@@ -3,20 +3,11 @@ import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { SettingField } from "./setting-field";
 
 const noop = () => {};
-
-// The field's doc is a FieldHelp (i) tooltip now, which needs a TooltipProvider ancestor
-// (mounted at the app root; supplied here for isolation).
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
 
 const base: SettingEntry = {
   key: "library.url",
@@ -37,7 +28,7 @@ const meta = {
   title: "Settings/SettingField",
   component: SettingField,
   args: { entry: base, value: "http://emby.local:8096", onChange: noop },
-  decorators: [withTooltip, widthFrame(420)],
+  decorators: [widthFrame(420)],
 } satisfies Meta<typeof SettingField>;
 
 type Story = StoryObj<typeof meta>;

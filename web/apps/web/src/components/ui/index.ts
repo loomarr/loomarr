@@ -12,5 +12,4 @@ export * from "./panel-row";
 export * from "./section-header";
 export * from "./select";
 export * from "./sheet";
-export * from "./tooltip";
 export * from "./video-player";

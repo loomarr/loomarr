@@ -11,7 +11,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { AiModelSettings } from "@/settings/ai-model-settings";
 import { SecretsSettings } from "@/settings/secrets-settings";
 import { useSettingsEdits } from "@/settings/settings-edits";
@@ -34,11 +33,7 @@ const mount = (ui: ReactNode) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{ui}</TooltipProvider>
-    </QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 };
 
 describe("the inline-commit exceptions stay out of the save bar", () => {
