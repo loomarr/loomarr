@@ -334,6 +334,12 @@ describe("SourcesPanel", () => {
 
     const storage = await screen.findByRole("region", { name: "Storage" });
     expect(storage).toHaveTextContent("512.0 MB is left for new filler");
+    // #2737: a nearly full allowance is a warning with a way out, not plain body text.
+    expect(storage.className).toContain("border-caution");
+    expect(within(storage).getByRole("link", { name: "Raise allowance" })).toHaveAttribute(
+      "href",
+      "/filler/settings/storage",
+    );
   });
 
   it("previews and removes only safe old temporary downloads when the drive is low", async () => {

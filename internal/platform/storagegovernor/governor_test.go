@@ -95,9 +95,15 @@ func TestCapacityStateOwnsTheApproachingThreshold(t *testing.T) {
 		{name: "one GiB warning cap", snapshot: storagegovernor.Snapshot{
 			SoftLimitEnabled: true, SoftBudgetBytes: 20 * storagegovernor.GiB, AvailableBytes: storagegovernor.GiB,
 		}, want: storagegovernor.CapacityApproaching},
-		{name: "small appliance percentage", snapshot: storagegovernor.Snapshot{
-			SoftLimitEnabled: true, SoftBudgetBytes: 2 * storagegovernor.GiB, AvailableBytes: 400 << 20,
+		{name: "small allowance warns at its last GiB", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 2 * storagegovernor.GiB, AvailableBytes: 900 << 20,
 		}, want: storagegovernor.CapacityApproaching},
+		{name: "large allowance warns under five percent", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 100 * storagegovernor.GiB, AvailableBytes: 4 * storagegovernor.GiB,
+		}, want: storagegovernor.CapacityApproaching},
+		{name: "large allowance above five percent", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 100 * storagegovernor.GiB, AvailableBytes: 6 * storagegovernor.GiB,
+		}, want: storagegovernor.CapacityHealthy},
 		{name: "paused", snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonHostReserve}, want: storagegovernor.CapacityPaused},
 		{name: "unknown", snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonCapacityUnavailable}, want: storagegovernor.CapacityUnknown},
 	}

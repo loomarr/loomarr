@@ -4,6 +4,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,10 +61,14 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
     );
   }
   const pauseMessage = storagePauseMessage(storage.pausedBy);
+  // The server owns the warning threshold (storage state); a nearly full or full allowance offers
+  // the way out (#2737), which is the allowance field just above.
+  const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
   return (
     <div
+      role="status"
       className={
-        pauseMessage
+        pauseMessage || allowanceFull
           ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3 text-sm"
           : "bg-muted/50 rounded-lg px-4 py-3 text-sm"
       }
@@ -71,11 +76,23 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       <p className="font-medium">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </p>
-      <p className="text-muted-foreground mt-1">
+      <p className={allowanceFull ? "text-caution-foreground mt-1" : "text-muted-foreground mt-1"}>
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
       </p>
       {pauseMessage ? <p className="text-caution-foreground mt-2">{pauseMessage}</p> : null}
+      {allowanceFull ? (
+        <div className="mt-3">
+          <Action
+            variant="secondary"
+            onPress={() =>
+              document.getElementById(`setting-${SettingKey.FillerStorageLibraryBudgetGb}`)?.focus()
+            }
+          >
+            Raise allowance
+          </Action>
+        </div>
+      ) : null}
     </div>
   );
 };

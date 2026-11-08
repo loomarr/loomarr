@@ -51,8 +51,18 @@ const SourceStorageCard = () => {
     ) : null;
   }
 
+  // The server owns the warning threshold (storage state); a nearly full or full allowance is a
+  // warning with the way out (#2737).
+  const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
   return (
-    <section aria-labelledby="filler-storage-heading" className="border-border bg-card rounded-lg border p-4">
+    <section
+      aria-labelledby="filler-storage-heading"
+      className={
+        allowanceFull
+          ? "border-caution/40 bg-caution/5 rounded-lg border p-4"
+          : "border-border bg-card rounded-lg border p-4"
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 id="filler-storage-heading" className="text-sm font-medium">
@@ -62,7 +72,11 @@ const SourceStorageCard = () => {
             {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
             this drive
           </p>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <p
+            className={
+              allowanceFull ? "text-caution-foreground mt-1 text-xs" : "text-muted-foreground mt-1 text-xs"
+            }
+          >
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
               : storage.pausedBy === "library_limit"
@@ -86,12 +100,12 @@ const SourceStorageCard = () => {
               href={`/filler/settings/${storage.pausedBy === "capacity_unavailable" ? "folders" : "storage"}`}
             />
           }
-          variant="ghost"
+          variant={allowanceFull ? "secondary" : "ghost"}
         >
           {storage.pausedBy === "capacity_unavailable"
             ? "Choose folder"
-            : storage.pausedBy === "library_limit"
-              ? "Change allowance"
+            : allowanceFull
+              ? "Raise allowance"
               : "Storage options"}
         </Action>
       </div>

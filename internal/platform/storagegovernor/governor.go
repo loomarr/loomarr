@@ -88,9 +88,9 @@ const (
 	CapacityUnknown     CapacityState = "unknown"
 )
 
-// State classifies a snapshot without hiding its exact typed pause reason. Approaching means the
-// remaining allowance is within the smaller of 1 GiB and twenty percent of a configured soft
-// budget; this warns on small appliances without making a healthy fresh library look constrained.
+// State classifies a snapshot without hiding its exact typed pause reason. Approaching means less
+// than 1 GiB is left, or less than five percent of a configured soft budget, whichever is larger
+// (#2737): a big allowance warns before its last gigabyte, a small one at its last gigabyte.
 func State(snapshot Snapshot) CapacityState {
 	switch snapshot.Reason {
 	case ReasonCapacityUnavailable, ReasonEstimateUnknown:
@@ -100,10 +100,7 @@ func State(snapshot Snapshot) CapacityState {
 	case "":
 		threshold := GiB
 		if snapshot.SoftLimitEnabled && snapshot.SoftBudgetBytes > 0 {
-			softThreshold := snapshot.SoftBudgetBytes / 5
-			if softThreshold < threshold {
-				threshold = softThreshold
-			}
+			threshold = max(threshold, snapshot.SoftBudgetBytes/20)
 		}
 		if threshold > 0 && snapshot.AvailableBytes > 0 && snapshot.AvailableBytes <= threshold {
 			return CapacityApproaching
