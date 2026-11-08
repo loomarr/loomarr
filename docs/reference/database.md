@@ -43,7 +43,7 @@ clients show them beside the data.
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
-- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_spoken_safety_runs`](#filler_spoken_safety_runs), [`filler_spoken_safety_events`](#filler_spoken_safety_events), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
+- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports)
 - [Tables other libraries own](#tables-other-libraries-own)
@@ -1522,7 +1522,7 @@ One row per revision of the shipped station directory that startup has applied. 
 
 ## How filler clips are checked
 
-Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other checks before and after they air. These tables remember each model call and what it cost, the descriptive facts the checks filled in, web-research allowances, and the spoken-safety and reel-splitting journals.
+Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other checks before and after they air. These tables remember each model call and what it cost, the descriptive facts the checks filled in, web-research allowances, and the reel-splitting journals.
 
 ### filler_inference_evaluations
 
@@ -1573,7 +1573,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `admission_policy_version` | Version of the rules that decide what the answer is allowed to unlock. | `TEXT` |
 | `role_policy_version` | Version of the check's own rules. | `TEXT` |
 | `capability_snapshot` | Identity of the model endpoint and its capabilities at the time of the call. | `TEXT` |
-| `outcome` | A short result code once the call succeeds, such as window_complete. Empty when there is none. | `TEXT` |
+| `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
 | `failure_reason` | Why the call did not complete, for example a spend ceiling or a failure class such as transport. Empty on success. | `TEXT` |
 | `created_at` | When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC). | `INTEGER` |
 | `updated_at` | When the row last changed (reserved or settled), in Unix seconds. | `INTEGER` |
@@ -1652,42 +1652,6 @@ One row per calendar month counting web searches against the monthly limit set i
 | `last_provider` | The provider used for the most recent search, brave or searxng. Empty before the first. | `TEXT` |
 | `last_success_at` | When a search last succeeded that month, in Unix seconds. 0 means none yet. | `INTEGER` |
 | `last_failure_at` | When a search last failed that month, in Unix seconds. 0 means none yet. A failure newer than the last success shows web search as degraded. | `INTEGER` |
-
-### filler_spoken_safety_runs
-
-One attempt at the spoken-safety check, which listens to everything said in a clip to keep filler suitable for a household. Each run is fixed at creation and its steps are logged in filler_spoken_safety_events. At startup Loomarr closes any run left without a final event; no part of the current app starts new runs.
-
-**Kept:** Never deleted, but nothing starts new runs, so the table no longer grows.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the run. Its events point here. | `TEXT` · key |
-| `clip_hash` | The filler clip checked (clips.hash). | `TEXT` |
-| `authority_sha256` | SHA-256 fingerprint of the screening authority the run answers to. | `TEXT` |
-| `source_sha256` | SHA-256 of the clip's media file that was checked. | `TEXT` |
-| `source_bytes` | Size of that media file in bytes. | `INTEGER` |
-| `duration_ms` | Length of the media checked, in milliseconds. | `INTEGER` |
-| `certification_sha256` | SHA-256 fingerprint of the certification the check runs under. | `TEXT` |
-| `policy_sha256` | SHA-256 fingerprint of the safety policy applied. | `TEXT` |
-| `proposer_sha256` | SHA-256 fingerprint of the step that picks which spoken passages to examine. | `TEXT` |
-| `implementation` | Name of the implementation that ran the check. | `TEXT` |
-| `created_at` | When the run started, in Unix nanoseconds. | `INTEGER` |
-
-### filler_spoken_safety_events
-
-The append-only step log of one spoken-safety run, numbered from 0. A run plans its source, proposes passages to examine, reserves and settles any model calls, and ends with one terminal event.
-
-**Kept:** Kept with their run, never deleted; no new runs start, so the table no longer grows.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the event. | `TEXT` · key |
-| `run_id` | The run it belongs to (filler_spoken_safety_runs.id). | `TEXT` · → `filler_spoken_safety_runs.id` |
-| `ordinal` | Position in the run's log, starting at 0. | `INTEGER` |
-| `kind` | The step. source_planned (the audio and video spans to cover), proposal_completed (the passages picked), inference_reserved (a model call booked), inference_settled (that call finished) or terminal (the final evidence and verdict). | `TEXT` |
-| `inference_id` | The model call this step is about (filler_inference_evaluations.id). Set only for inference_reserved and inference_settled. | `TEXT` · may be empty · → `filler_inference_evaluations.id` |
-| `payload_json` | The step's details as JSON, such as spans, passage IDs, model, cost and the final result. It never holds the spoken words, file paths or raw model output. | `TEXT` |
-| `created_at` | When the step was logged, in Unix nanoseconds. | `INTEGER` |
 
 ### filler_structure_window_call_ledger
 

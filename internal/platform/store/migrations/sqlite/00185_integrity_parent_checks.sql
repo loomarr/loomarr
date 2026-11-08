@@ -622,6 +622,130 @@ CREATE INDEX idx_proposal_jobs_status_deadline ON proposal_jobs (status, deadlin
 CREATE INDEX idx_proposal_jobs_intent_hash ON proposal_jobs (intent_hash);
 CREATE INDEX idx_proposal_job_attempts_job_started ON proposal_job_attempts (job_id, started_at DESC);
 
+-- The spoken-safety ledger: nothing has started a run since its evaluation cascade was deleted
+-- (#1763), and production holds no events. Events go first: they reference the runs.
+DROP TABLE filler_spoken_safety_events;
+DROP TABLE filler_spoken_safety_runs;
+
+-- filler_inference_evaluations and its structure-window ledger -----------------------------------
+-- Without the spoken-safety ledger, outcome is '' or window_complete (a structure window answered).
+DROP INDEX idx_filler_inference_evaluations_clip_created;
+DROP INDEX idx_filler_inference_evaluations_cache_key;
+DROP INDEX idx_filler_inference_evaluations_run_created;
+DROP INDEX idx_filler_inference_evaluations_day_budget;
+DROP INDEX idx_filler_structure_window_call_ledger_source;
+DROP INDEX idx_filler_structure_window_call_ledger_open;
+ALTER TABLE filler_structure_window_call_ledger RENAME TO filler_structure_window_call_ledger_old;
+ALTER TABLE filler_inference_evaluations RENAME TO filler_inference_evaluations_old;
+CREATE TABLE filler_inference_evaluations (
+    id                       TEXT    PRIMARY KEY,
+    cache_key                TEXT    NOT NULL,
+    clip_hash                TEXT    NOT NULL,
+    run_id                   TEXT    NOT NULL DEFAULT '',
+    role                     TEXT    NOT NULL,
+    rung                     TEXT    NOT NULL DEFAULT '',
+    state                    TEXT    NOT NULL CHECK (state IN ('reserved', 'completed', 'failed', 'held_budget')),
+    requested_provider       TEXT    NOT NULL,
+    requested_model          TEXT    NOT NULL,
+    resolved_provider        TEXT    NOT NULL DEFAULT '',
+    resolved_model           TEXT    NOT NULL DEFAULT '',
+    upstream_provider        TEXT    NOT NULL DEFAULT '',
+    modalities_json          TEXT    NOT NULL DEFAULT '[]',
+    derivative_bytes         INTEGER NOT NULL DEFAULT 0,
+    derivative_duration_ms   INTEGER NOT NULL DEFAULT 0,
+    derivative_pixels        INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens            INTEGER NOT NULL DEFAULT 0,
+    completion_tokens        INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens         INTEGER NOT NULL DEFAULT 0,
+    cached_tokens            INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens       INTEGER NOT NULL DEFAULT 0,
+    image_tokens             INTEGER NOT NULL DEFAULT 0,
+    audio_tokens             INTEGER NOT NULL DEFAULT 0,
+    video_tokens             INTEGER NOT NULL DEFAULT 0,
+    charged_amount           TEXT    NOT NULL DEFAULT '',
+    charged_currency         TEXT    NOT NULL DEFAULT '',
+    charged_nano_usd         INTEGER NOT NULL DEFAULT 0,
+    estimated_nano_usd       INTEGER NOT NULL DEFAULT 0,
+    reserved_nano_usd        INTEGER NOT NULL DEFAULT 0,
+    price_snapshot           TEXT    NOT NULL DEFAULT '',
+    latency_ms               INTEGER NOT NULL DEFAULT 0,
+    attempts                 INTEGER NOT NULL DEFAULT 0,
+    generation_id            TEXT    NOT NULL DEFAULT '',
+    evidence_version         TEXT    NOT NULL,
+    extractor_version        TEXT    NOT NULL,
+    prompt_version           TEXT    NOT NULL,
+    schema_version           TEXT    NOT NULL,
+    taxonomy_version         TEXT    NOT NULL,
+    admission_policy_version TEXT    NOT NULL,
+    role_policy_version      TEXT    NOT NULL,
+    capability_snapshot      TEXT    NOT NULL,
+    outcome                  TEXT    NOT NULL DEFAULT '' CHECK (outcome IN ('', 'window_complete')),
+    failure_reason           TEXT    NOT NULL DEFAULT '',
+    created_at               INTEGER NOT NULL,
+    updated_at               INTEGER NOT NULL
+);
+CREATE TABLE filler_structure_window_call_ledger (
+    request_sha256   TEXT    NOT NULL,
+    attempt          INTEGER NOT NULL DEFAULT 1,
+    evaluation_id    TEXT    NOT NULL UNIQUE REFERENCES filler_inference_evaluations(id),
+    source_sha256    TEXT    NOT NULL,
+    media_set_sha256 TEXT    NOT NULL,
+    window_ordinal   INTEGER NOT NULL,
+    assessor_id      TEXT    NOT NULL,
+    state            TEXT    NOT NULL,
+    reservation_json TEXT    NOT NULL,
+    record_sha256    TEXT    NOT NULL DEFAULT '',
+    record_json      TEXT    NOT NULL DEFAULT '',
+    requested_at     INTEGER NOT NULL,
+    assessed_at      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (request_sha256, attempt),
+    CHECK (attempt >= 1),
+    CHECK (window_ordinal >= 0),
+    CHECK (state IN ('open', 'held_budget', 'settled')),
+    CHECK (
+        (state = 'settled' AND record_sha256 <> '' AND record_json <> '' AND assessed_at > 0) OR
+        (state <> 'settled' AND record_sha256 = '' AND record_json = '' AND assessed_at = 0)
+    )
+);
+INSERT INTO filler_inference_evaluations (id, cache_key, clip_hash, run_id, role, rung, state,
+    requested_provider, requested_model, resolved_provider, resolved_model, upstream_provider,
+    modalities_json, derivative_bytes, derivative_duration_ms, derivative_pixels, prompt_tokens,
+    completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, image_tokens, audio_tokens,
+    video_tokens, charged_amount, charged_currency, charged_nano_usd, estimated_nano_usd,
+    reserved_nano_usd, price_snapshot, latency_ms, attempts, generation_id, evidence_version,
+    extractor_version, prompt_version, schema_version, taxonomy_version, admission_policy_version,
+    role_policy_version, capability_snapshot, outcome, failure_reason, created_at, updated_at)
+SELECT id, cache_key, clip_hash, run_id, role, rung, state,
+    requested_provider, requested_model, resolved_provider, resolved_model, upstream_provider,
+    modalities_json, derivative_bytes, derivative_duration_ms, derivative_pixels, prompt_tokens,
+    completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, image_tokens, audio_tokens,
+    video_tokens, charged_amount, charged_currency, charged_nano_usd, estimated_nano_usd,
+    reserved_nano_usd, price_snapshot, latency_ms, attempts, generation_id, evidence_version,
+    extractor_version, prompt_version, schema_version, taxonomy_version, admission_policy_version,
+    role_policy_version, capability_snapshot, outcome, failure_reason, created_at, updated_at
+  FROM filler_inference_evaluations_old;
+INSERT INTO filler_structure_window_call_ledger (request_sha256, attempt, evaluation_id, source_sha256,
+    media_set_sha256, window_ordinal, assessor_id, state, reservation_json, record_sha256, record_json,
+    requested_at, assessed_at)
+SELECT request_sha256, attempt, evaluation_id, source_sha256,
+    media_set_sha256, window_ordinal, assessor_id, state, reservation_json, record_sha256, record_json,
+    requested_at, assessed_at
+  FROM filler_structure_window_call_ledger_old;
+DROP TABLE filler_structure_window_call_ledger_old;
+DROP TABLE filler_inference_evaluations_old;
+CREATE INDEX idx_filler_inference_evaluations_clip_created
+    ON filler_inference_evaluations (clip_hash, created_at DESC, id DESC);
+CREATE INDEX idx_filler_inference_evaluations_cache_key
+    ON filler_inference_evaluations (cache_key, created_at DESC, id DESC);
+CREATE INDEX idx_filler_inference_evaluations_run_created
+    ON filler_inference_evaluations (run_id, created_at DESC, id DESC);
+CREATE INDEX idx_filler_inference_evaluations_day_budget
+    ON filler_inference_evaluations (created_at, reserved_nano_usd);
+CREATE INDEX idx_filler_structure_window_call_ledger_source
+    ON filler_structure_window_call_ledger (source_sha256, media_set_sha256, requested_at DESC, request_sha256);
+CREATE INDEX idx_filler_structure_window_call_ledger_open
+    ON filler_structure_window_call_ledger (state, requested_at ASC, request_sha256);
+
 -- +goose Down
 -- No down: forward-only (§16).
 SELECT 1;

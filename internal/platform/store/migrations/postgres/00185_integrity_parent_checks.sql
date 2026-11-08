@@ -19,6 +19,16 @@ ALTER TABLE library_items ADD CONSTRAINT library_items_kind_check
 ALTER TABLE proposal_jobs ADD CONSTRAINT proposal_jobs_kind_check
     CHECK (kind IN ('suggest', 'recurate'));
 
+-- The spoken-safety ledger: nothing has started a run since its evaluation cascade was deleted
+-- (#1763). Events go first: they reference the runs.
+DROP TABLE filler_spoken_safety_events;
+DROP TABLE filler_spoken_safety_runs;
+ALTER TABLE filler_inference_evaluations
+    ADD CONSTRAINT filler_inference_evaluations_state_check
+        CHECK (state IN ('reserved', 'completed', 'failed', 'held_budget')),
+    ADD CONSTRAINT filler_inference_evaluations_outcome_check
+        CHECK (outcome IN ('', 'window_complete'));
+
 -- +goose Down
 -- No down: forward-only (§16).
 SELECT 1;

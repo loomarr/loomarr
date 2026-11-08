@@ -21,6 +21,7 @@ var integrityParentRebuilt = []string{
 	"library_streams", "library_trickplay", "library_chapters", "library_markers", "library_art",
 	"library_countries", "library_credits",
 	"proposal_jobs", "proposal_job_attempts",
+	"filler_inference_evaluations", "filler_structure_window_call_ledger",
 }
 
 // A rebuild that left a child pointing at the renamed parent, or cascaded through it, loses the
@@ -56,6 +57,15 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 		`INSERT INTO proposal_jobs (id, kind, status) VALUES ('j1', 'recurate', 'done')`,
 		`INSERT INTO proposal_job_attempts (job_id, attempt, workflow_version, status, started_at)
 			VALUES ('j1', 1, 1, 'succeeded', 1)`,
+		`INSERT INTO filler_inference_evaluations (id, cache_key, clip_hash, role, state, requested_provider,
+			requested_model, evidence_version, extractor_version, prompt_version, schema_version,
+			taxonomy_version, admission_policy_version, role_policy_version, capability_snapshot,
+			outcome, created_at, updated_at)
+			VALUES ('e1', 'k', 'c', 'structure', 'completed', 'p', 'm', 'v', 'v', 'v', 'v', 'v', 'v', 'v', 's',
+			'window_complete', 1, 1)`,
+		`INSERT INTO filler_structure_window_call_ledger (request_sha256, evaluation_id, source_sha256,
+			media_set_sha256, window_ordinal, assessor_id, state, reservation_json, requested_at)
+			VALUES ('r1', 'e1', 's', 'm', 0, 'a', 'open', '{}', 1)`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			t.Fatalf("seed before %d: %v", integrityParentChecksMigration, err)
@@ -79,11 +89,13 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 		return n
 	}
 	for query, want := range map[string]int{
-		`SELECT count(*) FROM airings WHERE channel_id = 'ch1'`:                  1,
-		`SELECT count(*) FROM library_streams WHERE item_id = 'm1'`:              1,
-		`SELECT count(*) FROM proposal_job_attempts WHERE job_id = 'j1'`:         1,
-		`SELECT count(*) FROM pragma_foreign_key_check`:                          0,
-		`SELECT count(*) FROM sqlite_master WHERE name LIKE '%\_old' ESCAPE '\'`: 0,
+		`SELECT count(*) FROM airings WHERE channel_id = 'ch1'`:                      1,
+		`SELECT count(*) FROM library_streams WHERE item_id = 'm1'`:                  1,
+		`SELECT count(*) FROM proposal_job_attempts WHERE job_id = 'j1'`:             1,
+		`SELECT count(*) FROM filler_structure_window_call_ledger`:                   1,
+		`SELECT count(*) FROM sqlite_master WHERE name LIKE 'filler_spoken_safety%'`: 0,
+		`SELECT count(*) FROM pragma_foreign_key_check`:                              0,
+		`SELECT count(*) FROM sqlite_master WHERE name LIKE '%\_old' ESCAPE '\'`:     0,
 	} {
 		if got := count(query); got != want {
 			t.Errorf("%s = %d, want %d", query, got, want)
@@ -93,6 +105,8 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 		`UPDATE channels SET status = 'on_air' WHERE id = 'ch1'`,
 		`UPDATE library_items SET kind = 'film' WHERE id = 'm1'`,
 		`UPDATE proposal_jobs SET kind = 'curate' WHERE id = 'j1'`,
+		`UPDATE filler_inference_evaluations SET state = 'done' WHERE id = 'e1'`,
+		`UPDATE filler_inference_evaluations SET outcome = 'allowed' WHERE id = 'e1'`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err == nil || !strings.Contains(err.Error(), "CHECK") {
 			t.Errorf("%s: err = %v, want a CHECK failure", stmt, err)
