@@ -79,7 +79,9 @@ type discoveredRoots struct {
 	roots store.LibraryRoots
 }
 
-func (d discoveredRoots) LibraryRoots(context.Context) (store.LibraryRoots, error) { return d.roots, nil }
+func (d discoveredRoots) LibraryRoots(context.Context) (store.LibraryRoots, error) {
+	return d.roots, nil
+}
 
 // A pass replaces the stored map; a pass that cannot list the media server leaves it alone.
 func TestIDMapperReplacesTheMapAndKeepsItWhenTheServerFails(t *testing.T) {
