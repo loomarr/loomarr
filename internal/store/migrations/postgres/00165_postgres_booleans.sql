@@ -1,6 +1,6 @@
 -- +goose Up
 -- Schema naming (#2323): on PostgreSQL a yes/no column is BOOLEAN, as the older ones already are.
--- These eight were written as INTEGER 0/1, so a reader of the schema could not tell a flag from a
+-- These nine were written as INTEGER 0/1, so a reader of the schema could not tell a flag from a
 -- count, and SQL compared them to 0 and 1. The store now writes TRUE and FALSE, which SQLite (whose
 -- INTEGER flags stay as they are) reads as 1 and 0. Each `IN (0, 1)` CHECK goes with its type, and
 -- the one partial index keyed on `active = 1` is rebuilt on the boolean.
@@ -32,6 +32,13 @@ DROP INDEX idx_secret_data_keys_one_active;
 ALTER TABLE secret_data_keys DROP CONSTRAINT secret_data_keys_active_check;
 ALTER TABLE secret_data_keys ALTER COLUMN active TYPE BOOLEAN USING active <> 0;
 CREATE UNIQUE INDEX idx_secret_data_keys_one_active ON secret_data_keys (active) WHERE active;
+
+ALTER TABLE filler_acquisition_artifacts
+    DROP CONSTRAINT filler_acquisition_artifacts_provider_archive_committed_check;
+ALTER TABLE filler_acquisition_artifacts ALTER COLUMN provider_archive_committed DROP DEFAULT;
+ALTER TABLE filler_acquisition_artifacts ALTER COLUMN provider_archive_committed
+    TYPE BOOLEAN USING provider_archive_committed <> 0;
+ALTER TABLE filler_acquisition_artifacts ALTER COLUMN provider_archive_committed SET DEFAULT FALSE;
 
 -- A unix-seconds time in a 32-bit INTEGER runs out in 2038; every other time column is BIGINT.
 ALTER TABLE filler_split_proposals ALTER COLUMN created_at TYPE BIGINT;
