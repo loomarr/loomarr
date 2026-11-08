@@ -113,6 +113,50 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("28800s");
   });
 
+  // The backup default (0 30 3 * * *) is in no preset. It used to render as a raw cron string.
+  it("shows a once-a-day cron as a time, not as cron fields", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "backup.schedule",
+          kind: "cron",
+          label: "Automatic backup schedule",
+          presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+        })}
+        value="0 30 3 * * *"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveTextContent("Every day at a time");
+    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveTextContent(":30");
+    expect(screen.queryByDisplayValue("0 30 3 * * *")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Automatic backup schedule minute"));
+    await userEvent.click(await screen.findByRole("option", { name: ":45" }));
+    expect(onChange).toHaveBeenLastCalledWith("0 45 3 * * *");
+  });
+
+  it("stores a named schedule's value and keeps an unusual cron behind Custom schedule", async () => {
+    const onChange = vi.fn();
+    const weekly = entry({
+      key: "backup.schedule",
+      kind: "cron",
+      label: "Automatic backup schedule",
+      presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+    });
+    const { unmount } = render(<SettingField entry={weekly} value="0 30 3 * * 1" onChange={onChange} />);
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveTextContent("Custom schedule");
+    expect(screen.getByLabelText("Automatic backup schedule custom schedule")).toHaveValue("0 30 3 * * 1");
+    unmount();
+
+    render(<SettingField entry={weekly} value="0 30 3 * * *" onChange={onChange} />);
+    await userEvent.click(screen.getByLabelText("Automatic backup schedule"));
+    await userEvent.click(await screen.findByRole("option", { name: "Every hour" }));
+    expect(onChange).toHaveBeenLastCalledWith("0 0 * * * *");
+  });
+
   it("offers the registry's presets and stores a selected one", async () => {
     const onChange = vi.fn();
     render(
