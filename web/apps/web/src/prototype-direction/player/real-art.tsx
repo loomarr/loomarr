@@ -55,12 +55,15 @@ const realChannel = (number: string): (RealChannel & { fanartSrc: string; logoOf
 
 const pictureSrc = manifest ? url(manifest.picture) : undefined;
 
-/** The picture: a real still, cover-fit like the drawn diner. */
+/**
+ * The picture: a real 16:9 still standing in for the video, contained with black bars exactly as the
+ * video would be (a slim letterbox on a 16:10 laptop, a mid-screen strip on a portrait phone).
+ */
 const RealFrame = () => (
   <div
     aria-hidden
     style={{
-      background: `#150d09 url("${pictureSrc ?? ""}") center/cover no-repeat`,
+      background: `#000 url("${pictureSrc ?? ""}") center/contain no-repeat`,
       inset: 0,
       position: "absolute",
     }}

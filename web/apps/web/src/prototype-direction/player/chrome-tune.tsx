@@ -1770,38 +1770,87 @@ interface TuneProps extends ChromeProps {
   loop?: boolean | undefined;
 }
 
+// The device frames (shared.tsx's ProtoFrame) and how far the bottom chrome reaches up from the
+// bottom edge in each. The extents are measured off the shots, good enough for a prototype.
+interface Frame {
+  bottomChrome: number;
+  H: number;
+  W: number;
+}
+const DESKTOP_FRAME: Frame = { bottomChrome: 256, H: 900, W: 1440 };
+const FRAME: Record<string, Frame> = {
+  desktop: DESKTOP_FRAME,
+  landscape: { bottomChrome: 200, H: 390, W: 844 },
+  portrait: { bottomChrome: 310, H: 844, W: 390 },
+};
+
+/** The 16:9 picture inside the frame, letterboxed (or pillarboxed) the way real video is. */
+const pictureOf = (device: string) => {
+  const f = FRAME[device] ?? DESKTOP_FRAME;
+  const w = Math.min(f.W, (f.H * 16) / 9);
+  const h = (w * 9) / 16;
+  return { ...f, h, w, x: (f.W - w) / 2, y: (f.H - h) / 2 };
+};
+
+// Playout's defaults: the bug is 6% of the picture tall, inset 5% from the picture's edges.
+const BUG_SIZE = 0.06;
+const BUG_MARGIN = 0.05;
+const BUG_GAP = 16;
+
 /**
- * The chrome keeps out of the bug's corner: anything that would sit there moves past the bug's box
- * (5% inset + 6% tall, playout's defaults) plus a 16 px gap. Container units, so it tracks the frame.
+ * Where chrome on the bug's edge (top or bottom) must start, in px from that edge, to clear the bug,
+ * or `base` when it already clears. On a portrait phone the picture is a strip mid-screen, so the bug
+ * is nowhere near the chrome and nothing moves.
  */
-const BUG_RESERVE = "calc(11cqh + 16px)";
+const clearOfBug = (device: string, edge: "top" | "bottom", base: number, chromeExtent: number): number => {
+  const p = pictureOf(device);
+  const near = p.y + BUG_MARGIN * p.h; // the bug's edge nearest the frame edge
+  const far = near + BUG_SIZE * p.h;
+  const reach = edge === "top" ? base + chromeExtent : chromeExtent;
+  if (near >= reach + BUG_GAP) return base;
+  return Math.max(base, Math.ceil((far + BUG_GAP) / 8) * 8);
+};
 
 const SUBS = SUBTITLE_OPTIONS.length;
 
 /**
  * Stand-in for the channel bug playout burns into the picture (internal/playout/watermark), at its
- * defaults: top-right, 6% of the frame tall, 5% inset, white letters at 40%. It is part of the
- * video, so the player can't move or hide it, only place its own chrome around it.
+ * defaults: top-right, 6% of the picture tall, 5% inset, white letters at 40%. It is part of the
+ * video, so it sits in the picture's rectangle (not the screen's), and the player can't move or hide
+ * it, only place its own chrome around it.
  */
-const ChannelBug = ({ corner, name }: { corner: Exclude<BugCorner, "off">; name: string }) => (
-  <div aria-hidden style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
-    <span
-      style={ui(0, 800, {
-        color: "rgba(255,255,255,0.4)",
-        fontSize: "4.5cqh",
-        letterSpacing: "0.02em",
-        lineHeight: "6cqh",
-        position: "absolute",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap",
-        [corner.startsWith("top") ? "top" : "bottom"]: "5cqh",
-        [corner.endsWith("right") ? "right" : "left"]: "5cqw",
-      })}
+const ChannelBug = ({
+  corner,
+  device,
+  name,
+}: {
+  corner: Exclude<BugCorner, "off">;
+  device: string;
+  name: string;
+}) => {
+  const p = pictureOf(device);
+  return (
+    <div
+      aria-hidden
+      style={{ height: p.h, left: p.x, pointerEvents: "none", position: "absolute", top: p.y, width: p.w }}
     >
-      {name}
-    </span>
-  </div>
-);
+      <span
+        style={ui(BUG_SIZE * p.h * 0.75, 800, {
+          color: "rgba(255,255,255,0.4)",
+          letterSpacing: "0.02em",
+          lineHeight: `${BUG_SIZE * p.h}px`,
+          position: "absolute",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          [corner.startsWith("top") ? "top" : "bottom"]: BUG_MARGIN * p.h,
+          [corner.endsWith("right") ? "right" : "left"]: BUG_MARGIN * p.w,
+        })}
+      >
+        {name}
+      </span>
+    </div>
+  );
+};
 
 /** The rating bug: a solid ink backing, so it reads over any picture. */
 const RatingBug = ({ dims, shown, top }: { dims: Dims; shown: boolean; top: string }) => (
@@ -2310,19 +2359,23 @@ const TuneInner = ({
               ? "Channels"
               : "More";
   // The readout sits in the corner, or under the cluster when digits are typed with the controls up.
-  // Each top corner's first free line: below the channel watermark when it sits there.
-  const topRight = watermark === "top-right" ? BUG_RESERVE : `${dims.top}px`;
-  const topLeft = watermark === "top-left" ? BUG_RESERVE : `${dims.top}px`;
+  // Each top corner's first free line: below the channel watermark when it would sit under it.
+  const clearTop = (corner: BugCorner) =>
+    `${watermark === corner ? clearOfBug(device, "top", dims.top, 48) : dims.top}px`;
+  const topRight = clearTop("top-right");
+  const topLeft = clearTop("top-left");
   const readoutTop = controlsOn ? `calc(${topRight} + ${48 + (pointer ? 24 : 16)}px)` : topRight;
-  const bugBottom = watermark === "bottom-right" || watermark === "bottom-left";
+  // A bottom-corner watermark lifts the band and keys when they would cover it.
+  const edgeBottom = Number.parseInt(dims.edge.split(" ").at(-1) ?? "0", 10) || 0;
+  const liftedBottom =
+    watermark === "bottom-right" || watermark === "bottom-left"
+      ? clearOfBug(device, "bottom", edgeBottom, pictureOf(device).bottomChrome)
+      : edgeBottom;
 
   return (
-    <div
-      className="tn-root"
-      style={{ containerType: "size", inset: 0, pointerEvents: "none", position: "absolute" }}
-    >
+    <div className="tn-root" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       <HStyles />
-      {watermark === "off" ? null : <ChannelBug corner={watermark} name={row.name} />}
+      {watermark === "off" ? null : <ChannelBug corner={watermark} device={device} name={row.name} />}
       {/* The ident card sits on its programme's fanart, heavily dimmed. */}
       <div className="tn-fade" data-shown={card} style={{ inset: 0, position: "absolute" }}>
         <div
@@ -2345,11 +2398,7 @@ const TuneInner = ({
       <RatingBug
         dims={dims}
         shown={bugOn}
-        top={
-          pointer || landscape
-            ? topLeft
-            : `calc(${watermark.startsWith("top") ? BUG_RESERVE : `${dims.top}px`} + 64px)`
-        }
+        top={pointer || landscape ? topLeft : `calc(${topRight} + 64px)`}
       />
       {detailsPanel ? <DetailsPanel dims={dims} lagMs={scenario.lagMs} tick={tick} /> : null}
       <div
@@ -2523,7 +2572,7 @@ const TuneInner = ({
           left: 0,
           padding: dims.edge,
           // A bottom-corner bug lifts the band and keys clear of it.
-          ...(bugBottom ? { paddingBottom: BUG_RESERVE } : {}),
+          paddingBottom: liftedBottom,
           pointerEvents: "none",
           position: "absolute",
           right: 0,
