@@ -480,12 +480,12 @@ type ClipStore interface {
 	// terminal-ready transaction; confirmed non-airable parents use ReleaseCompositeHolds.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
-	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
-	// editor (§10) and AI job. Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
+	// UpdateClipClassification edits the non-taxonomy classifier facts — the tag editor (§10).
+	// Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
 	// it in the same write, and a write with neither leaves it alone. Returns
 	// ErrNotFound if absent.
-	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, suggestedEra int, updatedAt time.Time) error
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipClassification because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
@@ -504,9 +504,6 @@ type ClipStore interface {
 	// DeleteClip removes ONE clip by identity — the split-confirm path drops the
 	// compilation row it just cut into segments (§10 V34). ErrNotFound if absent.
 	DeleteClip(ctx context.Context, libraryItemID string) error
-	// ListUntaggedCommercials returns commercials missing match tags — the AI
-	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
-	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
 	// ListClipFingerprints/UpsertClipFingerprint own the persisted creative-fingerprint cache used
 	// by creative identity and compilation de-duplication (#2033). Reads batch the catalog by exact
 	// algorithm; corrupt rows are omitted with an error so valid siblings remain reusable and the

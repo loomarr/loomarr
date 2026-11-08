@@ -16,7 +16,6 @@ const clip: ClipDTO = {
   category: "food",
   tagged: true,
   needsDetails: false,
-  aiTagged: false,
   playCount: 0,
   playsCounted: true,
   hash: "hash-intro",

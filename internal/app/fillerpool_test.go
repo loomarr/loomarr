@@ -250,8 +250,8 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 
 // ⚠ **The report counts the CATALOG, and `Untagged` has to mean the same catalog as `Clips`.**
 //
-// `ListUntaggedCommercials` passes `IncludeHeld: true` deliberately — held clips are exactly the
-// ones the AI tagger must tag. Pool reused that helper for a display statistic and inherited the
+// The retired tagger's work list passed `IncludeHeld: true` deliberately — held clips were exactly
+// the ones it had to tag. Pool reused that helper for a display statistic and inherited the
 // flag invisibly, so an install with one filed clip and twelve held ones rendered
 // "CLIPS 1 / 12 clips still need tagging" — a headline contradicted by its own subtext.
 //

@@ -286,18 +286,18 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetClipTags(ctx, "u1", []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateClipClassification(ctx, "u1", 1994, "kids", 0, true, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "u1", 1994, "kids", 0, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
-	if got.Era != 1994 || got.Audience != filler.Kids || got.Category != "cereal" || !got.AITagged {
+	if got.Era != 1994 || got.Audience != filler.Kids || got.Category != "cereal" {
 		t.Errorf("tag update didn't persist: %+v", got.Clip)
 	}
 	if !got.Tagged() {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(missing) = %v, want ErrNotFound", err)
 	}
 
@@ -305,21 +305,21 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	//  **record** an ungrounded suggestion on an era-less clip,
 	//  **keep** it across a tag edit that carries neither era nor suggestion,
 	//  **clear** it in the same write that sets era (the operator confirming).
-	if err := s.UpdateClipClassification(ctx, "keep", 0, "family", 1985, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 0, "family", 1985, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
 	if got.SuggestedEra != 1985 || got.Era != 0 {
 		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
 	}
-	if err := s.UpdateClipClassification(ctx, "keep", 0, "general", 0, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 0, "general", 0, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
 	if got.SuggestedEra != 1985 {
 		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
 	}
-	if err := s.UpdateClipClassification(ctx, "keep", 1985, "", 0, false, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "keep", 1985, "", 0, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, "keep")
@@ -728,10 +728,10 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// UpdateClipClassification is hash-keyed, and its ErrNotFound is fatal to the tagging job.
-	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
 	}
-	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, true, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, now); err != nil {
 		t.Errorf("UpdateClipClassification(hash) = %v, want it to apply", err)
 	}
 

@@ -132,8 +132,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if in.Body.Era != nil {
 			suggested = 0
 		}
-		// aiTagged=false: a human just made this decision, so it is no longer an AI tag. Hash-keyed.
-		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, false, now); err != nil {
+		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
 		evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.bulk_clip_edit", at: now}

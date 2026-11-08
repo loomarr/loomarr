@@ -314,7 +314,6 @@ type ClipDTO struct {
 	PlayCount    int64  `json:"playCount"`
 	LastPlayedAt string `json:"lastPlayedAt,omitempty" doc:"RFC3339; absent if never played (or not counted)"`
 	PlaysCounted bool   `json:"playsCounted" doc:"False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0"`
-	AITagged     bool   `json:"aiTagged"`
 	Tagged       bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
 	// NeedsDetails is the server's verdict, so the Library's caution chip and its "Untagged only"
 	// filter cannot disagree: both come from clipcatalog.Clip.NeedsDetails. A client must not
@@ -351,9 +350,8 @@ type ClipDTO struct {
 	// "none" = CHECKED and there is no speech to judge (a wordless visual spot, always kept),
 	// "en"/… = CHECKED, and this is what was heard.
 	Language string `json:"language,omitempty" doc:"Absent = not yet checked; 'none' = checked and wordless; otherwise the detected language (§10 V40). The first two are different facts."`
-	// VisionTagged records that a VISION pass contributed to this clip's tags, distinct from
-	// AITagged (text-only). Different trust and different cost, so a reviewer wants both.
-	VisionTagged bool `json:"visionTagged,omitempty" doc:"A vision pass over keyframes contributed tags, distinct from aiTagged (text-only) (§10 V44)"`
+	// VisionTagged records that a VISION pass contributed to this clip's tags.
+	VisionTagged bool `json:"visionTagged,omitempty" doc:"A vision pass over keyframes contributed tags (§10 V44)"`
 	// License is the licence URL the SOURCE declared.
 	//
 	// ⚠ **"" means UNKNOWN, never "public domain".** About 92% of archive.org items declare no
@@ -507,7 +505,7 @@ func clipToDTO(c catalogstore.Clip, playsCounted bool, img func(string) *ImageDT
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
-		AITagged: c.AITagged, Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
+		Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 		Brand: c.Brand, Confidence: c.Confidence, Held: c.Held, Language: c.Language,
 		VisionTagged: c.VisionTagged, License: c.License,
@@ -854,11 +852,10 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
-	// only the tagger writes suggestions — and the store's rule applies: setting era
-	// CONFIRMS and clears any suggestion in the same write, while an era-less edit
-	// leaves the operator's unanswered question alone (§10, V34). `category` is the
-	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, 0, false, now); err != nil {
+	// suggestedEra is 0 here — only vision writes suggestions — and the store's rule applies:
+	// setting era CONFIRMS and clears any suggestion in the same write, while an era-less edit
+	// leaves the operator's unanswered question alone (§10, V34).
+	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, 0, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}

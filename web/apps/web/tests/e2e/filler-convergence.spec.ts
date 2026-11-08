@@ -12,7 +12,6 @@ const clip = {
   category: "toys",
   isComposite: false,
   tagged: true,
-  aiTagged: true,
   playCount: 0,
   playsCounted: true,
 };

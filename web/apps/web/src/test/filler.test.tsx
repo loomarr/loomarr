@@ -50,7 +50,6 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   assertedTags: ["cereal"],
   tagged: true,
   needsDetails: false,
-  aiTagged: false,
   playCount: 0,
   playsCounted: true,
   ...over,

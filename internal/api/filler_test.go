@@ -605,7 +605,6 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 		Tags         []string
 		AssertedTags []string
 		Tagged       bool
-		AITagged     bool
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Era != 1994 || body.Audience != "kids" || !body.Tagged {
@@ -626,9 +625,6 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	}
 	if !slices.Equal(body.AssertedTags, []string{"cereal"}) {
 		t.Errorf("asserted tags = %v, want only cereal (never the food rollup)", body.AssertedTags)
-	}
-	if body.AITagged {
-		t.Error("a manual edit should clear the AI-tagged flag")
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "u1")
 	if err != nil {
@@ -767,7 +763,7 @@ func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
 	if err := st.SetClipTags(context.Background(), "u1", []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpdateClipClassification(context.Background(), "u1", 0, "kids", 1985, true, time.Now()); err != nil {
+	if err := st.UpdateClipClassification(context.Background(), "u1", 0, "kids", 1985, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	// The suggestion rides the DTO so the UI can ask the question.

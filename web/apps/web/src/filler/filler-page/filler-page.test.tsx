@@ -49,7 +49,6 @@ const clip = (hash: string, name: string): ClipDTO => ({
   source: "folder",
   playCount: 0,
   playsCounted: true,
-  aiTagged: false,
   tagged: true,
   needsDetails: false,
   suggestedEra: 0,

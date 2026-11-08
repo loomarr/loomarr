@@ -9,7 +9,6 @@ const clip: ClipDTO = {
   name: "Candy commercial",
   kind: "commercial",
   durationMs: 30000,
-  aiTagged: false,
   tagged: false,
   needsDetails: true,
   playCount: 0,

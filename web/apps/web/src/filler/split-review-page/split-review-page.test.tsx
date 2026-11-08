@@ -95,7 +95,6 @@ const stubSplit = (me: MeBody = ADMIN, current: string[] = ["en"]) => {
     durationMs: 61_000,
     playCount: 0,
     playsCounted: true,
-    aiTagged: false,
     tagged: false,
     needsDetails: true,
     suggestedEra: 0,

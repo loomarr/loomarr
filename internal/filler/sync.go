@@ -543,7 +543,6 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.Era = existing.Era
 			merged.Audience = existing.Audience
 			merged.Category = existing.Category
-			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
 			merged.GeographicScope = existing.GeographicScope
 			merged.Country = existing.Country
