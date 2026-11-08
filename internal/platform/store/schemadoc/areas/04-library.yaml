@@ -211,6 +211,16 @@ tables:
       resolution: A video track's resolution label, such as 1080p or 4K (reading the width too, so a wide film is not undersold).
       hdr: A video track's dynamic range, such as HDR10 or HLG; empty for standard range.
 
+  - name: library_trickplay
+    about: >
+      The trickplay files beside a title's file, one row each: seek thumbnails another media server
+      made, such as Emby's .bif. Only referenced, never imported. Replaced whenever the title is written.
+    columns:
+      item_id: The title (a library_items id).
+      path: The file the thumbnails are for (a library_sources path).
+      ref: Where the trickplay file is, as an absolute path.
+      format: Its format; bif, a Roku BIF of thumbnails at a fixed interval.
+
   - name: library_art
     about: >
       A title's artwork references, one row each. Replaced whenever the title is written; deleted with

@@ -272,7 +272,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindEpisode && id.seriesDir != "" {
 		seriesKey = seriesOrigin(b.root, id.seriesDir)
 	}
-	snapshot.Observation.Extension = originExtensionOf(id.kind, res, len(id.managed.records) > 0, seriesKey, fileEdition(records))
+	snapshot.Observation.Extension = originExtensionOf(id.kind, res, seriesKey, fileNotes{
+		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Trickplay: file.trickplay(),
+	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	return snapshot
 }
@@ -382,7 +384,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			Origin: seriesOrigin(b.root, s.dir), Kind: kindSeries,
 			Observation: inventory.Observation[inventory.ItemFacts]{
 				SchemaVersion: 1, ObservedAt: now, Coverage: coverage, Facts: facts,
-				Extension: originExtensionOf(mp.KindSeries, res, false, inventory.OriginKey{}, ""),
+				Extension: originExtensionOf(mp.KindSeries, res, inventory.OriginKey{}, fileNotes{}),
 			},
 			ExternalIDs: externalIDs(resolved.IDs),
 		}
