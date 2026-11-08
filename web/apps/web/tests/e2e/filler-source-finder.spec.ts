@@ -5,11 +5,12 @@ import { installMockBackend } from "./mock-backend";
 // ⚠ Wait out the phone tab bar's lazy chunk. Its Suspense placeholder is an empty row of the bar's
 // height, so a page that is otherwise still can settle on it and the shot loses the bar. Once the
 // suite really ran with reduced motion (#2004), a loaded run shot that empty row. Desktop never
-// renders the placeholder.
+// renders the placeholder. The shot is soft: a changed state still fails the test, but the flow
+// goes on, so one CI run reports every changed state's actual PNG instead of only the first.
 const sourceReadinessShot = async (page: Page, name: string) => {
   await expect(page.getByTestId("phone-bottom-bar-placeholder")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
-  await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+  await expect.soft(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
 };
 
 test("Archive source search stays in flow and registers only after confirmation", async ({ page }) => {

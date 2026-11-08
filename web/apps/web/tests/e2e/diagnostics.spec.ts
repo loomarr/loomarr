@@ -100,7 +100,7 @@ test("Media processes follows a live process and downloads retained output", asy
   await expect(page.getByRole("heading", { name: "Media processes" })).toBeVisible();
   await expect(page.getByText("channel-segment").first()).toBeVisible();
   await expect(page.getByText(/Frame 200/)).toBeVisible();
-  await page.getByRole("textbox", { name: "Search Process output" }).fill("warning");
+  await page.getByRole("searchbox", { name: "Search Process output" }).fill("warning");
   await expect(page.getByText(/warning retry/)).toBeVisible();
   await expect(page.getByText(/frame=200 healthy/)).toBeHidden();
   await page.getByRole("button", { name: "Timestamps" }).click();
