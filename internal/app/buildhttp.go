@@ -116,6 +116,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		LiveTV:               liveTVSvc,
 		TunerRescanner:       tunerRescanner,
 		TunarrConnect:        tunarrConnectSvc,
+		ArrDiscovery:         arrDiscovery{set: set},
 		Suggest:              suggestSvc,
 		ProposalWorkflow:     proposalWorkflow,
 		ProposalProgress:     deps.suggestions.progress,

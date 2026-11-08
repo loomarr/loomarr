@@ -9,6 +9,11 @@ interface ChecklistStepProps {
   // Who plays the channels (§9.1). Decides whether the Tunarr block exists at all, and which
   // blocks count as required. Resolved by the route so the rail and the content agree.
   backend?: PlayoutBackend;
+  // The blocks this screen shows. Connections shows every block but the library's managers;
+  // "Where's your media?" shows those alone, without the step's must-pass footer.
+  only?: readonly ConnectionBlockId[];
 }
 
-export type { ChecklistStepProps };
+type ConnectionBlockId = "media_server" | "requester" | "sonarr" | "radarr" | "tmdb" | "ai";
+
+export type { ChecklistStepProps, ConnectionBlockId };
