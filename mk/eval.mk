@@ -304,7 +304,7 @@ filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifa
 filler-corpus-cdc: ## freeze bounded CDC pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(RESEARCH_RUN) filler-corpus-pages \
-	    --in internal/fillercorpus/corpus/seeds/cdc.json \
+	    --in research/corpus/seeds/cdc.json \
 	    --out "$${LOOMARR_FILLER_CORPUS_CDC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc.json}" \
 	    --inventory-out "$${LOOMARR_FILLER_CORPUS_CDC_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_CDC_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-cache}" \
@@ -343,7 +343,7 @@ filler-corpus-met: ## freeze a bounded metadata-only Met Museum inventory
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT" || { echo "filler-corpus-met: LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(RESEARCH_RUN) filler-corpus-met \
-	    --terms "$${LOOMARR_FILLER_CORPUS_MET_TERMS:-internal/fillercorpus/corpus/seeds/met-positive-v1.json}" \
+	    --terms "$${LOOMARR_FILLER_CORPUS_MET_TERMS:-research/corpus/seeds/met-positive-v1.json}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_MET_ROLE_HINT:-policy-positive-nomination}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_MET_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-inventory.json}" \
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_MET_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-cache}" \
@@ -366,7 +366,7 @@ filler-corpus-met-rights-propose: ## pre-screen frozen Met rights metadata witho
 	  $(RESEARCH_RUN) filler-corpus-met-rights-propose \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --metadata-cache "$$LOOMARR_FILLER_CORPUS_MET_CACHE" \
-	    --policy-evidence "$${LOOMARR_FILLER_CORPUS_MET_POLICY_EVIDENCE:-internal/fillercorpus/corpus/seeds/met-open-access-evidence-v1.json}" \
+	    --policy-evidence "$${LOOMARR_FILLER_CORPUS_MET_POLICY_EVIDENCE:-research/corpus/seeds/met-open-access-evidence-v1.json}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-rights-prescreen.json}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN_PREPARED_AT" \
 	    --min-items "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN_MIN_ITEMS:-120}" \
@@ -425,11 +425,11 @@ filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pil
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(RESEARCH_RUN) filler-corpus-pilot \
-	    --lane internal/fillercorpus/corpus/pilot/prelinger.json \
-	    --lane internal/fillercorpus/corpus/pilot/loc.json \
-	    --lane internal/fillercorpus/corpus/pilot/nasa.json \
-	    --lane internal/fillercorpus/corpus/pilot/cdc.json \
-	    --lane internal/fillercorpus/corpus/pilot/commons.json \
+	    --lane research/corpus/pilot/prelinger.json \
+	    --lane research/corpus/pilot/loc.json \
+	    --lane research/corpus/pilot/nasa.json \
+	    --lane research/corpus/pilot/cdc.json \
+	    --lane research/corpus/pilot/commons.json \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT" \
 	    --locked-at "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot.json}"
@@ -438,7 +438,7 @@ filler-corpus-pilot-rights-review: ## prepare the inert five-lane pilot review p
 	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT" || { echo "filler-corpus-pilot-rights-review: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(RESEARCH_RUN) filler-corpus-pilot-rights-review \
-	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
+	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-research/corpus/pilot/locked.json}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.json}" \
 	    --csv-out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.csv}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT"
@@ -449,7 +449,7 @@ filler-corpus-pilot-rights-lock: ## lock completed pilot review into a non-autho
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(RESEARCH_RUN) filler-corpus-pilot-rights-lock \
-	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
+	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-research/corpus/pilot/locked.json}" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET" \
 	    --completed-csv "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-result.json}" \

@@ -536,11 +536,6 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/fillercorpus/corpus/*)
-      known=true
-      select_gate contracts
-      select_gate go
-      ;;
     internal/media/defects/corpus/*)
       # The defect floor's labelled synthetic corpus (#2034), embedded by corpus.go. The image
       # gate runs `make test-ffmpeg`, the only job that renders and scores it.
