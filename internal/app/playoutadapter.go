@@ -165,6 +165,10 @@ type playoutResolver struct {
 	// libraryAudio is the Library's tracks for a file the scanner read (#2151 decision 47). Audio
 	// selection reads it first, while the file is as the scanner read it; nil skips it.
 	libraryAudio libraryAudioReader
+	// libraryFile is the file a Library item plays (#2151 step 15): a programme keyed by a library
+	// item id reads it directly, with no media server. nil, or any other id, resolves through the
+	// media server.
+	libraryFile libraryFileReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -251,11 +255,7 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
 	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
 	// direct play begins — reading the file lets the encoder `-c copy` it.
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
-	src := r.lib.ResolveInput(ctx, airing.LibraryItemID, pm, library.StatReadableFile)
+	src := r.itemInput(ctx, r.lib, airing.LibraryItemID)
 	if src.URL == "" {
 		// The item id is real but the media server is unconfigured, so there is nothing to
 		// read. Reporting it as "nothing airing" rather than an error means the channel shows
@@ -338,11 +338,7 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			var pm library.PathMap
-			if r.pathMap != nil {
-				pm = r.pathMap()
-			}
-			src := r.lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+			src := r.itemInput(ctx, r.lib, itemID)
 			if src.URL == "" {
 				return playout.StillSource{}, false, nil
 			}
@@ -637,10 +633,6 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		return store.BroadcastCodecH264
 	}
 
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
 	lib := r.lib.Snapshot()
 
 	var codecs []string
@@ -654,7 +646,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
+		src := r.itemInput(ctx, lib, sl.LibraryItemID)
 		if src.URL == "" {
 			continue
 		}
@@ -1253,6 +1245,34 @@ func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID 
 		}
 	}
 	return prefer
+}
+
+// libraryFileReader is the store's read of the file a Library item plays.
+type libraryFileReader interface {
+	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
+}
+
+// itemInput is the input ffmpeg reads for a programme. A library item id reads the item's own
+// playing file while it is readable (#2151 step 15); any other id is a media-server id, resolved
+// to a mapped local file or the server's stream. lib may be nil when no media server is connected.
+func (r *playoutResolver) itemInput(ctx context.Context, lib *library.Client, itemID string) library.InputSource {
+	if r.libraryFile != nil {
+		path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
+		}
+		if ok && library.StatReadableFile(path) {
+			return library.InputSource{URL: path, Kind: library.InputFile}
+		}
+	}
+	if lib == nil {
+		return library.InputSource{}
+	}
+	var pm library.PathMap
+	if r.pathMap != nil {
+		pm = r.pathMap()
+	}
+	return lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
 }
 
 // libraryAudioReader is the store's one Library read audio selection makes.

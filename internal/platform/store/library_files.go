@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -65,6 +66,10 @@ type LibraryFileStore interface {
 	// header at this size and modification time and lists it with a title, so a file changed since
 	// is never answered from its old tracks.
 	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
+	// LibraryPlayingFile is the file a library item plays: its one source marked plays, while the
+	// scanner sees it present. ok is false for an id that is not a library item, or one with no
+	// present file.
+	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
 	// SaveLibraryFiles writes rows whole, in one transaction.
@@ -77,6 +82,21 @@ type LibraryFileStore interface {
 	SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error
 	// LibraryFileCounts counts present files across roots.
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
+}
+
+func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error) {
+	var path string
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
+		JOIN library_files f ON f.path = s.path
+		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
+		ORDER BY s.path LIMIT 1`), itemID).Scan(&path)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("library playing file: %w", err)
+	}
+	return path, true, nil
 }
 
 func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {

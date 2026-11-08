@@ -534,6 +534,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
     found the file, the scanner skips it, the file isn't a title yet, or versions or episodes
     disagree.
 
+  Readers learn library item ids before the rewrite turns stored ids into them. Playout reads first:
+  a programme keyed by a library item id plays that item's own playing file, with no media-server
+  call (`LibraryPlayingFile`); any other id resolves through the media server as before.
+
   `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
   pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
   prints the map's coverage.
