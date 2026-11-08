@@ -870,7 +870,8 @@ type PlayoutResolver interface {
 	// the Watch surface's pickers (§9.1, V46). Best-effort: empty when nothing airs or the probe
 	// fails, so a UI request never blocks on a bad probe.
 	Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error)
-	// LineupFormats returns the inventory stream facts of each distinct programme in the channel's
-	// lineup (zero for an unmeasured item), from which the channel's formats are derived (#1512 G10).
+	// LineupFormats returns the Library's stream facts of each distinct programme in the channel's
+	// lineup (zero for an item it has not read), from which the channel's formats are derived
+	// (#1512 G10).
 	LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error)
 }

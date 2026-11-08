@@ -168,12 +168,12 @@ func buildHandler(
 	calendar := householdCalendar(set, foundation.holidays, log)
 	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
-	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
-		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
+		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
 	)
 	if err != nil {
@@ -211,6 +211,8 @@ func buildHandler(
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
+	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
+		"checked by Current Health once the scheduler is running", scheduledTasksRoute, "")
 
 	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
@@ -220,6 +222,9 @@ func buildHandler(
 	)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if operations.scheduler != nil {
+		healthRunner.watchTasks(operations.scheduler)
 	}
 	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {

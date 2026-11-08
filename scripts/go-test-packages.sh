@@ -18,7 +18,11 @@ trap 'rm -f "$log"' EXIT
 args=(test -timeout "$timeout")
 label="non-race"
 if [[ "$mode" == "race" ]]; then
-	args+=(-race)
+	# -race also turns on checkptr in every package. modernc's SQLite is C translated to Go, unsafe
+	# pointer arithmetic on nearly every line, and checkptr there doubled the cost of every migration
+	# (a 36 s migration test took 20 s without it, #2716). The race detector still instruments it;
+	# only checkptr is off, and only for modernc.
+	args+=(-race "-gcflags=modernc.org/...=-d=checkptr=0")
 	label="race"
 fi
 # Cache warming only (.github/workflows/ci-go-cache-warm.yml): build every test binary with the

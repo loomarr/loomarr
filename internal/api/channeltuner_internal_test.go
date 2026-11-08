@@ -42,7 +42,7 @@ func TestInAppPlayableUsesEffectiveBackendAndLifecycle(t *testing.T) {
 }
 
 func TestChannelOperationsReadDurableCheckpointOnce(t *testing.T) {
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	if _, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
 		ID: "inherited", Name: "Inherited", Number: 1, Status: schedule.StatusLive,
 	}}); err != nil {

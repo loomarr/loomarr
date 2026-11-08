@@ -33,7 +33,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposal_jobs SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+		`UPDATE proposal_jobs SET status='done', last_error='', failure_code='', failure_trace_json=NULL, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
 		epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *sqlStore) ReviseSubmittedProposal(
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposal_jobs
 		    SET kind='suggest', status='queued', intent_json=?, intent_hash=?, last_error='',
-		        failure_code='', failure_trace_json='', deadline=?, updated_at=?
+		        failure_code='', failure_trace_json=NULL, deadline=?, updated_at=?
 		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?
 		    AND ? = (
 		        SELECT p.id FROM proposals p
@@ -192,7 +192,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 		`UPDATE proposal_jobs
 		    SET status='failed', last_error=?, failure_code=?, failure_trace_json=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
-		cause, failureCode, failureTraceJSON, epoch(updatedAt), jobID, expectedAttempt)
+		cause, failureCode, storedb.OptionalJSON(failureTraceJSON), epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: transition: %w", jobID, err)
 	}
@@ -250,8 +250,8 @@ func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Propos
 	if _, err := tx.ExecContext(ctx, s.ph(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, '')`),
-		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy,
+		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, NULL)`),
+		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy,
 		ProposalWorkflowVersion, job.ReachedLive, epoch(job.Deadline),
 		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
 		return fmt.Errorf("record suggestion job %s: create job: %w", job.ID, err)
@@ -297,9 +297,9 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, "", "",
+		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy, "", "",
 		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
-		epoch(job.CreatedAt), epoch(job.UpdatedAt), ""); err != nil {
+		epoch(job.CreatedAt), epoch(job.UpdatedAt), nil); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
 	}
 
