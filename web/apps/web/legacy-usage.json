@@ -5,8 +5,8 @@
       "tailwindClasses": 152
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "tailwindClasses": 31,
-      "legacyUi": 3
+      "tailwindClasses": 20,
+      "legacyUi": 1
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
       "tailwindClasses": 11,
