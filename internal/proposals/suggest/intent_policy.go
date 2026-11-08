@@ -208,6 +208,9 @@ func intentSignalsKids(intent Intent) bool {
 			return true
 		}
 	}
+	if youngChildAgePattern.MatchString(hay) {
+		return true
+	}
 	// Explicit low rating tokens the user might type ("rated G", "keep it TV-Y7").
 	for _, r := range []string{"tv-y", "tv-g", "rated g", "rated pg"} {
 		if strings.Contains(hay, r) {
@@ -398,10 +401,16 @@ func holidayLabel(v holidayvocab.Vocabulary, id string) string {
 // deliberate guardrail the user asked for); a generic "action"/"drama" does NOT.
 var kidsIntentCues = []string{
 	"kid", "kids", "child", "children", "family-friendly", "family friendly",
-	"for the family", "for families", "cartoon", "all ages", "all-ages", "wholesome",
+	"for the family", "for families", "all ages", "all-ages", "wholesome",
 	"preschool", "toddler", "bluey", "saturday morning", "teen", "teenager", "tween",
-	"g-rated", "pg-rated", "clean ", "safe for",
+	"g-rated", "pg-rated", "clean ", "safe for", "little one",
 }
+
+// "cartoon" is deliberately not a cue: it names a format, and "90s cartoons" is
+// as often nostalgia for adults as a request for children (#2739). It was added
+// in b3ebaa040 to catch "cartoons for my 5-year-old"; a named young age keeps
+// that request a kids request without the format word.
+var youngChildAgePattern = regexp.MustCompile(`\b(?:[1-9]|1[0-2])[- ]?(?:year|yr)s?[- ]?olds?\b`)
 
 func intentDeterministicSafetyCeiling(intent Intent) rating.Rating {
 	hay := normalizedIntentText(intent)
