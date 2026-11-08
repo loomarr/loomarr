@@ -59,6 +59,12 @@ type LibraryHeldCount struct {
 
 // LibraryFileStore keeps the scanner's file table.
 type LibraryFileStore interface {
+	// LibraryAudioTracks is a file's own audio tracks (none of its external audio files), in
+	// stream order, as the Library lists them (#2151 decision 47): Index, Language, Default,
+	// Commentary, Descriptive, Codec and Channels. ok is false unless the scanner read the file's
+	// header at this size and modification time and lists it with a title, so a file changed since
+	// is never answered from its old tracks.
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
 	// SaveLibraryFiles writes rows whole, in one transaction.
@@ -71,6 +77,38 @@ type LibraryFileStore interface {
 	SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error
 	// LibraryFileCounts counts present files across roots.
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
+}
+
+func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+	var listed int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
+		JOIN library_sources src ON src.path = f.path
+		WHERE f.path = ? AND f.size_bytes = ? AND f.modified_ns = ? AND f.header = ? AND f.missing_at_ms = 0`),
+		path, sizeBytes, modifiedNs, LibraryHeaderRead).Scan(&listed); err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	if listed == 0 {
+		return nil, false, nil
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT stream_index, language, is_default, commentary, descriptive,
+		codec, channels FROM library_streams WHERE path = ? AND kind = 'audio' AND external_ref = ''
+		ORDER BY stream_index`), path)
+	if err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	tracks := []LibraryStream{}
+	for rows.Next() {
+		t := LibraryStream{Kind: "audio"}
+		if err := rows.Scan(&t.Index, &t.Language, &t.Default, &t.Commentary, &t.Descriptive, &t.Codec, &t.Channels); err != nil {
+			return nil, false, fmt.Errorf("library audio tracks: %w", err)
+		}
+		tracks = append(tracks, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	return tracks, true, nil
 }
 
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {

@@ -197,10 +197,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		channels: st,
 		// The store, narrowed to the single derived-column write ComputeChannelCodec makes
 		// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
-		codecs:  st,
-		cycles:  newCycleCache(time.Now),
-		tier:    func() string { return settings.PlayoutQualityTier.Get(set) },
-		encoder: func() string { return settings.PlayoutEncoder.Get(set) },
+		codecs: st,
+		// The Library's tracks for a file the scanner read: audio selection's first answer.
+		libraryAudio: st,
+		cycles:       newCycleCache(time.Now),
+		tier:         func() string { return settings.PlayoutQualityTier.Get(set) },
+		encoder:      func() string { return settings.PlayoutEncoder.Get(set) },
 		// The operator's HDR curve: the probe measures it and the budget prices HDR by it.
 		toneCurve: func() string { return settings.PlayoutToneCurve.Get(set) },
 		// fillerDir belongs to the immutable generation layout. Changing storage roots

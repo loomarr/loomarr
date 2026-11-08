@@ -66,6 +66,10 @@ type Service interface {
   whole. Results live in `inventory_source_analysis`, are dropped when the revision changes, and are
   read through `inventory.AnalysisReader`. Playout never asks the media server at airtime: an
   unmeasured source gets one stream-facts probe on first play.
+- **Playout moves onto the Library tables one reader at a time.** Audio-track choice reads first: a
+  local file the scanner read at its current size and modification time takes its own audio tracks
+  from `library_streams` (`LibraryAudioTracks`), with external audio files excluded. Any other file
+  falls back to inventory, then to the probe.
 - `ResolveSource` returns identity, revision, safe observations and a protected locator. Inventory
   owns what a source is, not the credentials for opening it.
 
