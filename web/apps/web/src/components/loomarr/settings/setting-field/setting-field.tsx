@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { CronField } from "./cron-field";
 import type { SettingFieldProps } from "./setting-field.type";
 
 // SettingField — one registry key as a form control (config-design §2, §3, §6). The
@@ -240,6 +241,21 @@ const SettingField = ({
             </div>
           )}
         </div>
+      );
+    }
+    if (entry.kind === SettingKind.cron) {
+      return (
+        <CronField
+          id={id}
+          label={label}
+          value={value}
+          presets={entry.presets ?? []}
+          onChange={onChange}
+          disabled={pinned || disabledReason !== undefined}
+          invalid={invalid}
+          describedBy={describedBy}
+          labelledBy={labelledBy}
+        />
       );
     }
     if (entry.kind === SettingKind.duration) {

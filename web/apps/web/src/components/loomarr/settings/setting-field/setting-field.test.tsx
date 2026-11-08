@@ -131,6 +131,50 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("28800s");
   });
 
+  // The backup default (0 30 3 * * *) is in no preset. It used to render as a raw cron string.
+  it("shows a once-a-day cron as a time, not as cron fields", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "backup.schedule",
+          kind: "cron",
+          label: "Automatic backup schedule",
+          presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+        })}
+        value="0 30 3 * * *"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue(
+      "Every day at a time I choose",
+    );
+    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveDisplayValue(":30");
+    expect(screen.queryByDisplayValue("0 30 3 * * *")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule minute"), ":45");
+    expect(onChange).toHaveBeenLastCalledWith("0 45 3 * * *");
+  });
+
+  it("stores a named schedule's value and keeps an unusual cron behind Custom schedule", async () => {
+    const onChange = vi.fn();
+    const weekly = entry({
+      key: "backup.schedule",
+      kind: "cron",
+      label: "Automatic backup schedule",
+      presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+    });
+    const { unmount } = render(<SettingField entry={weekly} value="0 30 3 * * 1" onChange={onChange} />);
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue("Custom schedule");
+    expect(screen.getByLabelText("Automatic backup schedule custom schedule")).toHaveValue("0 30 3 * * 1");
+    unmount();
+
+    render(<SettingField entry={weekly} value="0 30 3 * * *" onChange={onChange} />);
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule"), "Every hour");
+    expect(onChange).toHaveBeenLastCalledWith("0 0 * * * *");
+  });
+
   it("offers the registry's presets and stores a selected one", async () => {
     const onChange = vi.fn();
     render(
