@@ -38,7 +38,7 @@ func buildProvisioning(
 		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.Add(reconciler.Job())
-	registry.Add(housekeeping.New(st, housekeeping.Windows{
+	keeper := housekeeping.New(st, housekeeping.Windows{
 		Proposals:   func() time.Duration { return settings.ProposalsRetention.Get(set) },
 		Jobs:        func() time.Duration { return settings.JobsRetention.Get(set) },
 		Activity:    func() time.Duration { return settings.ActivityRetention.Get(set) },
@@ -46,7 +46,11 @@ func buildProvisioning(
 		DiagnosticsMaxBytes: func() int64 {
 			return int64(settings.DiagnosticsMaxStorageMb.Get(set)) * 1024 * 1024
 		},
-	}, time.Now, log).WithDiagnostics(processDiagnostics).Job())
+	}, time.Now, log).WithDiagnostics(processDiagnostics)
+	if tidier := store.DatabaseTidier(st); tidier != nil {
+		keeper.WithTidier(tidier.Tidy)
+	}
+	registry.Add(keeper.Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
 		st, libraryClient, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,

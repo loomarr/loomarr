@@ -16,9 +16,13 @@ code path is shared through `database/sql`.
   run beside the one writer SQLite allows; each write transaction takes the write lock when it begins,
   so a waiting writer queues on `busy_timeout` instead of failing mid-transaction. Until #2446 the pool
   had one connection, and every read queued behind every write. Open also runs `PRAGMA optimize` so the
-  planner has statistics. **PostgreSQL** uses `pgx` through its `database/sql` shim, in a pool of up
-  to 20 connections per replica that stay open between bursts (idle ones close after 5 minutes, and
-  every one is replaced after an hour). The invalidation listener holds one more, outside the pool.
+  planner has statistics. The file uses `auto_vacuum=INCREMENTAL`. A database from before #2446 is
+  converted by one `VACUUM` on its first open, and the nightly housekeeping pass ends with
+  `PRAGMA incremental_vacuum` and `PRAGMA optimize`, so space freed by purges goes back to the disk
+  instead of the file keeping its largest size. **PostgreSQL** uses `pgx` through its `database/sql`
+  shim, in a pool of up to 20 connections per replica that stay open between bursts (idle ones close
+  after 5 minutes, and every one is replaced after an hour). The invalidation listener holds one more,
+  outside the pool.
 - **Schema:** `goose` migrations embedded in the binary, one directory per dialect so dialect DDL never
   leaks; they run at startup. SQL stays ANSI where it can (`INSERT … ON CONFLICT … DO UPDATE` works on
   both). Migrations are forward-only.

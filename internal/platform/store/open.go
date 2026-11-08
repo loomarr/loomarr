@@ -62,6 +62,10 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 			return nil, err
 		}
 		if autoMigrate {
+			if err := ensureIncrementalVacuum(ctx, s.db); err != nil {
+				_ = s.Close()
+				return nil, err
+			}
 			if err := migrate(ctx, s.db, "sqlite", "migrations/sqlite"); err != nil {
 				_ = s.Close()
 				return nil, err

@@ -131,6 +131,32 @@ func TestHousekeepingAttemptsLaterStagesAfterQualityLedgerFailure(t *testing.T) 
 	}
 }
 
+// The tidy runs last, after every purge, and still runs when an earlier stage failed: the rows
+// that stage did delete left free pages too (#2446).
+func TestHousekeepingTidiesLastEvenAfterAFailedStage(t *testing.T) {
+	failed := errors.New("diagnostic store unavailable")
+	store := &retentionStore{diagnosticErr: failed}
+	tidied := false
+	service := New(store, Windows{
+		Proposals: func() time.Duration { return time.Hour }, Jobs: func() time.Duration { return time.Hour },
+		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return time.Hour },
+		DiagnosticsMaxBytes: func() int64 { return 1 },
+	}, time.Now, nil).WithTidier(func(context.Context) (int64, error) {
+		if !store.sessionsCalled {
+			t.Error("tidied before the session purge, the last purge stage")
+		}
+		tidied = true
+		return 4096, nil
+	})
+
+	if err := service.Housekeeping(context.Background()); !errors.Is(err, failed) {
+		t.Fatalf("Housekeeping error = %v, want the diagnostics failure", err)
+	}
+	if !tidied {
+		t.Fatal("an earlier failed stage skipped the tidy")
+	}
+}
+
 func TestHousekeepingAttemptsLaterStagesAfterDiagnosticFailure(t *testing.T) {
 	want := errors.New("diagnostic store unavailable")
 	store := &retentionStore{diagnosticErr: want}

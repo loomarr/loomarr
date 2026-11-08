@@ -15,6 +15,7 @@ package housekeeping
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -56,9 +57,17 @@ type Service struct {
 	diagnostics interface {
 		Purge(context.Context, time.Time, int64) (diagnostics.PurgeResult, error)
 	}
-	win Windows
-	now func() time.Time
-	log *slog.Logger
+	tidy func(context.Context) (freedBytes int64, err error) // nil on Postgres, which tidies itself
+	win  Windows
+	now  func() time.Time
+	log  *slog.Logger
+}
+
+// WithTidier ends each pass by handing the space its purges freed back to the disk (SQLite only,
+// #2446). Without it a SQLite file keeps its largest-ever size however much is deleted.
+func (s *Service) WithTidier(tidy func(context.Context) (freedBytes int64, err error)) *Service {
+	s.tidy = tidy
+	return s
 }
 
 // WithDiagnostics assigns the filesystem-aware purge coordinator. The store-only fallback keeps
@@ -226,9 +235,19 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 			s.log.Info("expired sessions purged", "rows", n)
 		}
 	}
+	// Last, so it returns what every purge above freed.
+	var freed int64
+	if s.tidy != nil {
+		n, err := s.tidy(ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("tidy database: %w", err))
+		}
+		freed = n
+	}
 	if s.log != nil {
 		s.log.Info("housekeeping finished", "rows_deleted", rows,
 			"diagnostic_events", diag.Events, "diagnostic_process_runs", diag.ProcessRuns,
+			"freed_bytes", freed,
 			"duration_ms", s.now().Sub(started).Milliseconds(), "failed_stages", len(errs))
 	}
 	return errors.Join(errs...)
@@ -246,7 +265,7 @@ const housekeepingTimeout = 25 * time.Minute
 func (s *Service) Job() jobs.Job {
 	return jobs.Job{
 		Name: "housekeeping", Group: jobs.GroupSystem, Title: "Clean up old data",
-		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
+		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods, then gives the freed space back to the disk.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: settings.JobHousekeepingSchedule.Key(),
 		Timeout: housekeepingTimeout,
 		Run:     s.Housekeeping,
