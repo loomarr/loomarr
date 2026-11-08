@@ -457,16 +457,13 @@
       "legacyUi": 1
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 20,
-      "legacyUi": 1
+      "tailwindClasses": 20
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 63,
-      "legacyUi": 1
+      "tailwindClasses": 63
     },
     "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 45,
-      "legacyUi": 1
+      "tailwindClasses": 45
     },
     "src/filler/filler-settings/filler-settings.tsx": {
       "tailwindClasses": 110,
@@ -476,12 +473,10 @@
       "tailwindClasses": 18
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 54,
-      "legacyUi": 1
+      "tailwindClasses": 54
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 113,
-      "legacyUi": 1
+      "tailwindClasses": 112
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 38,
@@ -523,8 +518,7 @@
       "tailwindClasses": 3
     },
     "src/filler/split-review-page/split-review-page.tsx": {
-      "tailwindClasses": 60,
-      "legacyUi": 1
+      "tailwindClasses": 60
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "tailwindClasses": 211,
