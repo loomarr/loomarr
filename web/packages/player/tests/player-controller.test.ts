@@ -6,8 +6,18 @@ import {
   type PlayerTransportEvent,
   playableCatalog,
 } from "@loomarr/player";
+import { createPlayUrlSourcePort } from "@loomarr/player/server";
 import { describe, expect, it, vi } from "vitest";
-import { ServerUnreachable, StartFailure } from "../src/start-failure";
+
+// A source whose mint succeeds and whose start is the real play-URL start over a fake server: an
+// Error is a request that never reached it, a Response is its answer.
+const startingWith = (answer: Response | Error): PlayerSourcePort => {
+  const served = createPlayUrlSourcePort({
+    baseUrl: "https://loomarr.test",
+    fetch: vi.fn(() => (answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer))),
+  });
+  return { mint: vi.fn().mockResolvedValue({ uri: "https://loomarr.test/ten.m3u8" }), start: served.start };
+};
 
 const channels: PlayerChannel[] = [
   { id: "thirty", inAppPlayable: true, name: "Thirty", number: 30 },
@@ -338,10 +348,7 @@ describe("player controller", () => {
     });
 
     it("is the server when the start request can't reach it", async () => {
-      const source: PlayerSourcePort = {
-        mint: vi.fn().mockResolvedValue({ uri: "https://loomarr.test/ten.m3u8" }),
-        start: vi.fn().mockRejectedValue(new ServerUnreachable()),
-      };
+      const source = startingWith(new TypeError("Failed to fetch"));
       const { controller } = harness(source, { recovery: { backoffMs: [] } });
 
       await controller.reconcile(channels);
@@ -350,10 +357,11 @@ describe("player controller", () => {
     });
 
     it("is the channel when the server answered but the channel never started", async () => {
-      const source: PlayerSourcePort = {
-        mint: vi.fn().mockResolvedValue({ uri: "https://loomarr.test/ten.m3u8" }),
-        start: vi.fn().mockRejectedValue(new StartFailure("No encoder ran.", 502)),
-      };
+      const source = startingWith(
+        new Response(JSON.stringify({ detail: "No encoder ran.", title: "Channel didn't start" }), {
+          status: 502,
+        }),
+      );
       const { controller } = harness(source);
 
       await controller.reconcile(channels);
