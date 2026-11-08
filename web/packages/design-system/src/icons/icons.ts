@@ -18,6 +18,7 @@ import EyeOff from "lucide-react-native/icons/eye-off";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
+import LayoutGrid from "lucide-react-native/icons/layout-grid";
 import Library from "lucide-react-native/icons/library";
 import List from "lucide-react-native/icons/list";
 import ListChecks from "lucide-react-native/icons/list-checks";
@@ -82,6 +83,8 @@ const icons = {
   // The player's window tools (§9.4).
   fullscreen: Maximize,
   fullscreenExit: Minimize,
+  // A catalog's card wall, the alternative to its `list` rows.
+  grid: LayoutGrid,
   guide: BookOpen,
   help: ListChecks,
   home: House,
