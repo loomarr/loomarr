@@ -65,6 +65,7 @@ type LiveColumn struct {
 	Checked    bool   // named inside one of the table's CHECK constraints
 	JSON       bool   // SQLite only: CHECKed with json_valid(column), so its Postgres twin is jsonb
 	Flag       bool   // SQLite only: CHECKed with column IN (0, 1), so its Postgres twin is boolean
+	Default    string // SQLite only: the default as declared ('[]', 0, ...), "" when there is none
 }
 
 // Comment is one Postgres COMMENT ON target: a table when Column is empty, else a column.

@@ -84,7 +84,7 @@ func scanStructureWindowCallLedgerRow(scanner scannable) (structureWindowCallLed
 	var ordinal, attempt int
 	var requestedAt, assessedAt int64
 	if err := scanner.Scan(&requestSHA, &evaluationID, &sourceSHA, &mediaSetSHA, &ordinal, &assessorID,
-		&state, &reservationRaw, &recordSHA, &recordRaw, &requestedAt, &assessedAt, &attempt); err != nil {
+		&state, &reservationRaw, &recordSHA, (*storedb.OptionalJSON)(&recordRaw), &requestedAt, &assessedAt, &attempt); err != nil {
 		return structureWindowCallLedgerRow{}, err
 	}
 	var reservation window.CallReservation

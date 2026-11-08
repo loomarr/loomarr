@@ -364,7 +364,6 @@ func TestSeriesEpisodeCacheRejectsInvalidDocuments(t *testing.T) {
 		name string
 		blob string
 	}{
-		{name: "empty document", blob: ""},
 		{name: "object document", blob: `{}`},
 		{name: "scalar document", blob: `"episode"`},
 	} {

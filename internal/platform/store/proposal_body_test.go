@@ -41,29 +41,23 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 	}
 }
 
-func TestProposalBodyEmptyColumnIsTheZeroProposal(t *testing.T) {
-	s := newSQLiteStore(t).(*sqlStore)
-	ctx := context.Background()
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
-		VALUES ('p-empty', 'j', 'submitted', 'u', '', '', '', '', '', 0, 0, 0)`)); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.GetProposal(ctx, "p-empty")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Body.ChannelName != "" || len(got.Body.Lineup) != 0 {
-		t.Fatalf("empty column decoded to %+v, want the zero proposal", got.Body)
-	}
-}
-
 // A proposal the store cannot read is an error, never a silently empty one: the caller would
-// approve or bind a lineup it never saw.
-func TestProposalBodyMalformedColumnIsAnError(t *testing.T) {
+// approve or bind a lineup it never saw. The schema refuses a column that isn't JSON at all, so
+// what is left to refuse on read is JSON that isn't a proposal.
+func TestProposalBodyThatIsNotAProposalIsAnError(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
-		VALUES ('p-bad', 'j', 'approved', 'u', '', '', '', '', '{', 0, 0, 0)`)); err != nil {
+	insert := func(id, body string) error {
+		_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+			VALUES (?, 'j', 'approved', 'u', '', '', '', '', ?, 0, 0, 0)`), id, body)
+		return err
+	}
+	for _, notJSON := range []string{"", "{"} {
+		if err := insert("p-"+notJSON, notJSON); err == nil {
+			t.Fatalf("proposal_json %q was stored", notJSON)
+		}
+	}
+	if err := insert("p-bad", "[1]"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.GetProposal(ctx, "p-bad"); err == nil || errors.Is(err, ErrNotFound) {

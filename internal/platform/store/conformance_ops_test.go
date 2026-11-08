@@ -769,6 +769,10 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(events) == 2 {
+		events[0].AttributesJSON = asWritten(events[0].AttributesJSON, newEvent.AttributesJSON)
+		events[1].AttributesJSON = asWritten(events[1].AttributesJSON, oldEvent.AttributesJSON)
+	}
 	if len(events) != 2 || events[0] != newEvent || events[1] != oldEvent {
 		t.Fatalf("diagnostic events = %+v, want newest then oldest", events)
 	}
@@ -779,6 +783,9 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(filtered) == 1 {
+		filtered[0].AttributesJSON = asWritten(filtered[0].AttributesJSON, newEvent.AttributesJSON)
 	}
 	if len(filtered) != 1 || filtered[0] != newEvent {
 		t.Fatalf("filtered diagnostic events = %+v, want correlated new event", filtered)
