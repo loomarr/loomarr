@@ -620,6 +620,63 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	}
 }
 
+// A down arr holds back only the files in the folders it manages: a new file in a folder no arr
+// manages is written at once. Folder passes don't ask the down arr again until arrRetry has passed.
+func TestImportArrOutageHoldsOnlyItsOwnFolders(t *testing.T) {
+	radarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
+	ctx := context.Background()
+	movies := t.TempDir()
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, movies: true}}
+	if err := h.st.AddLibraryRoot(ctx, store.LibraryRootCheck{Path: movies, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
+		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: movies}}, Complete: []string{"radarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Unix(1_800_000_000, 0)
+	h.im.Now = func() time.Time { return at }
+	radarr.err = errors.New("radarr is down")
+
+	h.file("Golf (2015)/Golf.mkv", 10)
+	held := filepath.Join(movies, "Hotel (2016)", "Hotel.mkv")
+	if err := os.MkdirAll(filepath.Dir(held), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(held, make([]byte, 10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	golf := fileOrigin(h.root, "Golf (2015)/Golf.mkv")
+	if _, ok, err := h.inv.Item(ctx, inventory.ItemRef{Origin: &golf}); err != nil || !ok {
+		t.Fatalf("a new file in a folder no arr manages waited for the down arr: ok=%v err=%v", ok, err)
+	}
+	hotel := fileOrigin(movies, "Hotel (2016)/Hotel.mkv")
+	if _, ok, err := h.inv.Item(ctx, inventory.ItemRef{Origin: &hotel}); err != nil || ok {
+		t.Fatalf("a new file in the down arr's folder was written: ok=%v err=%v", ok, err)
+	}
+
+	lists := radarr.lists
+	for range 5 {
+		h.file("India (2017)/India.mkv", 10)
+		if err := h.im.RunFolders(ctx, h.root, []string{filepath.Join(h.root, "India (2017)")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if radarr.lists != lists {
+		t.Errorf("folder passes asked the down arr %d more times within a minute; want none", radarr.lists-lists)
+	}
+	at = at.Add(arrRetry)
+	if err := h.im.RunFolders(ctx, h.root, []string{filepath.Join(h.root, "India (2017)")}); err != nil {
+		t.Fatal(err)
+	}
+	if radarr.lists != lists+1 {
+		t.Errorf("after arrRetry, a folder pass asked the down arr %d times; want once", radarr.lists-lists)
+	}
+}
+
 // An arr with no connection is not a manager: its silence holds nothing back.
 func TestImportUnconfiguredArrIsNoOutage(t *testing.T) {
 	sonarr := &fakeLister{err: fmt.Errorf("sonarr: %w", mp.ErrNotConfigured)}

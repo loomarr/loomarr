@@ -224,9 +224,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   Needs you link splits the copy out again; the founding origin never leaves.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
-  either changed, and reads its header only when its bytes changed. While an arr fails to list,
-  new and changed files wait and nothing is marked missing, rather than writing what the arr's
-  absence would leave.
+  either changed, and reads its header only when its bytes changed.
+- **While an arr fails to list:**
+  - new and changed files in the roots it manages wait, rather than being written with what its
+    absence would leave;
+  - files in any other folder go on as usual;
+  - nothing is marked missing.
+
+  Folder passes reuse the failed listing for a minute instead of asking the arr again on every
+  change; the hourly walk always asks.
 - **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
   and wait while any playout session is live. A file whose header does not parse is marked failed
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
