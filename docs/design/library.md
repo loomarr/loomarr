@@ -568,24 +568,22 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Writers name library items** (step 15c). The availability scan, discovery's presence and the
   channel engine's rating heal ask the Library first (`LibraryTitles`, `LibraryTitleByProviderID`:
   movies and series with a present file, by their TMDB and TVDB ids), so a title that confirms or
-  is found owned records its library item id. The media server answers only what the Library
-  doesn't hold, and a media server that is down no longer holds back what the Library confirms.
-  The ids already stored are the rewrite's.
+  is found owned records its library item id. Since step 16, presence and the rating heal ask the
+  Library alone. The ids already stored are the rewrite's.
 - **Collection scopes read the household's collections first** (step 15e). The scope.collections
   picker lists the household's collections, then only the media server's that were never imported
   (`imported_id`); the reconcile's membership index does the same, so an imported collection is
   known only by the household's id the rewrite pointed scopes at. With no media server, the
   household's alone, without an error.
-- **Title search asks the Library first** (step 15e). Like the collections picker and channel
-  ideas, it needs no media server: only TMDB search waits on its key. Library-scope search, which
-  `/v1/search` and the suggester's tools share, answers with the Library's movies and series by name
-  (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
-  their library item ids and with their facts. The media server adds only titles the Library
-  didn't answer, while it is short of the limit; with none connected, a term the Library has no
-  title for is no results rather than an error.
-- **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
-  given up as unavailable confirms one the Library holds, under its library item id; the media
-  server answers only what the Library doesn't hold.
+- **Title search reads the Library** (step 15e, Library-only since step 16). Like the collections
+  picker and channel ideas, it needs no media server: only TMDB search waits on its key.
+  Library-scope search, which `/v1/search` and the suggester's tools share, answers with the
+  Library's movies and series by name (`SearchLibraryTitles`: an exact name, then one starting with
+  the term, then the rest), under their library item ids and with their facts. A term the Library
+  has no title for is no results rather than an error.
+- **The provisioning backstop reads the Library** (step 15e, Library-only since step 16). Its last
+  look before a title is given up as unavailable confirms one the Library holds, under its library
+  item id.
 - **Channel ideas ask the Library first** (step 15e). Home's channel ideas draw from the Library's
   movies and series with their year and genres (`LibraryTitles`, `LibraryItemFacts`), then only the
   media server's titles the Library doesn't hold, by provider id, so no title counts twice in a
@@ -633,6 +631,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   durations and a proposal's outlook read `LibraryItemFacts` and nothing else; an id that is no
   library item has none. The guide's descriptions no longer wait on a media server being
   connected.
+- **Titles read only the Library** (step 16). Title search, discovery's and movie collections'
+  in-library marking, approval additions, the proposal outlook, the rating heal and the backstop's
+  last look all answer from `SearchLibraryTitles` and `LibraryTitleByProviderID`; the media server
+  is never asked. Approval additions and the proposal outlook no longer need one connected.
 
 ## Search
 

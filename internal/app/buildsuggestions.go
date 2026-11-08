@@ -97,12 +97,12 @@ func buildSuggestions(
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}
 
-	catalogService := catalog.New(librarySearch{titles: st, facts: st, lib: libraryClient}, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
+	catalogService := catalog.New(librarySearch{titles: st, facts: st}, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+		return libraryPresence{titles: st}
 	})
 	result.search = searchAdapter{catalogService}
 	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
+		return libraryPresence{titles: st}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{own: st, lib: libraryClient}

@@ -64,34 +64,24 @@ func TestLibraryTitleScannerListsTheLibraryFirst(t *testing.T) {
 	}
 }
 
-// The provisioning backstop's last look asks the Library first (#2151 step 15e): a title it holds
-// is confirmed by its library item id, the media server answers only what it doesn't hold, and with
-// no media server a title the Library lacks is absent.
-func TestLibraryLookupAsksTheLibraryFirst(t *testing.T) {
+// The provisioning backstop's last look confirms a title the Library holds by its library item id
+// (#2151 step 16); a title the Library lacks is absent.
+func TestLibraryLookupReadsTheLibrary(t *testing.T) {
 	ctx := context.Background()
-	server := testkit.NewMediaServer(t)
-	t.Cleanup(server.Close)
-	server.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "emby-film", Name: "Film", Type: "Movie", TMDBID: 90000001},
-		{LibraryItemID: "emby-9", Name: "Other", Type: "Movie", TMDBID: 90000009},
+	lookup := libraryLookup{titles: testLibraryTitles}
+	if id, ok, err := lookup.Lookup(ctx, library.TMDB, "90000001", library.Movie); err != nil || !ok || id != "lib-film" {
+		t.Errorf("film = %q, %v, %v; want its library item id", id, ok, err)
 	}
-	both := libraryLookup{titles: testLibraryTitles, lib: newTestLibraryClient(server)}
-	if id, ok, err := both.Lookup(ctx, library.TMDB, "90000001", library.Movie); err != nil || !ok || id != "lib-film" {
-		t.Errorf("film = %q, %v, %v; want its library item id, not the server's", id, ok, err)
-	}
-	if id, ok, err := both.Lookup(ctx, library.TVDB, "90000002", library.Series); err != nil || !ok || id != "lib-show" {
+	if id, ok, err := lookup.Lookup(ctx, library.TVDB, "90000002", library.Series); err != nil || !ok || id != "lib-show" {
 		t.Errorf("show by tvdb = %q, %v, %v", id, ok, err)
 	}
-	if id, ok, err := both.Lookup(ctx, library.TMDB, "90000009", library.Movie); err != nil || !ok || id != "emby-9" {
-		t.Errorf("a title only the server holds = %q, %v, %v; want the server's id", id, ok, err)
-	}
-	if _, ok, err := (libraryLookup{titles: testLibraryTitles}).Lookup(ctx, library.TMDB, "90000009", library.Movie); err != nil || ok {
-		t.Errorf("a title the Library lacks, with no media server: ok = %v, %v; want absent", ok, err)
+	if _, ok, err := lookup.Lookup(ctx, library.TMDB, "90000009", library.Movie); err != nil || ok {
+		t.Errorf("a title the Library lacks: ok = %v, %v; want absent", ok, err)
 	}
 }
 
 // Presence and ratings answer an owned title from the Library, by its library item id.
-func TestPresenceAndRatingsReadTheLibraryFirst(t *testing.T) {
+func TestPresenceAndRatingsReadTheLibrary(t *testing.T) {
 	presence := libraryPresence{titles: testLibraryTitles}
 	got, ok, err := presence.Present(context.Background(), provision.Movie, 90000001, 0)
 	if err != nil || !ok || got.LibraryItemID != "lib-film" || got.OfficialRating != "PG" || got.SizeBytes != 4_000 ||
@@ -102,7 +92,7 @@ func TestPresenceAndRatingsReadTheLibraryFirst(t *testing.T) {
 		t.Errorf("show by tvdb = %+v, %v, %v", got, ok, err)
 	}
 	if _, ok, err := presence.Present(context.Background(), provision.Movie, 90000009, 0); err != nil || ok {
-		t.Errorf("a title the Library lacks, with no media server: ok = %v, %v; want absent", ok, err)
+		t.Errorf("a title the Library lacks: ok = %v, %v; want absent", ok, err)
 	}
 
 	ratings := libraryRatings{titles: testLibraryTitles}
