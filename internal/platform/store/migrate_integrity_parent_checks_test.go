@@ -98,6 +98,7 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 		`SELECT count(*) FROM proposal_job_attempts WHERE job_id = 'j1'`:             1,
 		`SELECT count(*) FROM filler_structure_window_call_ledger`:                   1,
 		`SELECT count(*) FROM sqlite_master WHERE name LIKE 'filler_spoken_safety%'`: 0,
+		`SELECT count(*) FROM pragma_table_info('clips') WHERE name = 'rating'`:      0,
 		`SELECT count(*) FROM pragma_foreign_key_check`:                              0,
 		`SELECT count(*) FROM sqlite_master WHERE name LIKE '%\_old' ESCAPE '\'`:     0,
 	} {

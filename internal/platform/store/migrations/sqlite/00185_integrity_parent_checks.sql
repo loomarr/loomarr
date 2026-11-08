@@ -1,6 +1,7 @@
 -- +goose Up
 -- Schema to a 9 (#2528), integrity step 2: the state columns of tables other tables reference accept
--- only the values the code writes, and channels loses filler_ref, which nothing ever set.
+-- only the values the code writes; channels.filler_ref and clips.rating, which nothing ever set, go,
+-- and so does the dead spoken-safety ledger.
 -- SQLite cannot add a CHECK to an existing column, so each table is rebuilt transactionally. Renaming
 -- a parent repoints its children's foreign keys at the renamed copy, and dropping that copy would
 -- cascade-delete them, so every descendant is rebuilt with its parent (the 00166 pattern): children
@@ -629,6 +630,10 @@ CREATE INDEX idx_proposal_job_attempts_job_started ON proposal_job_attempts (job
 -- (#1763), and production holds no events. Events go first: they reference the runs.
 DROP TABLE filler_spoken_safety_events;
 DROP TABLE filler_spoken_safety_runs;
+
+-- clips.rating: no writer ever set it (production's are all empty). Nothing indexes or checks it,
+-- so it drops in place and the clips family is not rebuilt.
+ALTER TABLE clips DROP COLUMN rating;
 
 -- filler_inference_evaluations and its structure-window ledger -----------------------------------
 -- Without the spoken-safety ledger, outcome is '' or window_complete (a structure window answered).

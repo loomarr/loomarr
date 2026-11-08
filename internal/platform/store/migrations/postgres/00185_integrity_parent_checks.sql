@@ -1,6 +1,7 @@
 -- +goose Up
 -- Schema to a 9 (#2528), integrity step 2: the state columns of tables other tables reference accept
--- only the values the code writes, and channels loses filler_ref, which nothing ever set. The SQLite
+-- only the values the code writes; channels.filler_ref and clips.rating, which nothing ever set, go,
+-- and so does the dead spoken-safety ledger. The SQLite
 -- twin rebuilds each table with its descendants; Postgres changes them in place.
 
 ALTER TABLE channels DROP COLUMN filler_ref;
@@ -29,6 +30,7 @@ ALTER TABLE proposal_jobs ADD CONSTRAINT proposal_jobs_kind_check
 -- (#1763). Events go first: they reference the runs.
 DROP TABLE filler_spoken_safety_events;
 DROP TABLE filler_spoken_safety_runs;
+ALTER TABLE clips DROP COLUMN rating;
 ALTER TABLE filler_inference_evaluations
     ADD CONSTRAINT filler_inference_evaluations_state_check
         CHECK (state IN ('reserved', 'completed', 'failed', 'held_budget')),

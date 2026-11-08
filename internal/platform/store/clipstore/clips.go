@@ -258,8 +258,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.role <> excluded.role OR clips.source <> excluded.source
@@ -269,7 +269,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   -- name_source travels with name: every writer of a name says where it came from (#1988).
 		   name=excluded.name, name_source=excluded.name_source, role=excluded.role,
 		   era=excluded.era, audience=excluded.audience,
-		   duration_ms=excluded.duration_ms, rating=excluded.rating,
+		   duration_ms=excluded.duration_ms,
 		   source=excluded.source, quality=excluded.quality,
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
@@ -283,7 +283,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Role), string(clipPlacement(c)), c.Era, string(c.Audience),
 		clipGeographicScope(c), c.Country, c.Network, c.Station, c.AirDate, c.GeoEvidence,
-		c.DurationMs, c.Rating, c.Source,
+		c.DurationMs, c.Source,
 		// ⚠ Flags are bound as real bools: they are BOOLEAN on Postgres (storage.md).
 		c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
 		c.Transcript, c.Brand, c.VisibleText,
@@ -617,12 +617,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
-			(name, name_source, role, era, audience, rating, source, license,
+			(name, name_source, role, era, audience, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
 			 created_at, reaped_at) =
-			(SELECT name, name_source, role, era, audience, rating, source, license,
+			(SELECT name, name_source, role, era, audience, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
@@ -780,7 +780,7 @@ const clipCategoryExpr = `COALESCE((SELECT ct.taxon ` + clipProductLeafFrom + `
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, ` + clipCategoryExpr + `, duration_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
-	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
+	source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,
 	play_count, last_played_at,
 		removed_at, held, updated_at, created_at FROM clips`
@@ -1397,7 +1397,7 @@ func scanClip(sc scannable) (Clip, error) {
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &c.NameSource, &kind, &c.Placement, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
-		&c.Rating, &c.Source, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.Source, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText,
 		&isComposite, &c.ParentHash,

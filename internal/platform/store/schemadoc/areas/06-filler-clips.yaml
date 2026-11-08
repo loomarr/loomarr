@@ -35,7 +35,6 @@ tables:
       audience: >
         Who the clip suits: kids, family, general or late_night. Empty when not yet tagged.
       duration_ms: Length of the clip in milliseconds, measured from the file.
-      rating: Optional content rating; empty when none.
       source: >
         Where the clip came from: the id of the registered filler source that downloaded it (such
         as archive:<collection>), or filler-dir for a file dropped into the clip folder.

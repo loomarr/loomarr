@@ -1120,7 +1120,6 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 | `era` | The year the clip is from, such as 1994; a year ending in 0 means the decade. 0 means not known. | `INTEGER` |
 | `audience` | Who the clip suits: kids, family, general or late_night. Empty when not yet tagged. | `TEXT` |
 | `duration_ms` | Length of the clip in milliseconds, measured from the file. | `INTEGER` |
-| `rating` | Optional content rating; empty when none. | `TEXT` |
 | `source` | Where the clip came from: the id of the registered filler source that downloaded it (such as archive:<collection>), or filler-dir for a file dropped into the clip folder. | `TEXT` |
 | `quality` | Resolution label such as 1080p or 480p, from the measured video height. Empty for an audio-only clip. Shown only; it does not affect selection by default. | `TEXT` |
 | `license` | The licence URL the source declared for the clip. Empty means unknown, never public domain. | `TEXT` |
