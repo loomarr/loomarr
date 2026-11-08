@@ -203,7 +203,12 @@ const PersonDetail = ({
               </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Action render={<button disabled={contactSaving} type="submit" />}>Save email</Action>
+              <Action
+                // A real submit button under Action's look, so Enter in a field still submits.
+                render={<button disabled={contactSaving} type="submit" />}
+              >
+                Save email
+              </Action>
               <Action
                 onPress={() => {
                   setContactOpen(false);
@@ -362,7 +367,12 @@ const PersonDetail = ({
                 </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Action render={<button disabled={resetting} type="submit" />}>Set new password</Action>
+                <Action
+                  // A real submit button under Action's look, so Enter in a field still submits.
+                  render={<button disabled={resetting} type="submit" />}
+                >
+                  Set new password
+                </Action>
                 <Action
                   onPress={() => {
                     setResetOpen(false);
@@ -396,7 +406,6 @@ const PersonDetail = ({
               : "Disable this account and end every active session immediately."}
           </p>
         </div>
-        {/* No tooltip on the disabled self case: the line under it already says why. */}
         <Action
           disabled={busy || isSelf}
           onPress={() => onToggleDisabled?.(!user.disabled)}

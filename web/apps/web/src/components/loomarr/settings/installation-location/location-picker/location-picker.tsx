@@ -255,8 +255,8 @@ const LocationPicker = ({
         {allowDetection && (
           <Action
             disabled={locked || detecting}
+            icon={detecting ? "loading" : undefined}
             onPress={() => void detect()}
-            style={{ flexShrink: 0 }}
             variant="outline"
           >
             {detecting ? "Finding…" : "Use my location"}

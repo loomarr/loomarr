@@ -594,7 +594,6 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                       <Action
                         icon="plus"
                         onPress={() => setEditor({ mode: "create", axis })}
-                        style={{ flexShrink: 0 }}
                         variant="outline"
                       >
                         Add

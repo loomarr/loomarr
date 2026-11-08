@@ -69,10 +69,24 @@ describe("GuideCompact", () => {
 
   it("docks the selected programme with Watch, and leaves the dock out with nothing selected", () => {
     expect(markup()).not.toContain("Selected programme");
-    const html = markup({ selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" } });
+    const html = markup({ selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-0" } });
     expect(html).toContain("Selected programme");
-    expect(html).toContain("A series 2 “Episode 3”");
+    expect(html).toContain("A series 2 “Episode 1”");
     expect(html).toContain('aria-label="Watch 2 Channel 2"');
+  });
+
+  // #2745: a programme that hasn't started can't be watched yet. The dock says when it starts and
+  // offers no Watch (the channel's on-now programme, one cell left, has it).
+  it("says when a programme that hasn't started begins, and offers no Watch for it", () => {
+    for (const dock of [undefined, BottomSheet]) {
+      const html = markup({
+        dock,
+        selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" },
+      });
+      expect(html).toContain("Selected programme");
+      expect(html).toContain("Starts 9:00 PM");
+      expect(html).not.toContain("Watch 2");
+    }
   });
 
   // Selection is neutral (#1909 Q2): the pressed cell takes a foreground border and its row's number
@@ -91,19 +105,19 @@ describe("GuideCompact", () => {
     });
     expect(upcoming).toContain("Selected programme");
     expect(upcoming).toContain(" · Channel 2");
-    expect(upcoming).toContain("9:00–9:30 PM · in 34m");
-    expect(upcoming).toContain("Watch 2 now");
+    expect(upcoming).toContain("Starts 9:00 PM · in 34m");
     const onNow = markup({
       dock: BottomSheet,
       selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-0" },
     });
     expect(onNow).toContain("8:00–8:30 PM · 4m left");
+    expect(onNow).toContain("Watch 2 now");
   });
 
   it("draws the selected cell and its row's number in the foreground, never amber", () => {
     const html = markup({
       dock: BottomSheet,
-      selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" },
+      selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-0" },
     });
     // Tamagui's rules name the theme token. The selected cell's border is the foreground
     // (contentPrimary, #1909 Q2), and amber (actionPrimary) is neither a border nor a text colour.

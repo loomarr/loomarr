@@ -190,6 +190,6 @@ describe("ChannelAutoCurate", () => {
     await userEvent.click(screen.getByRole("button", { name: `Reset to default (${label})` }));
     expect(onChange.mock.lastCall?.[0].autoCurate[field]).toBe(0);
     expect(screen.getByLabelText(label)).toHaveValue("");
-    expect(screen.getByRole("button", { name: `Reset to default (${label})` })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: `Reset to default (${label})` })).not.toBeInTheDocument();
   });
 });

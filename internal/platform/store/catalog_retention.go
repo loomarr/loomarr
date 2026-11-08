@@ -127,18 +127,6 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		AND NOT EXISTS (SELECT 1 FROM titles t WHERE t.library_id = series_episodes.library_id)`, epoch(cache)); err != nil {
 		return 0, err
 	}
-	paths, err := s.distinctStrings(ctx, tx, `SELECT item_id FROM library_item_paths WHERE updated_at < ?`, epoch(cache))
-	if err != nil {
-		return 0, fmt.Errorf("purge spent item paths: %w", err)
-	}
-	for _, id := range paths {
-		if _, named := slices.BinarySearch(refs.Items, id); named {
-			continue
-		}
-		if err := exec("item paths", `DELETE FROM library_item_paths WHERE item_id = ?`, id); err != nil {
-			return 0, err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("purge spent catalog: %w", err)
 	}
