@@ -1384,6 +1384,9 @@ func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitI
 		case errors.Is(err, store.ErrNotFound):
 			return nil, errNotFound("Split proposal not found",
 				"That proposal doesn't exist — it may have been confirmed already, or replaced by a re-run of detection.")
+		case errors.Is(err, filler.ErrSplitParentNotHeld):
+			return nil, errConflict("This clip is already filed",
+				"Only a recording held for split review can be cut. This clip is already in the catalog, so these cuts can't be confirmed — reject the proposal instead.")
 		case errors.Is(err, filler.ErrSplitValidation):
 			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid cut list",
 				"The edited segments are outside the clip, overlap, or too short — fix the cuts and try again.", err)

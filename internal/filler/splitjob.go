@@ -38,6 +38,11 @@ var ErrProposalGone = errors.New("filler: the split proposal was resolved while 
 // releases the lease or its durable deadline passes.
 var ErrProposalClaimed = errors.New("filler: the split proposal is already being confirmed")
 
+// ErrSplitParentNotHeld means the proposal's parent is not held for split review: it is already
+// filed (a playable clip, or a composite whose cuts were confirmed), so the proposal cannot be
+// confirmed (#1761). It is distinct from a missing proposal, which the API answers with 404.
+var ErrSplitParentNotHeld = errors.New("filler: the split's parent clip is already filed, not held for split review")
+
 // ErrConditioningOwnershipMismatch means durable conditioning publication evidence no longer
 // belongs to the catalog transition it claims. This is a safe review outcome; infrastructure
 // failures must remain errors so the pipeline retries them.

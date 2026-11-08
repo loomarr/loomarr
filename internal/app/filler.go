@@ -1183,8 +1183,9 @@ func (a fillerServiceAdapter) persistInteractiveOperation(ctx context.Context, o
 }
 
 // ConfirmSplit commits the operator's reviewed cut list (§10, V34) — straight
-// through to the splitter, whose validation errors (filler.ErrSplitValidation)
-// and missing-proposal (store.ErrNotFound) the API maps to 422/404.
+// through to the splitter, whose validation errors (filler.ErrSplitValidation),
+// filed parent (filler.ErrSplitParentNotHeld) and missing-proposal
+// (store.ErrNotFound) the API maps to 422/409/404.
 func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error {
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
