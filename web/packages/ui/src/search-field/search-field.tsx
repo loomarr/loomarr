@@ -11,7 +11,6 @@ const SearchField = ({
   label,
   labelHidden = false,
   onChangeText,
-  onKeyPress,
   placeholder,
   value,
 }: SearchFieldProps) => (
@@ -23,7 +22,6 @@ const SearchField = ({
       disabled={disabled}
       label={labelHidden ? undefined : label}
       onChangeText={onChangeText}
-      onKeyPress={onKeyPress}
       placeholder={placeholder}
       style={{ paddingLeft: semanticSpace.control + 24 }}
       value={value}
