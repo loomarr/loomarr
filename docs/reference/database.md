@@ -291,7 +291,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `revision` | Counts changes to the row, starting at 1. A change is only saved if it was made from the latest revision, so two edits can't overwrite each other. | `BIGINT` |
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
-| `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` |
+| `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
 
 ### airings
@@ -335,7 +335,7 @@ One row per holiday: when each country keeps it and the words that show a title 
 | `position` | The display order. It also settles ties when two holidays are in season at once. | `INTEGER` |
 | `words` | JSON with the phrases that tie a title to the holiday. Words that name it in a channel request, its names, look-alike phrases that are not about it (such as "santa monica"), mood words, and genre sets that back up a mood word. | `TEXT` |
 | `kept` | JSON list of when countries keep the holiday. Each entry lists countries, the day rule (fixed date, nth or last weekday, or relative to Easter) and the season window around it. `[]` means undated, so its clips air all year. | `TEXT` |
-| `air_window` | JSON rule for the time of year when a TV episode first airing then was made for the holiday. Empty when there is none. | `TEXT` |
+| `air_window` | JSON rule for the time of year when a TV episode first airing then was made for the holiday. Empty when there is none. | `TEXT` · may be empty |
 | `members` | JSON list of holiday ids for a group holiday (such as "happy holidays"), which is in season whenever any member is. `[]` for an ordinary holiday. | `TEXT` |
 | `name_needs_corroboration` | 1 when the holiday's name alone is not enough to tie a title to it, because the name is also an ordinary title word. | `BOOLEAN` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
@@ -377,7 +377,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `failure_code` | Why the job failed, when it did. `no_grounded_titles` (nothing matched titles that exist), `generation_failed` (the AI step failed), `selection_empty` (no titles were chosen), or `budget_exhausted` (it ran out of its allowed work). Empty otherwise. | `TEXT` |
 | `workflow_version` | Which version of the job process ran it. 0 is a job from before per-attempt history was kept; 1 is the current process, which records each attempt in proposal_job_attempts. | `INTEGER` |
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
-| `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` |
+| `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
 | `channel_id` | The existing channel a refine or re-curation job changes (channels.id). Empty for a job that creates a new channel. | `TEXT` |
 
 ### proposal_job_attempts
@@ -1421,7 +1421,7 @@ Each clip's latest picture and sound defect check, against a quality bar set by 
 | `readings_json` | JSON document of the raw measurements, such as blockiness, blur, dropouts, interlacing, upscaling and audio clipping. | `TEXT` |
 | `assessment_json` | JSON document of the era bar used and each check's outcome, measured value and bar. | `TEXT` |
 | `measured_at` | When the clip was measured, in Unix seconds. | `INTEGER` |
-| `judgement_json` | JSON document of a vision model's ruling on a borderline clip and its reason. Empty until there is one. | `TEXT` |
+| `judgement_json` | JSON document of a vision model's ruling on a borderline clip and its reason. Empty until there is one. | `TEXT` · may be empty |
 | `judge_failures` | How many times asking the vision model brought back no ruling since the last one. | `INTEGER` |
 | `verdict` | The final standing: pass, fail, undecided (too little picture; allowed to air) or pending (a borderline clip waiting for a ruling). | `TEXT` |
 | `verdict_reason` | What decided the verdict, such as the detectors or the judge's reason. | `TEXT` |
@@ -1692,7 +1692,7 @@ One row per model call in the long-reel structure check, which sends a reel to a
 | `state` | open means the call is booked and has no answer yet; held_budget means a spend ceiling stopped it; settled means the outcome is recorded. | `TEXT` |
 | `reservation_json` | The full booked request as JSON, including the media set, window, model, prompt and schema fingerprints, and the spend requested. | `TEXT` |
 | `record_sha256` | SHA-256 of the settled record. Empty until settled. | `TEXT` |
-| `record_json` | The settled record as JSON, including the model that answered, tokens, charge, result state (accepted, failed, unsettled, held_budget or over_reservation) and fingerprints of the response. Empty until settled. | `TEXT` |
+| `record_json` | The settled record as JSON, including the model that answered, tokens, charge, result state (accepted, failed, unsettled, held_budget or over_reservation) and fingerprints of the response. Empty until settled. | `TEXT` · may be empty |
 | `requested_at` | When the call was booked, in Unix seconds. | `INTEGER` |
 | `assessed_at` | When the answer was recorded, in Unix seconds. 0 until settled. | `INTEGER` |
 

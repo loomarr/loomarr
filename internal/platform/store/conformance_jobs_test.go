@@ -299,7 +299,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 		gotFailed.FailureCode != "generation_failed" || gotFailed.Attempts != 1 {
 		t.Fatalf("failed job lifecycle = %+v", gotFailed)
 	}
-	if gotFailed.FailureTraceJSON != `{"version":1,"terminal":"selection_empty"}` {
+	if trace := `{"version":1,"terminal":"selection_empty"}`; asWritten(gotFailed.FailureTraceJSON, trace) != trace {
 		t.Fatalf("failure trace round-trip = %q", gotFailed.FailureTraceJSON)
 	}
 	if attempts, err := s.ListProposalJobAttempts(ctx, failed.ID); err != nil || len(attempts) != 1 ||

@@ -104,6 +104,10 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "seen_at_ms", Type: "INTEGER"},
 			{Name: "queued_at_ns", Type: "BIGINT"},
 			{Name: "plan", Type: "TEXT"},
+			{Name: "steps_json", Type: "TEXT"},                            // a gap: named JSON, not declared
+			{Name: "tags", Type: "TEXT", Default: "'[]'"},                 // a gap: a JSON default, not declared
+			{Name: "meta", Type: "TEXT", Default: "'{}'", JSON: true},     // declared JSON
+			{Name: "notes_json", Type: "TEXT", Checked: true, JSON: true}, // declared JSON
 		},
 			ForeignKeys: [][]string{
 				{"user_id"},               // only second in an index: a gap
@@ -122,6 +126,8 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"fk-index jobs.old_id is fixed: remove it from KnownGaps (was: listed, since fixed)",
 		"fk-index jobs.user_id: add an index whose first column is this foreign key",
 		"jobs.kind is listed in FreeForm but is no longer an unchecked state column",
+		"json jobs.steps_json: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
+		"json jobs.tags: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
 		"unit jobs.ran_at: " + unitFix,

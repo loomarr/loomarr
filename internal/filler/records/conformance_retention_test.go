@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The filler tables' retention (#2528) deletes each spent row and nothing a live read needs. Every
@@ -85,7 +86,7 @@ func testFillerRetention(t *testing.T, newStore NewStoreFunc) {
 		exec(`INSERT INTO filler_structure_window_call_ledger (request_sha256, evaluation_id, source_sha256,
 			media_set_sha256, window_ordinal, assessor_id, state, reservation_json, record_sha256, record_json,
 			requested_at, assessed_at) VALUES (?, ?, 's', 'm', 0, 'a', ?, '{}', ?, ?, ?, ?)`,
-			request, evaluationID, state, record, record, at, assessed)
+			request, evaluationID, state, record, storedb.OptionalJSON(record), at, assessed)
 	}
 	evaluation("gone-eval", "completed", long)
 	call("gone-call", "gone-eval", "settled", long)
