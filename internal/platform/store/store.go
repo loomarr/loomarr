@@ -814,6 +814,7 @@ type Store interface {
 	LibraryReferenceStore
 	LibraryArtReader
 	CatalogRetentionStore
+	LibraryTitleSearcher
 
 	// Close releases the underlying database handle.
 	Close() error
