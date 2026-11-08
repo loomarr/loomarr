@@ -5,89 +5,103 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
+
+const quarantineLegacyFillerMigration = 101
 
 func TestQuarantineLegacyFillerMigration_SQLite(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	s, err := Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "quarantine.db"), true)
+	s, err := openSQLite(context.Background(), filepath.Join(t.TempDir(), "quarantine.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	testQuarantineLegacyFillerMigration(t, s, PoolOf(s), "migrations/sqlite/00101_quarantine_legacy_filler.sql")
+	testQuarantineLegacyFillerMigration(t, s.db, DialectSQLite, "migrations/sqlite")
 }
 
-// testQuarantineLegacyFillerMigration runs the shipped migration body over a deliberately old
-// catalog state. Running copied SQL would prove the test's transcription rather than the artifact
-// that upgrades an operator's database.
-func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migrationPath string) {
+// testQuarantineLegacyFillerMigration applies the shipped migration to the schema it was written
+// for (through 00100), seeded with a deliberately old catalog. Running it at head would replay SQL
+// against columns later migrations dropped (#2323), so the fixture speaks the 00100 schema in raw
+// SQL rather than the current store API.
+func testQuarantineLegacyFillerMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
-	at := time.Unix(1_700_000_000, 0).UTC()
-	seed := func(hash string, held, composite bool, removed time.Time, disposition filler.Disposition) {
-		t.Helper()
-		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-			Hash: hash, Path: hash + ".mp4", Name: hash, Kind: filler.Commercial,
-			DurationMs: 30_000, Held: held, IsComposite: composite, RemovedAt: removed,
-		}, UpdatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-		if disposition != "" {
-			if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusDone,
-				Progress: 100, Disposition: disposition, EnrolledAt: at, UpdatedAt: at,
-			}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	seed("legacy-playable", false, false, time.Time{}, filler.Disposition("filed"))
-	seed("legacy-without-pipeline", false, false, time.Time{}, "")
-	seed("already-held", true, false, time.Time{}, filler.DispositionReview)
-	seed("composite", false, true, time.Time{}, filler.Disposition("filed"))
-	seed("removed", false, false, at, filler.Disposition("filed"))
-
-	// Simulate the retired publisher's physical marker. The migration clears it everywhere even
-	// though the application no longer reads the column.
-	if _, err := db.ExecContext(ctx, `UPDATE clips SET auto_filed = TRUE`); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := migrationFS.ReadFile(migrationPath)
+	provider, err := newMigrationProvider(db, dialect, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, upSection(t, string(raw))); err != nil {
-		t.Fatal(err)
+	bind := func(query string) string {
+		if dialect == DialectPostgres {
+			return storedb.PgPlaceholders(query)
+		}
+		return query
+	}
+	if _, err := provider.UpTo(ctx, quarantineLegacyFillerMigration-1); err != nil {
+		t.Fatalf("migrate through %d: %v", quarantineLegacyFillerMigration-1, err)
+	}
+	for _, seed := range []struct {
+		hash            string
+		held, composite bool
+		removedAt       int64
+		disposition     string
+	}{
+		{hash: "legacy-playable", disposition: "filed"},
+		{hash: "legacy-without-pipeline"},
+		{hash: "already-held", held: true, disposition: "review"},
+		{hash: "composite", composite: true, disposition: "filed"},
+		{hash: "removed", removedAt: 1_700_000_000, disposition: "filed"},
+	} {
+		// Every row carries the retired publisher's physical marker. The migration clears it
+		// everywhere even though the application no longer read the column.
+		if _, err := db.ExecContext(ctx, bind(`INSERT INTO clips
+			(hash, path, name, kind, duration_ms, held, is_composite, removed_at, auto_filed, updated_at)
+			VALUES (?, ?, ?, 'commercial', 30000, ?, ?, ?, ?, 1)`),
+			seed.hash, seed.hash+".mp4", seed.hash, seed.held, seed.composite, seed.removedAt, true); err != nil {
+			t.Fatalf("seed clip %s: %v", seed.hash, err)
+		}
+		if seed.disposition == "" {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, bind(`INSERT INTO filler_clip_pipeline
+			(clip_hash, stage, status, progress, disposition, enrolled_at, updated_at)
+			VALUES (?, 'finish', 'done', 100, ?, 1, 1)`), seed.hash, seed.disposition); err != nil {
+			t.Fatalf("seed pipeline %s: %v", seed.hash, err)
+		}
+	}
+	if _, err := provider.UpTo(ctx, quarantineLegacyFillerMigration); err != nil {
+		t.Fatalf("apply %d: %v", quarantineLegacyFillerMigration, err)
 	}
 
+	held := func(hash string) bool {
+		t.Helper()
+		var v bool
+		if err := db.QueryRowContext(ctx, bind(`SELECT held FROM clips WHERE hash = ?`), hash).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
 	for _, hash := range []string{"legacy-playable", "legacy-without-pipeline", "already-held"} {
-		clip, err := s.GetClip(ctx, hash)
-		if err != nil || !clip.Held {
-			t.Errorf("%s = held:%v err:%v, want quarantined", hash, clip.Held, err)
+		if !held(hash) {
+			t.Errorf("%s is not held, want quarantined", hash)
 		}
 	}
 	for _, hash := range []string{"composite", "removed"} {
-		clip, err := s.GetClip(ctx, hash)
-		if err != nil || clip.Held {
-			t.Errorf("%s = held:%v err:%v, want lifecycle unchanged", hash, clip.Held, err)
+		if held(hash) {
+			t.Errorf("%s was held, want its lifecycle unchanged", hash)
 		}
 	}
-	row, found, err := readClipPipelineRow(ctx, s, "legacy-playable")
-	if err != nil || !found || row.Disposition != filler.DispositionReview || row.Status != filler.StatusDone {
-		t.Errorf("legacy playable pipeline = %+v found:%v err:%v, want done/review", row, found, err)
-	}
-	for _, hash := range []string{"already-held", "composite", "removed"} {
-		row, found, err := readClipPipelineRow(ctx, s, hash)
-		want := filler.DispositionReview
-		if hash != "already-held" {
-			want = filler.Disposition("filed")
+	for hash, want := range map[string]string{
+		"legacy-playable": "review", "already-held": "review", "composite": "filed", "removed": "filed",
+	} {
+		var disposition, status string
+		if err := db.QueryRowContext(ctx, bind(`SELECT disposition, status FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).
+			Scan(&disposition, &status); err != nil {
+			t.Fatal(err)
 		}
-		if err != nil || !found || row.Disposition != want {
-			t.Errorf("%s pipeline = %+v found:%v err:%v, want %s", hash, row, found, err, want)
+		if disposition != want || status != "done" {
+			t.Errorf("%s pipeline = %s/%s, want %s/done", hash, disposition, status, want)
 		}
 	}
 	var marked int

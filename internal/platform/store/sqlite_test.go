@@ -430,13 +430,13 @@ func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	}
 
 	// Simulate the state an old disabled repair job or a manual restore could leave behind: the
-	// asserted leaf is trustworthy, while its rollup, category shadow, and closure are stale.
+	// asserted leaf is trustworthy, while its rollup and closure are stale. Category is derived on
+	// read (#2323), so there is no stored shadow left to go stale.
 	raw, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.ExecContext(ctx, `DELETE FROM clip_tags WHERE leaf = FALSE;
-		UPDATE clips SET category = 'cars' WHERE hash = 'upgrade-clip';
 		DELETE FROM taxa_closure WHERE ancestor = 'food' AND descendant = 'cereal'`); err != nil {
 		t.Fatal(err)
 	}
