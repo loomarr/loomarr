@@ -119,9 +119,11 @@ if [ "$STAGING_GPU" = nvidia ]; then
 		# RDMA), which holds nvidia. A process can hold it too: stop whatever does, by its service
 		# where it has one, until the modules unload.
 		unload_driver() {
-			local module
+			# Read lsmod once: `lsmod | grep -q` fails under pipefail when grep exits first.
+			local module loaded
+			loaded="$(lsmod)"
 			for module in nvidia_peermem nvidia_uvm nvidia_drm nvidia_modeset nvidia; do
-				if lsmod | grep -q "^$module "; then
+				if grep -q "^$module " <<<"$loaded"; then
 					modprobe -r "$module" || return 1
 				fi
 			done
