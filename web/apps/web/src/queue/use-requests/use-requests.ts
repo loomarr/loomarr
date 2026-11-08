@@ -130,4 +130,4 @@ const fetchLandingTab = async (queryClient: QueryClient, isAdmin: boolean): Prom
 };
 
 export type { RequestEntry };
-export { fetchLandingTab, fetchNeedsYouCount, useNeedsYouCount, useRequests };
+export { fetchLandingTab, useNeedsYouCount, useRequests };

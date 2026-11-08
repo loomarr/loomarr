@@ -5,7 +5,7 @@ import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Action, Badge, Card } from "@loomarr/design-system";
+import { Action, Badge, Card, Surface } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -152,7 +152,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {/* Deciding is admin-only (§11); a member only sees the wait. Approving creates the
                 channel, so it ends on that channel, as it does from the approval queue. */}
             {proposal.status === "submitted" && isAdmin && (
-              <div className="flex gap-2">
+              <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap={8}>
                 <Action
                   disabled={deciding}
                   onPress={() => approve.mutate({ id: proposal.id, data: {} })}
@@ -167,7 +167,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                 >
                   Deny
                 </Action>
-              </div>
+              </Surface>
             )}
             {(approve.error ?? deny.error) != null && <ErrorState error={approve.error ?? deny.error} />}
             {proposal.status === "approved" && (
