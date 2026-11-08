@@ -727,7 +727,7 @@ describe("Settings honesty", () => {
       modelHeading.compareDocumentPosition(behaviorHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Vision" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Gemini Vision/i })).not.toBeInTheDocument();
   });
 
   it("offers a return to the saved channel draft from AI settings", async () => {
@@ -825,8 +825,8 @@ describe("Settings honesty", () => {
     expect(await screen.findByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Advanced vision model/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
-    expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
-    await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
+    expect(within(vision).queryByRole("radio", { name: /Text only/i })).not.toBeInTheDocument();
+    await userEvent.click(within(vision).getByRole("radio", { name: /Gemini Vision/i }));
 
     expect(screen.queryByRole("region", { name: "Transcription" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Speech recognition" })).toBeInTheDocument();

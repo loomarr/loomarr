@@ -93,14 +93,6 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/Items" && r.Method == http.MethodGet:
 		items := s.items(r)
 		writeJSON(w, map[string]any{"Items": items, "TotalRecordCount": len(items)})
-	case strings.HasPrefix(path, "/Videos/") && strings.HasSuffix(path, "/stream"):
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/Videos/"), "/stream")
-		p, ok := s.mediaPath(id)
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, p)
 	case path == "/LiveTv/TunerHosts" || path == "/LiveTv/ListingProviders" || path == "/ScheduledTasks":
 		// Live TV registration never runs against the demo (lane backends set no public URL);
 		// answer the reads with nothing registered so an accidental call fails soft.
@@ -164,22 +156,6 @@ func (s Server) image(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	http.ServeFile(w, r, p)
-}
-
-// mediaPath is the local file behind a playable item: a film, an episode or a filler clip.
-func (s Server) mediaPath(id string) (string, bool) {
-	for _, f := range s.Library.Fillers {
-		if f.ID == id {
-			return s.Library.FillerPath(s.Layout, id), true
-		}
-	}
-	if t, ok := s.Library.ByID(id); ok && t.Kind == Movie {
-		return s.Layout.FilmFile(t), true
-	}
-	if t, e, ok := s.episodeByID(id); ok {
-		return s.Layout.EpisodeFile(t, e), true
-	}
-	return "", false
 }
 
 func (s Server) episodeByID(id string) (Title, Episode, bool) {

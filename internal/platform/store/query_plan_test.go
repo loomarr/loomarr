@@ -61,7 +61,6 @@ var scannedWhole = map[string]string{
 	"DELETE discovery_feedback":                "retention sweep: keeps the newest feedback per target",
 	"DELETE clip_tags":                         "rebuild: re-deriving the ancestor tags drops every non-leaf row",
 	"SELECT library_items":                     "orphan sweep: items nothing references",
-	"SELECT library_item_paths":                "retention sweep: the table is deleted with the #2151 cutover",
 	"SELECT library_people":                    "sweep: people whose filmography is due, by a condition across credits",
 	"SELECT quality_run_snapshots":             "orphan sweep: snapshots no receipt or aggregate keeps",
 	"SELECT images":                            "orphan sweep: images no reference or derivative keeps",

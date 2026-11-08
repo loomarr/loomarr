@@ -54,6 +54,9 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           <Action density={density} onPress={() => undefined} tone="danger">
             Disconnect
           </Action>
+          <Action density={density} onPress={() => undefined} tone="success">
+            Pass
+          </Action>
         </Surface>
       </Surface>
 

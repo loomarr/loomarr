@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  Action,
   Dialog,
   DialogClose,
   DialogContent,
@@ -12,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  LoomarrProvider,
 } from "../index";
 
 // The web Dialog, on Base UI. What it owes a keyboard user is pinned here by driving the keys, not
@@ -241,5 +243,56 @@ describe("Dialog", () => {
 
     await press(user);
     expect(close.style.boxShadow).toBe("");
+  });
+
+  // The trigger hands Base UI's onClick to the Action it renders. react-native-web's Pressable
+  // never calls an onClick prop, and a `render` Action used to overwrite it with onPress, so
+  // either Action opened nothing.
+  it.each([
+    ["an Action", <Action key="pressable">Open settings</Action>],
+    [
+      "an Action composed onto a button",
+      <Action key="render" render={<button type="button" />}>
+        Open settings
+      </Action>,
+    ],
+  ])("opens from %s as the trigger", async (_, trigger) => {
+    const user = userEvent.setup();
+    render(
+      <LoomarrProvider>
+        <Dialog>
+          <DialogTrigger>{trigger}</DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </LoomarrProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+  });
+
+  it("still runs the Action's own onPress when it is the trigger", async () => {
+    const user = userEvent.setup();
+    const onPress = vi.fn();
+    render(
+      <LoomarrProvider>
+        <Dialog>
+          <DialogTrigger>
+            <Action onPress={onPress}>Open settings</Action>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </LoomarrProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(onPress).toHaveBeenCalledOnce();
   });
 });

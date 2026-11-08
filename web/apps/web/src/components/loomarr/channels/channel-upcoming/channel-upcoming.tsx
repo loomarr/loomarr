@@ -1,7 +1,9 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatEpgTime } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
+import { formatGuideEpisode } from "@loomarr/core/guide";
+import { Badge, Surface, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
@@ -15,6 +17,14 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
     query: { retry: false },
   });
   const entries = unwrap(upcoming.data, (b) => b.upcoming) ?? [];
+  // The upcoming list carries only a title; the channel's timeline knows the show and the episode
+  // (#2753). Joined on the start time, and the row falls back to the bare title without it.
+  const timeline = channelsApi.useChannelTimeline(channelId, undefined, { query: { retry: false } });
+  const detailByStart = new Map(
+    (unwrap(timeline.data, (b) => b.airings) ?? [])
+      .filter((a) => a.kind === GuideAiringKind.program)
+      .map((a) => [a.startMs, a] as const),
+  );
 
   // The web mock's "What's on": a mono eyebrow, then one row per show: its start time, the title,
   // and a red NOW badge on the one airing. Every row keeps its time, so the NOW row still says
@@ -34,6 +44,12 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
             // The first entry is what's airing now when the channel is live and it has already
             // started (start ≤ now); everything after is genuinely upcoming.
             const onNow = live && i === 0 && entry.startMs <= Date.now();
+            const detail = detailByStart.get(entry.startMs);
+            // "Show" over "S02E04 · Episode name"; a film (no series) keeps its single title.
+            const name = detail?.series ?? entry.title;
+            const episode = detail?.series
+              ? [formatGuideEpisode(detail.season, detail.episode), detail.title].filter(Boolean).join(" · ")
+              : "";
             return (
               <li key={`${entry.startMs}-${entry.title}`} className="flex items-baseline gap-3 text-sm">
                 <span
@@ -44,7 +60,16 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
                 >
                   {formatEpgTime(entry.startMs)}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+                  <Text numberOfLines={1} textRole="compact">
+                    {name}
+                  </Text>
+                  {episode ? (
+                    <Text numberOfLines={1} textRole="caption" tone="secondary">
+                      {episode}
+                    </Text>
+                  ) : null}
+                </Surface>
                 {onNow && (
                   <Badge shape="square" tone="onair">
                     Now

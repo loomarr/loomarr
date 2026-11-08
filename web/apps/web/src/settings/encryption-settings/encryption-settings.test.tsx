@@ -34,8 +34,34 @@ describe("EncryptionSettings", () => {
 
     expect(await screen.findByText("sha256:0123456789abcdef")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Rotate data key" }));
+    // The first press only asks: rotation can't be taken back.
+    expect(screen.getByText(/This can't be undone/)).toBeInTheDocument();
+    expect(rotations).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: "Rotate data key" }));
 
     expect(await screen.findByText(/Stored settings were re-encrypted/)).toBeInTheDocument();
     expect(rotations).toBe(1);
+  });
+
+  it("rotates nothing when the operator backs out", async () => {
+    let rotations = 0;
+    server.use(
+      getSystemEncryptionStatusMockHandler({
+        enabled: true,
+        installationKeyFingerprint: "sha256:0123456789abcdef",
+        dataKeyCount: 1,
+      }),
+      getSystemEncryptionRotateDataKeyMockHandler(() => {
+        rotations += 1;
+      }),
+    );
+    render(<EncryptionSettings />, { wrapper });
+
+    await screen.findByText("sha256:0123456789abcdef");
+    await userEvent.click(screen.getByRole("button", { name: "Rotate data key" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByText(/This can't be undone/)).not.toBeInTheDocument();
+    expect(rotations).toBe(0);
   });
 });
