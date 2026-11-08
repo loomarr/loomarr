@@ -13,7 +13,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
-	"github.com/loomarr/loomarr/internal/platform/removalguard"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -406,7 +405,7 @@ type SyncResult struct {
 	Repaired int // legacy stale-hash paths moved to the bytes' canonical identity
 	Pruned   int // clips removed (gone from the source)
 	// PruneHeld is how many clips the sync would have pruned but did not, because the listing
-	// dropped more of the catalog than removalguard allows (#2673). Nothing was removed.
+	// found no clips while the catalog holds some (#2673). Nothing was removed.
 	PruneHeld int
 	Inferior  int // files skipped as known inferior copies of an ad already in the catalog
 }
@@ -694,10 +693,14 @@ const pruneHeldKey = "prune-held"
 //
 // ⚠ Two different absences. A clip under an unreadable subtree was never looked at, so nothing is
 // known about its file and it stays, whatever the rest of the listing says. A clip the readable
-// part of the scan did not list is gone, unless the listing as a whole dropped more of the catalog
-// than the library scanner's removal guard allows: an existing but empty folder (a share that is
-// not mounted) lists nothing without an error, and pruning on it deletes every clip's review
-// state, play counters and placement. They come back as new held clips, not as the old ones.
+// part of the scan did not list is gone, unless the listing found no clips at all while the
+// catalog holds some: an existing but empty folder (a share that is not mounted) lists nothing
+// without an error, and pruning on it deletes every clip's review state, play counters and
+// placement. They come back as new held clips, not as the old ones.
+//
+// ⚠ Only an EMPTY listing is held, not a partial drop. Filler has no surface where an operator
+// confirms a held prune, so a share threshold like the library scanner's would keep a deliberate
+// deletion in the catalog forever.
 //
 // The held prune is a warning and a count on the result, not an error: the sync's other work
 // (new clips, updated rows) already happened and is not undone by it.
@@ -726,14 +729,14 @@ func (s *Syncer) guardPrune(ctx context.Context, keep, unread []string) (kept []
 		s.log.Warn("filler: some folders could not be read; their clips are kept",
 			"unreadable", len(unread), "kept", len(kept)-len(keep))
 	}
-	if !removalguard.Exceeds(unseen, len(catalog)) {
+	if len(keep) > 0 || unseen == 0 {
 		s.quarantined.Forget(pruneHeldKey)
 		return kept, 0, nil
 	}
 	s.quarantined.Warn(s.log, pruneHeldKey, strconv.Itoa(unseen),
-		"filler: the clip folder lists far less than the catalog holds; no clips were pruned",
-		"catalog", len(catalog), "listed", len(listed), "would_prune", unseen,
-		"hint", "check the clip folder is mounted and readable; it prunes again once it lists the clips it holds")
+		"filler: the clip folder lists no clips but the catalog holds some; no clips were pruned",
+		"catalog", len(catalog), "would_prune", unseen,
+		"hint", "check the clip folder is mounted and readable; it prunes again once it lists a clip")
 	return kept, unseen, nil
 }
 

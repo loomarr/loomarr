@@ -19,8 +19,14 @@ import (
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/platform/removalguard"
 	"github.com/loomarr/loomarr/internal/platform/store"
+)
+
+// Removal guard (decision 33): a completed walk that would remove more than this share of a root's
+// files, or more than this many, is held for the maintainer to confirm.
+const (
+	holdShare   = 0.10
+	holdAtLeast = 500
 )
 
 // headerConcurrency is how many header reads run at once (decision 11). The NAS's disk seek, not
@@ -668,9 +674,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
 		// not: it answers the removal the maintainer saw, never a later one.
 		confirmed := scope == nil && im.takeConfirmed(root)
-		// Removal guard (decision 33): a completed walk that would remove more than the shared
-		// policy allows is held for the maintainer to confirm.
-		over := removalguard.Exceeds(len(removed), present)
+		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
 			if held && r.Problem == "" {

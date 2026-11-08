@@ -36,8 +36,6 @@ func TestSync_NeverCataloguesOrFilesAKnownInferiorCopy(t *testing.T) {
 		raw("survivor", "Burger Barn", filler.Commercial, 30_000, 0),
 		raw(leftover, "Burger Barn (copy)", filler.Commercial, 30_000, 0),
 	}}
-	// One pruned row must stay under the prune guard's share of the catalog (#2673).
-	source.clips = append(source.clips, guardCatalog(20)...)
 	st := newMemStore()
 	st.clips[leftover] = filler.StoreClip{Clip: filler.Clip{Hash: leftover, Path: "le/ft/" + leftover + ".mp4"}}
 	syncer := filler.NewSyncer(source, st, testLayout(dir, watch), time.Now, discardLog()).

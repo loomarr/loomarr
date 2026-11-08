@@ -265,25 +265,25 @@ func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
-	// A catalog big enough that one removal is under the removal guard (#2673).
-	catalog := guardCatalog(20)
-	source := &fakeSource{clips: catalog}
+	source := &fakeSource{clips: []filler.RawClip{
+		raw("c1", "keep", filler.Commercial, 30000, 1992),
+		raw("c2", "goes away", filler.Commercial, 30000, 1993),
+	}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 
-	// The last clip disappears from the folder.
-	gone := catalog[len(catalog)-1].ID
-	source.clips = catalog[:len(catalog)-1]
+	// c2 disappears from the media server.
+	source.clips = []filler.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
 	res, _ := s.Sync(context.Background())
-	if res.Pruned != 1 || res.PruneHeld != 0 {
-		t.Errorf("pruned = %d, held = %d, want 1 and 0", res.Pruned, res.PruneHeld)
+	if res.Pruned != 1 {
+		t.Errorf("pruned = %d, want 1", res.Pruned)
 	}
-	if _, ok := st.clips[gone]; ok {
+	if _, ok := st.clips["c2"]; ok {
 		t.Error("removed clip still in catalog")
 	}
-	if len(st.clips) != len(catalog)-1 {
-		t.Errorf("catalog holds %d clips, want %d: a kept clip was pruned", len(st.clips), len(catalog)-1)
+	if _, ok := st.clips["c1"]; !ok {
+		t.Error("kept clip wrongly pruned")
 	}
 }
 
@@ -376,9 +376,8 @@ func TestSync_UnreadSubtreeKeepsItsClipsAndTheRestStillPrunes(t *testing.T) {
 	}
 }
 
-// #2673: a listing that drops more than the shared removal guard allows is held as a whole, even
-// when it is not empty.
-func TestSync_ListingThatDropsMostOfTheCatalogIsHeld(t *testing.T) {
+// #2673: no confirm surface, so only an empty listing is held; a partial drop prunes.
+func TestSync_ListingThatDropsMostOfTheCatalogStillPrunes(t *testing.T) {
 	catalog := guardCatalog(20)
 	source := &fakeSource{clips: catalog}
 	st := newMemStore()
@@ -392,8 +391,8 @@ func TestSync_ListingThatDropsMostOfTheCatalogIsHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Pruned != 0 || res.PruneHeld != 15 || len(st.clips) != 20 {
-		t.Errorf("pruned = %d, held = %d, catalog = %d, want 0, 15 and 20", res.Pruned, res.PruneHeld, len(st.clips))
+	if res.Pruned != 15 || res.PruneHeld != 0 || len(st.clips) != 5 {
+		t.Errorf("pruned = %d, held = %d, catalog = %d, want 15, 0 and 5", res.Pruned, res.PruneHeld, len(st.clips))
 	}
 }
 
