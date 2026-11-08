@@ -448,7 +448,7 @@ func TestAudienceConstraintsInvalidateUnrestrictedProposalCache(t *testing.T) {
 }
 
 // "90s cartoons" names a format, not an audience (#2739): the model's TV-Y7 cap
-// is dropped so Animaniacs, Rugrats and Sailor Moon (TV-G) survive, while a
+// is dropped so the TV-G and TV-PG cartoons an adult remembers survive, while a
 // cartoon request that names a young child keeps it.
 func TestGroundPolicy_CartoonFormatAloneDropsProposedCeiling(t *testing.T) {
 	for desc, want := range map[string]rating.Rating{
