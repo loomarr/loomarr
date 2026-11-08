@@ -1,5 +1,5 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { AlertTriangle, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
@@ -71,15 +71,26 @@ const BackupPanel = ({
       ) : null}
 
       {missing > 0 ? (
-        <p className="text-caution mt-3 flex flex-wrap items-center gap-x-2 text-sm" role="status">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden />
-          {pluralize(missing, "night")} missing from the nightly backups.
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderWidth={0}
+          flexDirection="row"
+          flexWrap="wrap"
+          gap="inline"
+          marginTop={12}
+          role="status"
+        >
+          <Icon decorative glyph={icons.warning} size="compact" tone="warning" />
+          <Text textRole="body" tone="warning">
+            {pluralize(missing, "night")} missing from the nightly backups.
+          </Text>
           {onOpenTasks ? (
             <Action onPress={onOpenTasks} variant="ghost">
               Open Tasks
             </Action>
           ) : null}
-        </p>
+        </Surface>
       ) : null}
 
       {backups.length === 0 ? (
