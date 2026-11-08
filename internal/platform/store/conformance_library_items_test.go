@@ -64,7 +64,8 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := []LibraryItemSummary{
 		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
-		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Files: 1, Pending: 1},
+		// m2's fanart is its backdrop, never its poster.
+		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Backdrop: fanart.Hash, Files: 1, Pending: 1},
 		{LibraryItem: LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
 	}
 	for i, it := range page.Items {

@@ -10,6 +10,9 @@ tables:
       channel, or a scheduled re-curation. The job's result is a proposal. Finished (`done` or
       `failed`) jobs are deleted after the `jobs.retention` setting (30 days by default), unless
       their proposal is still waiting for a decision.
+    retention: >
+      Finished jobs are deleted after `jobs.retention` (30 days by default), unless their proposal
+      still awaits a decision.
     columns:
       id: Identifies the job. Proposals and channels point here.
       kind: >
@@ -52,6 +55,7 @@ tables:
     about: >
       One row each time a worker started a channel suggester job, so a request's history shows
       every try. Deleted with its job.
+    retention: Goes with its job (deleted when that is).
     columns:
       job_id: The job this attempt ran (proposal_jobs.id).
       attempt: The attempt's number within its job, counting from 1.
@@ -67,8 +71,11 @@ tables:
     about: >
       A suggested channel lineup produced by a channel suggester job, waiting for an admin to
       approve or deny it (shown in the app as a request). Approving it creates or changes a
-      channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by
-      default); the others are kept.
+      channel.
+    retention: >
+      Denied and superseded proposals are deleted after `proposals.retention` (90 days by default).
+      Approved ones are kept on purpose, one per approval, as the record of who approved each channel;
+      submitted ones wait for an answer.
     columns:
       id: Identifies the proposal.
       job_id: The job that produced it (proposal_jobs.id).
@@ -96,6 +103,9 @@ tables:
       whole household or for one channel. Each choice is a new row; the newest per title wins, and
       a channel's choice overrides the household's. The channel suggester and re-curation read
       them. A channel's rows are deleted with the channel.
+    retention: >
+      One row per title and scope: the nightly housekeeping task deletes a choice once a newer one
+      replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
     columns:
       id: Identifies the choice.
       actor_id: The person who made it (users.id).
@@ -115,6 +125,9 @@ tables:
       One measured step of the pipeline that suggests and adds titles (retrieval, generation,
       grounding, approval, acquisition, scheduling) and how it went. Holds counts and timings only, no
       titles or people. Receipts older than 30 days are rolled into quality_daily_aggregates and deleted.
+    retention: >
+      The nightly housekeeping task rolls receipts older than 30 days into daily totals and deletes
+      them.
     columns:
       idempotency_key: >
         An opaque hash identifying the step, so the same step is never counted twice.
@@ -126,7 +139,7 @@ tables:
         How it went, from a set fixed per stage. retrieval is succeeded, empty or failed; generation is
         succeeded, abstained or failed; grounding is accepted or rejected; approval is approved or declined;
         acquisition is playable or failed; scheduling is scheduled or failed.
-      duration_millis: How long the step took, in milliseconds. 0 when not measured.
+      duration_ms: How long the step took, in milliseconds. 0 when not measured.
       tool_calls: How many tool calls the model made during the step.
       candidate_count: How many candidate titles the step surfaced.
       cost_nanos: What the step cost, in billionths of a US dollar.
@@ -137,13 +150,14 @@ tables:
     about: >
       Daily totals of suggestion-quality receipts, one row per day, stage, outcome and evaluation run.
       Kept for two years. This is what the admin discovery-quality export downloads.
+    retention: The nightly housekeeping task deletes days older than two years.
     columns:
       day: The UTC day, as YYYY-MM-DD.
       stage: The pipeline step, with the same values as quality_receipts.stage.
       outcome: How the steps went, with the same values as quality_receipts.outcome.
       run_snapshot_id: The evaluation run (quality_run_snapshots.id), or empty for ordinary use.
       observation_count: How many receipts were rolled into the row.
-      duration_millis: Total time of those steps, in milliseconds.
+      duration_ms: Total time of those steps, in milliseconds.
       tool_calls: Total tool calls.
       candidate_count: Total candidate titles surfaced.
       cost_nanos: Total cost, in billionths of a US dollar.
@@ -153,6 +167,8 @@ tables:
       The fixed facts about one suggestion-quality evaluation run (the model, provider and test set it
       used), so receipts and daily totals can be compared across runs. No part of the running app writes
       rows today. Snapshots no longer referenced are trimmed to the newest 256.
+    retention: >
+      The nightly housekeeping task keeps the newest 256 snapshots that nothing refers to any more.
     columns:
       id: Identifies the snapshot, derived from its facts (eval-<hash>). Receipts and daily totals point here.
       schema_version: Version of the snapshot format.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createSocket } from "node:dgram";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,7 +49,7 @@ const startFixture = async () => {
     }
     rmSync(mediaDirectory, { force: true, recursive: true });
   };
-  return { base, stop };
+  return { base, mediaDirectory, stop };
 };
 
 const journeyState = async (base) => (await fetch(`${base}/__journey`)).json();
@@ -116,6 +116,68 @@ describe("TV emulator journey", () => {
     assert.match(journey, /uiautomator dump/);
     assert.match(journey, /wait_for_ui/);
     assert.match(journey, /wait_for_state/);
+  });
+
+  // #1888: Watching warms the neighbouring Channel with the same play-url request a tune makes, and a
+  // tune can reuse a warmed source without minting again, so the last play-url names the neighbour.
+  it("judges a tune by the Channel whose stream the player opened, not the last play-url", () => {
+    assert.doesNotMatch(journey, /playUrlChannels/);
+    assert.match(journey, /\.tunedChannels\[-1\] == "science-fiction"/);
+    assert.match(journey, /\.tunedChannels\[-1\] == "classic-animation"/);
+  });
+
+  it("records a tune only for a stream the player opens, never for a neighbour warm", async () => {
+    const { base, mediaDirectory, stop } = await startFixture();
+    try {
+      writeFileSync(join(mediaDirectory, "media.m3u8"), "#EXTM3U\n#EXT-X-ENDLIST\n");
+      writeFileSync(join(mediaDirectory, "media0.ts"), "segment");
+      const headers = { authorization: "Bearer journey-device-token" };
+      const mint = async (channelId) =>
+        (await fetch(`${base}/v1/channels/${channelId}/play-url`, { method: "POST", headers })).json();
+
+      const tuned = await mint("classic-animation");
+      const neighbour = await mint("science-fiction");
+      assert.equal(tuned.relativeUrl, "/journey/classic-animation/media.m3u8");
+      assert.equal(neighbour.relativeUrl, "/journey/science-fiction/media.m3u8");
+
+      assert.equal((await fetch(`${base}${neighbour.relativeUrl}?mode=warm`)).status, 200);
+      assert.equal((await fetch(`${base}/journey/science-fiction/media0.ts`)).status, 200);
+      assert.equal((await fetch(`${base}${tuned.relativeUrl}`)).status, 200);
+      assert.equal((await fetch(`${base}/journey/no-such-channel/media.m3u8`)).status, 404);
+
+      const state = await journeyState(base);
+      assert.deepEqual(state.playUrlChannels, ["classic-animation", "science-fiction"]);
+      assert.deepEqual(state.tunedChannels, ["classic-animation"]);
+    } finally {
+      await stop();
+    }
+  });
+
+  // #1888: the journey runs for minutes on the wall clock the Guide reads, so a break a few minutes
+  // after the first Guide read moved into the live window partway through and broke later checkpoints.
+  it("keeps the live window's break well ahead of the whole journey, and the filler phase inside it", async () => {
+    const { base, stop } = await startFixture();
+    try {
+      const headers = { authorization: "Bearer journey-device-token" };
+      const live = await (await fetch(`${base}/v1/guide`, { headers })).json();
+      const { guideEpochMs } = await journeyState(base);
+      const commercial = live.channels[0].airings.find(({ kind }) => kind === "filler");
+      assert.ok(commercial.startMs - guideEpochMs >= 30 * 60_000);
+      assert.ok(commercial.stopMs - commercial.startMs >= 60_000);
+
+      await fetch(`${base}/__journey/phase/filler`, { method: "POST" });
+      const filler = await (
+        await fetch(`${base}/v1/channels/classic-animation/play-url`, { method: "POST", headers })
+      ).json();
+      assert.ok(filler.serverTimeMs > commercial.startMs && filler.serverTimeMs < commercial.stopMs);
+      await fetch(`${base}/__journey/phase/programme-after`, { method: "POST" });
+      const after = await (
+        await fetch(`${base}/v1/channels/classic-animation/play-url`, { method: "POST", headers })
+      ).json();
+      assert.ok(after.serverTimeMs > commercial.stopMs);
+    } finally {
+      await stop();
+    }
   });
 
   // The journey's number entry types 7 7 and waits on the fixture's recorded effects, so the

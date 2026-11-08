@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -2781,6 +2782,18 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 	for _, refused := range prop.Refused {
 		if refused.Reason != "over_ceiling" {
 			t.Fatalf("refusal = %+v, want over_ceiling", refused)
+		}
+	}
+	// The fake TMDB answers every search, so a descriptive clause looked up as an explicit title
+	// would pass silently here while a real search error fails the job (#1940). The starter
+	// description names no title, so the only search is the model's own.
+	for _, req := range mt.Requests() {
+		if req.Path != "/search/multi" {
+			continue
+		}
+		q, _ := url.ParseQuery(req.RawQuery)
+		if query := q.Get("query"); query != "kettle kids" {
+			t.Errorf("TMDB searched %q; the description's prose must not become a title lookup", query)
 		}
 	}
 }

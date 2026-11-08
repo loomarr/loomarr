@@ -47,17 +47,32 @@ func TestRepositoryCacheCleanupCoversPullRequestAndMergeQueueRefs(t *testing.T) 
 	}
 }
 
-func TestVerifyCIContainerDownloadsBindsAndroidCachePromotionToMainPush(t *testing.T) {
+func TestVerifyCIContainerDownloadsBindsAndroidCachePromotionToCompletedMergeQueueCI(t *testing.T) {
 	t.Parallel()
 	tests := map[string]func(string) string{
 		"changed workflow name": func(source string) string {
 			return strings.Replace(source, "name: Android ccache promotion", "name: Attacker promotion", 1)
 		},
-		"changed branch": func(source string) string {
-			return strings.Replace(source, "branches: [main]", "branches: [attacker]", 1)
+		"changed source workflow": func(source string) string {
+			return strings.Replace(source, "workflows: [CI]", "workflows: [Attacker]", 1)
+		},
+		"extra source workflow": func(source string) string {
+			return strings.Replace(source, "workflows: [CI]", "workflows: [CI, Attacker]", 1)
+		},
+		"extra run type": func(source string) string {
+			return strings.Replace(source, "types: [completed]", "types: [completed, requested]", 1)
 		},
 		"extra trigger": func(source string) string {
-			return strings.Replace(source, "on:\n  push:", "on:\n  workflow_dispatch:\n  push:", 1)
+			return strings.Replace(source, "on:\n  workflow_run:", "on:\n  workflow_dispatch:\n  workflow_run:", 1)
+		},
+		"push trigger": func(source string) string {
+			return strings.Replace(source, "  workflow_run:\n    workflows: [CI]\n    types: [completed]\n", "  push:\n    branches: [main]\n", 1)
+		},
+		"pull request producer": func(source string) string {
+			return strings.Replace(source, "github.event.workflow_run.event == 'merge_group'", "github.event.workflow_run.event == 'pull_request'", 1)
+		},
+		"failed producer": func(source string) string {
+			return strings.Replace(source, " && github.event.workflow_run.conclusion == 'success'", "", 1)
 		},
 	}
 	for name, mutate := range tests {

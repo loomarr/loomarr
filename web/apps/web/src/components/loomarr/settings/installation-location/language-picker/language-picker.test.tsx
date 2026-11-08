@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { LanguagePicker } from "./language-picker";
 
 it("filters friendly language names and chooses the active result from the keyboard", async () => {

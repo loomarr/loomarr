@@ -29,7 +29,7 @@ func TestASeriesListsItsSeasonPosters(t *testing.T) {
 		t.Fatal("the series is not listed")
 	}
 	want := []store.LibraryArt{
-		{Kind: localart.KindPoster, Ref: filepath.Join(show, "poster.jpg")},
+		{Kind: mp.KindPoster, Ref: filepath.Join(show, "poster.jpg")},
 		{Kind: mp.KindSeasonPoster, Season: 0, Ref: filepath.Join(show, "season-specials-poster.jpg")},
 		{Kind: mp.KindSeasonPoster, Season: 1, Ref: filepath.Join(show, "season01-poster.jpg")},
 	}

@@ -34,16 +34,18 @@ func Folder() Provider {
 	}}
 }
 
-// Library is the media-server library provider.
+// Library is the library-folder provider: one of the household library's folders, copied from
+// and never drained (#2151 decision 36).
 func Library() Provider {
-	return scanned{id: LibraryID, address: libraryName, description: Description{
+	return scanned{id: LibraryID, address: folderPath, description: Description{
 		Label:        "Media library",
-		AddressHint:  "Commercials — as it appears on your media server",
-		AddressLabel: "Library name",
-		SourceNoun:   "Media server library",
+		AddressHint:  "/media/commercials — a folder in your library",
+		AddressLabel: "Folder path",
+		SourceNoun:   "Folder in your library",
 		BadAddress: Problem{
-			Title:  "That library needs a name",
-			Detail: "Use the library's name as it appears on your media server — for example Commercials.",
+			Title: "That doesn't look like a folder Loomarr can read",
+			Detail: "Give a full path starting with / — for example /media/commercials. " +
+				"Loomarr copies clips from it and never changes it.",
 		},
 	}}
 }
@@ -94,12 +96,4 @@ func folderPath(raw string) string {
 		return ""
 	}
 	return cleaned
-}
-
-// libraryName validates a media-server library name. It is deliberately permissive: this is a name
-// the operator reads off their own media server ("Commercials", "TV Ads (80s)"), not an
-// identifier with a grammar. The scan resolves it against the media server, which is the only
-// thing that can say whether it exists.
-func libraryName(raw string) string {
-	return strings.TrimSpace(raw)
 }

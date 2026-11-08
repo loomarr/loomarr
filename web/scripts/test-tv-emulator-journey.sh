@@ -196,12 +196,12 @@ key() {
 wait_for_ui "fresh pairing code" "Pairing code 2468"
 wait_for_state "pair start and approval polling" '.pairStarts == 1 and .pairPolls >= 1'
 wait_for_ui "Watching home" "Open programme guide" 40
-wait_for_state "initial Channel tune" '.playUrlChannels[-1] == "classic-animation"'
+wait_for_state "initial Channel tune" '.tunedChannels[-1] == "classic-animation"'
 
 # A handled remote event reveals both pieces of Watching chrome. Neither may remain after the
 # five-second inactivity window, so the journey's persistent home sentinel lives outside them.
 key KEYCODE_DPAD_UP
-wait_for_state "handled remote tune" '.playUrlChannels[-1] == "science-fiction"'
+wait_for_state "handled remote tune" '.tunedChannels[-1] == "science-fiction"'
 wait_for_ui "Watching identity after handled remote activity" "SCIENCE FICTION"
 wait_for_ui "Watching playbar after handled remote activity" "The Quiet Frontier"
 sleep 6
@@ -212,7 +212,7 @@ sleep 1
 assert_ui_absent "Watching identity remains dismissed after unhandled input" "SCIENCE FICTION"
 assert_ui_absent "Watching playbar remains dismissed after unhandled input" "The Quiet Frontier"
 key KEYCODE_DPAD_DOWN
-wait_for_state "return to initial Channel" '.playUrlChannels[-1] == "classic-animation"'
+wait_for_state "return to initial Channel" '.tunedChannels[-1] == "classic-animation"'
 sleep 6
 
 # Guide tune activity starts the same bounded chrome window. Reopen Guide afterward so hardware
@@ -222,14 +222,14 @@ wait_for_ui "Guide" "Programme guide"
 wait_for_ui "authoritative Guide programme" "emulator journey fixture"
 key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
-wait_for_state "Guide tune" '.playUrlChannels[-1] == "science-fiction"'
+wait_for_state "Guide tune" '.tunedChannels[-1] == "science-fiction"'
 wait_for_ui "Watching identity after Guide tune activity" "SCIENCE FICTION"
 wait_for_ui "Watching playbar after Guide tune activity" "The Quiet Frontier"
 sleep 6
 assert_ui_absent "Watching identity dismissed after Guide tune inactivity" "SCIENCE FICTION"
 assert_ui_absent "Watching playbar dismissed after Guide tune inactivity" "The Quiet Frontier"
 key KEYCODE_DPAD_DOWN
-wait_for_state "return to initial Channel after Guide tune" '.playUrlChannels[-1] == "classic-animation"'
+wait_for_state "return to initial Channel after Guide tune" '.tunedChannels[-1] == "classic-animation"'
 sleep 6
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide before Back" "Programme guide"
@@ -287,7 +287,7 @@ key KEYCODE_DPAD_LEFT
 wait_for_ui "Surf" "Channel surfer"
 key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
-wait_for_state "Surf tune" '.playUrlChannels[-1] == "science-fiction"'
+wait_for_state "Surf tune" '.tunedChannels[-1] == "science-fiction"'
 wait_for_ui "Watching identity after Surf tune activity" "SCIENCE FICTION"
 wait_for_ui "Watching playbar after Surf tune activity" "The Quiet Frontier"
 sleep 6
@@ -305,7 +305,7 @@ if [[ -n "${LOOMARR_TV_JOURNEY_CAPTURE_DIR:-}" ]]; then
 else
   key KEYCODE_DPAD_CENTER
 fi
-wait_for_state "number tune" '.playUrlChannels[-1] == "classic-animation"'
+wait_for_state "number tune" '.tunedChannels[-1] == "classic-animation"'
 wait_for_ui "Watching after number tune" "Open programme guide"
 
 # The channel-number wait (#1659 decision N4, WCAG 2.2.1): Surf's row above Disconnect opens the
@@ -354,13 +354,13 @@ wait_for_ui "Watching after the channel-number wait" "Open programme guide"
 
 # Backgrounding closes the event stream; returning refreshes and retunes the current Channel.
 channel_loads_before="$(journey_state | jq -r '.channelLoads')"
-play_urls_before="$(journey_state | jq -r '.playUrlChannels | length')"
+tunes_before="$(journey_state | jq -r '.tunedChannels | length')"
 event_disconnects_before="$(journey_state | jq -r '.eventDisconnects')"
 key KEYCODE_HOME
 wait_for_state "background event-stream release" ".eventDisconnects > ${event_disconnects_before}"
 adb -s "${emulator_serial}" shell am start -W -n "${PACKAGE_ID}/.MainActivity" >/dev/null
 wait_for_state "foreground catalog refresh" ".channelLoads > ${channel_loads_before}"
-wait_for_state "foreground retune" ".playUrlChannels | length > ${play_urls_before} and .[-1] == \"classic-animation\""
+wait_for_state "foreground retune" ".tunedChannels | length > ${tunes_before} and .[-1] == \"classic-animation\""
 wait_for_ui "Watching after foreground restoration" "Open programme guide"
 
 # Surf's final remote-reachable action owns a confirmation step before revocation and local reset.

@@ -53,7 +53,7 @@ func (s *sqlStore) RecordQualityObservation(ctx context.Context, observation qua
 		}
 	}
 	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO quality_receipts
-		(idempotency_key, occurred_at, stage, outcome, duration_millis, tool_calls,
+		(idempotency_key, occurred_at, stage, outcome, duration_ms, tool_calls,
 		 candidate_count, cost_nanos, run_snapshot_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING`),
 		observation.IdempotencyKey, observation.At.Unix(), string(observation.Stage), string(observation.Outcome),
@@ -78,7 +78,7 @@ func (s *sqlStore) MaintainQualityLedger(ctx context.Context, now time.Time) err
 
 	receiptCutoff := now.UTC().Add(-30 * 24 * time.Hour).Unix()
 	rows, err := tx.QueryContext(ctx, s.ph(`SELECT occurred_at, stage, outcome, run_snapshot_id,
-		duration_millis, tool_calls, candidate_count, cost_nanos
+		duration_ms, tool_calls, candidate_count, cost_nanos
 		FROM quality_receipts WHERE occurred_at < ? ORDER BY occurred_at, idempotency_key`), receiptCutoff)
 	if err != nil {
 		return fmt.Errorf("maintain quality ledger: list receipts: %w", err)
@@ -110,11 +110,11 @@ func (s *sqlStore) MaintainQualityLedger(ctx context.Context, now time.Time) err
 	}
 	for key, aggregate := range rollups {
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO quality_daily_aggregates
-			(day, stage, outcome, run_snapshot_id, observation_count, duration_millis,
+			(day, stage, outcome, run_snapshot_id, observation_count, duration_ms,
 			 tool_calls, candidate_count, cost_nanos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (day, stage, outcome, run_snapshot_id) DO UPDATE SET
 			observation_count = quality_daily_aggregates.observation_count + excluded.observation_count,
-			duration_millis = quality_daily_aggregates.duration_millis + excluded.duration_millis,
+			duration_ms = quality_daily_aggregates.duration_ms + excluded.duration_ms,
 			tool_calls = quality_daily_aggregates.tool_calls + excluded.tool_calls,
 			candidate_count = quality_daily_aggregates.candidate_count + excluded.candidate_count,
 			cost_nanos = quality_daily_aggregates.cost_nanos + excluded.cost_nanos`),
@@ -186,7 +186,7 @@ func (s *sqlStore) ExportQualityLedger(ctx context.Context, now time.Time) (qual
 		RunSnapshots:  make([]quality.RunSnapshot, 0),
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT day, stage, outcome, run_snapshot_id,
-		observation_count, duration_millis, tool_calls, candidate_count, cost_nanos
+		observation_count, duration_ms, tool_calls, candidate_count, cost_nanos
 		FROM quality_daily_aggregates ORDER BY day, stage, outcome, run_snapshot_id`)
 	if err != nil {
 		return quality.Export{}, fmt.Errorf("export quality ledger: list aggregates: %w", err)

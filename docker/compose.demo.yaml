@@ -1,5 +1,6 @@
 # The demo site: real Loomarr beside the demo library. No media server, LLM or TMDB key, and
-# nothing here is household data. Staging runs this same stack. Use `make demo-site`.
+# nothing here is household data: TMDB lookups go to the demo library's stand-in over the same
+# invented catalogue (#1941). Staging runs this same stack. Use `make demo-site`.
 #
 # DEMO_SITE_CONTENT picks the library: invented (the default) or open, the licensed content pack
 # the public site serves. Switching it on a kept store needs `scripts/demo-site.sh down` first.
@@ -29,6 +30,7 @@ services:
       # The seeder creates it; scripts/check-compose.sh keeps the two in step.
       LOOMARR_DEMO_USERNAME: demo
       LOOMARR_DEMO_PASSWORD: loomarr-demo
+      LOOMARR_TMDB_BASE_URL: http://demo-library:8096/tmdb/3
     volumes:
       - demo-data:/data
       - demo-assets:/demo:ro

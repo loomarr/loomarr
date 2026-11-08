@@ -13,9 +13,10 @@ import (
 
 // Persisted filler pulls (§10 V35) — the approval gate for filler acquisition.
 //
-// ⚠ **A decided pull is KEPT, never deleted.** The queue's History tab answers "what did we
-// agree to download, and when, and who said so", and a delete erases exactly that. This is the
-// same reason §7 keeps deny reasons on title proposals rather than dropping refused rows.
+// ⚠ **A decided pull is KEPT for History.** The queue's History tab answers "what did we agree to
+// download, and when, and who said so", and a delete erases exactly that. Like a denied title
+// proposal, a dismissed pull ages out (DecisionHistory); an approved one stays as long as its
+// download run does (PurgeSpentFillerRecords, #2528).
 
 const fillerPullSelect = `SELECT id, title, reason, proposed_by, status, note, plan_json,
 	created_at, decided_at, decided_by FROM filler_pulls`

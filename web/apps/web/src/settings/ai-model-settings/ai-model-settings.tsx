@@ -4,6 +4,7 @@ import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView"
 import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -12,7 +13,7 @@ import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useModelPull } from "@/settings/use-model-pull";
 import {
   REUSE_LINEUP,
@@ -48,10 +49,9 @@ const HostedLineup = ({
       {select.error != null && <ErrorState error={select.error} />}
       {provider?.keyConfigured && (
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
+          <Action
             disabled={testProvider.isPending}
-            onClick={() =>
+            onPress={() =>
               testProvider.mutate({
                 data: {
                   provider: provider.key,
@@ -59,9 +59,10 @@ const HostedLineup = ({
                 },
               })
             }
+            variant="outline"
           >
             {testProvider.isPending ? "Testing credentials…" : "Test provider credentials"}
-          </Button>
+          </Action>
           {testResult?.ok && (
             <p role="status" className="text-lock text-sm">
               {provider.label} credentials authorized.{" "}
@@ -145,13 +146,13 @@ const TmdbNotice = ({ configured }: { configured: boolean }) => (
       </p>
     </div>
     {!configured && (
-      <Link
-        to="/settings/connections"
-        search={{ focus: "tmdb" }}
-        className={buttonVariants({ variant: "outline", size: "sm" })}
+      <Action
+        accessibilityRole="link"
+        render={<Link to="/settings/connections" search={{ focus: "tmdb" }} />}
+        variant="outline"
       >
         Connect TMDB
-      </Link>
+      </Action>
     )}
   </section>
 );
@@ -212,15 +213,9 @@ const VisionPicker = ({
         })}
       </div>
       {options.length > 3 && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="self-start"
-          onClick={() => setExpanded(!expanded)}
-        >
+        <Action onPress={() => setExpanded(!expanded)} style={{ alignSelf: "flex-start" }} variant="ghost">
           {expanded ? "Show guided choices" : `Show all ${options.length} choices`}
-        </Button>
+        </Action>
       )}
     </section>
   );

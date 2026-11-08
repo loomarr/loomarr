@@ -136,6 +136,9 @@ type TitleStore interface {
 	// this is what prevents two replicas both firing a give-up/retry. SQLite: a
 	// guarded UPDATE (single instance, §5). Postgres: FOR UPDATE SKIP LOCKED.
 	ClaimDueTitles(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]provision.Record, error)
+	// PurgeUnusedTitles removes settled titles last changed before `before` that no channel's
+	// lineup and no open proposal names (#2528).
+	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
 }
 
 // ChannelStore is the scheduler/channel surface (§9), including channel icons.
@@ -271,10 +274,10 @@ type ProposalRepository interface {
 	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
-	// PurgeDeniedProposals removes denied proposals older than `before` (§5
+	// PurgeDiscardedProposals removes denied and superseded proposals older than `before` (§5
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
 	// indefinitely; submitted ones are still awaiting an answer.
-	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+	PurgeDiscardedProposals(ctx context.Context, before time.Time) (int, error)
 }
 
 // ProposalApprovalReader is the transaction-bound read view available to an
@@ -333,6 +336,9 @@ type UserStore interface {
 	UserLastSeen(ctx context.Context) (map[string]time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
+	// DisableUser sets the disabled flag and deletes the user's sessions, paired devices and
+	// approved pairings in one transaction (§11, ADR 0043). ErrNotFound when the user is absent.
+	DisableUser(ctx context.Context, userID string, at time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 	// Contact addresses are optional and independent from usernames/credential paths (§11).
 	GetContactAddresses(ctx context.Context, userID string) (contact.Set, error)
@@ -351,14 +357,12 @@ type UserStore interface {
 	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
-	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error
-	RevokeDevicePairingsForUser(ctx context.Context, userID string) error
+	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
-	RevokeDeviceTokensForUser(ctx context.Context, userID string) error
 }
 
 // ClipStore is the filler clip catalog (§10).
@@ -493,6 +497,9 @@ type ClipStore interface {
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
+	// LiveClipPaths maps each clip DeleteClipsNotIn can delete to its location under the clip
+	// folder, so the sync can weigh a listing against the catalog before it prunes (#2673).
+	LiveClipPaths(ctx context.Context) (map[string]string, error)
 	// DeleteClip removes ONE clip by identity — the split-confirm path drops the
 	// compilation row it just cut into segments (§10 V34). ErrNotFound if absent.
 	DeleteClip(ctx context.Context, libraryItemID string) error
@@ -539,6 +546,7 @@ type InteractiveOperationStore interface {
 	UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error
 	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
+	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -568,6 +576,20 @@ type AiringStore interface {
 	// channel, for ranking lineup entries by how long they have gone without airing. A key that
 	// has not aired inside the retained history is absent — callers read that as "never aired".
 	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+	// RecordScheduledAirings stamps programmes a channel's schedule put on air, watched or not
+	// (#1677): the scheduled signal, kept apart from RecordAiring's watched one. Written from
+	// reconcile; idempotent per airing, so recording the same started programmes again is a no-op.
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error
+	// LastScheduledByChannel is LastAiredByChannel over the scheduled ledger: the latest scheduled
+	// airing per unit, counting only rows recorded strictly before `before`.
+	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+}
+
+// ScheduledAiring is one programme a channel's schedule put on air (#1677).
+type ScheduledAiring struct {
+	Key           provision.Key
+	LibraryItemID string
+	AiredAt       time.Time
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout
@@ -600,6 +622,7 @@ type NotificationStore interface {
 	ListNotificationDestinationHealth(context.Context) (map[string]notifications.DestinationHealth, error)
 	DeleteNotificationDestination(context.Context, string) error
 	ListNotificationReferenceRecipients(context.Context, notifications.ReferenceKind, string) ([]string, error)
+	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
 	ListNotificationIntentsByReference(context.Context, notifications.ReferenceKind, string) ([]notifications.Intent, error)
@@ -790,6 +813,10 @@ type Store interface {
 	LibraryIDMapStore
 	LibraryItemFactsReader
 	LibraryEpisodeReader
+	LibraryTitleReader
+	LibraryReferenceStore
+	LibraryArtReader
+	CatalogRetentionStore
 
 	// Close releases the underlying database handle.
 	Close() error

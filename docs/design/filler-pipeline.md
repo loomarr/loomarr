@@ -88,6 +88,14 @@ attempt is spent, and no other encode starts in that pass while playback runs. T
 splitting only wait before they start. A long recording's transcription interrupted at every tune
 would never finish.
 
+**A suggestion goes before background vision** (#1508). On a small AI server, one slot's long vision
+prefill slows decoding on every other slot. An Add a channel request running beside the vision
+backlog took 52 s instead of about 25 s. A suggestion run (Add a channel, refine, find more) holds
+one shared interactive gate while it runs. Before every background vision model call, from the
+vision rung and from split-time grounding, the caller waits while that gate is busy. It polls every
+second, for at most 2 minutes, and then makes the call anyway, so a long run of suggestions slows
+the backlog but never stalls it.
+
 The next level up fails the floor on both measured families (NVENC `-cq 27`: p10 94.1; x264 CRF 18:
 p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 against 91 at these
 levels). It is a pooled-minimum outlier, not what the floor gates on, and is noted here so a later

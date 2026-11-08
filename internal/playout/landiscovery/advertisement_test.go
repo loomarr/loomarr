@@ -130,6 +130,37 @@ func TestBroadcastResponderIgnoresInvalidRequestsAndUnusableURLs(t *testing.T) {
 	assertSilent(BroadcastRequest)
 	publicURL.Store("ftp://not-http.example")
 	assertSilent(BroadcastRequest)
+	// #1892: a lane backend's http://localhost:<port> reaches nothing from a phone or TV.
+	for _, local := range []string{"http://localhost:18420", "http://127.0.0.1:8080", "http://[::1]:8080", "http://169.254.3.4:8080"} {
+		publicURL.Store(local)
+		assertSilent(BroadcastRequest)
+	}
+}
+
+func TestLocalOnlyURL(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"":                                false,
+		"http://192.168.1.10:8080":        false,
+		"https://loomarr.example.test":    false,
+		"http://loomarr.local:8080":       false,
+		"http://100.101.102.103:8080":     false,
+		"http://[fd00::1]:8080/":          false,
+		"http://localhost:18420":          true,
+		" http://LOCALHOST:18420/ ":       true,
+		"http://lane.localhost:18420":     true,
+		"http://127.0.0.1:8080":           true,
+		"http://127.4.5.6":                true,
+		"http://[::1]:8080":               true,
+		"http://0.0.0.0:8080":             true,
+		"http://169.254.3.4:8080":         true,
+		"http://[fe80::1]:8080":           true,
+		"ftp://localhost":                 false,
+		"not a url with localhost inside": false,
+	} {
+		if got := LocalOnlyURL(raw); got != want {
+			t.Errorf("LocalOnlyURL(%q) = %v, want %v", raw, got, want)
+		}
+	}
 }
 
 // The responder answers the household's own network (private, link-local, loopback and Tailscale

@@ -225,7 +225,7 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		broadcastCodec = BroadcastCodecH264
 	}
 	args := []any{ch.IntentRef, ch.IntentJSON, ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
-		string(ch.Strategy), ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
+		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
 		epoch(ch.PlayoutAnchor), epoch(ch.ReconcileDeadline), ch.UpdatedAt}
 	invalidation := ""
@@ -242,10 +242,10 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		}
 		query :=
 			`INSERT INTO channels
-			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy, filler_ref,
+			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), epoch(ch.CreatedAt))
 		if s.dialect == DialectPostgres {
@@ -268,7 +268,7 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 	query :=
 		`UPDATE channels SET
 		   intent_ref=?, intent_json=?, requested_by=?, name=?, number=?, grp=?, logo=?, strategy=?,
-		   filler_ref=?, tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
+		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
 		 WHERE id=? AND revision=?
@@ -458,7 +458,7 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // this order so scanChannel serves both paths (mirrors scanTitle).
 // channelColumns is the column list scanChannel reads, in its order. The Postgres claim spells it
 // with its `c.` alias (postgres.go) and must stay in step.
-const channelColumns = `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy, filler_ref,
+const channelColumns = `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
 		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
 		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
 
@@ -473,7 +473,7 @@ func scanChannel(sc scannable) (Channel, error) {
 		createdAt                           int64
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.IntentJSON, &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
-		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
+		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -231,15 +231,3 @@ func TestOpenAI_HTMLResponsePointsAtTheAPIBaseSetting(t *testing.T) {
 		}
 	}
 }
-
-// ParseProvider accepts ollama|openai and rejects unknowns.
-func TestParseProvider(t *testing.T) {
-	for _, ok := range []string{"ollama", "openai"} {
-		if _, err := llm.ParseProvider(ok); err != nil {
-			t.Errorf("ParseProvider(%q) errored: %v", ok, err)
-		}
-	}
-	if _, err := llm.ParseProvider("anthropic"); err == nil {
-		t.Error("ParseProvider(anthropic) should error (unknown now)")
-	}
-}

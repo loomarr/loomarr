@@ -248,12 +248,16 @@ func buildChannels(
 			NaturalBreaks: func(ctx context.Context) schedule.NaturalBreakSource {
 				return playoutRes.naturalBreakSource(ctx)
 			},
+			// Measure ahead (#1518): the next two days' programmes go to the one measure worker.
+			Premeasure: func(ctx context.Context, libraryItemIDs []string) {
+				playoutRes.premeasure(ctx, libraryItemIDs)
+			},
 		}, time.Now, log).WithMetrics(metricRecorder).WithQualityRecorder(quality.NewSchedulingRecorder(st, log))
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{lib: lib})
+		channelEngine.WithRatings(libraryRatings{titles: st, lib: lib})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.

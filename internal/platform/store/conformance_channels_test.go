@@ -567,6 +567,78 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testScheduledAiringHistory pins the scheduled ledger (#1677): what a channel's schedule put on air
+// whether or not anyone watched, kept apart from the watched airings (decision 1 of #1678: "aired"
+// means both, as separate signals). It reads like the watched history: latest airing per unit, a
+// strict recorded-before cutoff, per-channel scoping, and the same retention.
+func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	for i, id := range []string{"sched-1", "sched-2"} {
+		mustSaveChannel(t, st, sampleChannel(id, i+1, time.Time{}))
+	}
+	opened := time.Now().Truncate(time.Second)
+	film := provision.Key("movie:tmdb:90000149")
+	show := provision.Key("series:tvdb:90071663")
+	record := func(ch string, recordedAt time.Time, airings ...ScheduledAiring) {
+		t.Helper()
+		if err := st.RecordScheduledAirings(ctx, ch, airings, recordedAt); err != nil {
+			t.Fatalf("record %s: %v", ch, err)
+		}
+	}
+	read := func(ch string, before time.Time) map[string]time.Time {
+		t.Helper()
+		got, err := st.LastScheduledByChannel(ctx, ch, before)
+		if err != nil {
+			t.Fatalf("read %s: %v", ch, err)
+		}
+		return got
+	}
+
+	// One reconcile records everything that has started; the next records it again with the newer
+	// programmes. Only the first write of an airing lands, so recorded_at is when it was first seen.
+	record("sched-1", opened.Add(-20*time.Hour),
+		ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-26 * time.Hour)},
+		ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)})
+	record("sched-1", opened.Add(time.Hour),
+		ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)},
+		ScheduledAiring{Key: show, LibraryItemID: "ep-2", AiredAt: opened.Add(-30 * time.Minute)})
+	got := read("sched-1", opened)
+	if len(got) != 2 || !got["lib-1"].Equal(opened.Add(-26*time.Hour)) || !got["ep-1"].Equal(opened.Add(-22*time.Hour)) {
+		t.Fatalf("history as of the window start = %v, want lib-1 and ep-1 only", got)
+	}
+	if _, late := got["ep-2"]; late {
+		t.Error("an airing first recorded after the window opened changed that window's history")
+	}
+	if got := read("sched-1", opened.Add(2*time.Hour)); !got["ep-2"].Equal(opened.Add(-30 * time.Minute)) {
+		t.Errorf("next read = %v, want ep-2 recorded", got)
+	}
+
+	// The latest airing of a unit wins, and retention keeps the newest one past the horizon.
+	record("sched-2", opened.Add(-30*24*time.Hour), ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-30 * 24 * time.Hour)})
+	record("sched-2", opened.Add(-20*24*time.Hour), ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-20 * 24 * time.Hour)})
+	record("sched-2", opened, ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened})
+	if got := read("sched-2", opened); !got["lib-1"].Equal(opened.Add(-20 * 24 * time.Hour)) {
+		t.Errorf("after pruning, last scheduled before the window = %v, want 20 days ago", got["lib-1"])
+	}
+	if got := read("sched-2", opened.Add(-25*24*time.Hour)); len(got) != 0 {
+		t.Errorf("pruned airings still answer a read far outside retention: %v", got)
+	}
+	if got := read("sched-2", opened.Add(time.Hour)); len(got) != 1 || !got["lib-1"].Equal(opened) {
+		t.Errorf("sched-2 history = %v, want only its own airing", got)
+	}
+
+	// The two signals stay apart: a scheduled airing is not a watched one.
+	if watched, err := st.LastAiredByChannel(ctx, "sched-1", opened.Add(2*time.Hour)); err != nil || len(watched) != 0 {
+		t.Errorf("watched history = %v, %v; want the scheduled ledger kept out of it", watched, err)
+	}
+	if none, err := st.LastScheduledByChannel(ctx, "ch-never", opened); err != nil || len(none) != 0 {
+		t.Errorf("unknown channel = %v, %v; want empty", none, err)
+	}
+	// An airing with no unit identifies nothing and is skipped, as RecordAiring skips it.
+	record("sched-1", opened.Add(3*time.Hour), ScheduledAiring{Key: film, AiredAt: opened.Add(2 * time.Hour)})
+}
+
 // testAiringHistory pins the recency signal's storage contract (§5, programming-design §3.1).
 //
 // The scheduler's separation rules are within-cycle; this table is the ONLY memory of what aired

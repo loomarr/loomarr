@@ -84,12 +84,12 @@ describe("ManualChannelBuilder", () => {
     render(<ManualChannelBuilder isAdmin onCancel={vi.fn()} onSubmitted={vi.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: /comedy movies/i }));
-    const addButtons = await screen.findAllByRole("button", { name: "Add" });
+    const addButtons = await screen.findAllByRole("button", { name: /^Add / });
     expect(addButtons).toHaveLength(2);
     await user.click(addButtons[0]!);
 
     expect(screen.getByText("Autumn Market")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Add / })).toHaveLength(1);
   });
 
   it("adds a searched title to the lineup", async () => {
@@ -132,7 +132,7 @@ describe("ManualChannelBuilder", () => {
 
     await user.type(screen.getByLabelText("Channel name"), "My Hand-Built Channel");
     await user.click(await screen.findByRole("button", { name: /comedy movies/i }));
-    await user.click((await screen.findAllByRole("button", { name: "Add" }))[0]!);
+    await user.click((await screen.findAllByRole("button", { name: /^Add / }))[0]!);
     await user.click(screen.getByRole("button", { name: "Continue to review" }));
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("job-manual-1"));

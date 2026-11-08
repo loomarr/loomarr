@@ -9,6 +9,7 @@ tables:
       One row per channel. A channel is created by approving a channel request or by hand. Detaching
       a channel keeps its row with status `detached`; deleting it removes the row, its airing
       history and its channel feedback.
+    retention: Kept until an admin deletes the channel; a detached channel keeps its row.
     columns:
       id: Identifies the channel. Other tables point here.
       intent_ref: >
@@ -23,9 +24,6 @@ tables:
       strategy: >
         How programmes are ordered onto the timeline. `sequential` plays them in lineup order,
         `shuffle` rotates them in a shuffled order, and `time_slot` pins them to blocks of the day.
-      filler_ref: >
-        Reserved for a reference to the channel's filler list. Nothing in the current app sets it,
-        so it is empty.
       tunarr_id: >
         The id of the channel's copy in Tunarr, an outside playout server, kept from the first time
         Loomarr pushed the channel there. Empty for a channel that never went to Tunarr.
@@ -80,9 +78,31 @@ tables:
       channel. Written when the programme is really streamed, not when it is scheduled. The
       schedule uses it to prefer what hasn't aired recently. Rows older than 8 days are pruned down
       to the latest airing of each episode or film; rows go when their channel is deleted.
+    retention: >
+      Airings older than 8 days are pruned to the latest one per episode or film on each channel;
+      goes with its channel (deleted when that is).
     columns:
       channel_id: The channel it aired on (channels.id).
       library_item_id: The library item id of the episode or film that aired.
+      aired_at: When the programme started, in Unix seconds.
+      recorded_at: When Loomarr first recorded the airing, in Unix seconds.
+      key: >
+        The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
+        show. Kept for diagnosis.
+
+  - name: scheduled_airings
+    about: >
+      What a channel's schedule put on air: one row each time an episode or film started on a
+      channel's timeline, whether or not anyone watched. Kept apart from `airings`, which records
+      only what was actually streamed. The schedule reads both, so a channel nobody watches still
+      rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like
+      `airings`.
+    retention: >
+      Rows older than 8 days are pruned to the latest one per episode or film on each channel;
+      goes with its channel (deleted when that is).
+    columns:
+      channel_id: The channel it aired on (channels.id).
+      library_item_id: The library item id of the episode or film.
       aired_at: When the programme started, in Unix seconds.
       recorded_at: When Loomarr first recorded the airing, in Unix seconds.
       key: >
@@ -95,6 +115,9 @@ tables:
       about it. Seasonal channel rules and seasonal filler tags read them. Each holiday owns the
       seasonal tag with the same slug. Rows are added at startup from Loomarr's shipped list and
       when a seasonal tag is made. An undated holiday is removed when its tag stops being seasonal.
+    retention: >
+      Kept while its seasonal tag exists; an undated holiday is deleted when its tag stops being
+      seasonal.
     columns:
       id: The holiday's slug, which is also the slug of its seasonal tag (taxa.slug).
       label: The holiday's display name.
@@ -122,6 +145,8 @@ tables:
     about: >
       One row per revision of Loomarr's shipped holiday list that startup has applied. Each
       revision applies once, so a later change or removal by an admin is never undone. Kept forever.
+    retention: >
+      Kept forever: one small row per shipped list revision, so no revision is applied twice.
     columns:
       version: The revision number of the shipped holiday list.
       applied_at: When it was applied, in Unix seconds.

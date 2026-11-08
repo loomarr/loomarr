@@ -101,6 +101,35 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+// A model sometimes copies Vocab's `child (under parent)` annotation into its output (#1588). The
+// token grounds to the child only when the annotation names the child's real parent, so grounding
+// stays as strict as the bare slug.
+func TestResolve_AcceptsTheVocabAnnotationOnlyForTheRealParent(t *testing.T) {
+	f := seed()
+	cases := []struct {
+		raw      string
+		wantSlug string
+		wantOK   bool
+	}{
+		{"candy (under food)", "candy", true},
+		{"Soda (Under Drinks)", "soda", true},          // case-insensitive, like the bare slug
+		{"  beer  (under  alcohol) ", "beer", true},    // whitespace-tolerant
+		{"soft-drink (under beverage)", "soda", true},  // synonyms resolve on both sides
+		{"soda (under food)", "", false},               // wrong parent: the model contradicted the graph
+		{"beer (under drinks)", "", false},             // a grandparent is not the parent
+		{"drinks (under food)", "", false},             // a root has no parent to name
+		{"nonsense-widget (under food)", "", false},    // the child must still be on the vocabulary
+		{"candy (under nonsense-widget)", "", false},   // and so must the parent
+		{"candy (under food) (under food)", "", false}, // only one annotation, the one Vocab renders
+	}
+	for _, c := range cases {
+		gotSlug, gotOK := f.Resolve(c.raw)
+		if gotSlug != c.wantSlug || gotOK != c.wantOK {
+			t.Errorf("Resolve(%q) = (%q,%v), want (%q,%v)", c.raw, gotSlug, gotOK, c.wantSlug, c.wantOK)
+		}
+	}
+}
+
 // ⚠ THE grounding property, stated as a test: an off-vocabulary tag must be DROPPED, so a model can
 // never mint a taxon. Only an operator adds taxa. Goes red if Resolve ever falls back to accepting raw.
 func TestResolve_DropsUnknownNeverMintsTaxon(t *testing.T) {
