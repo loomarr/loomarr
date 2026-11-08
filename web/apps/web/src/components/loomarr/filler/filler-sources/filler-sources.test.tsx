@@ -584,7 +584,7 @@ describe("FillerSources provider roll-up", () => {
 
     render(<FillerSources sources={[provider, ...children]} onSelect={vi.fn()} />);
 
-    const filter = screen.getByRole("textbox", { name: "Filter YouTube sources" });
+    const filter = screen.getByRole("searchbox", { name: "Filter YouTube sources" });
     await userEvent.type(filter, "museum");
 
     expect(screen.getByText("Museum of Classic Commercials")).toBeInTheDocument();

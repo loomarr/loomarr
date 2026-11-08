@@ -100,7 +100,7 @@ describe("PlayoutDiagnostics", () => {
     expect(await screen.findByText(/3 earlier lines/)).toBeInTheDocument();
     await userEvent.hover(screen.getByRole("button", { name: "Follow tail" }));
     expect(await screen.findByText("Keep the newest output line in view")).toBeInTheDocument();
-    await userEvent.type(screen.getByRole("textbox", { name: "Search Process output" }), "warning");
+    await userEvent.type(screen.getByRole("searchbox", { name: "Search Process output" }), "warning");
     expect(screen.getByText(/warning retry/)).toBeInTheDocument();
     expect(screen.queryByText(/frame=120 healthy/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Timestamps" }));
