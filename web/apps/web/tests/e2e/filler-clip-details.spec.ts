@@ -40,7 +40,7 @@ test("clip-detail search stays simple through setup, status, source controls, an
   await page.getByRole("switch", { name: "Archive.org" }).click();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect.poll(() => backend.state.edits["filler.research.archive_enabled"]).toBe("false");
-  await expect(page.getByRole("spinbutton", { name: "Monthly web searches" })).toHaveValue("100");
+  await expect(page.getByRole("textbox", { name: "Monthly web searches" })).toHaveValue("100");
   await page.getByRole("button", { name: "Test connection" }).click();
   await expect.poll(() => backend.state.fillerResearchTests.at(-1)).toEqual({ provider: "brave" });
   await page.getByRole("button", { name: "Remove web search" }).click();

@@ -2,6 +2,7 @@ package provisionbackstop
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -67,10 +68,9 @@ func (s *LibraryScan) Incremental(ctx context.Context) (int, error) {
 	}
 	since := s.now().Add(-s.lookback)
 	items, err := s.scanner.RecentlyAdded(ctx, since)
-	if err != nil {
-		return 0, err
-	}
-	return s.confirm(ctx, items, inflight)
+	// A partial answer rides with its error (one source of titles down): confirm what arrived.
+	confirmed, cerr := s.confirm(ctx, items, inflight)
+	return confirmed, errors.Join(err, cerr)
 }
 
 // Full confirms availability against the ENTIRE library — the periodic safety net (daily) for
@@ -82,10 +82,8 @@ func (s *LibraryScan) Full(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	items, err := s.scanner.AllItems(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return s.confirm(ctx, items, inflight)
+	confirmed, cerr := s.confirm(ctx, items, inflight)
+	return confirmed, errors.Join(err, cerr)
 }
 
 // confirm correlates scanned library items against the in-flight title set and applies

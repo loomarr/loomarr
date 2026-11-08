@@ -1,9 +1,8 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Badge, type BadgeTone } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Field } from "@loomarr/design-system";
 import { Check, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   MAX_SUGGESTION_OPTIONS,
@@ -289,16 +288,14 @@ const ProposalReview = ({
 
           {denying && !selfService ? (
             <div className="flex flex-col gap-2">
-              <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
-                Why not? Optional: the requester sees this.
-              </label>
-              <Input
-                id={reasonId}
+              <Field
                 autoFocus
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="For example, ask for fewer new titles"
                 disabled={controlsDisabled}
+                id={reasonId}
+                label="Why not? Optional: the requester sees this."
+                onChangeText={setReason}
+                placeholder="For example, ask for fewer new titles"
+                value={reason}
               />
               <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="ghost" onClick={() => setDenying(false)} disabled={controlsDisabled}>

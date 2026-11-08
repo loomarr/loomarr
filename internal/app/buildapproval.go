@@ -57,7 +57,7 @@ func buildApproval(
 		WithHolidays(holidays)
 	if libraryClient != nil {
 		approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return libraryPresence{lib: libraryClient.Snapshot()}
+			return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 		}})
 	}
 	return approvalBuild{

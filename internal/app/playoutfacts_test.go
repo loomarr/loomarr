@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -153,5 +156,31 @@ func TestPlayoutResolver_InventoryHDRFollowsTheLibraryTransfer(t *testing.T) {
 	}
 	if r.inventoryHDR(t.Context(), "missing") {
 		t.Fatal("unknown item reported HDR")
+	}
+}
+
+type libraryVideoFake map[string]store.LibraryStream
+
+func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) (store.LibraryStream, bool, error) {
+	v, ok := f[itemID]
+	return v, ok, nil
+}
+
+// A library item's format and HDR come from its playing file's header as the scanner read it, with
+// no media server or inventory; any other id is unknown without them.
+func TestPlayoutResolver_LibraryItemFormatFromTheTables(t *testing.T) {
+	r := &playoutResolver{libraryVideo: libraryVideoFake{
+		"lib-hdr": {Kind: "video", Codec: "HEVC", Width: 3840, Height: 2160, FrameRate: "24000/1001",
+			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"},
+		"lib-sdr": {Kind: "video", Codec: "h264", Width: 1920, Height: 1080, ColorTransfer: "bt709"},
+	}}
+	if got := r.inventoryFormat(t.Context(), "lib-hdr"); got.VideoCodec != "hevc" || got.Height != 2160 || !got.HDR() {
+		t.Errorf("lib-hdr format = %+v, want hevc 2160 HDR", got)
+	}
+	if !r.inventoryHDR(t.Context(), "lib-hdr") || r.inventoryHDR(t.Context(), "lib-sdr") {
+		t.Error("HDR should follow the playing file's color transfer")
+	}
+	if got := r.inventoryFormat(t.Context(), "90000001"); got != (playout.MediaFormat{}) {
+		t.Errorf("a media-server id with no inventory = %+v, want unknown", got)
 	}
 }

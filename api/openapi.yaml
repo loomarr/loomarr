@@ -223,7 +223,7 @@ components:
           description: Operator-facing name; falls back to the identifier
           type: string
         uri:
-          description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
+          description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, or a folder path Loomarr can read (a watched folder, or a folder of the household library)
           minLength: 1
           type: string
       required:
@@ -5088,18 +5088,26 @@ components:
           type: string
         markdown:
           type: string
+        section:
+          description: The canonical heading anchor for the requested section; empty when none was requested or the content is the page's top
+          type: string
         slug:
+          description: The canonical slug of the page served, which differs from the requested one when the page moved
           type: string
         title:
           type: string
       required:
         - slug
+        - section
         - title
         - markdown
       type: object
     GuideAiring:
       additionalProperties: false
       properties:
+        backdropImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The title's fanart; for an episode, its show's. Absent when the Library holds none
         description:
           type: string
         episode:
@@ -5120,6 +5128,9 @@ components:
             - pending
             - flex
           type: string
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The title's clear logo, transparent (WebP and AVIF only); for an episode, its show's. Absent when the Library holds none
         nominal:
           description: Times are a display estimate, not scheduled airtime
           type: boolean
@@ -5708,10 +5719,10 @@ components:
           description: Base64 ThumbHash for the low-quality placeholder
           type: string
         role:
-          description: poster | backdrop | icon | thumb — decides the width ladder
+          description: poster | backdrop | icon | thumb | logo — decides the width ladder
           type: string
         src:
-          description: A same-origin JPEG path for the <img> fallback
+          description: "A same-origin path for the <img> fallback: JPEG, or WebP for a logo so its transparency survives"
           type: string
         srcSetAvif:
           description: Same-origin srcset for AVIF; empty until the AVIF job has run
@@ -6816,6 +6827,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        backdropImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its fanart; absent when it has none, or while one is still being fetched
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
         files:
@@ -6829,6 +6843,9 @@ components:
           type: array
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its clear logo; absent when it has none, or while one is still being fetched
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
         overview:
@@ -11199,6 +11216,8 @@ components:
         - images.remote_fetch_enabled
         - images.cache_budget_mb
         - tmdb.api_key
+        - metadata.language
+        - metadata.country
         - llm.provider
         - llm.url
         - llm.model
@@ -11359,6 +11378,8 @@ components:
         - ImagesRemoteFetchEnabled
         - ImagesCacheBudgetMb
         - TMDBAPIKey
+        - MetadataLanguage
+        - MetadataCountry
         - LLMProvider
         - LLMURL
         - LLMModel
@@ -15772,6 +15793,15 @@ paths:
           schema:
             examples:
               - troubleshooting
+            type: string
+        - description: The heading anchor a link names. A section that was renamed or moved resolves to where its content lives now.
+          explode: false
+          in: query
+          name: section
+          schema:
+            description: The heading anchor a link names. A section that was renamed or moved resolves to where its content lives now.
+            examples:
+              - setup-checks
             type: string
       responses:
         "200":

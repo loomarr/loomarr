@@ -76,8 +76,9 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		origin_authority, origin_key, grounded, match_basis, match_app, match_page, set_key, updated_at_ms,
 		original_title, overview, premiere_date, rating, score, runtime_ms, season, episode, episode_end,
 		series_authority, series_key, series_id,
-		name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from,
+		tagline, trailer)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
@@ -91,13 +92,13 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		name_from = excluded.name_from, year_from = excluded.year_from,
 		overview_from = excluded.overview_from, premiere_from = excluded.premiere_from,
 		rating_from = excluded.rating_from, score_from = excluded.score_from,
-		runtime_from = excluded.runtime_from`),
+		runtime_from = excluded.runtime_from, tagline = excluded.tagline, trailer = excluded.trailer`),
 		it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), it.Origin.Authority, it.Origin.Key,
 		it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page, it.Set.String(), at.UnixMilli(),
 		it.OriginalTitle, it.Overview, it.PremiereDate, it.Rating, it.Score, it.RuntimeMs,
 		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, it.SeriesID,
 		it.From.Name, it.From.Year, it.From.Overview, it.From.Premiere, it.From.Rating, it.From.Score,
-		it.From.Runtime); err != nil {
+		it.From.Runtime, it.Tagline, it.Trailer); err != nil {
 		return fmt.Errorf("save library item: %w", err)
 	}
 	if err := s.saveLibraryItemRows(ctx, tx, it); err != nil {
@@ -109,9 +110,11 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 	return nil
 }
 
-// saveLibraryItemRows replaces an item's ids, genres, studios and tags.
+// saveLibraryItemRows replaces an item's ids, genres, studios, tags, files, tracks and artwork.
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
-	for _, table := range []string{"library_ids", "library_genres", "library_studios", "library_tags"} {
+	for _, table := range []string{"library_trickplay", "library_chapters", "library_markers", "library_streams",
+		"library_sources", "library_art",
+		"library_ids", "library_genres", "library_studios", "library_countries", "library_tags", "library_credits"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
 		}
@@ -127,7 +130,8 @@ func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it Libra
 			return fmt.Errorf("save library id: %w", err)
 		}
 	}
-	for table, names := range map[string][]string{"library_genres": it.Genres, "library_studios": it.Studios, "library_tags": it.Tags} {
+	for table, names := range map[string][]string{"library_genres": it.Genres, "library_studios": it.Studios,
+		"library_countries": it.Countries, "library_tags": it.Tags} {
 		seenName := map[string]bool{}
 		for i, name := range names {
 			if name == "" || seenName[name] {
@@ -139,6 +143,107 @@ func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it Libra
 				return fmt.Errorf("save %s: %w", table, err)
 			}
 		}
+	}
+	if err := s.saveLibraryCredits(ctx, tx, it); err != nil {
+		return err
+	}
+	return s.saveLibraryFilesAndArt(ctx, tx, it)
+}
+
+// saveLibraryCredits writes an item's credits, and each person it names. A person's name and
+// photo are the latest any title gave; a title without a photo keeps the one held.
+func (s *sqlStore) saveLibraryCredits(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
+	seen := map[string]bool{}
+	for i, c := range it.Credits {
+		if c.Name == "" || c.Role == "" {
+			continue
+		}
+		id := c.PersonID()
+		key := id + "\x00" + c.Role + "\x00" + c.Character
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, tmdb_id, photo) VALUES (?, ?, ?, ?)
+			ON CONFLICT (id) DO UPDATE SET name = excluded.name,
+			photo = CASE WHEN excluded.photo <> '' THEN excluded.photo ELSE library_people.photo END`),
+			id, c.Name, c.TMDB, c.Photo); err != nil {
+			return fmt.Errorf("save library person: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_credits (item_id, position, person_id, role,
+			character_name) VALUES (?, ?, ?, ?, ?)`), it.ID, i, id, c.Role, c.Character); err != nil {
+			return fmt.Errorf("save library credit: %w", err)
+		}
+	}
+	return nil
+}
+
+// saveLibraryFilesAndArt writes an item's files with their tracks, and its artwork.
+func (s *sqlStore) saveLibraryFilesAndArt(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
+	paths := map[string]bool{}
+	for _, src := range it.Sources {
+		if src.Path == "" || paths[src.Path] {
+			continue
+		}
+		paths[src.Path] = true
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_sources (item_id, path, container, size_bytes,
+			bitrate, duration_ms, edition, plays) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+			it.ID, src.Path, src.Container, src.SizeBytes, src.Bitrate, src.DurationMs, src.Edition, src.Plays); err != nil {
+			return fmt.Errorf("save library source: %w", err)
+		}
+		refs := map[string]bool{}
+		for _, tp := range src.Trickplay {
+			if tp.Ref == "" || refs[tp.Ref] {
+				continue
+			}
+			refs[tp.Ref] = true
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_trickplay (item_id, path, ref, format)
+				VALUES (?, ?, ?, ?)`), it.ID, src.Path, tp.Ref, tp.Format); err != nil {
+				return fmt.Errorf("save library trickplay: %w", err)
+			}
+		}
+		indexes := map[int]bool{}
+		for _, st := range src.Streams {
+			if indexes[st.Index] {
+				continue
+			}
+			indexes[st.Index] = true
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_streams (item_id, path, stream_index, kind,
+				codec, profile, title, is_default, forced, language, language_name, channels, channel_layout,
+				sample_rate, audio_format, width, height, frame_rate, pixel_format, color_transfer, resolution, hdr,
+				commentary, hearing_impaired, descriptive, external_ref)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				it.ID, src.Path, st.Index, st.Kind, st.Codec, st.Profile, st.Title, st.Default, st.Forced,
+				st.Language, st.LanguageName, st.Channels, st.ChannelLayout, st.SampleRate, st.AudioFormat,
+				st.Width, st.Height, st.FrameRate, st.PixelFormat, st.ColorTransfer, st.Resolution, st.HDR,
+				st.Commentary, st.HearingImpaired, st.Descriptive, st.ExternalRef); err != nil {
+				return fmt.Errorf("save library stream: %w", err)
+			}
+		}
+		for i, c := range src.Chapters {
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_chapters (item_id, path, position, start_ms,
+				end_ms, title) VALUES (?, ?, ?, ?, ?, ?)`), it.ID, src.Path, i, c.StartMs, c.EndMs, c.Title); err != nil {
+				return fmt.Errorf("save library chapter: %w", err)
+			}
+		}
+		for i, m := range src.Markers {
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_markers (item_id, path, position, start_ms,
+				end_ms, kind) VALUES (?, ?, ?, ?, ?, ?)`), it.ID, src.Path, i, m.StartMs, m.EndMs, m.Kind); err != nil {
+				return fmt.Errorf("save library marker: %w", err)
+			}
+		}
+	}
+	positions := map[[2]any]int{}
+	for _, a := range it.Art {
+		if a.Kind == "" || a.Ref == "" {
+			continue
+		}
+		key := [2]any{a.Kind, a.Season}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_art (item_id, kind, season, position, ref)
+			VALUES (?, ?, ?, ?, ?)`), it.ID, a.Kind, a.Season, positions[key], a.Ref); err != nil {
+			return fmt.Errorf("save library art: %w", err)
+		}
+		positions[key]++
 	}
 	return nil
 }
@@ -177,8 +282,8 @@ func (s *sqlStore) linkEpisodes(ctx context.Context, tx *sql.Tx, it LibraryItem)
 	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_items SET series_id = ?,
 		rating = CASE WHEN rating = '' OR rating_from = ? THEN ? ELSE rating END,
 		rating_from = CASE WHEN rating = '' OR rating_from = ? THEN ? ELSE rating_from END
-		WHERE kind = 'episode' AND EXISTS (SELECT 1 FROM inventory_item_origins o WHERE o.item_id = ?
-			AND o.authority_id = library_items.series_authority AND o.external_item_id = library_items.series_key)`),
+		WHERE kind = 'episode' AND (series_authority, series_key) IN
+			(SELECT authority_id, external_item_id FROM inventory_item_origins WHERE item_id = ?)`),
 		it.ID, RatingFromShow, it.Rating, RatingFromShow, from, it.ID); err != nil {
 		return fmt.Errorf("link series episodes: %w", err)
 	}

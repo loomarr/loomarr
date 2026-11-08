@@ -1,7 +1,7 @@
 import { getGetDocMockHandler, getListDocsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -24,9 +24,24 @@ One-time wiring.
 `;
 
 const DOCS = {
-  quickstart: { slug: "quickstart", title: "Quickstart", markdown: "# Quickstart\n\nStart here." },
-  troubleshooting: { slug: "troubleshooting", title: "Troubleshooting", markdown: TROUBLESHOOTING },
+  quickstart: {
+    slug: "quickstart",
+    section: "",
+    title: "Quickstart",
+    markdown: "# Quickstart\n\nStart here.",
+  },
+  troubleshooting: {
+    slug: "troubleshooting",
+    section: "",
+    title: "Troubleshooting",
+    markdown: TROUBLESHOOTING,
+  },
+  upgrade: { slug: "upgrade", section: "", title: "Upgrade", markdown: "# Upgrade\n\nPull the new image." },
 } as const;
+
+// The server's redirect table, for the one pre-restructure link the tests follow: the old
+// quickstart "Upgrading" section now lives on its own page.
+const MOVED: Record<string, keyof typeof DOCS> = { "quickstart#upgrading": "upgrade" };
 
 // ⚠ The old stub matched docs by URL SUBSTRING, which forced a specificity ordering it had to get
 // right by hand: `/v1/docs/troubleshooting` was tested before `/v1/docs`, because `includes` has
@@ -41,12 +56,16 @@ const stubHelp = () => {
       docs: [
         { slug: "quickstart", title: "Quickstart" },
         { slug: "troubleshooting", title: "Troubleshooting" },
+        { slug: "upgrade", title: "Upgrade" },
       ],
     }),
-    getGetDocMockHandler(({ params }) => {
+    getGetDocMockHandler(({ params, request }) => {
+      const section = new URL(request.url).searchParams.get("section") ?? "";
+      const moved = MOVED[`${String(params.slug)}#${section}`];
+      if (moved) return DOCS[moved];
       const doc = DOCS[params.slug as keyof typeof DOCS];
       if (!doc) throw new Error(`test asked for an unmodelled doc: ${String(params.slug)}`);
-      return doc;
+      return { ...doc, section };
     }),
     ...appHandlers(),
   );
@@ -64,6 +83,7 @@ const renderAt = (path: string) => {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return router;
 };
 
 describe("Help page", () => {
@@ -96,6 +116,16 @@ describe("Help page", () => {
     const heading = await screen.findByRole("heading", { name: "Tunarr" });
     expect(heading).toHaveAttribute("id", "tunarr");
     expect(await screen.findByRole("heading", { name: "LiveTV" })).toHaveAttribute("id", "livetv");
+  });
+
+  // A pre-restructure link names a section that moved to another page (#1736). The server
+  // resolves it, and the URL follows so the page that holds that content now is open.
+  it("follows a moved section to the page that holds it now", async () => {
+    stubHelp();
+    const router = renderAt("/help?page=quickstart&section=upgrading");
+    await waitFor(() => expect(router.state.location.search).toEqual({ page: "upgrade" }));
+    expect(await screen.findByText("Pull the new image.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade", current: "page" })).toBeInTheDocument();
   });
 
   it("filters the page list", async () => {

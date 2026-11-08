@@ -139,6 +139,7 @@ type Engine struct {
 	calendarFor       func() schedule.Calendar                          // window grid's wall clock (#1675) and holidays (#2030)
 	playoutBackendFor func(context.Context) (string, error)             // durable §9.1 transition target
 	naturalBreaks     func(context.Context) schedule.NaturalBreakSource // §10 mid-roll candidates; nil = none
+	premeasure        func(context.Context, []string)                   // #1518 measure-ahead; nil = none
 	now               func() time.Time
 
 	mu    sync.Mutex
@@ -191,6 +192,9 @@ type Config struct {
 	// NaturalBreaks returns the measured scene-fade source mid-roll placement reads (§10), bound
 	// to one reconcile or preview pass. Nil = no mid-roll anywhere (between-programme breaks only).
 	NaturalBreaks func(context.Context) schedule.NaturalBreakSource
+	// Premeasure queues the library items an internal channel airs within PremeasureHorizon for
+	// the one low-priority measure worker (#1518). It must not block. Nil = measure at first play.
+	Premeasure func(ctx context.Context, libraryItemIDs []string)
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -237,6 +241,7 @@ func New(st EngineStore, prog tunarr.Programmer, avail Availability, guide Guide
 		calendarFor:       cfg.ResolveCalendar,
 		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
 		naturalBreaks:     cfg.NaturalBreaks,
+		premeasure:        cfg.Premeasure,
 		now:               now,
 		locks:             map[string]*sync.Mutex{},
 	}

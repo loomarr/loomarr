@@ -129,6 +129,14 @@
   }
 }
 
+/* A search box draws its own clear button (SearchField), so WebKit's built-in one would be a
+ * second ✕ beside it. */
+@layer base {
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);

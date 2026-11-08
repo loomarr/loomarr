@@ -28,6 +28,18 @@
   "release_date": "2019-06-14",
   "revenue": 5000000,
   "runtime": 112,
+  "production_countries": [
+    { "iso_3166_1": "US", "name": "United States of America" },
+    { "iso_3166_1": "CA", "name": "Canada" }
+  ],
+  "videos": {
+    "results": [
+      { "key": "fanCut9000", "site": "YouTube", "type": "Trailer", "official": false },
+      { "key": "teaser9000", "site": "YouTube", "type": "Teaser", "official": true },
+      { "key": "90000601", "site": "Vimeo", "type": "Trailer", "official": true },
+      { "key": "official900", "site": "YouTube", "type": "Trailer", "official": true }
+    ]
+  },
   "status": "Released",
   "tagline": "Every light is accounted for.",
   "title": "The Lantern Archive",
@@ -58,6 +70,18 @@
           { "certification": "", "descriptors": [], "iso_639_1": "", "note": "", "release_date": "2019-09-01T00:00:00.000Z", "type": 5 }
         ]
       }
+    ]
+  },
+  "credits": {
+    "cast": [
+      { "id": 90003002, "name": "Second Billed", "character": "The Archivist", "order": 1, "profile_path": null },
+      { "id": 90003001, "name": "Top Billed", "character": "Night Clerk", "order": 0, "profile_path": "/person-90003001.jpg" }
+    ],
+    "crew": [
+      { "id": 90003101, "name": "Lamp Director", "job": "Director", "department": "Directing", "profile_path": null },
+      { "id": 90003101, "name": "Lamp Director", "job": "Director", "department": "Directing", "profile_path": null },
+      { "id": 90003102, "name": "Ledger Writer", "job": "Screenplay", "department": "Writing", "profile_path": null },
+      { "id": 90003103, "name": "Film Editor", "job": "Editor", "department": "Editing", "profile_path": null }
     ]
   },
   "keywords": {

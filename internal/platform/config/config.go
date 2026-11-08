@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +84,27 @@ type Config struct {
 	// both or neither; Load refuses one alone.
 	DemoUsername string `env:"LOOMARR_DEMO_USERNAME"`
 	DemoPassword string `env:"LOOMARR_DEMO_PASSWORD"`
+
+	// TMDBBaseURL points the TMDB client at a stand-in instead of the public API (#1941): the
+	// demo library serves one over its invented catalogue, so a lane or demo backend can ground
+	// suggestions offline without surfacing real titles. Bootstrap tier because the client's base
+	// URL is fixed for its lifetime, and because redirecting every grounding lookup is not a
+	// knob an admin session should be able to flip. Empty ⇒ https://api.themoviedb.org/3.
+	TMDBBaseURL string `env:"LOOMARR_TMDB_BASE_URL"`
+}
+
+// validateTMDBBaseURL refuses a base URL every TMDB request would fail against, at boot rather
+// than on the first suggestion.
+func validateTMDBBaseURL(c *Config) error {
+	c.TMDBBaseURL = strings.TrimRight(strings.TrimSpace(c.TMDBBaseURL), "/")
+	if c.TMDBBaseURL == "" {
+		return nil
+	}
+	u, err := url.Parse(c.TMDBBaseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("LOOMARR_TMDB_BASE_URL must be an absolute http(s) URL, got %q", c.TMDBBaseURL)
+	}
+	return nil
 }
 
 // DemoMode reports whether this server is a demo site (#2268).
@@ -148,6 +170,9 @@ func LoadEnv(environ map[string]string) (*Config, error) {
 		return nil, err
 	}
 	if err := validateDemo(&c); err != nil {
+		return nil, err
+	}
+	if err := validateTMDBBaseURL(&c); err != nil {
 		return nil, err
 	}
 	c.bootstrapDir = fileDir

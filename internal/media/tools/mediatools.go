@@ -298,7 +298,7 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
 			"-i", file,
 			"-an",
-			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='%s':h=-2", semanticThumbnailFrames, widthExpr),
+			"-vf", fmt.Sprintf("%s,thumbnail=n=%d,scale=w='%s':h=-2", ColorTagRepair, semanticThumbnailFrames, widthExpr),
 			"-frames:v", "1",
 			"-q:v", "4",
 			"-f", "image2pipe", "-c:v", "mjpeg", "-")
@@ -313,6 +313,16 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 	}
 	return frames, nil
 }
+
+// ColorTagRepair goes in front of the scaler in every filter that turns a clip into pictures
+// (vision frames, exact frames, catalog artwork). Some archive clips tag their colour primaries
+// with the reserved value 3, and since ffmpeg 8 the scaler refuses such frames outright:
+// "Unsupported input (Operation not supported)", exit status 161 (#2456). 40 of the household's 538
+// clips carry it; every vision pass and every scan retried them forever. Marking the primaries
+// unspecified lets the scaler convert as it did before. It is byte-identical for correctly tagged
+// clips (checked on household files), because these outputs are untagged JPEG and WebP and never
+// asked for a gamut conversion. Playout is untouched: it sets its own colour pipeline.
+const ColorTagRepair = "setparams=color_primaries=unknown"
 
 // SemanticFrameMaxWidth bounds upload and pixel cost while preserving native resolution for the
 // SD/HD archive material Loomarr commonly sees. It is intentionally unrelated to PreviewWidth.
@@ -381,7 +391,7 @@ func (t *FFmpegTools) FramesAt(ctx context.Context, file string, atMS []int64) (
 		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 			"-nostdin", "-hide_banner", "-v", "error",
 			"-ss", msToSeconds(at), "-i", file, "-an",
-			"-vf", fmt.Sprintf("scale=w='min(iw,%d)':h=-2", SemanticFrameMaxWidth),
+			"-vf", fmt.Sprintf("%s,scale=w='min(iw,%d)':h=-2", ColorTagRepair, SemanticFrameMaxWidth),
 			"-frames:v", "1", "-q:v", "4", "-pix_fmt", "yuvj420p",
 			"-f", "image2pipe", "-c:v", "mjpeg", "-")
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr

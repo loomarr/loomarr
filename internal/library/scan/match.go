@@ -361,7 +361,7 @@ var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 // and its year. known is a year already known (from a sidecar); otherwise the last year-like word
 // after the first one is the year ("Harbor Lights 2049 (2017)").
 func searchQuery(name string, known int) (string, int) {
-	name = embeddedID.ReplaceAllString(name, " ")
+	name = editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, " "), " ")
 	if !strings.Contains(name, " ") {
 		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
 	}

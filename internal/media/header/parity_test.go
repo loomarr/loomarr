@@ -1,6 +1,7 @@
 package header_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -40,8 +41,20 @@ func parityCases(dir string) []parityCase {
 				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 				"-c:a:0", "aac", "-c:a:1", "ac3", "-ac:a:1", "6", "-c:s", "srt",
 				"-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=fre", "-metadata:s:a:1", "title=Commentary",
-				"-metadata:s:s:0", "language=spa", "-disposition:a:0", "default", "-disposition:a:1", "0",
-				"-disposition:s:0", "forced"),
+				"-metadata:s:s:0", "language=spa", "-disposition:a:0", "default", "-disposition:a:1", "comment",
+				"-disposition:s:0", "forced+hearing_impaired"),
+		},
+		{
+			name: "matroska described audio", file: "described.mkv", mustRead: true,
+			args: append(src("2"), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+				"-c:a", "aac", "-disposition:a:0", "visual_impaired"),
+		},
+		{
+			name: "matroska 5.1 aac, opus and flac, and stereo ac-3", file: "surround.mkv", mustRead: true,
+			args: append(src("2"), "-map", "0:v", "-map", "1:a", "-map", "1:a", "-map", "1:a", "-map", "1:a",
+				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+				"-c:a:0", "aac", "-ac:a:0", "6", "-c:a:1", "libopus", "-ac:a:1", "6", "-mapping_family:a:1", "1",
+				"-c:a:2", "flac", "-ac:a:2", "6", "-c:a:3", "ac3", "-ac:a:3", "2"),
 		},
 		{
 			name: "matroska h264 at 23.976", file: "ntsc.mkv", mustRead: true,
@@ -219,6 +232,10 @@ func compareHeader(t *testing.T, got header.Header, want playout.SourceObservati
 		check("title", g.Title, w.Title)
 		check("default", g.Disposition.Default, w.Default)
 		check("forced", g.Disposition.Forced, w.Forced)
+		check("commentary", g.Disposition.Comment, w.Comment)
+		check("hearing impaired", g.Disposition.HearingImpaired, w.HearingImpaired)
+		check("visual impaired", g.Disposition.VisualImpaired, w.VisualImpaired)
+		check("dolby vision", g.DolbyVision, w.DolbyVision)
 		switch g.Kind {
 		case inventory.StreamVideo:
 			check("width", g.Width, w.Width)
@@ -238,6 +255,7 @@ func compareHeader(t *testing.T, got header.Header, want playout.SourceObservati
 			}
 		case inventory.StreamAudio:
 			check("channels", g.Channels, w.Channels)
+			check("channel layout", cmp.Or(g.ChannelLayout, header.ChannelLayout(g.Codec, g.Channels)), w.ChannelLayout)
 			check("sample rate", g.SampleRate, w.SampleRate)
 			if g.Profile != "" {
 				check("profile", g.Profile, w.Profile)

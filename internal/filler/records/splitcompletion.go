@@ -63,7 +63,8 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		return 0, fmt.Errorf("complete split confirmation %s release parent: %w", completion.ProposalID, err)
 	}
 	if !released {
-		return 0, store.ErrNotFound
+		// The proposal exists (read above); its parent is filed, not held for review (#1761).
+		return 0, fmt.Errorf("complete split confirmation %s: %w", completion.ProposalID, filler.ErrSplitParentNotHeld)
 	}
 
 	settled, err := s.advancePipelineTx(ctx, tx, completion.ParentHash, filler.DispositionReview, filler.DispositionComplete, completion.At)

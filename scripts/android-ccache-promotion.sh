@@ -124,14 +124,21 @@ restore() {
 locate() {
   : "${GH_TOKEN:?GH_TOKEN is required}"
   : "${REPO:?REPO is required}"
-  : "${GITHUB_SHA:?GITHUB_SHA is required}"
-  local runs run_count run_id jobs android_job_count android_conclusion artifact_name artifacts artifact_count artifact_id
-  if [[ ! "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-    printf 'android ccache promotion: current main identity is malformed\n' >&2
+  : "${PRODUCER_SHA:?PRODUCER_SHA is required}"
+  local main_relation runs run_count run_id jobs android_job_count android_conclusion artifact_name artifacts artifact_count artifact_id
+  if [[ ! "${PRODUCER_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+    printf 'android ccache promotion: producer commit identity is malformed\n' >&2
     exit 1
   fi
-  runs=$(gh api "repos/${REPO}/actions/runs?head_sha=${GITHUB_SHA}&event=merge_group&status=success&per_page=100")
-  run_count=$(jq -er --arg sha "${GITHUB_SHA}" '
+  # Promotion starts when merge-group CI completes, which can be after the merge (#2288). Only a
+  # commit main already contains may publish into main's cache; a discarded group's commit may not.
+  main_relation=$(gh api "repos/${REPO}/compare/main...${PRODUCER_SHA}" --jq '.status')
+  if [[ "${main_relation}" != behind && "${main_relation}" != identical ]]; then
+    echo 'found=false'
+    return
+  fi
+  runs=$(gh api "repos/${REPO}/actions/runs?head_sha=${PRODUCER_SHA}&event=merge_group&status=success&per_page=100")
+  run_count=$(jq -er --arg sha "${PRODUCER_SHA}" '
     [.workflow_runs[] | select(
       .head_sha == $sha and .event == "merge_group" and .status == "completed" and
       .conclusion == "success" and .path == ".github/workflows/ci.yml"
@@ -145,7 +152,7 @@ locate() {
     printf 'android ccache promotion: expected one exact successful merge-group CI run, got %s\n' "${run_count}" >&2
     exit 1
   fi
-  run_id=$(jq -er --arg sha "${GITHUB_SHA}" '
+  run_id=$(jq -er --arg sha "${PRODUCER_SHA}" '
     [.workflow_runs[] | select(
       .head_sha == $sha and .event == "merge_group" and .status == "completed" and
       .conclusion == "success" and .path == ".github/workflows/ci.yml"
@@ -172,7 +179,7 @@ locate() {
     printf 'android ccache promotion: Android producer did not succeed: %s\n' "${android_conclusion}" >&2
     exit 1
   fi
-  artifact_name="loomarr-android-ccache-${GITHUB_SHA}-${run_id}"
+  artifact_name="loomarr-android-ccache-${PRODUCER_SHA}-${run_id}"
   artifacts=$(gh api "repos/${REPO}/actions/runs/${run_id}/artifacts?per_page=100")
   artifact_count=$(jq -er --arg name "${artifact_name}" \
     '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"${artifacts}")

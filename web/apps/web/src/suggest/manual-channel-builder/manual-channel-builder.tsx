@@ -8,13 +8,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Badge } from "@loomarr/design-system";
+import { Action, Badge, Field } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
-import { Plus, Sparkles, X } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
@@ -167,15 +165,14 @@ const ManualChannelBuilder = ({
         />
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="manual-channel-name">Channel name</Label>
-        <Input
-          id="manual-channel-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name this channel"
-        />
-      </div>
+      <Field
+        autoCapitalize="words"
+        id="manual-channel-name"
+        label="Channel name"
+        onChangeText={setName}
+        placeholder="Name this channel"
+        value={name}
+      />
 
       {!fromIdea && (
         <div>
@@ -241,9 +238,14 @@ const ManualChannelBuilder = ({
                       {item.name} <span className="text-muted-foreground">{item.year}</span>
                     </span>
                     {lineupBadge(item)}
-                    <Button variant="outline" size="sm" onClick={() => addItem(item)}>
-                      <Plus aria-hidden /> Add
-                    </Button>
+                    <Action
+                      accessibilityLabel={`Add ${item.name}`}
+                      icon="plus"
+                      onPress={() => addItem(item)}
+                      variant="outline"
+                    >
+                      Add
+                    </Action>
                   </li>
                 ))}
               {activeFacet.titles.length === 0 && (
@@ -294,9 +296,11 @@ const ManualChannelBuilder = ({
             />
           </div>
         ) : (
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => setAdding(true)}>
-            Search titles
-          </Button>
+          <div className="mt-2">
+            <Action onPress={() => setAdding(true)} variant="outline">
+              Search titles
+            </Action>
+          </div>
         )}
       </div>
 
@@ -304,9 +308,9 @@ const ManualChannelBuilder = ({
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium">Your lineup</p>
           {lineup.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setLineup([])}>
+            <Action onPress={() => setLineup([])} variant="ghost">
               Clear
-            </Button>
+            </Action>
           )}
         </div>
         <ul className="border-border mt-2 rounded-md border">
@@ -350,12 +354,12 @@ const ManualChannelBuilder = ({
       <div className="border-border flex flex-wrap items-center justify-between gap-2 border-t pt-4">
         <span className="text-muted-foreground text-sm">{summary}</span>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={onCancel}>
+          <Action onPress={onCancel} variant="ghost">
             Cancel
-          </Button>
-          <Button disabled={!canContinue || submit.isPending} onClick={continueToReview}>
+          </Action>
+          <Action disabled={!canContinue || submit.isPending} onPress={continueToReview}>
             Continue to review
-          </Button>
+          </Action>
         </div>
       </div>
     </div>

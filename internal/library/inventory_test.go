@@ -50,6 +50,11 @@ func TestInventorySnapshotProjectsEmbyAndJellyfinToOneProviderNeutralModel(t *te
 				len(snapshot.Sources) != 1 || snapshot.Sources[0].Revision != "etag:revision-1" {
 				t.Fatalf("snapshot = %+v", snapshot)
 			}
+			// The media server's Type is what a person did, its Role an actor's character.
+			if people := snapshot.Observation.Facts.People; len(people) != 1 ||
+				people[0] != (inventory.Person{Name: "A. Actor", Role: "actor", Character: "Lead"}) {
+				t.Fatalf("people = %+v, want A. Actor, actor, as Lead", people)
+			}
 			streams := snapshot.Sources[0].Observation.Facts.Streams
 			if len(streams) != 3 || streams[0].Kind != inventory.StreamVideo || streams[1].Language != "eng" || streams[2].Language != "jpn" {
 				t.Fatalf("ordered streams = %+v", streams)

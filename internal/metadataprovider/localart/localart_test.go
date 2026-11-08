@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
@@ -91,9 +92,9 @@ func TestMovieArtwork(t *testing.T) {
 	dir := filepath.Join(root, "movies", "Amber Field (2004)")
 	got := fetch(t, mp.KindMovie, filepath.Join(dir, "Amber Field (2004).mkv"))
 	want := map[string]string{
-		localart.KindPoster:    filepath.Join(dir, "Amber Field (2004)-poster.jpg"),
-		localart.KindFanart:    filepath.Join(dir, "Fanart.JPG"),
-		localart.KindClearlogo: filepath.Join(dir, "clearlogo.png"),
+		mp.KindPoster:    filepath.Join(dir, "Amber Field (2004)-poster.jpg"),
+		mp.KindFanart:    filepath.Join(dir, "Fanart.JPG"),
+		mp.KindClearlogo: filepath.Join(dir, "clearlogo.png"),
 	}
 	if len(got) != len(want) {
 		t.Fatalf("artwork = %v, want %v", got, want)
@@ -106,7 +107,7 @@ func TestMovieArtwork(t *testing.T) {
 
 	shared := filepath.Join(root, "movies", "Shared")
 	got = fetch(t, mp.KindMovie, filepath.Join(shared, "Birch Lane.mkv"))
-	if len(got) != 1 || got[localart.KindFanart] != filepath.Join(shared, "Birch Lane-fanart.jpg") {
+	if len(got) != 1 || got[mp.KindFanart] != filepath.Join(shared, "Birch Lane-fanart.jpg") {
 		t.Errorf("a shared folder's poster was given to one of its movies: %v", got)
 	}
 	if _, err := localart.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(shared, "Cedar Point.mkv"))); !errors.Is(err, mp.ErrNotFound) {
@@ -119,12 +120,41 @@ func TestSeriesAndEpisodeArtwork(t *testing.T) {
 	root := fixture(t)
 	show := filepath.Join(root, "tv", "Dune Office")
 	got := fetch(t, mp.KindSeries, show)
-	if got[localart.KindPoster] != filepath.Join(show, "poster.jpg") || got[localart.KindFanart] != filepath.Join(show, "backdrop.webp") || len(got) != 2 {
+	if got[mp.KindPoster] != filepath.Join(show, "poster.jpg") || got[mp.KindFanart] != filepath.Join(show, "backdrop.webp") || len(got) != 2 {
 		t.Errorf("series artwork = %v", got)
 	}
 	got = fetch(t, mp.KindEpisode, filepath.Join(show, "Season 01", "Dune Office S01E01.mkv"))
-	if len(got) != 1 || got[localart.KindThumb] != filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
+	if len(got) != 1 || got[mp.KindThumb] != filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
 		t.Errorf("episode artwork = %v", got)
+	}
+}
+
+// A series folder's season posters are each a season's, the specials' as season 0, one per season
+// by preferred extension; "season-all-poster" is not a season's, and a season banner is not a
+// poster.
+func TestSeasonPosters(t *testing.T) {
+	root := t.TempDir()
+	touch(t, root, "Ember Coast/poster.jpg", "Ember Coast/season01-poster.png", "Ember Coast/Season01-Poster.jpg",
+		"Ember Coast/season12-poster.jpg", "Ember Coast/season-specials-poster.jpg", "Ember Coast/season-all-poster.jpg",
+		"Ember Coast/season02-banner.jpg")
+	show := filepath.Join(root, "Ember Coast")
+	rec, err := localart.New().Fetch(context.Background(), fileRef(mp.KindSeries, show))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seasons []mp.ArtworkRef
+	for _, a := range rec.Artwork {
+		if a.Kind == mp.KindSeasonPoster {
+			seasons = append(seasons, a)
+		}
+	}
+	want := []mp.ArtworkRef{
+		{Kind: mp.KindSeasonPoster, Season: 0, Ref: filepath.Join(show, "season-specials-poster.jpg")},
+		{Kind: mp.KindSeasonPoster, Season: 1, Ref: filepath.Join(show, "Season01-Poster.jpg")},
+		{Kind: mp.KindSeasonPoster, Season: 12, Ref: filepath.Join(show, "season12-poster.jpg")},
+	}
+	if !slices.Equal(seasons, want) {
+		t.Errorf("season posters = %+v, want %+v", seasons, want)
 	}
 }
 

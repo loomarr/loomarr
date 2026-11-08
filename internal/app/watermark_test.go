@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -574,4 +575,108 @@ func TestChannelWatermarks_PreviewMotifIsTheRenderersMotif(t *testing.T) {
 	if _, err := c.PreviewMotif(t.Context(), "ch", "arbor-day", ""); err == nil {
 		t.Error("an unknown holiday drew a picture")
 	}
+}
+
+// A PREVIEW NEVER DELAYS A TUNE (#1949): a preview renders under its own lock, so a tune's render
+// in progress does not hold it up, and it never takes the tune's lock either.
+func TestChannelWatermarks_PreviewDoesNotWaitOnATunesRender(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	c := testWatermarks(t, ch, true)
+	c.render.Lock() // a tune's render in progress
+	defer c.render.Unlock()
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := c.Preview(t.Context(), "ch-1", schedule.WatermarkPolicy{}, "")
+		if err == nil {
+			_, err = c.PreviewMotif(t.Context(), "ch-1", "halloween", "")
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a preview waited on the tune's render lock")
+	}
+}
+
+// BOUNDED PREVIEW CACHE (#1949): previews are kept apart from the bugs that air and pruned to the
+// most recently used previewKeep, so browsing the options never grows the directory without limit.
+func TestChannelWatermarks_PreviewCacheIsPrunedLeastRecentlyUsed(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	c := testWatermarks(t, ch, true)
+	dir := filepath.Join(c.dir, "preview")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	for i := range previewKeep {
+		p := filepath.Join(dir, "old-"+strconv.Itoa(i)+".png")
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// old-0 is the least recently used.
+		if err := os.Chtimes(p, old.Add(time.Duration(i)*time.Second), old.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	airing := colour(c).For(t.Context(), "ch-1", encode.EncoderNVENC, 1920, 1080, offSeason)
+	if airing == nil {
+		t.Fatal("no aired bug")
+	}
+	path, _, err := c.Preview(t.Context(), "ch-1", schedule.WatermarkPolicy{Look: "badge"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(path) != dir {
+		t.Fatalf("preview %s is not in the preview cache %s", path, dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != previewKeep {
+		t.Errorf("preview cache holds %d files, want %d", len(entries), previewKeep)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old-0.png")); !os.IsNotExist(err) {
+		t.Error("the least recently used preview survived the prune")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the new preview was pruned: %v", err)
+	}
+	if _, err := os.Stat(airing.Straight); err != nil {
+		t.Errorf("a preview prune removed an aired bug: %v", err)
+	}
+}
+
+// MIXED ENCODERS (#1949): a preview shows the logo white whenever any working encoder airs it white,
+// since For whitens per encoder and the channel may air on that one.
+func TestChannelWatermarks_PreviewIsWhiteWhenAnyWorkingEncoderIs(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "badge", Color: "pink"}
+	c := colour(testWatermarks(t, ch, true))
+	whiteOnly := &watermarkGate{}
+	whiteOnly.works.Store(true)
+	broken := &watermarkGate{} // fails its check: never airs, so never whitens the preview
+	broken.colour.Store(false)
+	c.gates[encode.EncoderVAAPI] = whiteOnly
+	c.gates[encode.EncoderQSV] = broken
+	path, drawable, err := c.Preview(t.Context(), "ch-1", schedule.WatermarkPolicy{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !drawable {
+		t.Fatal("a working encoder makes the logo drawable")
+	}
+	sameDesign(t, path, watermark.Design{Style: watermark.StyleBadge, Callsign: "SC", Number: 7,
+		Colour: watermark.Pink, Palette: watermark.NoEraPalette, White: true})
+
+	delete(c.gates, encode.EncoderVAAPI)
+	if path, _, err = c.Preview(t.Context(), "ch-1", schedule.WatermarkPolicy{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	sameDesign(t, path, watermark.Design{Style: watermark.StyleBadge, Callsign: "SC", Number: 7,
+		Colour: watermark.Pink, Palette: watermark.NoEraPalette})
 }

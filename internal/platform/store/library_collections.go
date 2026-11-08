@@ -18,6 +18,9 @@ type LibraryCollection struct {
 	Description string
 	// ImportedFrom names the media server it was brought over from at cutover; "" made in Loomarr.
 	ImportedFrom string
+	// ImportedID is the media server's id for the collection it was brought over from; "" made in
+	// Loomarr. An update keeps it.
+	ImportedID string
 	// Members are library item ids, in order. A title that has left the library stays here, so it
 	// comes back in its place.
 	Members   []string
@@ -37,6 +40,42 @@ type LibraryCollectionStore interface {
 	UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error
 	// DeleteLibraryCollection deletes a collection and its members; ErrNotFound when there is none.
 	DeleteLibraryCollection(ctx context.Context, id string) error
+	// LibraryCollectionMemberIDs lists each collection's members still in the library, with the
+	// provider ids a channel's lineup knows them by.
+	LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error)
+}
+
+// LibraryCollectionMember is one title of a collection, by its provider ids ("" when it has none).
+type LibraryCollectionMember struct {
+	CollectionID string
+	// Kind is the title's library kind: movie or series.
+	Kind   string
+	TMDBID string
+	TVDBID string
+}
+
+func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind,
+		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tmdb'), ''),
+		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tvdb'), '')
+		FROM library_collection_members m JOIN library_items i ON i.id = m.inventory_item_id
+		ORDER BY m.collection_id, m.position`)
+	if err != nil {
+		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []LibraryCollectionMember
+	for rows.Next() {
+		var m LibraryCollectionMember
+		if err := rows.Scan(&m.CollectionID, &m.Kind, &m.TMDBID, &m.TVDBID); err != nil {
+			return nil, fmt.Errorf("library collection members: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	return out, nil
 }
 
 func (s *sqlStore) ListLibraryCollections(ctx context.Context) ([]LibraryCollection, error) {
@@ -60,7 +99,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	if id != "" {
 		where, args = " WHERE c.id = ?", []any{id}
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.updated_at_ms,
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
 		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
 		ORDER BY LOWER(c.name), c.id, m.position`), args...)
@@ -73,7 +112,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 		var c LibraryCollection
 		var updated int64
 		var member string
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.ImportedFrom, &updated, &member); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.ImportedFrom, &c.ImportedID, &updated, &member); err != nil {
 			return nil, fmt.Errorf("scan library collection: %w", err)
 		}
 		if n := len(out); n == 0 || out[n-1].ID != c.ID {
@@ -96,8 +135,8 @@ func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollect
 	id := strings.ToLower(rand.Text())
 	err := s.writeLibraryCollection(ctx, id, c, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collections (id, name, description, imported_from,
-			created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)`),
-			id, c.Name, c.Description, c.ImportedFrom, at.UnixMilli(), at.UnixMilli())
+			imported_id, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+			id, c.Name, c.Description, c.ImportedFrom, c.ImportedID, at.UnixMilli(), at.UnixMilli())
 		return err
 	})
 	if err != nil {

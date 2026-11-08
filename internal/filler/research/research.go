@@ -189,7 +189,7 @@ such as WABC, or empty. Confidence is 0 through 80.
 JSON keys: year, decade, countryCode, country, scope, callSign, confidence, explanation, citationIds.`
 	user := fmt.Sprintf("Public source title: %s\nPublic source description: %s\nRequested context: %s\nEvidence packet:\n%s",
 		input.Title, input.Description, strings.Join(requested, ", "), packetJSON)
-	response, err := r.provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
+	response, err := r.provider.Chat(llm.WithCallSite(ctx, "filler.research"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
 		llm.StructuredChatOptions(researchMaxTokens))
 	if err != nil {
 		return Report{}, fmt.Errorf("interpret filler context evidence: %w", err)

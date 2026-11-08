@@ -4,7 +4,8 @@ import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEve
 import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { StatusDot, type StatusTone, Tooltip } from "@loomarr/design-system";
+import { Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -20,7 +21,6 @@ import {
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   type ApplicationFilters,
@@ -410,13 +410,15 @@ const ApplicationDiagnostics = ({
       </div>
 
       <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-3">
-        <Input
-          className="min-w-64 flex-1"
-          aria-label="Search logs"
-          placeholder="Search logs"
-          value={filters.text}
-          onChange={(event) => updateFilters({ ...filters, text: event.target.value })}
-        />
+        <Surface backgroundColor="transparent" borderWidth={0} flexBasis={256} flexGrow={1} minWidth={0}>
+          <SearchField
+            label="Search logs"
+            labelHidden
+            onChangeText={(text) => updateFilters({ ...filters, text })}
+            placeholder="Search logs"
+            value={filters.text}
+          />
+        </Surface>
         <Select
           value={filters.range}
           onValueChange={(range) => updateFilters({ ...filters, range: range as EventRange })}
@@ -476,11 +478,13 @@ const ApplicationDiagnostics = ({
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              aria-label="Subsystem"
+            <Field
+              accessibilityLabel="Subsystem"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={(subsystem) => updateFilters({ ...filters, subsystem })}
               placeholder="Subsystem"
               value={filters.subsystem}
-              onChange={(event) => updateFilters({ ...filters, subsystem: event.target.value })}
             />
           </div>
           <details>
@@ -489,12 +493,14 @@ const ApplicationDiagnostics = ({
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {correlationFilters.map(([label, key]) => (
-                <Input
+                <Field
+                  accessibilityLabel={label}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   key={key}
-                  aria-label={label}
+                  onChangeText={(text) => updateFilters({ ...filters, [key]: text || undefined })}
                   placeholder={label}
                   value={filters[key] ?? ""}
-                  onChange={(event) => updateFilters({ ...filters, [key]: event.target.value || undefined })}
                 />
               ))}
             </div>

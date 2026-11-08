@@ -99,6 +99,11 @@ type Config struct {
 	FirstItemWait time.Duration
 	// SlateRetry is how much slate fills a failed schedule lookup (default 10 s).
 	SlateRetry time.Duration
+	// StartDeadline bounds the first manifest's wait from Run's start: past it, AwaitPlaylist fails
+	// the start with ErrNoStart (default FirstItemWait + SlateRetry + FirstManifest: a tune-in item
+	// that fails once still rejoins after its slate). An airing that never produces (a source that
+	// can't be read) would otherwise hold every viewer's master until its request gave up (#1938).
+	StartDeadline time.Duration
 	// HDR10 is set for a premium HDR10 format: the served init and every segment carry its static
 	// metadata. Nil for SDR formats.
 	HDR10 *HDR10
@@ -126,6 +131,7 @@ func (c *Config) defaults() error {
 	def(&c.SlateLead, 2*time.Second)
 	def(&c.FirstItemWait, 10*time.Second)
 	def(&c.SlateRetry, 10*time.Second)
+	def(&c.StartDeadline, c.FirstItemWait+c.SlateRetry+c.FirstManifest)
 	if c.Log == nil {
 		c.Log = slog.New(slog.DiscardHandler)
 	}
@@ -157,6 +163,7 @@ type Packager struct {
 	changed  chan struct{} // closed and replaced on every change; the condition-wait primitive
 	done     bool
 	err      error
+	lastFail error // the last airing that did not produce: why the start failed, if it does
 	stats    Stats
 	listSkew time.Duration // test seam: none in production
 
@@ -186,6 +193,7 @@ func New(cfg Config, schedule Schedule, slate SlateSource) (*Packager, error) {
 func (p *Packager) Run(ctx context.Context) error {
 	p.mu.Lock()
 	p.epoch = p.cfg.Now()
+	p.broadcastLocked() // a waiter's start deadline counts from here
 	p.mu.Unlock()
 	err := p.run(ctx)
 	if ctx.Err() != nil {
@@ -215,6 +223,9 @@ func (p *Packager) run(ctx context.Context) error {
 		if err != nil || item.Duration <= 0 {
 			// A failed lookup slates for SlateRetry, then the schedule is asked again.
 			p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
+			if err != nil {
+				p.failed(err)
+			}
 			tuneIn = false
 			if err := p.fillSlate(ctx, p.slotFor(airAt, p.cfg.SlateRetry)); err != nil {
 				return err
@@ -332,6 +343,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	openedAt := p.cfg.Now()
 	if err != nil {
 		p.cfg.Log.Warn("packager: item did not open; slate", "item", item.Label, "err", err)
+		p.failed(fmt.Errorf("%s did not open: %w", item.Label, err))
 		return p.notReady(ctx, nil, slot)
 	}
 	defer func() { _ = rc.Close() }()
@@ -351,6 +363,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 				break
 			}
 			p.count(func(s *Stats) { s.ZeroFrame++ })
+			p.failed(noFrame(item.Label, stream.err))
 			return p.notReady(ctx, rc, slot)
 		default:
 		}
@@ -359,6 +372,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		}
 		p.count(func(s *Stats) { s.Late++ })
 		p.cfg.Log.Warn("packager: item not producing by its deadline; slate", "item", item.Label)
+		p.failed(fmt.Errorf("%s not producing by its deadline", item.Label))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	case f, ok := <-stream.frags:
@@ -367,6 +381,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			// frame) is "not ready", never an empty slot.
 			p.count(func(s *Stats) { s.ZeroFrame++ })
 			p.cfg.Log.Warn("packager: item ended without a frame; slate", "item", item.Label, "err", stream.err)
+			p.failed(noFrame(item.Label, stream.err))
 			return p.notReady(ctx, rc, slot)
 		}
 		frag = f
@@ -375,6 +390,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
 		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label,
 			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.encoderInit())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
+		p.failed(fmt.Errorf("%s's decoder configuration differs from the channel's", item.Label))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	}
@@ -438,6 +454,20 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		return p.fillSlate(ctx, p.slotFor(p.airAt(p.v), left))
 	}
 	return nil
+}
+
+// failed records why an airing did not produce, for a start that fails (ErrNoStart).
+func (p *Packager) failed(err error) {
+	p.mu.Lock()
+	p.lastFail = err
+	p.mu.Unlock()
+}
+
+func noFrame(label string, err error) error {
+	if err == nil {
+		return fmt.Errorf("%s ended without a frame", label)
+	}
+	return fmt.Errorf("%s ended without a frame: %w", label, err)
 }
 
 // notReady handles an item that is not producing: it reaps the encoder (so its failure is logged
@@ -591,15 +621,28 @@ func (p *Packager) Stats() Stats {
 // ErrStopped means the packager ended before its first playlist was ready.
 var ErrStopped = errors.New("packager: stopped")
 
+// ErrNoStart means no item produced a first manifest by Config.StartDeadline. It wraps the last
+// item's failure when there was one.
+var ErrNoStart = errors.New("packager: nothing on air by the start deadline")
+
 // AwaitPlaylist waits until the first manifest condition holds: at least FirstManifest of media is
-// listable under the listing gate. It is a condition wait on the packager, not a file poll.
+// listable under the listing gate. It is a condition wait on the packager, not a file poll. Past
+// Config.StartDeadline from Run's start it fails with ErrNoStart.
 func (p *Packager) AwaitPlaylist(ctx context.Context) error {
 	for {
 		p.mu.Lock()
 		now := p.cfg.Now()
 		ready := p.init != nil && p.window.listableTicks(p.listEdgeLocked(now)) >= int64(p.cfg.FirstManifest.Seconds()*videoRate)
 		done, err, changed := p.done, p.err, p.changed
+		started, lastFail := !p.epoch.IsZero(), p.lastFail
+		left := p.epoch.Add(p.cfg.StartDeadline).Sub(now)
 		p.mu.Unlock()
+		if !ready && !done && started && left <= 0 {
+			if lastFail != nil {
+				return fmt.Errorf("%w (%s): %w", ErrNoStart, p.cfg.StartDeadline, lastFail)
+			}
+			return fmt.Errorf("%w (%s)", ErrNoStart, p.cfg.StartDeadline)
+		}
 		switch {
 		case ready:
 			p.readyOnce.Do(func() {
@@ -614,10 +657,22 @@ func (p *Packager) AwaitPlaylist(ctx context.Context) error {
 		case done:
 			return ErrStopped
 		}
+		var expire <-chan time.Time // nil until Run starts the deadline's clock
+		var timer *time.Timer
+		if started {
+			timer = time.NewTimer(left)
+			expire = timer.C
+		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
 		case <-changed:
+		case <-expire:
+		}
+		if timer != nil {
+			timer.Stop()
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 	}
 }

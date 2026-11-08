@@ -64,7 +64,8 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := []LibraryItemSummary{
 		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
-		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Files: 1, Pending: 1},
+		// m2's fanart is its backdrop, never its poster.
+		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Backdrop: fanart.Hash, Files: 1, Pending: 1},
 		{LibraryItem: LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
 	}
 	for i, it := range page.Items {
@@ -136,14 +137,19 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 
 // A file whose header couldn't be read counts as unplayable toward its item and its series, and
 // the problems list keeps just the titles that need a look: one with an unplayable file, or a movie
-// with more than one file. A skipped file (a disc image) is neither.
+// with a copy that does not play, sized. A skipped file (a disc image) is neither, and nor is a
+// movie whose two editions each play.
 func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "broken", Kind: "movie", Name: "Broken Film"},
-		{ID: "twice", Kind: "movie", Name: "Twice Film"},
+		{ID: "twice", Kind: "movie", Name: "Twice Film", Sources: []LibrarySource{
+			{Path: "/media/twice/a.mkv", SizeBytes: 5, Plays: true}, {Path: "/media/twice/b.mkv", SizeBytes: 30}}},
+		{ID: "cuts", Kind: "movie", Name: "Cuts Film", Sources: []LibrarySource{
+			{Path: "/media/cuts/a.mkv", SizeBytes: 5, Plays: true},
+			{Path: "/media/cuts/b.mkv", SizeBytes: 7, Edition: "Extended", Plays: true}}},
 		{ID: "fine", Kind: "movie", Name: "Fine Film"},
 		{ID: "show", Kind: "series", Name: "A Show"},
 		{ID: "shows", Kind: "series", Name: "Fine Show"},
@@ -160,6 +166,8 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		file("/media/broken.mkv", "broken", "", LibraryHeaderFailed),
 		file("/media/twice/a.mkv", "twice", "", LibraryHeaderRead),
 		file("/media/twice/b.mkv", "twice", "", LibraryHeaderRead),
+		file("/media/cuts/a.mkv", "cuts", "", LibraryHeaderRead),
+		file("/media/cuts/b.mkv", "cuts", "", LibraryHeaderRead),
 		file("/media/fine/fine.mkv", "fine", "", LibraryHeaderRead),
 		disc,
 		file("/media/show/e1.mkv", "e1", "show", LibraryHeaderRead),
@@ -185,10 +193,15 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	if page.Total != 3 || len(got) != 3 || got[0] != "show" || got[1] != "broken" || got[2] != "twice" {
 		t.Fatalf("problems = %v (total %d), want show, broken and twice", got, page.Total)
 	}
-	if page.Items[1].Unplayable != 1 || page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 {
-		t.Errorf("problem counts = %+v", page.Items)
+	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraBytes != 0 || page.Items[2].Unplayable != 0 ||
+		page.Items[2].Files != 2 || page.Items[2].ExtraBytes != 30 {
+		t.Errorf("problem counts = %+v, want Twice Film's 30-byte copy extra", page.Items)
 	}
-	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 5 {
-		t.Errorf("every title = %d, %v; want five", all.Total, err)
+	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 6 {
+		t.Errorf("every title = %d, %v; want six", all.Total, err)
+	}
+	if paged, err := st.ListLibraryItems(ctx, LibraryItemQuery{Problems: true, Limit: 1}); err != nil ||
+		paged.Total != 3 || len(paged.Items) != 1 {
+		t.Errorf("a page of problems = %d of %d, %v; want one of three", len(paged.Items), paged.Total, err)
 	}
 }

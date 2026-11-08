@@ -38,6 +38,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/movie/90000601", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_movie_90000601.json") })
 	mux.HandleFunc("/tv/90000701", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_tv_90000701.json") })
+	mux.HandleFunc("/tv/90000701/season/1", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_tv_90000701_season_1.json")
+	})
 	mux.HandleFunc("/collection/90000611", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_collection_90000611.json")
 	})
@@ -53,6 +56,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 		serve(w, "provider_movie_changes_page1.json")
 	})
 	mux.HandleFunc("/tv/changes", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_tv_changes.json") })
+	mux.HandleFunc("/person/90003001/combined_credits", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_person_90003001_combined_credits.json")
+	})
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests = append(f.requests, r.Clone(context.Background()))
@@ -136,7 +142,7 @@ func TestFetchMovie(t *testing.T) {
 	}
 
 	q := f.last(t).URL.Query()
-	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images" {
+	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images,videos,credits" {
 		t.Errorf("append_to_response = %q: the detail call must carry everything the record stores", got)
 	}
 	if q.Get("language") != "en-US" || q.Get("include_image_language") != "en,null" {
@@ -154,8 +160,28 @@ func TestFetchMovie(t *testing.T) {
 	if d.Title != "The Lantern Archive" || d.Year != 2019 || d.PremiereDate != "2019-06-14" || d.Runtime != 112*time.Minute {
 		t.Errorf("descriptive = %+v", d)
 	}
-	if d.Network != "Harbor Lamp Pictures" || !reflect.DeepEqual(d.Genres, []string{"Adventure", "Fantasy"}) {
-		t.Errorf("network = %q, genres = %v", d.Network, d.Genres)
+	if !reflect.DeepEqual(d.Studios, []string{"Harbor Lamp Pictures", "Second Shift Films"}) ||
+		!reflect.DeepEqual(d.Genres, []string{"Adventure", "Fantasy"}) {
+		t.Errorf("studios = %q, genres = %v", d.Studios, d.Genres)
+	}
+	if d.Tagline != "Every light is accounted for." ||
+		!reflect.DeepEqual(d.Countries, []string{"United States of America", "Canada"}) {
+		t.Errorf("tagline = %q, countries = %v", d.Tagline, d.Countries)
+	}
+	// The official YouTube trailer wins over a fan cut listed first, a teaser and another site's.
+	if d.Trailer != "https://www.youtube.com/watch?v=official900" {
+		t.Errorf("trailer = %q", d.Trailer)
+	}
+	// The cast in billing order, then the key crew once each; an editor is not key crew.
+	wantPeople := []mp.Person{
+		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", TMDB: "90003001",
+			Photo: "https://image.tmdb.org/t/p/original/person-90003001.jpg"},
+		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", TMDB: "90003002"},
+		{Name: "Lamp Director", Role: mp.PersonDirector, TMDB: "90003101"},
+		{Name: "Ledger Writer", Role: mp.PersonWriter, TMDB: "90003102"},
+	}
+	if !reflect.DeepEqual(d.People, wantPeople) {
+		t.Errorf("people = %+v\nwant     %+v", d.People, wantPeople)
 	}
 	if !reflect.DeepEqual(d.Keywords, []string{"night shift", "small town", "ledger"}) {
 		t.Errorf("keywords = %v", d.Keywords)
@@ -230,8 +256,16 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("ids = %+v, want %+v", rec.IDs, wantIDs)
 	}
 	d := rec.Descriptive
-	if d.Title != "Tidewater Station" || d.Network != "Northlight Network" || d.Runtime != 42*time.Minute {
+	if d.Title != "Tidewater Station" || !reflect.DeepEqual(d.Studios, []string{"Northlight Network"}) ||
+		d.Runtime != 42*time.Minute || d.Tagline != "" || d.Trailer != "" {
 		t.Errorf("descriptive = %+v", d)
+	}
+	if want := []mp.Person{
+		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", TMDB: "90003202"},
+		{Name: "Station Creator", Role: mp.PersonCreator, TMDB: "90003201",
+			Photo: "https://image.tmdb.org/t/p/original/person-90003201.jpg"},
+	}; !reflect.DeepEqual(d.People, want) {
+		t.Errorf("series people = %+v", d.People)
 	}
 	if d.Status != "continuing" {
 		t.Errorf("status = %q, want Sonarr's spelling of a returning series", d.Status)
@@ -248,16 +282,52 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("certification = %+v, want the US content rating, not DE's", rec.Certification)
 	}
 	var logo string
+	var seasonPosters []mp.ArtworkRef
 	for _, a := range rec.Artwork {
-		if a.Kind == "clearlogo" {
+		switch a.Kind {
+		case "clearlogo":
 			logo = a.Ref
+		case mp.KindSeasonPoster:
+			seasonPosters = append(seasonPosters, a)
 		}
 	}
 	if logo != "https://image.tmdb.org/t/p/original/img-logo-en-90000701.png" {
 		t.Errorf("series logo = %q: logos are captured", logo)
 	}
+	wantPosters := []mp.ArtworkRef{{Kind: mp.KindSeasonPoster, Season: 1, Ref: "https://image.tmdb.org/t/p/original/img-season-90000722.jpg"}}
+	if !reflect.DeepEqual(seasonPosters, wantPosters) {
+		t.Errorf("season posters = %+v, want only season 1's, the one season with a poster", seasonPosters)
+	}
 	if len(rec.Children) != 0 {
 		t.Error("TMDB's season layout differs from TVDB's, so a series carries no episodes; they are fetched by their own ids")
+	}
+	if d.Orderings == nil || *d.Orderings != 1 {
+		t.Errorf("orderings = %v, want the one episode group", d.Orderings)
+	}
+}
+
+// A season lists its episodes in TMDB's numbering; an episode TMDB has no id for is left out, and
+// anything but "<series>/<season>" is refused.
+func TestFetchSeason(t *testing.T) {
+	p := newFakeTMDB(t).provider(nil)
+	rec, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Kind != mp.KindSeason || len(rec.Children) != 2 {
+		t.Fatalf("season = %+v, want two numbered episodes", rec)
+	}
+	e := rec.Children[1]
+	if e.Numbering == nil || e.Numbering.Season != 1 || e.Numbering.Episode != 2 ||
+		e.Descriptive.Title != "Low Water" || e.Descriptive.Runtime != 41*time.Minute ||
+		!reflect.DeepEqual(e.IDs, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000792"}}) ||
+		!reflect.DeepEqual(e.Parent, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}}) {
+		t.Errorf("episode 2 = %+v", e)
+	}
+	for _, bad := range []string{"90000701", "x/1", "90000701/-1"} {
+		if _, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
+			t.Errorf("%q = %v, want unsupported", bad, err)
+		}
 	}
 }
 
@@ -293,6 +363,57 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	}
 	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/original/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
 		t.Errorf("artwork = %+v, want the episode's own still", rec.Artwork)
+	}
+}
+
+// A person's filmography is every part they played and every title they directed, newest first
+// (undated last), each once a role; appearing as themselves, other crew jobs and rows that are
+// not movies or series are left out.
+func TestFilmography(t *testing.T) {
+	f := newFakeTMDB(t)
+	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), "90003001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := f.last(t).URL.Query(); q.Get("language") != "fr-US" {
+		t.Errorf("language = %q, want the household's", q.Get("language"))
+	}
+	want := []mp.FilmCredit{
+		{Kind: mp.KindMovie, TMDB: "90000602", Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
+		{Kind: mp.KindSeries, TMDB: "90000701", Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
+		{Kind: mp.KindMovie, TMDB: "90000601", Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
+		{Kind: mp.KindMovie, TMDB: "90000603", Title: "Unreleased Lamp", Role: mp.PersonActor},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filmography =\n%+v\nwant\n%+v", got, want)
+	}
+	if _, err := f.provider(nil).Filmography(context.Background(), "abc"); !errors.Is(err, mp.ErrUnsupported) {
+		t.Errorf("a person id that is not a number: err = %v, want ErrUnsupported", err)
+	}
+}
+
+// One language is spelled one way: a bare code takes the country as its region, none is English,
+// and the record says the language it was read in.
+func TestFetch_ReadsInTheHouseholdLanguage(t *testing.T) {
+	f := newFakeTMDB(t)
+	for _, tc := range []struct{ language, country, want, images string }{
+		{"fr", "", "fr-US", "fr,null"},
+		{"PT-br", "us", "pt-BR", "pt,null"},
+		{"", "", "en-US", "en,null"},
+	} {
+		p := f.provider(func() (string, string) { return tc.language, tc.country })
+		rec, err := p.Fetch(context.Background(), movieRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := f.last(t).URL.Query()
+		if q.Get("language") != tc.want || q.Get("include_image_language") != tc.images || rec.Language != tc.want {
+			t.Errorf("%q, %q: asked language=%q images=%q, record says %q; want %q", tc.language, tc.country,
+				q.Get("language"), q.Get("include_image_language"), rec.Language, tc.want)
+		}
+		if got, err := p.Language(); err != nil || got != tc.want {
+			t.Errorf("%q, %q: Language() = %q, %v; want %q", tc.language, tc.country, got, err, tc.want)
+		}
 	}
 }
 

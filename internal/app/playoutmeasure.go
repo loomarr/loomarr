@@ -93,10 +93,16 @@ func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input 
 	}
 }
 
+// canAnalyseItems reports whether this install can find, and read the analysis of, a library
+// item's local file: inventory, an analysis store, and a library to resolve the item's file.
+func (r *playoutResolver) canAnalyseItems() bool {
+	return r != nil && r.inventory != nil && r.analyses != nil && (r.lib != nil || r.libraryFile != nil)
+}
+
 // naturalBreakSource binds mid-roll candidate lookups (§10) to one reconcile or preview pass.
-// Nil when this install cannot answer (no inventory, analysis store or library client).
+// Nil when this install cannot answer.
 func (r *playoutResolver) naturalBreakSource(ctx context.Context) schedule.NaturalBreakSource {
-	if r == nil || r.inventory == nil || r.analyses == nil || r.lib == nil {
+	if !r.canAnalyseItems() {
 		return nil
 	}
 	return naturalBreaks{ctx: ctx, r: r}
@@ -107,40 +113,60 @@ type naturalBreaks struct {
 	r   *playoutResolver
 }
 
-// NaturalBreaks reads the scene fades Loomarr measured for a library item's local file. An item
-// with no stored analysis for its current revision is queued for measurement (one low-priority
-// worker, G7) and airs whole until a later pass finds it measured. A streamed (non-file) item
-// has none: measurement reads files directly, never through the media server.
+// NaturalBreaks reads the scene fades Loomarr measured for a library item's local file. An
+// unmeasured item airs whole until a later pass finds it measured (itemAnalysis queues it).
 func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandidate {
-	ctx, r := n.ctx, n.r
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
-	input := r.lib.ResolveInput(ctx, libraryItemID, pm, library.StatReadableFile)
-	if input.Kind != library.InputFile {
+	analysis, measured := n.r.itemAnalysis(n.ctx, libraryItemID)
+	if !measured {
 		return nil
+	}
+	return fadeCandidates(analysis.Breaks)
+}
+
+// premeasure queues each scheduled library item whose file is not yet measured at its current
+// revision (#1518): the scheduler's measure-ahead for the next PremeasureHorizon. The worker is
+// the same single low-priority one first play uses, and Submit never blocks.
+func (r *playoutResolver) premeasure(ctx context.Context, libraryItemIDs []string) {
+	if !r.canAnalyseItems() || r.measurer == nil {
+		return
+	}
+	for _, id := range libraryItemIDs {
+		if ctx.Err() != nil {
+			return
+		}
+		r.itemAnalysis(ctx, id)
+	}
+}
+
+// itemAnalysis is the stored analysis of a library item's local file at its current revision.
+// When there is none, the file is queued for measurement (one low-priority worker, G7) and
+// measured is false. A streamed (non-file) item has none: measurement reads files directly,
+// never through the media server.
+func (r *playoutResolver) itemAnalysis(ctx context.Context, libraryItemID string) (inventory.Analysis, bool) {
+	input := r.itemInput(ctx, r.lib, libraryItemID)
+	if input.Kind != library.InputFile {
+		return inventory.Analysis{}, false
 	}
 	origin, ok := r.ensureLocalInventorySource(ctx, input.URL)
 	if !ok {
-		return nil
+		return inventory.Analysis{}, false
 	}
 	source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
 		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(),
 		Kinds: []inventory.SourceKind{inventory.SourceLocalFile},
 	})
 	if err != nil || !found {
-		return nil
+		return inventory.Analysis{}, false
 	}
 	analysis, measured, err := r.analyses.InventoryAnalysis(ctx, source.ID)
 	if err != nil {
-		return nil
+		return inventory.Analysis{}, false
 	}
-	if !measured {
+	if !measured || analysis.Revision != source.Revision {
 		r.submitAnalysis(source.ID, source.Revision, input.URL, source.Observation.Facts)
-		return nil
+		return inventory.Analysis{}, false
 	}
-	return fadeCandidates(analysis.Breaks)
+	return analysis, true
 }
 
 // fadeCandidates keeps only breaks with a measured fade (OverlapMs > 0): a black-and-silence

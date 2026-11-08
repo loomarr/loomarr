@@ -301,9 +301,11 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     if (isWeb && render && isValidElement(render)) {
       // `onPress` is Action's own (Pressable/RN) handler name; a cloned host element only
       // understands `onClick`, so it is bridged here rather than spread through `...props`
-      // unchanged, which would silently never fire. `accessibilityRole` is RN's too: it reaches the
-      // host as `role`, and spread raw it is an unknown DOM attribute.
+      // unchanged, which would silently never fire. `accessibilityRole` and `accessibilityLabel`
+      // are RN's too: they reach the host as `role` and `aria-label`, and spread raw they are
+      // unknown DOM attributes that leave the element unnamed.
       const {
+        accessibilityLabel,
         accessibilityRole: _role,
         onPress,
         ...restProps
@@ -318,6 +320,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           {
             ...restProps,
             "aria-disabled": isDisabled || undefined,
+            "aria-label": accessibilityLabel,
             onBlur: focusLook.onBlur,
             onClick: onPress,
             onFocus: focusLook.onFocus,
@@ -517,6 +520,15 @@ const Field = ({
               outlineWidth: 0,
               paddingHorizontal: semanticSpace.control,
               paddingRight: secureTextEntry ? semanticTargets[density] : semanticSpace.control,
+              // A multiline Field is a text area: the text starts at the top-left corner, inset as it
+              // is from the sides, rather than centred in a box sized for one line.
+              ...(props.multiline
+                ? {
+                    lineHeight: typography[density].body.lineHeight,
+                    paddingVertical: semanticSpace.inline,
+                    textAlignVertical: "top" as const,
+                  }
+                : {}),
             },
             style,
           ]}
@@ -638,6 +650,10 @@ const ChoiceRow = ({
         gap: semanticSpace.control,
         minHeight: semanticTargets[density],
         opacity: option.disabled ? 0.55 : 1,
+        // The ring around the dot is the one focus look; the browser would add its own around the
+        // whole row. Chrome's `auto` ring ignores a zero width, so the style is named too.
+        outlineStyle: "solid",
+        outlineWidth: 0,
       }}
     >
       <Surface

@@ -1,9 +1,8 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Disclosure } from "@loomarr/design-system";
-import { Check, LoaderCircle, Plus } from "lucide-react";
+import { Action, Disclosure } from "@loomarr/design-system";
+import { Check, LoaderCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Button } from "@/components/ui/button";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
 // One per collection, so each list opens on its own. The collection's name rides in the
@@ -99,15 +98,15 @@ const MovieCollectionChoices = ({
                 </div>
               </div>
               {editable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={`Add all films from ${collection.name}`}
+                <Action
+                  accessibilityLabel={`Add all films from ${collection.name}`}
                   disabled={disabled}
-                  onClick={() => onAddCollection(collection)}
+                  icon="plus"
+                  onPress={() => onAddCollection(collection)}
+                  variant="outline"
                 >
-                  <Plus aria-hidden /> Add all films
-                </Button>
+                  Add all films
+                </Action>
               )}
             </div>
 
@@ -132,14 +131,15 @@ const MovieCollectionChoices = ({
                         </span>
                       ) : (
                         editable && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          <Action
+                            accessibilityLabel={`Add ${member.name}`}
                             disabled={disabled}
-                            onClick={() => onAddMember(member)}
+                            icon="plus"
+                            onPress={() => onAddMember(member)}
+                            variant="ghost"
                           >
-                            <Plus aria-hidden /> Add <span className="sr-only">{member.name}</span>
-                          </Button>
+                            Add
+                          </Action>
                         )
                       )}
                     </li>

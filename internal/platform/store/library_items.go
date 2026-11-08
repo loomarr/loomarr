@@ -50,10 +50,114 @@ type LibraryItem struct {
 	From     LibraryFrom
 	// IDs are the item's external ids; Genres, Studios and Tags in the source's order. An episode
 	// has no genres or studios of its own: they are its show's (decision 42).
-	IDs     []LibraryID
-	Genres  []string
-	Studios []string
-	Tags    []string
+	IDs       []LibraryID
+	Genres    []string
+	Studios   []string
+	Countries []string
+	Tags      []string
+	// Tagline is the one-line pitch; Trailer a web page that plays the trailer.
+	Tagline string
+	Trailer string
+	// Credits are its cast in billing order, then its key crew (decision 49). An episode has
+	// none of its own: its show's apply (decision 42).
+	Credits []LibraryCredit
+	// Sources are its present files (decision 41), one marked Plays; Art its artwork references.
+	Sources []LibrarySource
+	Art     []LibraryArt
+}
+
+// LibrarySource is one file of a title, with its tracks.
+type LibrarySource struct {
+	Path      string
+	Container string
+	SizeBytes int64
+	Bitrate   int64
+	// DurationMs is the header's length; 0 until it is read.
+	DurationMs int64
+	// Edition labels a version of the title ("" the default; decision 54).
+	Edition string
+	// Plays marks the copy that plays (decision 37).
+	Plays   bool
+	Streams []LibraryStream
+	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
+	Trickplay []LibraryTrickplay
+	// Chapters are its chapter marks, in order; Markers its .edl markers.
+	Chapters []LibraryChapter
+	Markers  []LibraryMarker
+}
+
+// LibraryCredit is one person credited on a title. Role is what they did (actor, director, writer,
+// creator); Character an actor's part. A person with a TMDB id is one library_people row wherever
+// they are credited; one without is kept by name, unlinked (decision 49).
+type LibraryCredit struct {
+	Name, Role, Character string
+	TMDB                  string
+	// Photo is an http(s) URL of their headshot.
+	Photo string
+}
+
+// PersonID is the library_people row the credit names: "tmdb:<id>" when linked, else
+// "name:<name>".
+func (c LibraryCredit) PersonID() string {
+	if c.TMDB != "" {
+		return "tmdb:" + c.TMDB
+	}
+	return "name:" + c.Name
+}
+
+// LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.
+type LibraryChapter struct {
+	StartMs, EndMs int64
+	Title          string
+}
+
+// LibraryMarker is one span an .edl file beside a source marks: Kind is "cut", "mute", "scene" or
+// "commercial", as the line's action says.
+type LibraryMarker struct {
+	StartMs, EndMs int64
+	Kind           string
+}
+
+// LibraryTrickplay is one trickplay file of a source: where it is and its format ("bif").
+type LibraryTrickplay struct {
+	Ref    string
+	Format string
+}
+
+// LibraryStream is one track of a file: raw values, and labels computed once (decision 44).
+type LibraryStream struct {
+	Index                 int
+	Kind                  string
+	Codec, Profile, Title string
+	Default, Forced       bool
+	// Language is the ISO 639-1 code where one exists (else as the file says it); LanguageName
+	// its English name.
+	Language, LanguageName string
+	Channels               int
+	ChannelLayout          string
+	SampleRate             int
+	// AudioFormat names an audio track's format, such as "Dolby Digital Plus".
+	AudioFormat string
+	Width       int
+	Height      int
+	FrameRate   string
+	PixelFormat string
+	// ColorTransfer is raw; Resolution ("1080p", "4K") and HDR ("HDR10", "HLG", "") are labels.
+	ColorTransfer string
+	Resolution    string
+	HDR           string
+	// Commentary, HearingImpaired (SDH) and Descriptive (it describes the picture) flag a track.
+	Commentary, HearingImpaired, Descriptive bool
+	// ExternalRef is the file an external track lives in, beside the media file; "" for a track
+	// inside it. An external track's Index follows the file's own tracks.
+	ExternalRef string
+}
+
+// LibraryArt is one artwork reference: a poster, fanart or logo; Season numbers a season poster.
+type LibraryArt struct {
+	Kind   string
+	Season int
+	Ref    string
 }
 
 // LibraryFrom names the provider each resolved fact came from ("" unknown; RatingFromShow).
@@ -98,19 +202,22 @@ const LibraryItemImageOwner = "library_item"
 // LibraryItemSummary is an item with what its present files say about it.
 type LibraryItemSummary struct {
 	LibraryItem
-	// Poster is the image hash its poster ref names; "" for none.
-	Poster string
+	// Poster, Backdrop and Logo are the image hashes its poster, backdrop (fanart) and clear logo
+	// refs name; "" for none.
+	Poster, Backdrop, Logo string
 	// Files counts its present, importable files (a series' episodes); Pending, those whose header is
 	// not read yet. An item with Pending > 0 is still getting ready.
 	Files   int
 	Pending int
 	// Unplayable counts its present files whose header could not be read: they can't be played.
 	Unplayable int
+	// ExtraBytes is what a movie's extra copies take: its files that are not a copy that plays.
+	ExtraBytes int64
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
 // case. Problems keeps only the titles that need a look: a file that can't be played, or a movie
-// with more than one file (all but one are extra copies). Limit 0 is every item.
+// with an extra copy. Limit 0 is every item.
 type LibraryItemQuery struct {
 	Kind     string
 	Search   string
@@ -178,28 +285,41 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 	return nil
 }
 
-// presentFiles is each present, importable file under the item it counts toward: its own item, and
-// an episode's series too.
-const presentFiles = `(
-	SELECT inventory_item_id AS id, header FROM library_files
-	WHERE inventory_item_id <> '' AND missing_at_ms = 0 AND problem = ''
-	UNION ALL
-	SELECT inventory_series_id AS id, header FROM library_files
-	WHERE inventory_series_id <> '' AND missing_at_ms = 0 AND problem = ''
-)`
+// The files that count toward a title i are its present, importable files: its own, and a series'
+// episodes'. Each is read per title through the inventory_item_id and inventory_series_id indexes,
+// never by aggregating every file: a page needs its own titles' counts only.
 
-// itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
-// groups by the item.
-const (
+// presentFile is the condition on a library_files row f that it is present and importable.
+const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
+
+// countFiles is how many of title i's files hold also, a condition on f ("" for all).
+// itemImage is the image hash a title's ref in role names, or "".
+func itemImage(role string) string {
+	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
+			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+}
+
+func countFiles(also string) string {
+	return `((SELECT COUNT(*) FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + also + `) +
+		(SELECT COUNT(*) FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + also + `))`
+}
+
+var (
+	// itemListed keeps a title with a file that counts toward it: only those are listed.
+	itemListed = `(EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + `)
+		OR EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + `))`
+	// itemColumns is a title, its poster, backdrop and logo refs, and its file counts.
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
-		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = 'poster'), ''),
-		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END), 0)`
-	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key`
-	// itemProblems keeps a group that needs a look.
-	itemProblems = `SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END) > 0 OR (i.kind = 'movie' AND COUNT(*) > 1)`
+		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
+		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
+		COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
+	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
+	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
+		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
 )
+
+// extraCopies is title i's files that no edition plays (decision 37), from its rows.
+const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
 	where := []string{}
@@ -227,19 +347,18 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	// A title the maintainer said is not one is left out.
 	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`)
-	from := ` FROM library_items i JOIN ` + presentFiles + ` f ON f.id = i.id WHERE ` + strings.Join(where, " AND ")
-
-	group := ` GROUP BY ` + itemGroup
+	where = append(where, itemListed)
 	if q.Problems {
-		group += ` HAVING ` + itemProblems
+		where = append(where, itemProblems)
 	}
+	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
 	var page LibraryItemPage
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM (SELECT i.id`+from+group+`) t`), args...).
-		Scan(&page.Total); err != nil {
-		return page, fmt.Errorf("count library items: %w", err)
-	}
-	query := `SELECT ` + itemColumns + from + group + ` ORDER BY i.sort_name, i.id`
+	query := `SELECT ` + itemColumns + from + ` ORDER BY i.sort_name, i.id`
 	if q.Limit > 0 {
+		// A page counts the whole list on its own; every item is its own count.
+		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
+			return page, fmt.Errorf("count library items: %w", err)
+		}
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, q.Limit, q.Offset)
 	}
@@ -248,13 +367,15 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		return page, err
 	}
 	page.Items = items
+	if q.Limit <= 0 {
+		page.Total = len(items)
+	}
 	return page, nil
 }
 
 func (s *sqlStore) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
 	items, err := s.scanLibraryItems(ctx, `SELECT `+itemColumns+`
-		FROM library_items i JOIN `+presentFiles+` f ON f.id = i.id WHERE i.id = ?
-		GROUP BY `+itemGroup, id)
+		FROM library_items i WHERE i.id = ? AND `+itemListed, id)
 	if err != nil {
 		return LibraryItemSummary{}, err
 	}
@@ -274,7 +395,7 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Files, &it.Pending, &it.Unplayable); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

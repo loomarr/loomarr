@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
@@ -24,6 +26,10 @@ func TestVideoToolboxFallbackProbe_NormalizesEncoderOverride(t *testing.T) {
 	}
 }
 
+// The fixture's speeds come from the probe's clock, not its sleeps: each progress sample is 50 ms of
+// the test's clock, so the progressive pass runs at 20x and the CPU-deinterlace fallback at 2x however
+// loaded the machine is. Timed by the wall clock, a loaded machine stretched the sleeps until the
+// first reservation was refused (#2052); the 0.2 s sleep here stands in for that load.
 func TestProbeClassCosts_VideoToolboxFallbackPricesAdmission(t *testing.T) {
 	bin := execfixture.POSIX(t, "ffmpeg", `
 step=1000000
@@ -33,7 +39,7 @@ while :; do
   i=$((i+step))
   echo out_time_us=$i
   echo progress=continue
-  sleep 0.05
+  sleep 0.2
 done`)
 	res := probeVideoToolboxSDR(t, bin)
 	key := CostKey{Class: ClassSDR, Height: 1080}
@@ -79,5 +85,14 @@ func probeVideoToolboxSDR(t *testing.T, bin string) ClassProbeResult {
 		FFmpeg: bin, ClipDir: dir, Encoder: encode.EncoderVideoToolbox,
 		Outputs: []Profile{{Width: 1920, Height: 1080, Framerate: 25}},
 		Classes: []StreamClass{ClassSDR},
+		now:     steppingClock(50 * time.Millisecond),
 	})
+}
+
+// steppingClock moves step on every reading: a probe reads it once at start and once per progress
+// sample, so every sample is step of probe time apart.
+func steppingClock(step time.Duration) func() time.Time {
+	t0 := time.Unix(0, 0)
+	var n atomic.Int64
+	return func() time.Time { return t0.Add(time.Duration(n.Add(1)) * step) }
 }

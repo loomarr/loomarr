@@ -1,9 +1,10 @@
 import { getListFillerProvidersMockHandler, getResolveFillerSourceMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { SourcePreviewSection } from "./source-preview-section";
 
 const renderSection = (source: ReturnType<typeof fillerSource>) =>

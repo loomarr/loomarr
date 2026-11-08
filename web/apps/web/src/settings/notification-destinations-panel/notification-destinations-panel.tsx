@@ -8,6 +8,7 @@ import { Badge, Card, Field, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -768,20 +769,14 @@ const NotificationDestinationsPanel = () => {
 
       {adding ? (
         <div className="grid gap-4">
-          <div className="grid max-w-sm gap-1.5">
-            <Label htmlFor="provider-type">Provider</Label>
-            <select
-              id="provider-type"
-              className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
+          <div className="max-w-sm">
+            <BrowserSelectControl
+              appearance="field"
+              label="Provider"
+              onValueChange={setSelectedType}
+              options={definitions.map((item) => ({ label: item.name, value: item.type }))}
               value={definition?.type ?? ""}
-              onChange={(event) => setSelectedType(event.target.value)}
-            >
-              {definitions.map((item) => (
-                <option value={item.type} key={item.type}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           {definition ? (
             definition.type === "web_push" ? (

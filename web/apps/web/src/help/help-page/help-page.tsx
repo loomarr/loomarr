@@ -1,12 +1,11 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Card } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/ui";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { DocView } from "../doc-view";
 import { docMatches } from "../search-docs";
@@ -31,8 +30,24 @@ const HelpPage = () => {
   // as broken, and troubleshooting sorts first by slug in practice.
   const active = page ?? docs[0]?.slug;
 
-  const doc = helpApi.useGetDoc(active ?? "", { query: { enabled: Boolean(active) } });
-  const markdown = unwrap(doc.data, (b) => b.markdown) ?? "";
+  const doc = helpApi.useGetDoc(active ?? "", section ? { section } : undefined, {
+    query: { enabled: Boolean(active) },
+  });
+  const served = unwrap(doc.data, (b) => b);
+  const markdown = served?.markdown ?? "";
+
+  // A link from before the help restructure (#1572) can name a page or section that moved,
+  // sometimes to another page. The server answers with where that content lives now, and the
+  // URL follows it so the right page is open and the heading scroll below lands (#1736).
+  useEffect(() => {
+    if (!page || !served) return;
+    if (served.slug === page && (served.section === section || !section)) return;
+    void navigate({
+      to: "/help",
+      search: { page: served.slug, ...(served.section ? { section: served.section } : {}) },
+      replace: true,
+    });
+  }, [navigate, page, section, served]);
 
   // Scroll to the deep-linked section once its page has rendered (§13: a red check lands
   // on the exact heading, not just the page). Runs when the section OR the rendered
@@ -55,15 +70,7 @@ const HelpPage = () => {
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
-            <div>
-              <Label htmlFor="help-search">Search</Label>
-              <Input
-                id="help-search"
-                value={q}
-                placeholder="Filter pages"
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
+            <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
             <ul className="flex flex-col gap-1">
               {visible.map((d) => (
                 <li key={d.slug}>

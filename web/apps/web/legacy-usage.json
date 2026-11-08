@@ -5,8 +5,8 @@
       "tailwindClasses": 152
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "tailwindClasses": 31,
-      "legacyUi": 3
+      "tailwindClasses": 20,
+      "legacyUi": 1
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
       "tailwindClasses": 11,
@@ -22,16 +22,13 @@
     "src/channels/tuner-osd/tuner-osd.tsx": {
       "tailwindClasses": 27
     },
-    "src/components/loomarr/ai/approval-history-row/approval-history-row.tsx": {
-      "tailwindClasses": 28
-    },
     "src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "tailwindClasses": 95,
-      "legacyUi": 2
+      "tailwindClasses": 93,
+      "legacyUi": 1
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
-      "tailwindClasses": 91,
-      "legacyUi": 2
+      "tailwindClasses": 82,
+      "legacyUi": 1
     },
     "src/components/loomarr/ai/intent-input/intent-input.tsx": {
       "tailwindClasses": 43,
@@ -46,19 +43,19 @@
       "legacyUi": 1
     },
     "src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
-      "tailwindClasses": 78,
-      "legacyUi": 3
+      "tailwindClasses": 75,
+      "legacyUi": 1
     },
     "src/components/loomarr/ai/proposal-outlook/proposal-outlook.tsx": {
       "tailwindClasses": 30
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 186,
-      "legacyUi": 2
+      "tailwindClasses": 184,
+      "legacyUi": 1
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
-      "tailwindClasses": 55,
-      "legacyUi": 2
+      "tailwindClasses": 54,
+      "legacyUi": 1
     },
     "src/components/loomarr/ai/refine-review/refine-review.tsx": {
       "tailwindClasses": 79,
@@ -82,7 +79,7 @@
     },
     "src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
       "tailwindClasses": 34,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
       "tailwindClasses": 151,
@@ -119,7 +116,7 @@
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
       "tailwindClasses": 30,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
       "tailwindClasses": 29
@@ -186,11 +183,6 @@
       "tailwindClasses": 108,
       "legacyUi": 1
     },
-    "src/components/loomarr/filler/clip-player/clip-player.tsx": {
-      "tailwindClasses": 26,
-      "baseUi": 1,
-      "legacyUi": 1
-    },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "tailwindClasses": 67
     },
@@ -238,8 +230,8 @@
       "legacyUi": 2
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
-      "tailwindClasses": 89,
-      "legacyUi": 2
+      "tailwindClasses": 65,
+      "legacyUi": 1
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
       "tailwindClasses": 64,
@@ -275,12 +267,11 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "tailwindClasses": 56,
-      "legacyUi": 1
+      "tailwindClasses": 56
     },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
       "tailwindClasses": 97,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
       "tailwindClasses": 47,
@@ -379,8 +370,8 @@
       "tailwindClasses": 108
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 267,
-      "legacyUi": 3
+      "tailwindClasses": 265,
+      "legacyUi": 2
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 38
@@ -394,8 +385,8 @@
       "legacyUi": 1
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 189,
-      "legacyUi": 3
+      "tailwindClasses": 187,
+      "legacyUi": 2
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 5
@@ -404,8 +395,8 @@
       "tailwindClasses": 83
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 120,
-      "legacyUi": 3
+      "tailwindClasses": 118,
+      "legacyUi": 2
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 13,
@@ -493,46 +484,40 @@
       "legacyUi": 1
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
-      "tailwindClasses": 39,
-      "legacyUi": 2
+      "tailwindClasses": 38,
+      "legacyUi": 1
     },
     "src/filler/sources-panel/local-source-form/local-source-form.tsx": {
       "tailwindClasses": 10,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "tailwindClasses": 77,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "tailwindClasses": 44,
-      "legacyUi": 1
+      "tailwindClasses": 41
     },
     "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
       "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 1
+      "tailwindClasses": 15
     },
     "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
-      "tailwindClasses": 11,
-      "legacyUi": 1
+      "tailwindClasses": 11
     },
     "src/filler/sources-panel/source-preview-section/source-preview-section.tsx": {
       "tailwindClasses": 5
     },
     "src/filler/sources-panel/source-settings/source-settings.tsx": {
-      "tailwindClasses": 9,
-      "legacyUi": 1
+      "tailwindClasses": 9
     },
     "src/filler/sources-panel/source-status/source-status.tsx": {
-      "tailwindClasses": 31,
-      "legacyUi": 1
+      "tailwindClasses": 30
     },
     "src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
-      "tailwindClasses": 40,
-      "legacyUi": 1
+      "tailwindClasses": 40
     },
     "src/filler/sources-panel/sources-panel.tsx": {
       "tailwindClasses": 3
@@ -549,8 +534,7 @@
       "tailwindClasses": 71
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 42,
-      "legacyUi": 2
+      "tailwindClasses": 42
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
       "tailwindClasses": 90,
@@ -560,8 +544,7 @@
       "tailwindClasses": 19
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 37,
-      "legacyUi": 1
+      "tailwindClasses": 37
     },
     "src/home/new-this-week/new-this-week.tsx": {
       "tailwindClasses": 68
@@ -569,12 +552,8 @@
     "src/home/on-now/on-now.tsx": {
       "tailwindClasses": 58
     },
-    "src/home/on-the-way/on-the-way.tsx": {
-      "legacyUi": 1
-    },
     "src/home/recently-tuned/recently-tuned.tsx": {
-      "tailwindClasses": 34,
-      "legacyUi": 1
+      "tailwindClasses": 34
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -594,24 +573,20 @@
       "tailwindClasses": 14
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 65,
-      "legacyUi": 1
+      "tailwindClasses": 65
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 27,
-      "legacyUi": 1
+      "tailwindClasses": 27
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 73,
-      "legacyUi": 1
+      "tailwindClasses": 73
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 23,
       "legacyUi": 2
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 38,
-      "legacyUi": 1
+      "tailwindClasses": 38
     },
     "src/routes/_authed/channels/$id/info.tsx": {
       "tailwindClasses": 38
@@ -632,8 +607,7 @@
       "tailwindClasses": 8
     },
     "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 155,
-      "legacyUi": 1
+      "tailwindClasses": 128
     },
     "src/routes/_authed/settings/route.tsx": {
       "tailwindClasses": 7
@@ -663,24 +637,23 @@
       "tailwindClasses": 14
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 77,
+      "tailwindClasses": 76,
       "legacyUi": 1
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
-      "tailwindClasses": 34,
-      "legacyUi": 1
+      "tailwindClasses": 34
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 166,
+      "tailwindClasses": 157,
       "legacyUi": 2
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 70,
-      "legacyUi": 2
+      "tailwindClasses": 63,
+      "legacyUi": 1
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 56,
-      "legacyUi": 2
+      "tailwindClasses": 53,
+      "legacyUi": 1
     },
     "src/settings/secrets-settings/secrets-settings.tsx": {
       "tailwindClasses": 3
@@ -689,8 +662,7 @@
       "tailwindClasses": 44
     },
     "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 35,
-      "legacyUi": 1
+      "tailwindClasses": 35
     },
     "src/settings/settings-save-bar-host/settings-save-bar-host.tsx": {
       "tailwindClasses": 2
@@ -700,58 +672,48 @@
       "legacyUi": 1
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 164,
+      "tailwindClasses": 159,
       "legacyUi": 1
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
       "tailwindClasses": 3
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 52,
-      "legacyUi": 1
+      "tailwindClasses": 52
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 17
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 139,
-      "legacyUi": 3
+      "tailwindClasses": 136,
+      "legacyUi": 1
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "tailwindClasses": 64,
-      "legacyUi": 1
+      "tailwindClasses": 63
     },
     "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 1
+      "tailwindClasses": 15
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
-      "tailwindClasses": 26,
-      "legacyUi": 1
+      "tailwindClasses": 24
     },
     "src/wizard/checklist-step/checklist-step.tsx": {
-      "tailwindClasses": 9,
-      "legacyUi": 1
+      "tailwindClasses": 9
     },
     "src/wizard/connect-step/connect-step.tsx": {
-      "tailwindClasses": 7,
-      "legacyUi": 1
+      "tailwindClasses": 5
     },
     "src/wizard/first-channel-step/first-channel-step.tsx": {
-      "tailwindClasses": 40,
-      "legacyUi": 1
+      "tailwindClasses": 39
     },
     "src/wizard/playout-step/playout-step.tsx": {
-      "tailwindClasses": 55,
-      "legacyUi": 1
+      "tailwindClasses": 55
     },
     "src/wizard/users-step/users-step.tsx": {
-      "tailwindClasses": 38,
-      "legacyUi": 1
+      "tailwindClasses": 36
     },
     "src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
-      "tailwindClasses": 19,
-      "legacyUi": 1
+      "tailwindClasses": 18
     }
   }
 }

@@ -48,6 +48,8 @@ var (
 	ImagesRemoteFetchEnabled            = BoolKey{"images.remote_fetch_enabled"}
 	ImagesCacheBudgetMb                 = IntKey{"images.cache_budget_mb"}
 	TMDBAPIKey                          = StringKey{"tmdb.api_key"}
+	MetadataLanguage                    = StringKey{"metadata.language"}
+	MetadataCountry                     = StringKey{"metadata.country"}
 	LLMProvider                         = StringKey{"llm.provider"}
 	LLMURL                              = StringKey{"llm.url"}
 	LLMModel                            = StringKey{"llm.model"}

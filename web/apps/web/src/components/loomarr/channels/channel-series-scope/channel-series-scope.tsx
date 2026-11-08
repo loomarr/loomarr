@@ -1,10 +1,10 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Text } from "@loomarr/design-system";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
@@ -61,7 +61,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center gap-1.5">
-        <Label>Only these shows</Label>
+        <Text textRole="label">Only these shows</Text>
         <FieldHelp label="Only these shows">
           Restrict the channel to specific series. Leave empty for no restriction. The lineup decides on its
           own.

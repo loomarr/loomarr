@@ -188,7 +188,8 @@ func TestAddFillerSource_AcceptsFoldersAndLibraries(t *testing.T) {
 		// Cleaned, so a trailing slash does not create a second row watching one directory —
 		// the duplicate the dropped singleton index no longer prevents.
 		{"folder", "/mnt/ads/", "/mnt/ads"},
-		{"library", "Commercials", "Commercials"},
+		// A library source is a folder of the household's library (#2151 decision 36).
+		{"library", "/media/commercials/", "/media/commercials"},
 	} {
 		res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
 			`{"kind":"`+tc.kind+`","uri":"`+tc.uri+`"}`, adminToken)
@@ -542,7 +543,7 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 
 	for _, body := range []string{
 		`{"kind":"folder","uri":"/mnt/extra-ads"}`,
-		`{"kind":"library","uri":"Commercials"}`,
+		`{"kind":"library","uri":"/media/commercials"}`,
 	} {
 		if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources", body, adminToken); res.StatusCode != http.StatusOK {
 			t.Fatalf("%s: status = %d, want 200", body, res.StatusCode)
@@ -573,7 +574,7 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 	if !byTarget["/mnt/extra-ads"] {
 		t.Errorf("the added folder is missing from %d rows — an operator adds a source and never sees it", len(body.Sources))
 	}
-	if !byTarget["Commercials"] {
+	if !byTarget["/media/commercials"] {
 		t.Error("the added library is missing from the list")
 	}
 
@@ -591,7 +592,7 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 
 	// An added library is a real source doing real work, so it has a switch and can be forgotten.
 	for _, s := range body.Sources {
-		if s.Target == "Commercials" {
+		if s.Target == "/media/commercials" {
 			if !s.Switchable {
 				t.Error("an added library has no switch — V38c made it scanned, so there is work to stop")
 			}

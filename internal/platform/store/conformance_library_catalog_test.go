@@ -27,7 +27,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err := st.WantLibraryCatalog(ctx, []LibraryCatalogKey{movie, show, old}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, at.Add(-100*24*time.Hour)); err != nil {
+	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, 0, "en-US", at.Add(-100*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	// Wanting a cached key again keeps its record.
@@ -55,11 +55,41 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("count = %d, %v", n, err)
 	}
 
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, at); err != nil || !changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at); err != nil || !changed {
 		t.Fatalf("first save changed = %v, %v", changed, err)
 	}
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, at.Add(time.Minute)); err != nil || changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at.Add(time.Minute)); err != nil || changed {
 		t.Fatalf("same record changed = %v, %v", changed, err)
+	}
+
+	// A movie read in a newer shape: the fresh movie record saved in the old one is due with the
+	// new titles, ahead of the stale one, and listed once; saved in the new shape, it is not due.
+	moviesV1 := LibraryCatalogDue{Now: at, StaleBefore: at.Add(-90 * 24 * time.Hour), New: 10, Stale: 10,
+		Versions: map[string]int{"movie": 1}}
+	due, err = st.DueLibraryCatalog(ctx, moviesV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 2 || due[0] != movie || due[1] != old {
+		t.Fatalf("due = %+v, want the outdated movie, then the old one once", due)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, "en-US", at.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != old {
+		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in the new shape", due, err)
+	}
+	// The household's language changes: the fresh movie record, read in English, is due with the
+	// new titles again; read in French, it is not.
+	moviesV1.Language = "fr-US"
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 2 || due[0] != movie || due[1] != old {
+		t.Fatalf("due = %+v, %v; want the movie read in another language, then the old one once", due, err)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, "fr-US", at.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != old {
+		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in French", due, err)
 	}
 
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
@@ -94,12 +124,25 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(paths) != 1 || paths[0].Path != "/media/film/film.mkv" {
 		t.Fatalf("movie rewrite = %+v, %v, want its one present file", paths, err)
 	}
+	// An episode's own key (its TVDB id) finds that episode's file only.
+	episode := LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90000901"}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "e2", Kind: "episode", Name: "Pilot", Catalog: episode}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/media/show/e2.mkv", "e2", "s1")}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err = st.RewriteLibraryCatalogFiles(ctx, episode)
+	if err != nil || len(paths) != 1 || paths[0].Path != "/media/show/e2.mkv" {
+		t.Fatalf("episode rewrite = %+v, %v, want the episode with that key", paths, err)
+	}
+
 	files, err := st.LibraryFiles(ctx, "/media")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range files {
-		rewritten := f.Path == "/media/film/film.mkv" || f.Path == "/media/show/e1.mkv"
+		rewritten := f.Path == "/media/film/film.mkv" || f.Path == "/media/show/e1.mkv" || f.Path == "/media/show/e2.mkv"
 		if rewritten != (f.Identity == "") {
 			t.Errorf("%s identity = %q, rewritten %v", f.Path, f.Identity, rewritten)
 		}

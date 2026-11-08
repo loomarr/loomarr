@@ -37,7 +37,10 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   `RunAhead` (12 s), enforced by back-pressure. The next item's encoder must be producing `SlateLead`
   (2 s) before its air time. The playlist lists media only up to now + `ListAhead` (6 s), which is also
   its `HOLD-BACK`. The first manifest waits until `FirstManifest` (4 s) of media is listable and a real
-  item has defined the init; the tune-in item gets `FirstItemWait` (10 s). Web clients set
+  item has defined the init; the tune-in item gets `FirstItemWait` (10 s). The wait is bounded by
+  `StartDeadline` (`FirstItemWait` + `SlateRetry` + `FirstManifest`, 24 s), so a tune-in item that fails
+  once still rejoins. Past it, the master fails the start with the item's last failure, such as a source
+  file the server can't read, and the client shows the shared start-failure problem. Web clients set
   `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
 - **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
   deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
@@ -267,7 +270,10 @@ its name, dates and an "In effect now" badge, then its picture chips (a small pi
 holiday with one picture shows it inline, with no choice), and the chosen picture is written to
 `policy.watermark.motifs`. `GET /v1/channels/{id}/watermark/preview` returns the PNG that airs for a
 given look, holiday and picture (query parameters, all optional), and carries the host's overlay state in
-`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. It
+`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. The
+preview is white whenever any working encoder airs the logo white, since the channel may air on that
+one. Previews render under their own lock, never the one a tune's bug renders under, into a preview
+cache pruned to the 64 most recently used files (#1949). It
 refuses with 422, rather than drawing a default, a look, colour, holiday or picture it does not know
 and a picture that is not one of the named holiday's own. With
 `motifOnly=1` (and a holiday) it returns that holiday's picture alone as a 48 px square, drawn by the

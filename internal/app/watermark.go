@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,7 +64,10 @@ type channelWatermarks struct {
 
 	mu     sync.Mutex
 	gates  map[encode.Encoder]*watermarkGate
-	render sync.Mutex // one render at a time; each is cached on disk
+	render sync.Mutex // one aired render at a time; each is cached on disk
+	// preview serialises the channel page's previews apart from render, so a slow preview never
+	// delays a tune (#1949). Previews live in their own pruned directory, never sharing a file.
+	preview sync.Mutex
 
 	kernelOnce sync.Once
 	kernel     string // the VAAPI family's blend kernel beside the bugs, written on first use
@@ -175,11 +179,15 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc encod
 // previewFrameHeight is the frame a preview bug is drawn for: 1080p, the size most programmes air.
 const previewFrameHeight = 1080
 
+// previewKeep bounds the preview cache: the most recently used previews kept on disk.
+const previewKeep = 64
+
 // Preview is the bug a channel airs with its saved policy and the given changes (#1659 W2, the
-// channel page's On-screen logo preview): the same source, colours, holiday version, cache and PNG
-// as For, drawn for a 1080-line frame. holiday is a calendar holiday's id to show its version, or ""
-// for the everyday logo. drawable is false while no encoder's self-check has passed, when
-// programmes air without the bug.
+// channel page's On-screen logo preview): the same source, colours, holiday version and PNG as For,
+// drawn for a 1080-line frame into the bounded preview cache. holiday is a calendar holiday's id to
+// show its version, or "" for the everyday logo. drawable is false while no encoder's self-check has
+// passed, when programmes air without the bug. The logo is white when any working encoder airs it
+// white (#1949): For whitens per encoder, and the channel may air on that one.
 func (c *channelWatermarks) Preview(ctx context.Context, channelID string, change schedule.WatermarkPolicy, holiday string) (path string, drawable bool, err error) {
 	ch, err := c.channels.GetChannel(ctx, channelID)
 	if err != nil {
@@ -206,14 +214,14 @@ func (c *channelWatermarks) Preview(ctx context.Context, channelID string, chang
 		maps.Copy(p.Motifs, change.Motifs)
 	}
 	res := schedule.ResolveWatermark(&p, c.install())
-	drawable, colour := c.drawable()
-	design := bugDesign{decade: schedule.WatermarkEraDecade(ch.Policy.Scope), white: drawable && !colour}
+	drawable, white := c.drawable()
+	design := bugDesign{decade: schedule.WatermarkEraDecade(ch.Policy.Scope), white: white}
 	if motif := schedule.WatermarkMotif(&p, holiday); motif != "" && res.Image == "" {
 		design.holiday, design.motif = holiday, watermark.Motif(motif)
 	}
 	look := watermark.Look{Size: res.Size, Opacity: res.Opacity, Shadow: true}
 	key, render := c.source(ctx, ch, res, design)
-	path, _, _, err = c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, previewFrameHeight, look.Size, look.Opacity, renderVersion),
+	path, err = c.cachedPreview(fmt.Sprintf("%s|%d|%g|%g|%s", key, previewFrameHeight, look.Size, look.Opacity, renderVersion),
 		func() (watermark.Bug, error) {
 			mask, err := render()
 			if err != nil {
@@ -229,7 +237,7 @@ const motifChipPx = 48
 
 // PreviewMotif is the holiday's picture alone, as the channel's holiday bug carries it (#1659 W2f,
 // the picture chips beside each honoured holiday): picture is one of the holiday's own, or "" for
-// the channel's choice. White follows the host's coloured self-check, like Preview.
+// the channel's choice. White follows the encoders' coloured self-checks, like Preview.
 func (c *channelWatermarks) PreviewMotif(ctx context.Context, channelID, holiday, picture string) (string, error) {
 	ch, err := c.channels.GetChannel(ctx, channelID)
 	if err != nil {
@@ -246,14 +254,12 @@ func (c *channelWatermarks) PreviewMotif(ctx context.Context, channelID, holiday
 	if motif == "" {
 		return "", fmt.Errorf("watermark: holiday %q has no picture", holiday)
 	}
-	drawable, colour := c.drawable()
-	white := drawable && !colour
-	path, _, _, err := c.cached(fmt.Sprintf("motif|%s|%t|%d|%s", motif, white, motifChipPx, renderVersion),
+	_, white := c.drawable()
+	return c.cachedPreview(fmt.Sprintf("motif|%s|%t|%d|%s", motif, white, motifChipPx, renderVersion),
 		func() (watermark.Bug, error) {
 			img, err := watermark.RenderMotif(watermark.Motif(motif), white, motifChipPx)
 			return watermark.Bug{Straight: img}, err
 		})
-	return path, err
 }
 
 // Options is what the channel page's On-screen logo section shows beside the choices at now (#1659
@@ -293,19 +299,22 @@ func (c *channelWatermarks) Options(ctx context.Context, channelID string, now t
 	return out, nil
 }
 
-// drawable reports whether any encoder's self-check has passed, and whether one draws colour. No
-// encoder checked yet (nothing has aired since start) counts as drawable, in colour.
-func (c *channelWatermarks) drawable() (works, colour bool) {
+// drawable reports whether any encoder's self-check has passed, and whether any working encoder
+// draws the bug white (its coloured check failed). No encoder checked yet (nothing has aired since
+// start) counts as drawable, in colour.
+func (c *channelWatermarks) drawable() (works, white bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.gates) == 0 {
-		return true, true
+		return true, false
 	}
 	for _, g := range c.gates {
-		works = works || g.works.Load()
-		colour = colour || (g.works.Load() && g.colour.Load())
+		if g.works.Load() {
+			works = true
+			white = white || !g.colour.Load()
+		}
 	}
-	return works, colour
+	return works, white
 }
 
 type bugRenderer func(frameHeight int, look watermark.Look) (watermark.Bug, error)
@@ -444,31 +453,94 @@ func deriveCallsign(name string, number int) string {
 	return fmt.Sprintf("CH%d", number)
 }
 
-// cached returns the rendered bug's file for key, rendering it once.
+// cached returns the aired bug's file for key, rendering it once.
 func (c *channelWatermarks) cached(key string, render func() (watermark.Bug, error)) (string, int, int, error) {
-	sum := sha256.Sum256([]byte(key))
-	path := filepath.Join(c.dir, hex.EncodeToString(sum[:10])+".png")
 	c.render.Lock()
 	defer c.render.Unlock()
+	path, w, h, _, err := cacheIn(c.dir, key, render)
+	return path, w, h, err
+}
+
+// cachedPreview returns the preview's file for key from the preview cache, rendering it once under
+// the preview lock (never the tune's). A hit marks the file used; a new file prunes the cache to the
+// previewKeep most recently used.
+func (c *channelWatermarks) cachedPreview(key string, render func() (watermark.Bug, error)) (string, error) {
+	dir := filepath.Join(c.dir, "preview")
+	c.preview.Lock()
+	defer c.preview.Unlock()
+	path, _, _, hit, err := cacheIn(dir, key, render)
+	if err != nil {
+		return "", err
+	}
+	if hit {
+		now := time.Now()
+		_ = os.Chtimes(path, now, now)
+		return path, nil
+	}
+	pruneLeastRecentlyUsed(dir, previewKeep, path, c.log)
+	return path, nil
+}
+
+// cacheIn returns the bug's file for key in dir, rendering it when absent. The caller holds the
+// lock that serialises renders into dir.
+func cacheIn(dir, key string, render func() (watermark.Bug, error)) (path string, w, h int, hit bool, err error) {
+	sum := sha256.Sum256([]byte(key))
+	path = filepath.Join(dir, hex.EncodeToString(sum[:10])+".png")
 	if f, err := os.Open(path); err == nil {
 		cfg, derr := png.DecodeConfig(f)
 		_ = f.Close()
 		if derr == nil {
-			return path, cfg.Width, cfg.Height, nil
+			return path, cfg.Width, cfg.Height, true, nil
 		}
 	}
 	bug, err := render()
 	if err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, false, err
 	}
-	if err := os.MkdirAll(c.dir, 0o755); err != nil {
-		return "", 0, 0, err
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", 0, 0, false, err
 	}
 	if err := writePNGAtomic(path, bug.Straight); err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, false, err
 	}
-	w, h := bug.Size()
-	return path, w, h, nil
+	w, h = bug.Size()
+	return path, w, h, false, nil
+}
+
+// pruneLeastRecentlyUsed removes the oldest-touched PNGs in dir beyond keep, never keepPath (the
+// file just written).
+func pruneLeastRecentlyUsed(dir string, keep int, keepPath string, log *slog.Logger) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type used struct {
+		path string
+		at   time.Time
+	}
+	var files []used
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".png" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, used{filepath.Join(dir, e.Name()), info.ModTime()})
+	}
+	if len(files) <= keep {
+		return
+	}
+	slices.SortFunc(files, func(a, b used) int { return a.at.Compare(b.at) })
+	for _, f := range files[:len(files)-keep] {
+		if f.path == keepPath {
+			continue
+		}
+		if err := os.Remove(f.path); err != nil && !os.IsNotExist(err) {
+			log.Warn("watermark: a stale preview could not be removed", "path", f.path, "err", err)
+		}
+	}
 }
 
 func writePNGAtomic(path string, img image.Image) error {

@@ -4,9 +4,11 @@
 // that one detail call carries (append_to_response), and an episode by its own TVDB episode id
 // through TMDB's /find.
 //
-// An episode is never matched by season and episode number. TMDB and TVDB lay out 81 of 527
-// reference shows differently, so a number from one is the wrong episode in the other. The episode
-// record therefore carries no numbering; it is the TMDB view of the episode the TVDB id names.
+// An episode fetched by its TVDB id carries no numbering: it is the TMDB view of the episode the id
+// names. TMDB and TVDB lay out 81 of 527 reference shows differently, so a number from one can be
+// the wrong episode in the other. A season (by TMDB series id and season number) lists its
+// episodes numbered, and the scanner uses it only for a show TMDB knows one ordering of whose
+// seasons on disk fit TMDB's (#2151 decision 53).
 //
 // It reuses the shared TMDB client for the credential, transport and metrics, so the key is
 // resolved once per operation and never reaches a URL. One installation-wide language and country
@@ -15,11 +17,13 @@
 package tmdb
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +46,8 @@ const (
 	// maxKeywords bounds the keywords kept per item. TMDB returns every tag, and a long tail of
 	// them says little.
 	maxKeywords = 40
+	// maxCast bounds the actors kept per title, in billing order (#2151 decision 46: main cast).
+	maxCast = 20
 	// maxChangePages is TMDB's own page ceiling for a list endpoint.
 	maxChangePages = 500
 	// usCountry is the one certification country with a ladder.
@@ -77,12 +83,13 @@ func (*Provider) Capabilities() mp.Capabilities {
 	return mp.Capabilities{
 		Basis:   source.Basis,
 		Catalog: source.Catalog,
-		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection},
+		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection, mp.KindSeason},
 		Resolves: []mp.Resolvable{
 			{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 			{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
+			{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
 		},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyArtwork},
 		// TMDB documents roughly 50 requests per second per address and 20 simultaneous
@@ -97,13 +104,35 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !p.Capabilities().CanResolve(ref) {
 		return mp.Record{}, fmt.Errorf("tmdb: %s by %s: %w", ref.Kind, ref.ID.Namespace, mp.ErrUnsupported)
 	}
-	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
-	if err != nil || id <= 0 {
-		return mp.Record{}, fmt.Errorf("tmdb: %s id %q is not a positive integer: %w", ref.ID.Namespace, ref.ID.Value, mp.ErrUnsupported)
-	}
 	loc, err := p.resolveLocale()
 	if err != nil {
 		return mp.Record{}, err
+	}
+	rec, err := p.fetch(ctx, loc, ref)
+	if err != nil {
+		return mp.Record{}, err
+	}
+	rec.Language = loc.language
+	return rec, nil
+}
+
+// Language is the language a record fetched now is in, as TMDB takes it ("en-US").
+func (p *Provider) Language() (string, error) {
+	loc, err := p.resolveLocale()
+	return loc.language, err
+}
+
+func (p *Provider) fetch(ctx context.Context, loc locale, ref mp.Ref) (mp.Record, error) {
+	if ref.Kind == mp.KindSeason {
+		series, number, ok := SeasonRef(ref.ID.Value)
+		if !ok {
+			return mp.Record{}, fmt.Errorf("tmdb: season %q is not <series id>/<season>: %w", ref.ID.Value, mp.ErrUnsupported)
+		}
+		return p.season(ctx, loc, series, number)
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
+	if err != nil || id <= 0 {
+		return mp.Record{}, fmt.Errorf("tmdb: %s id %q is not a positive integer: %w", ref.ID.Namespace, ref.ID.Value, mp.ErrUnsupported)
 	}
 	switch ref.Kind {
 	case mp.KindMovie:
@@ -128,10 +157,6 @@ func (p *Provider) resolveLocale() (locale, error) {
 	if p.locale != nil {
 		language, country = p.locale()
 	}
-	language = strings.TrimSpace(language)
-	if language == "" {
-		language = "en-US"
-	}
 	country = strings.ToUpper(strings.TrimSpace(country))
 	if country == "" {
 		country = usCountry
@@ -139,8 +164,17 @@ func (p *Provider) resolveLocale() (locale, error) {
 	if country != usCountry {
 		return locale{}, fmt.Errorf("tmdb: no rating ladder for country %q: %w", country, mp.ErrUnsupported)
 	}
-	base, _, _ := strings.Cut(language, "-")
-	return locale{language: language, base: strings.ToLower(base)}, nil
+	// A bare language takes the country as its region ("fr" is "fr-US"), so one language is
+	// always spelled one way.
+	base, region, _ := strings.Cut(strings.TrimSpace(language), "-")
+	base, region = strings.ToLower(base), strings.ToUpper(region)
+	if base == "" {
+		base, region = "en", ""
+	}
+	if region == "" {
+		region = country
+	}
+	return locale{language: base + "-" + region, base: base}, nil
 }
 
 // detailQuery is the query shared by the movie and series detail calls. images are limited to the
@@ -191,6 +225,80 @@ type wireImages struct {
 	Logos     []wireImage `json:"logos"`
 }
 
+// wireCredits are a title's credits (append_to_response=credits); cast in billing order.
+type wireCredits struct {
+	Cast []wireCast `json:"cast"`
+	Crew []wireCrew `json:"crew"`
+}
+
+type wireCast struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	Order       int    `json:"order"`
+	ProfilePath string `json:"profile_path"`
+}
+
+type wireCrew struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	ProfilePath string `json:"profile_path"`
+}
+
+// crewRoles are the jobs kept as key crew, by TMDB's job name.
+var crewRoles = map[string]mp.PersonRole{
+	"Director": mp.PersonDirector, "Screenplay": mp.PersonWriter, "Writer": mp.PersonWriter,
+	"Creator": mp.PersonCreator,
+}
+
+// people is a title's main cast in billing order (at most maxCast), then its creators, then its
+// directors and writers, each person once a role.
+func people(credits wireCredits, creators []wireCrew) []mp.Person {
+	cast := slices.Clone(credits.Cast)
+	slices.SortStableFunc(cast, func(a, b wireCast) int { return cmp.Compare(a.Order, b.Order) })
+	var out []mp.Person
+	seen := map[string]bool{}
+	add := func(id int, name string, role mp.PersonRole, character, profile string) {
+		name = strings.TrimSpace(name)
+		key := strconv.Itoa(id) + "\x00" + name + "\x00" + string(role)
+		if name == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		p := mp.Person{Name: name, Role: role, Character: strings.TrimSpace(character), Photo: tmdbclient.ImageURL(profile)}
+		if id > 0 {
+			p.TMDB = strconv.Itoa(id)
+		}
+		out = append(out, p)
+	}
+	for i, c := range cast {
+		if i == maxCast {
+			break
+		}
+		add(c.ID, c.Name, mp.PersonActor, c.Character, c.ProfilePath)
+	}
+	for _, c := range creators {
+		add(c.ID, c.Name, mp.PersonCreator, "", c.ProfilePath)
+	}
+	for _, c := range credits.Crew {
+		if role, ok := crewRoles[c.Job]; ok {
+			add(c.ID, c.Name, role, "", c.ProfilePath)
+		}
+	}
+	return out
+}
+
+// wireVideos are a title's videos (append_to_response=videos).
+type wireVideos struct {
+	Results []struct {
+		Key      string `json:"key"`
+		Site     string `json:"site"`
+		Type     string `json:"type"`
+		Official bool   `json:"official"`
+	} `json:"results"`
+}
+
 type wireExternalIDs struct {
 	IMDB string `json:"imdb_id"`
 	TVDB int    `json:"tvdb_id"`
@@ -206,10 +314,14 @@ type wireMovie struct {
 	Overview      string          `json:"overview"`
 	ReleaseDate   string          `json:"release_date"`
 	Runtime       int             `json:"runtime"`
+	Tagline       string          `json:"tagline"`
 	VoteAverage   float64         `json:"vote_average"`
 	VoteCount     int             `json:"vote_count"`
 	Genres        []idName        `json:"genres"`
 	Companies     []idName        `json:"production_companies"`
+	Countries     []idName        `json:"production_countries"`
+	Videos        wireVideos      `json:"videos"`
+	Credits       wireCredits     `json:"credits"`
 	PosterPath    string          `json:"poster_path"`
 	BackdropPath  string          `json:"backdrop_path"`
 	Collection    *wireCollection `json:"belongs_to_collection"`
@@ -235,7 +347,7 @@ type wireCollection struct {
 
 func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var m wireMovie
-	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images")
+	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images,videos,credits")
 	if err := p.get(ctx, path, &m); err != nil {
 		return mp.Record{}, err
 	}
@@ -258,8 +370,12 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 			Genres:          names(m.Genres),
 			Keywords:        keywords(m.Keywords.Keywords),
 			CommunityRating: communityRating(m.VoteAverage, m.VoteCount),
-			Network:         firstName(m.Companies),
+			Studios:         names(m.Companies),
 			Runtime:         time.Duration(m.Runtime) * time.Minute,
+			Tagline:         strings.TrimSpace(m.Tagline),
+			Countries:       names(m.Countries),
+			Trailer:         trailer(m.Videos),
+			People:          people(m.Credits, nil),
 		},
 		Artwork: artwork(loc, m.Images, m.PosterPath, m.BackdropPath),
 	}
@@ -279,6 +395,82 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 	}
 	rec.Certification = strictest(ratings)
 	return rec, nil
+}
+
+// ---- person ----
+
+// maxFilmography bounds the titles kept per person, newest first.
+const maxFilmography = 300
+
+// wireFilmCredit is one row of a person's combined credits: a movie (title, release_date) or a
+// series (name, first_air_date).
+type wireFilmCredit struct {
+	ID           int    `json:"id"`
+	MediaType    string `json:"media_type"`
+	Title        string `json:"title"`
+	Name         string `json:"name"`
+	ReleaseDate  string `json:"release_date"`
+	FirstAirDate string `json:"first_air_date"`
+	Character    string `json:"character"`
+	Job          string `json:"job"`
+}
+
+// selfParts are the characters TMDB gives a person appearing as themselves: talk shows and
+// documentaries, not roles.
+var selfParts = map[string]bool{"self": true, "himself": true, "herself": true, "themselves": true}
+
+// Filmography is a person's movies and series by their TMDB person id (#2151 decision 50): every
+// part they played, other than appearing as themselves, and every title they created, directed
+// or wrote, newest first, at most maxFilmography.
+func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCredit, error) {
+	id, err := strconv.Atoi(strings.TrimSpace(person))
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person, mp.ErrUnsupported)
+	}
+	loc, err := p.resolveLocale()
+	if err != nil {
+		return nil, err
+	}
+	var credits struct {
+		Cast []wireFilmCredit `json:"cast"`
+		Crew []wireFilmCredit `json:"crew"`
+	}
+	q := url.Values{}
+	q.Set("language", loc.language)
+	if err := p.get(ctx, "/person/"+strconv.Itoa(id)+"/combined_credits?"+q.Encode(), &credits); err != nil {
+		return nil, err
+	}
+	var out []mp.FilmCredit
+	seen := map[string]bool{}
+	add := func(c wireFilmCredit, role mp.PersonRole, character string) {
+		kind := map[string]mp.Kind{"movie": mp.KindMovie, "tv": mp.KindSeries}[c.MediaType]
+		title := strings.TrimSpace(firstNonEmpty(c.Title, c.Name))
+		key := string(kind) + "\x00" + strconv.Itoa(c.ID) + "\x00" + string(role)
+		if kind == "" || c.ID <= 0 || title == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, mp.FilmCredit{Kind: kind, TMDB: strconv.Itoa(c.ID), Title: title,
+			Year: yearOf(firstNonEmpty(c.ReleaseDate, c.FirstAirDate)), Role: role, Character: character})
+	}
+	for _, c := range credits.Cast {
+		character := strings.TrimSpace(c.Character)
+		if !selfParts[strings.ToLower(character)] {
+			add(c, mp.PersonActor, character)
+		}
+	}
+	for _, c := range credits.Crew {
+		if role, ok := crewRoles[c.Job]; ok {
+			add(c, role, "")
+		}
+	}
+	slices.SortStableFunc(out, func(a, b mp.FilmCredit) int {
+		return cmp.Or(cmp.Compare(b.Year, a.Year), strings.Compare(a.Title, b.Title))
+	})
+	if len(out) > maxFilmography {
+		out = out[:maxFilmography]
+	}
+	return out, nil
 }
 
 // ---- collection ----
@@ -354,16 +546,28 @@ type wireSeries struct {
 	EpisodeRuntime []int           `json:"episode_run_time"`
 	VoteAverage    float64         `json:"vote_average"`
 	VoteCount      int             `json:"vote_count"`
+	Tagline        string          `json:"tagline"`
 	Genres         []idName        `json:"genres"`
 	Networks       []idName        `json:"networks"`
+	Countries      []idName        `json:"production_countries"`
+	Videos         wireVideos      `json:"videos"`
+	Credits        wireCredits     `json:"credits"`
+	CreatedBy      []wireCrew      `json:"created_by"`
 	PosterPath     string          `json:"poster_path"`
 	BackdropPath   string          `json:"backdrop_path"`
 	ExternalIDs    wireExternalIDs `json:"external_ids"`
 	Images         wireImages      `json:"images"`
 	Seasons        []struct {
-		SeasonNumber int `json:"season_number"`
-		EpisodeCount int `json:"episode_count"`
+		SeasonNumber int    `json:"season_number"`
+		EpisodeCount int    `json:"episode_count"`
+		PosterPath   string `json:"poster_path"`
 	} `json:"seasons"`
+	// EpisodeGroups are the other orderings TMDB knows; nil when the answer did not carry them.
+	EpisodeGroups *struct {
+		Results []struct {
+			ID string `json:"id"`
+		} `json:"results"`
+	} `json:"episode_groups"`
 	Keywords struct {
 		Results []idName `json:"results"`
 	} `json:"keywords"`
@@ -377,7 +581,7 @@ type wireSeries struct {
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var s wireSeries
-	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images")
+	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups,videos,credits")
 	if err := p.get(ctx, path, &s); err != nil {
 		return mp.Record{}, err
 	}
@@ -405,8 +609,12 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 			Genres:          names(s.Genres),
 			Keywords:        keywords(s.Keywords.Results),
 			CommunityRating: communityRating(s.VoteAverage, s.VoteCount),
-			Network:         firstName(s.Networks),
+			Studios:         names(s.Networks),
 			Status:          seriesStatus(s.Status),
+			Tagline:         strings.TrimSpace(s.Tagline),
+			Countries:       names(s.Countries),
+			Trailer:         trailer(s.Videos),
+			People:          people(s.Credits, s.CreatedBy),
 		},
 		Artwork: artwork(loc, s.Images, s.PosterPath, s.BackdropPath),
 	}
@@ -415,6 +623,13 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 			rec.Descriptive.Seasons = append(rec.Descriptive.Seasons,
 				mp.SeasonSize{Number: season.SeasonNumber, Episodes: season.EpisodeCount})
 		}
+		if ref := tmdbclient.ImageURL(season.PosterPath); ref != "" && season.SeasonNumber >= 0 {
+			rec.Artwork = append(rec.Artwork, mp.ArtworkRef{Kind: mp.KindSeasonPoster, Season: season.SeasonNumber, Ref: ref})
+		}
+	}
+	if s.EpisodeGroups != nil {
+		n := len(s.EpisodeGroups.Results)
+		rec.Descriptive.Orderings = &n
 	}
 	if len(s.EpisodeRuntime) > 0 && s.EpisodeRuntime[0] > 0 {
 		rec.Descriptive.Runtime = time.Duration(s.EpisodeRuntime[0]) * time.Minute
@@ -442,6 +657,72 @@ func seriesStatus(s string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(s))
 	}
+}
+
+// ---- season ----
+
+// SeasonRef reads a season's id, "<TMDB series id>/<season number>"; false for anything else.
+func SeasonRef(value string) (series, number int, ok bool) {
+	s, n, found := strings.Cut(strings.TrimSpace(value), "/")
+	if !found {
+		return 0, 0, false
+	}
+	series, err := strconv.Atoi(s)
+	if err != nil || series <= 0 {
+		return 0, 0, false
+	}
+	number, err = strconv.Atoi(n)
+	if err != nil || number < 0 {
+		return 0, 0, false
+	}
+	return series, number, true
+}
+
+type wireSeason struct {
+	SeasonNumber int `json:"season_number"`
+	Episodes     []struct {
+		ID            int     `json:"id"`
+		EpisodeNumber int     `json:"episode_number"`
+		SeasonNumber  int     `json:"season_number"`
+		Name          string  `json:"name"`
+		Overview      string  `json:"overview"`
+		AirDate       string  `json:"air_date"`
+		Runtime       int     `json:"runtime"`
+		VoteAverage   float64 `json:"vote_average"`
+		VoteCount     int     `json:"vote_count"`
+	} `json:"episodes"`
+}
+
+// season is one season of a series: its episodes in TMDB's numbering, as Children.
+func (p *Provider) season(ctx context.Context, loc locale, series, number int) (mp.Record, error) {
+	var s wireSeason
+	q := url.Values{}
+	q.Set("language", loc.language)
+	path := "/tv/" + strconv.Itoa(series) + "/season/" + strconv.Itoa(number) + "?" + q.Encode()
+	if err := p.get(ctx, path, &s); err != nil {
+		return mp.Record{}, err
+	}
+	if s.SeasonNumber != number || len(s.Episodes) == 0 {
+		return mp.Record{}, fmt.Errorf("tmdb series %d season %d: %w", series, number, mp.ErrNotFound)
+	}
+	parent := []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(series)}}
+	rec := mp.Record{Source: source, Kind: mp.KindSeason, Parent: parent}
+	for _, e := range s.Episodes {
+		if e.ID <= 0 || e.EpisodeNumber <= 0 {
+			continue
+		}
+		rec.Children = append(rec.Children, mp.Record{
+			Source: source, Kind: mp.KindEpisode, Parent: parent,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ID)}},
+			Numbering: &mp.Numbering{Season: number, Episode: e.EpisodeNumber},
+			Descriptive: &mp.Descriptive{
+				Title: e.Name, Overview: e.Overview, PremiereDate: e.AirDate, Year: yearOf(e.AirDate),
+				CommunityRating: communityRating(e.VoteAverage, e.VoteCount),
+				Runtime:         time.Duration(e.Runtime) * time.Minute,
+			},
+		})
+	}
+	return rec, nil
 }
 
 // ---- episode ----
@@ -495,7 +776,7 @@ func (p *Provider) episode(ctx context.Context, loc locale, tvdb int) (mp.Record
 		rec.Parent = []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ShowID)}}
 	}
 	if ref := tmdbclient.ImageURL(e.StillPath); ref != "" {
-		rec.Artwork = []mp.ArtworkRef{{Kind: "thumb", Ref: ref}}
+		rec.Artwork = []mp.ArtworkRef{{Kind: mp.KindThumb, Ref: ref}}
 	}
 	return rec, nil
 }
@@ -597,11 +878,22 @@ func names(list []idName) []string {
 	return out
 }
 
-func firstName(list []idName) string {
-	if n := names(list); len(n) > 0 {
-		return n[0]
+// trailer is the web page of a title's trailer: an official YouTube trailer first, then any
+// YouTube trailer; "" when it has none.
+func trailer(videos wireVideos) string {
+	best := -1
+	for i, v := range videos.Results {
+		if v.Site != "YouTube" || v.Type != "Trailer" || strings.TrimSpace(v.Key) == "" {
+			continue
+		}
+		if best < 0 || (v.Official && !videos.Results[best].Official) {
+			best = i
+		}
 	}
-	return ""
+	if best < 0 {
+		return ""
+	}
+	return "https://www.youtube.com/watch?v=" + url.QueryEscape(videos.Results[best].Key)
 }
 
 func keywords(list []idName) []string {
@@ -658,9 +950,9 @@ func artwork(loc locale, images wireImages, poster, backdrop string) []mp.Artwor
 			out = append(out, mp.ArtworkRef{Kind: kind, Ref: ref})
 		}
 	}
-	add("poster", firstNonEmpty(pick(images.Posters, loc.base, ""), poster))
-	add("fanart", firstNonEmpty(pick(images.Backdrops, "", loc.base), backdrop))
-	add("clearlogo", pick(images.Logos, loc.base, ""))
+	add(mp.KindPoster, firstNonEmpty(pick(images.Posters, loc.base, ""), poster))
+	add(mp.KindFanart, firstNonEmpty(pick(images.Backdrops, "", loc.base), backdrop))
+	add(mp.KindClearlogo, pick(images.Logos, loc.base, ""))
 	return out
 }
 
