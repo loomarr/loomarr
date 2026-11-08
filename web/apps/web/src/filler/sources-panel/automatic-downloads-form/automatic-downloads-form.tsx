@@ -1,11 +1,11 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import type { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
+import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
 import { Action } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { type ComponentRef, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BrowserSelectControl } from "@/client-adapters";
 import type { SourceActions } from "../use-source-actions";
 
 type DownloadIntervalUnit = "minutes" | "hours" | "days";
@@ -38,6 +38,26 @@ const downloadScheduleSeconds: Record<Exclude<DownloadSchedulePreset, "custom">,
   weekly: 7 * 24 * 3600,
 };
 
+const MODE_OPTIONS = [
+  { label: "Use automatic-download defaults", value: SourceAutomaticDownloadsInputMode.defaults },
+  { label: "Use a different schedule", value: SourceAutomaticDownloadsInputMode.custom },
+  { label: "Never download automatically", value: SourceAutomaticDownloadsInputMode.never },
+] as const;
+
+const SCHEDULE_OPTIONS: readonly { label: string; value: DownloadSchedulePreset }[] = [
+  { label: "Every 6 hours", value: "6h" },
+  { label: "Every 12 hours", value: "12h" },
+  { label: "Daily", value: "daily" },
+  { label: "Weekly", value: "weekly" },
+  { label: "Custom", value: "custom" },
+];
+
+const UNIT_OPTIONS: readonly { label: string; value: DownloadIntervalUnit }[] = [
+  { label: "minutes", value: "minutes" },
+  { label: "hours", value: "hours" },
+  { label: "days", value: "days" },
+];
+
 interface AutomaticDownloadsFormProps {
   source: FillerSourceDTO;
   actions: Pick<SourceActions, "updateSource" | "updating" | "updatingSourceID">;
@@ -48,7 +68,7 @@ interface AutomaticDownloadsFormProps {
 // background refetch cannot overwrite what the operator is mid-way through typing.
 const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps) => {
   const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(
-    source.automaticDownloads?.mode ?? "defaults",
+    source.automaticDownloads?.mode ?? SourceAutomaticDownloadsInputMode.defaults,
   );
   const [everySeconds, setEverySeconds] = useState(source.automaticDownloads?.everySeconds || 6 * 3600);
   const [maxPerCheck, setMaxPerCheck] = useState(source.automaticDownloads?.maxPerCheck ?? 10);
@@ -72,49 +92,36 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           </p>
         )}
       </div>
-      <Select
-        value={mode}
+      <BrowserSelectControl
+        appearance="field"
+        label="Automatic downloads for this source"
+        labelHidden
         onValueChange={(value) => {
-          setMode(value as SourceAutomaticDownloadsInputMode);
-          if (value === "custom") {
+          setMode(value);
+          if (value === SourceAutomaticDownloadsInputMode.custom) {
             setEditingCustomSchedule(downloadSchedulePreset(everySeconds) === "custom");
           }
         }}
-      >
-        <SelectTrigger aria-label="Automatic downloads for this source">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="defaults">Use automatic-download defaults</SelectItem>
-          <SelectItem value="custom">Use a different schedule</SelectItem>
-          <SelectItem value="never">Never download automatically</SelectItem>
-        </SelectContent>
-      </Select>
+        options={MODE_OPTIONS}
+        value={mode}
+      />
       {mode === "custom" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm">Look for new clips</span>
-            <Select
-              value={editingCustomSchedule ? "custom" : downloadSchedulePreset(everySeconds)}
-              onValueChange={(value) => {
-                const preset = value as DownloadSchedulePreset;
+            <BrowserSelectControl
+              appearance="field"
+              label="Source check schedule"
+              labelHidden
+              onValueChange={(preset) => {
                 setEditingCustomSchedule(preset === "custom");
                 if (preset !== "custom") {
                   setEverySeconds(downloadScheduleSeconds[preset]);
                 }
               }}
-            >
-              <SelectTrigger aria-label="Source check schedule">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="6h">Every 6 hours</SelectItem>
-                <SelectItem value="12h">Every 12 hours</SelectItem>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </SelectContent>
-            </Select>
+              options={SCHEDULE_OPTIONS}
+              value={editingCustomSchedule ? "custom" : downloadSchedulePreset(everySeconds)}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm">Add up to</span>
@@ -136,26 +143,23 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                     setEverySeconds(downloadIntervalSeconds(Math.min(amount, maximum), interval.unit));
                   }}
                 />
-                <Select
-                  value={interval.unit}
-                  onValueChange={(value) => {
-                    setEverySeconds(
-                      downloadIntervalSeconds(
-                        Math.min(interval.amount, downloadIntervalMaximum(value as DownloadIntervalUnit)),
-                        value as DownloadIntervalUnit,
-                      ),
-                    );
-                  }}
-                >
-                  <SelectTrigger aria-label="Source check interval unit" className="w-28 shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minutes">minutes</SelectItem>
-                    <SelectItem value="hours">hours</SelectItem>
-                    <SelectItem value="days">days</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="w-28 shrink-0">
+                  <BrowserSelectControl
+                    appearance="field"
+                    label="Source check interval unit"
+                    labelHidden
+                    onValueChange={(unit) => {
+                      setEverySeconds(
+                        downloadIntervalSeconds(
+                          Math.min(interval.amount, downloadIntervalMaximum(unit)),
+                          unit,
+                        ),
+                      );
+                    }}
+                    options={UNIT_OPTIONS}
+                    value={interval.unit}
+                  />
+                </div>
               </div>
             </div>
           )}

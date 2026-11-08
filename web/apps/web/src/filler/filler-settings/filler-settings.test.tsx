@@ -204,7 +204,7 @@ describe("focused Filler settings", () => {
 
   it("switches tasks near the heading instead of burying them at the bottom", async () => {
     renderSettings("storage");
-    expect(await screen.findByRole("combobox", { name: "Filler settings task" })).toHaveTextContent(
+    expect(await screen.findByRole("button", { name: /^Filler settings task/ })).toHaveTextContent(
       "Storage limits",
     );
     expect(screen.getByRole("link", { name: "All filler settings" })).toHaveAttribute(

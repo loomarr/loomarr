@@ -6,7 +6,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ClipDetailsSettings } from "../clip-details-settings";
@@ -94,26 +94,18 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
         </Link>
         <p className="text-muted-foreground mt-2 text-xs">Jump straight to another task.</p>
       </div>
-      <Select
-        value={section}
-        onValueChange={(next) =>
-          void navigate({
-            to: "/filler/settings/$section",
-            params: { section: next as FillerSettingsSection },
-          })
-        }
-      >
-        <SelectTrigger className="w-full sm:w-64" aria-label="Filler settings task">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {SETTINGS_SECTIONS.map((item) => (
-            <SelectItem key={item.id} value={item.id}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="w-full sm:w-64">
+        <BrowserSelectControl
+          appearance="field"
+          label="Filler settings task"
+          labelHidden
+          onValueChange={(next) =>
+            void navigate({ to: "/filler/settings/$section", params: { section: next } })
+          }
+          options={SETTINGS_SECTIONS.map((item) => ({ label: item.label, value: item.id }))}
+          value={section}
+        />
+      </div>
     </div>
   );
 };
