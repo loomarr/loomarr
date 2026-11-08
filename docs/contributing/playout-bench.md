@@ -21,8 +21,8 @@ job on the host makes the numbers meaningless.
 
 | Metric | How | Threshold (hardware families) |
 | --- | --- | --- |
-| `start_p95_ms/<class>` | **encoder start (warm)**: fresh process per run, seeking to a different second, using production `FragmentArgs` and the real packager until a complete one-second fMP4 segment is stamped and written. Encoder surplus and exit cleanup are reaped after taking the clock. Source files are page-cached, so cold network-share reads are excluded; those are host-specific and belong to supervised household runs, not CI. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms |
-| `speed_x/<class>` | one whole clip, unpaced | ≥ 15x (1080p), ≥ 2x (4K HDR) |
+| `start_p95_ms/<class>` | **encoder start (warm)**: fresh process per run, seeking to a different second, using production `FragmentArgs` and the real packager until a complete one-second fMP4 segment is stamped and written. Encoder surplus and exit cleanup are reaped after taking the clock. Source files are page-cached, so cold network-share reads are excluded; those are host-specific and belong to supervised household runs, not CI. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms; NVENC 1080p ≤ 700 ms, because the driver spends ~460 ms initialising every new process |
+| `speed_x/<class>` | one whole clip, unpaced, less the start-up of a one-frame run of the same pipeline (start-up is `start_p95_ms`'s job; NVENC's ~460 ms would otherwise cap a 10 s clip near 10x) | ≥ 15x (1080p), ≥ 2x (4K HDR) |
 | `cores_per_stream/<class>` | child CPU time (rusage) per second of media, so the cores one stream costs at 1x | reported |
 | `concurrency/max_streams` | largest number of simultaneous 1080p H.264 streams that each hold ≥ 1.2x | ≥ 1 (every family) |
 | `concurrency/total_cores` | CPU of those streams at 1x | ≤ 1 core (hardware families) |
