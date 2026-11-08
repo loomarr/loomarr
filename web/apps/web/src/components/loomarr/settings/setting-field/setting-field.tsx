@@ -71,7 +71,7 @@ type NumberBoxProps = Omit<ComponentProps<typeof Field>, "onChangeText" | "value
 const NumberBox = ({ amount, onAmount, onBlur, ...field }: NumberBoxProps) => {
   const [draft, setDraft] = useState<string>();
   return (
-    <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+    <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
       <Field
         {...field}
         keyboardType="decimal-pad"
@@ -311,7 +311,7 @@ const SettingField = ({
       );
     }
     const input = (
-      <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+      <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
         <Field
           aria-describedby={describedBy}
           aria-labelledby={labelledBy}
