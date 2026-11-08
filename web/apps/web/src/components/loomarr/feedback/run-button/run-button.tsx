@@ -33,7 +33,7 @@ const RunButton = ({ busy, onRun, label, busyLabel, disabled }: RunButtonProps) 
     // "unavailable", which is a different claim.
     aria-busy={busy}
     disabled={busy || disabled}
-    icon="play"
+    icon={busy ? "loading" : "play"}
     onPress={onRun}
     variant="outline"
   >

@@ -61,7 +61,12 @@ const SessionList = ({
               </p>
               <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
             </div>
-            <Action disabled={revoking === s.id} onPress={() => onRevoke?.(s.id)} variant="ghost">
+            <Action
+              disabled={revoking === s.id}
+              icon={revoking === s.id ? "loading" : undefined}
+              onPress={() => onRevoke?.(s.id)}
+              variant="ghost"
+            >
               {s.current ? "Sign out (this device)" : "Sign out"}
             </Action>
           </li>
