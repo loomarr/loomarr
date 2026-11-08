@@ -14,7 +14,10 @@ the stream and serves a tuner your media server picks up as Live TV.
 or if you already run it. Loomarr still decides what plays, and hands the schedule to Tunarr.
 
 The practical difference: on the default backend, Loomarr must be running for channels to play.
-On Tunarr, they keep playing without it.
+On Tunarr, they keep playing without it. One trade-off: when the schedule turns over to its next
+window (at midnight, in the guide's time zone), the default backend lets the programme on air
+finish first. Tunarr can't, so a programme airing at that midnight on a Tunarr channel may be cut
+off.
 
 ## Playing a channel
 
