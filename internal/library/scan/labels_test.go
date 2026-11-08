@@ -25,17 +25,20 @@ func TestResolutionLabelReadsWidthToo(t *testing.T) {
 
 func TestHDRLabel(t *testing.T) {
 	for _, tc := range []struct {
-		transfer string
-		hdr      bool
-		want     string
+		transfer    string
+		hdr         bool
+		dolbyVision int
+		want        string
 	}{
-		{"smpte2084", true, "HDR10"},
-		{"arib-std-b67", true, "HLG"},
-		{"", true, "HDR"},
-		{"bt709", false, ""},
+		{"smpte2084", true, 0, "HDR10"},
+		{"smpte2084", true, 8, "Dolby Vision"},
+		{"", false, 5, "Dolby Vision"},
+		{"arib-std-b67", true, 0, "HLG"},
+		{"", true, 0, "HDR"},
+		{"bt709", false, 0, ""},
 	} {
-		if got := hdrLabel(tc.transfer, tc.hdr); got != tc.want {
-			t.Errorf("%q/%v = %q, want %q", tc.transfer, tc.hdr, got, tc.want)
+		if got := hdrLabel(tc.transfer, tc.hdr, tc.dolbyVision); got != tc.want {
+			t.Errorf("%q/%v/%d = %q, want %q", tc.transfer, tc.hdr, tc.dolbyVision, got, tc.want)
 		}
 	}
 }

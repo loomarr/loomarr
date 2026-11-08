@@ -69,15 +69,17 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 const writeVersion = 15
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
-// nothing else, rewrites the file's inventory item.
-func identityDigest(file File, m managed, embedded mp.Record) string {
+// nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
+// learns more reaches every file.
+func identityDigest(file File, m managed, embedded mp.Record, reader int) string {
 	payload, _ := json.Marshal(struct {
 		Version  int
+		Header   int
 		Records  []mp.Record
 		Series   *mp.Record
 		Embedded mp.Record
 		Sidecars map[string]Stat
-	}{writeVersion, m.records, m.series, embedded, file.Sidecars})
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }
@@ -272,7 +274,7 @@ func libraryStream(st inventory.Stream) store.LibraryStream {
 	out.Language, out.LanguageName = languageLabel(st.Language)
 	switch st.Kind {
 	case inventory.StreamVideo:
-		out.Resolution, out.HDR = resolutionLabel(st.Width, st.Height), hdrLabel(st.ColorTransfer, st.HDR)
+		out.Resolution, out.HDR = resolutionLabel(st.Width, st.Height), hdrLabel(st.ColorTransfer, st.HDR, st.DolbyVision)
 	case inventory.StreamAudio:
 		out.AudioFormat = audioFormatLabel(st.Codec, st.Profile)
 	}
@@ -340,27 +342,30 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 }
 
 // sourceSnapshot is a file as the inventory stores a source: its stat, plus its header facts once
-// read.
-func sourceSnapshot(file File, header *inventory.SourceFacts, at time.Time) inventory.SourceSnapshot {
+// read. The observation's schema version is the header.Version that read them (1 before any was),
+// so lastHeader can tell facts an older reader left.
+func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time.Time) inventory.SourceSnapshot {
 	facts := inventory.SourceFacts{Protocol: "file", SizeBytes: file.Stat.Size, ModifiedUnixNano: file.Stat.ModifiedNs}
 	coverage := map[string]inventory.Coverage{"sourceStat": inventory.CoveragePresent}
-	if header != nil {
+	schema := 1
+	if read != nil {
 		facts.Container, facts.DurationMillis, facts.Bitrate, facts.Streams =
-			header.Container, header.DurationMillis, header.Bitrate, header.Streams
+			read.Container, read.DurationMillis, read.Bitrate, read.Streams
 		coverage["streams"] = inventory.CoveragePresent
 		coverage["audioStreams"] = inventory.CoverageEmpty
-		for _, s := range header.Streams {
+		for _, s := range read.Streams {
 			if s.Kind == inventory.StreamAudio {
 				coverage["audioStreams"] = inventory.CoveragePresent
 				break
 			}
 		}
+		schema = version
 	}
 	return inventory.SourceSnapshot{
 		ExternalSourceID: "file", Kind: inventory.SourceLocalFile, Revision: revision(file.Stat),
 		Locator: inventory.Locator{Path: file.Path},
 		Observation: inventory.Observation[inventory.SourceFacts]{
-			SchemaVersion: 1, ObservedAt: at, Coverage: coverage, Facts: facts,
+			SchemaVersion: schema, ObservedAt: at, Coverage: coverage, Facts: facts,
 		},
 	}
 }

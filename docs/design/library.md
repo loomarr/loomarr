@@ -73,9 +73,16 @@ type Service interface {
 
 `internal/media/header` is the only code that parses container bytes (decision
 [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It reads a file's duration, streams
-(codec, size, frame rate, pixel format, colour and HDR, field order, languages, default and forced
-flags, channels, sample rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`,
-plus the keyframe index from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
+(codec, size, frame rate, pixel format, colour and HDR, the Dolby Vision profile, field order,
+languages, default, forced, commentary, hearing-impaired and described flags, channels, sample
+rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`, plus the keyframe index
+from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
+
+- **A reader that learns more reads every file once more.** `header.Version` goes up with each new
+  fact. The scanner records it with the facts it stores and folds it into each file's digest, so
+  the next pass reaches every file. A file read by an older reader keeps its facts, and its title
+  stays ready, while it waits in the header queue. It keeps its old digest until it is read
+  again, so a stage the share cuts short is taken up on the next pass.
 
 - **Reads are few and random.** Most Matroska files take one 64 KiB read; the SeekHead points to
   anything past it. An MP4's `moov` is found by box headers, never by reading `mdat`. Files are

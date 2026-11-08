@@ -318,6 +318,11 @@ func mp4Video(moov mp4Moov, stbl, entry mp4Box, timescale int64, stream inventor
 	if !ok {
 		return stream, false
 	}
+	for _, kind := range []string{"dvcC", "dvvC", "dvwC"} {
+		if record := config(kind); record != nil {
+			stream.DolbyVision = dolbyVisionProfile(record)
+		}
+	}
 	var container colourInfo
 	if colr := config("colr"); len(colr) >= 10 {
 		switch string(colr[0:4]) {

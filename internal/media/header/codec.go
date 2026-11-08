@@ -48,6 +48,16 @@ type videoBits struct {
 	fullRange  bool
 }
 
+// dolbyVisionProfile reads a Dolby Vision configuration record (dvcC, dvvC or dvwC; a Matroska
+// BlockAdditionMapping holds the same bytes): version major and minor, then the profile in the
+// top seven bits. 0 for a record too short to say.
+func dolbyVisionProfile(record []byte) int {
+	if len(record) < 4 {
+		return 0
+	}
+	return int(record[2] >> 1)
+}
+
 // videoConfig reads a codec's configuration record as both containers store it: avcC, hvcC and
 // av1C records, an MPEG sequence header or VOL. VP9 differs between them, so the Matroska form is
 // read by matroskaVP9 and the MP4 form (vpcC) by parseVPConfig.

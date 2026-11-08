@@ -25,6 +25,12 @@ const (
 	idTrackType       = 0x83
 	idFlagDefault     = 0x88
 	idFlagForced      = 0x55AA
+	idFlagHearing     = 0x55AB
+	idFlagVisual      = 0x55AC
+	idFlagCommentary  = 0x55AF
+	idBlockAddMapping = 0x41E4
+	idBlockAddIDType  = 0x41E7
+	idBlockAddIDExtra = 0x41ED
 	idDefaultDuration = 0x23E383
 	idName            = 0x536E
 	idLanguage        = 0x22B59C
@@ -295,6 +301,27 @@ func matroskaTrack(b []byte) (stream inventory.Stream, known bool) {
 			stream.Disposition.Default = beUint(v) != 0
 		case idFlagForced:
 			stream.Disposition.Forced = beUint(v) != 0
+		case idFlagHearing:
+			stream.Disposition.HearingImpaired = beUint(v) != 0
+		case idFlagVisual:
+			stream.Disposition.VisualImpaired = beUint(v) != 0
+		case idFlagCommentary:
+			stream.Disposition.Comment = beUint(v) != 0
+		case idBlockAddMapping:
+			var fourcc uint64
+			var record []byte
+			forEach(v, func(cid uint64, x []byte) {
+				switch cid {
+				case idBlockAddIDType:
+					fourcc = beUint(x)
+				case idBlockAddIDExtra:
+					record = x
+				}
+			})
+			switch fourcc {
+			case 0x64766343, 0x64767643, 0x64767743: // dvcC, dvvC, dvwC
+				stream.DolbyVision = dolbyVisionProfile(record)
+			}
 		case idDefaultDuration:
 			defaultDuration = int64(beUint(v))
 		case idName:

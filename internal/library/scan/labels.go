@@ -33,10 +33,13 @@ func resolutionLabel(width, height int) string {
 	}
 }
 
-// hdrLabel names a picture's dynamic range from its transfer: "HDR10" for PQ, "HLG", "HDR" for
-// one the header marks HDR another way, "" for SDR. Dolby Vision comes from the header extras
-// (14b-2).
-func hdrLabel(transfer string, hdr bool) string {
+// hdrLabel names a picture's dynamic range: "Dolby Vision" for any Dolby Vision profile, whatever
+// its base layer, then from its transfer "HDR10" for PQ, "HLG", "HDR" for one the header marks HDR
+// another way, "" for SDR.
+func hdrLabel(transfer string, hdr bool, dolbyVision int) string {
+	if dolbyVision > 0 {
+		return "Dolby Vision"
+	}
 	switch strings.ToLower(transfer) {
 	case "smpte2084":
 		return "HDR10"
