@@ -3,8 +3,8 @@ import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
 import { Badge, type BadgeTone, Card, Tooltip } from "@loomarr/design-system";
+import { ListGroup, PanelRow } from "@loomarr/ui";
 import { Info } from "lucide-react";
-import { PanelRow } from "@/components/ui/panel-row";
 import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
@@ -85,59 +85,59 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
 const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   const slow = channel.speed > 0 && channel.speed < 1;
   return (
-    <PanelRow>
-      <PanelRow.Main>
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
-          {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
+    <PanelRow
+      meta={
+        <>
+          <div className="text-right">
+            <p className="text-static-200 font-mono text-xs">{formatColdStart(channel.coldStartMs)}</p>
+            <p className="text-2xs text-muted-foreground mt-0.5 font-mono">
+              {formatBuffer(channel.bufferedMs)}
+            </p>
+          </div>
+          <span
+            className={cn(
+              "w-14 text-right font-mono text-xs tabular-nums",
+              slow ? "text-caution" : "text-muted-foreground",
+            )}
+          >
+            {formatSpeed(channel.speed)}
+          </span>
+          {/* A direct-play channel is REMUXED, not encoded — so "Hardware/Software" (an encoder
+              distinction) is meaningless for it; it reads "Copy". Only a transcode has an encoder. */}
+          {channel.mode === "direct-play" ? (
+            <Badge shape="square" tone="neutral">
+              Copy
+            </Badge>
+          ) : (
+            <Badge shape="square" tone={channel.hardware ? "lock" : "caution"}>
+              {channel.hardware ? "Hardware" : "Software"}
+            </Badge>
+          )}
+          <Badge shape="square" tone={HEALTH_TONE[channel.health] ?? "neutral"}>
+            {channel.health}
+          </Badge>
+        </>
+      }
+    >
+      <div className="flex items-center gap-1.5">
+        <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
+        {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
               request. The design-system Tooltip gives a prompt, styled
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
               reachable. (A native `title` also "worked" but its ~1.5s browser delay read as broken.) */}
-          <Tooltip content={<span className="font-mono text-xs">{channel.channelId}</span>}>
-            <button
-              type="button"
-              aria-label={`Channel id ${channel.channelId}`}
-              className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <Info className="size-3" aria-hidden />
-            </button>
-          </Tooltip>
-        </div>
-        <p className="text-muted-foreground mt-0.5 truncate text-xs">
-          {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
-        </p>
-      </PanelRow.Main>
-
-      <PanelRow.Meta>
-        <div className="text-right">
-          <p className="text-static-200 font-mono text-xs">{formatColdStart(channel.coldStartMs)}</p>
-          <p className="text-2xs text-muted-foreground mt-0.5 font-mono">
-            {formatBuffer(channel.bufferedMs)}
-          </p>
-        </div>
-        <span
-          className={cn(
-            "w-14 text-right font-mono text-xs tabular-nums",
-            slow ? "text-caution" : "text-muted-foreground",
-          )}
-        >
-          {formatSpeed(channel.speed)}
-        </span>
-        {/* A direct-play channel is REMUXED, not encoded — so "Hardware/Software" (an encoder
-            distinction) is meaningless for it; it reads "Copy". Only a transcode has an encoder. */}
-        {channel.mode === "direct-play" ? (
-          <Badge shape="square" tone="neutral">
-            Copy
-          </Badge>
-        ) : (
-          <Badge shape="square" tone={channel.hardware ? "lock" : "caution"}>
-            {channel.hardware ? "Hardware" : "Software"}
-          </Badge>
-        )}
-        <Badge shape="square" tone={HEALTH_TONE[channel.health] ?? "neutral"}>
-          {channel.health}
-        </Badge>
-      </PanelRow.Meta>
+        <Tooltip content={<span className="font-mono text-xs">{channel.channelId}</span>}>
+          <button
+            type="button"
+            aria-label={`Channel id ${channel.channelId}`}
+            className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <Info className="size-3" aria-hidden />
+          </button>
+        </Tooltip>
+      </div>
+      <p className="text-muted-foreground mt-0.5 truncate text-xs">
+        {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
+      </p>
     </PanelRow>
   );
 };
@@ -173,11 +173,11 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
       )}
 
       {status?.running && channels.length > 0 && (
-        <ul className="flex flex-col">
+        <ListGroup framed={false}>
           {channels.map((c) => (
             <ChannelRow key={`${c.channelId}:${c.target}`} channel={c} />
           ))}
-        </ul>
+        </ListGroup>
       )}
     </Card>
   );

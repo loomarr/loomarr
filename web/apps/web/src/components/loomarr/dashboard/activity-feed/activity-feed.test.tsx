@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { ActivityFeed } from "./activity-feed";
 
 const NOW = Date.parse("2026-07-29T21:50:00Z");

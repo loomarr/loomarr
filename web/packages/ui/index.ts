@@ -124,6 +124,8 @@ export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
 export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
+export type { PanelRowProps } from "./src/panel-row";
+export { PanelRow } from "./src/panel-row";
 export type {
   ProgrammeCardData,
   ProgrammeCardLayout,

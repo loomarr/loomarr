@@ -1,6 +1,6 @@
+import { ListGroup, PanelRow } from "@loomarr/ui";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PanelRow } from "@/components/ui/panel-row";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -44,10 +44,43 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
         </span>
       </div>
 
-      <ul>
+      <ListGroup framed={false}>
         {[view.loomarr, ...rows].filter(Boolean).map((row) => (
-          <PanelRow key={row.name}>
-            <PanelRow.Main className="flex items-center gap-3">
+          <PanelRow
+            key={row.name}
+            meta={
+              <>
+                <span className={cn("shrink-0 font-mono text-xs", row.ok ? "text-lock" : "text-onair")}>
+                  {row.ok ? "pass" : "fail"}
+                </span>
+                {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
+                  settings live. Offering it on a healthy row would train the eye past it. */}
+                {!row.ok && row.settingsGroup ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onFix(row.settingsGroup as string)}
+                    aria-label={`Fix ${serviceLabel(row.name)}`}
+                  >
+                    Fix →
+                  </Button>
+                ) : null}
+                {!row.ok && onDiagnose ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDiagnose(row.name)}
+                    aria-label={`View ${serviceLabel(row.name)} diagnostics`}
+                  >
+                    Logs →
+                  </Button>
+                ) : null}
+              </>
+            }
+          >
+            <div className="flex items-center gap-3">
               <span
                 role="img"
                 aria-label={row.ok ? "OK" : "Not responding"}
@@ -64,39 +97,10 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               {!row.ok && row.hint ? (
                 <p className="text-muted-foreground mt-1 basis-full pl-7.5 text-xs">{row.hint}</p>
               ) : null}
-            </PanelRow.Main>
-            <PanelRow.Meta>
-              <span className={cn("shrink-0 font-mono text-xs", row.ok ? "text-lock" : "text-onair")}>
-                {row.ok ? "pass" : "fail"}
-              </span>
-              {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
-                settings live. Offering it on a healthy row would train the eye past it. */}
-              {!row.ok && row.settingsGroup ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onFix(row.settingsGroup as string)}
-                  aria-label={`Fix ${serviceLabel(row.name)}`}
-                >
-                  Fix →
-                </Button>
-              ) : null}
-              {!row.ok && onDiagnose ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onDiagnose(row.name)}
-                  aria-label={`View ${serviceLabel(row.name)} diagnostics`}
-                >
-                  Logs →
-                </Button>
-              ) : null}
-            </PanelRow.Meta>
+            </div>
           </PanelRow>
         ))}
-      </ul>
+      </ListGroup>
     </section>
   );
 };

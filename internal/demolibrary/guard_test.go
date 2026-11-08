@@ -180,7 +180,6 @@ var migratedTests = []string{
 	"web/apps/web/src/components/loomarr/people/invitation-join/",
 	"web/apps/web/src/components/loomarr/player/video-player/",
 	"web/apps/web/src/components/loomarr/shell/search-command/",
-	"web/apps/web/src/components/ui/panel-row/",
 	"web/apps/web/src/lib/policy-overrides/",
 	"web/apps/web/src/queue/request-detail/",
 	// The rest of the web app's tests, its e2e specs, and the core and player packages (slice 14).

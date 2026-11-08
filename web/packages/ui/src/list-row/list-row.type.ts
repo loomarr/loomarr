@@ -24,6 +24,9 @@ interface ListRowProps {
 
 interface ListGroupProps {
   children: ReactNode;
+  // false drops the group's own border and corner for a list already inside a card (the dashboard
+  // panels), keeping only the hairlines between rows. Defaults to true.
+  framed?: boolean;
   // Names the list for assistive tech when no heading labels it.
   "aria-label"?: string;
   "aria-labelledby"?: string;
