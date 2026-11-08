@@ -587,8 +587,7 @@
       "tailwindClasses": 10
     },
     "src/lib/app-form/app-form.tsx": {
-      "tailwindClasses": 3,
-      "legacyUi": 2
+      "tailwindClasses": 3
     },
     "src/lib/utils/utils.ts": {
       "tailwindMerge": 1,

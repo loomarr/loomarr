@@ -1,8 +1,7 @@
+import { Field } from "@loomarr/design-system";
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
-import { type ComponentProps, type ReactNode, useId } from "react";
+import type { ComponentProps } from "react";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // useAppForm — every web form's TanStack Form, with its field components bound once (§14). A form
@@ -11,25 +10,57 @@ import { cn } from "@/lib/utils";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
 
-type TextFieldProps = Omit<ComponentProps<typeof Input>, "aria-invalid" | "name" | "onChange" | "value"> & {
-  label: ReactNode;
+// The browser input types the forms use, mapped onto the design-system Field: a password gets the
+// Field's own show-password button, and email and number pick the matching keyboard.
+type TextFieldType = "email" | "number" | "password" | "text";
+
+const KEYBOARD: Record<TextFieldType, ComponentProps<typeof Field>["keyboardType"]> = {
+  email: "email-address",
+  number: "numeric",
+  password: "default",
+  text: "default",
 };
 
-// `className` is the field's own wrapper, for its place in the form; the input keeps its look.
-// No `onBlur`: FieldError says why a submit-validated field leaves it out.
-const TextField = ({ className, id, label, ...input }: TextFieldProps) => {
+interface TextFieldProps {
+  autoComplete?: ComponentProps<typeof Field>["autoComplete"];
+  // The field's own wrapper, for its place in the form; the input keeps the Field's look.
+  className?: string;
+  disabled?: boolean;
+  id?: string;
+  label: string;
+  placeholder?: string;
+  type?: TextFieldType;
+}
+
+// No `onBlur`: FieldError says why a submit-validated field leaves it out. The message is
+// FieldError's alert rather than the Field's own error line, so it is announced on submit.
+const TextField = ({
+  autoComplete,
+  className,
+  disabled,
+  id,
+  label,
+  placeholder,
+  type = "text",
+}: TextFieldProps) => {
   const field = useFieldContext<string>();
-  const generatedId = useId();
   const { errors } = field.state.meta;
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Label htmlFor={id ?? generatedId}>{label}</Label>
-      <Input
-        {...input}
-        aria-invalid={errors.length > 0 ? "true" : undefined}
-        id={id ?? generatedId}
-        name={field.name}
-        onChange={(event) => field.handleChange(event.target.value)}
+      {/* React Native Web defaults an input to sentence-capitalised and autocorrected; the forms
+          take usernames, passwords, emails and short constraints, none of which want either. */}
+      <Field
+        autoCapitalize="none"
+        autoComplete={autoComplete}
+        autoCorrect={false}
+        disabled={disabled}
+        id={id}
+        invalid={errors.length > 0}
+        keyboardType={KEYBOARD[type]}
+        label={label}
+        onChangeText={field.handleChange}
+        placeholder={placeholder}
+        secureTextEntry={type === "password"}
         value={field.state.value}
       />
       <FieldError errors={errors} />

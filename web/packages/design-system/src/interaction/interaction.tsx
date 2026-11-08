@@ -427,6 +427,21 @@ const RevealButton = ({
   );
 };
 
+// React Native Web's TextInput stops every keydown at the input (its "#612"), so a dialog or menu
+// listening on the document never hears Escape from inside a Field and stays open. The stopped
+// event cannot be resumed, so a fresh Escape is raised from the input's parent. This package has no
+// DOM lib, so the slice of the DOM it touches is typed here.
+type KeyTarget = { parentElement: { dispatchEvent(event: unknown): boolean } | null };
+const KeyboardEventCtor = (globalThis as { KeyboardEvent?: new (type: string, init: object) => unknown })
+  .KeyboardEvent;
+
+const reraiseEscape = (event: { nativeEvent: { key: string }; target: unknown }) => {
+  if (!isWeb || event.nativeEvent.key !== "Escape" || !KeyboardEventCtor) return;
+  (event.target as KeyTarget).parentElement?.dispatchEvent(
+    new KeyboardEventCtor("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+  );
+};
+
 const Field = ({
   accessibilityLabel,
   density = "pointer",
@@ -438,6 +453,7 @@ const Field = ({
   label,
   onBlur,
   onFocus,
+  onKeyPress,
   secureTextEntry = false,
   style,
   ...props
@@ -475,6 +491,10 @@ const Field = ({
           aria-invalid={hasError || undefined}
           editable={!disabled}
           id={inputId}
+          onKeyPress={(event) => {
+            onKeyPress?.(event);
+            reraiseEscape(event);
+          }}
           secureTextEntry={secureTextEntry && !revealed}
           {...focusHandlers}
           placeholderTextColor={theme.contentMuted.val}
