@@ -55,19 +55,18 @@ func TestMigrationProviderIsDialectLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Changing the legacy process-global dialect must not affect this provider.
+	// Changing the legacy process-global dialect must not affect this provider. Its version table
+	// and first migration prove it; replaying all of them adds a minute under -race (#2716) and is
+	// what every fresh Open already exercises.
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Up(context.Background()); err != nil {
+	const want = 1
+	if _, err := provider.UpTo(context.Background(), want); err != nil {
 		t.Fatalf("migrate SQLite after changing legacy dialect: %v", err)
 	}
 
 	got, err := provider.GetDBVersion(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := highestMigration("migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +276,8 @@ func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testi
 
 func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "retired-decisions.db"))
+	// The migrated template is the latest schema; Up below finds nothing pending.
+	db, err := sql.Open("sqlite", "file:"+migratedSQLiteFile(t))
 	if err != nil {
 		t.Fatal(err)
 	}

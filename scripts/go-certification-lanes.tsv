@@ -19,9 +19,10 @@
 # cores. Its migration tests replay every migration on purpose, and beside api and playout the lane
 # passed the 15-minute timeout (#2716), so it has a runner of its own.
 3	internal/platform/store
-# Both run their own tests in parallel: schedule's seasonal walks are hundreds of CPU-seconds of
-# parallel subtests, demolibrary encodes filler and scans the tree. Locally at -p=1 they take 120s
-# and 72s under -race; sharing an ordinary -p=4 lane they measured 767s and 712s and timed it out
-# (#2716).
+# schedule and demolibrary run their own tests in parallel: schedule's seasonal walks are hundreds
+# of CPU-seconds of parallel subtests, demolibrary encodes filler and scans the tree. Sharing an
+# ordinary -p=4 lane they measured 767s and 712s and timed it out (#2716). Alone at -p=1, dispatch
+# run 42527652612 measured schedule at 251s with -race plus 179s without (it runs both), and
+# demolibrary at 229s, so demolibrary joins api and playout and schedule has a lane to itself.
+2	internal/demolibrary
 4	internal/channels/schedule
-4	internal/demolibrary

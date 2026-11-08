@@ -43,7 +43,7 @@ func TestOpenSwitchesAnExistingSQLiteFileToIncrementalVacuum(t *testing.T) {
 // Tidy hands every page deleted rows freed back to the disk, so the file shrinks.
 func TestTidyReturnsFreedPagesToTheDisk(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "loomarr.db")
+	path := migratedSQLiteFile(t)
 	st, err := Open(ctx, "sqlite://"+path, true)
 	if err != nil {
 		t.Fatal(err)

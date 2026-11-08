@@ -135,7 +135,7 @@ func TestDiagnosticRetainedBytesTracksEveryWrite(t *testing.T) {
 
 func TestDiagnosticRetainedBytesSurvivesRestart(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(t.TempDir(), "loomarr.db")
+	path := migratedSQLiteFile(t)
 	open := func() Store {
 		st, err := Open(context.Background(), "sqlite://"+path, true)
 		if err != nil {
