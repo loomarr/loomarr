@@ -267,12 +267,11 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "tailwindClasses": 56,
-      "legacyUi": 1
+      "tailwindClasses": 56
     },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
       "tailwindClasses": 97,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
       "tailwindClasses": 47,
@@ -494,7 +493,7 @@
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "tailwindClasses": 77,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 44,
