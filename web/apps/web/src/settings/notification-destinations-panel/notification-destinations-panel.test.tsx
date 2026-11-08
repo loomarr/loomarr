@@ -8,6 +8,12 @@ import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { NotificationDestinationsPanel } from "./notification-destinations-panel";
 
+// The Provider select opens inline as a radio list under its "Provider, <current>" button.
+const chooseProvider = async (name: string) => {
+  await userEvent.click(screen.getByRole("button", { name: /^Provider, / }));
+  await userEvent.click(await screen.findByRole("radio", { name }));
+};
+
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider
     client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
@@ -153,7 +159,7 @@ describe("NotificationDestinationsPanel", () => {
     render(<NotificationDestinationsPanel />, { wrapper });
 
     await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
+    await chooseProvider("Slack");
     await userEvent.clear(screen.getByLabelText("Label *"));
     await userEvent.type(screen.getByLabelText("Label *"), "Living room alerts");
     await userEvent.type(
@@ -187,7 +193,7 @@ describe("NotificationDestinationsPanel", () => {
     render(<NotificationDestinationsPanel />, { wrapper });
 
     await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "mqtt");
+    await chooseProvider("MQTT");
     await userEvent.type(screen.getByLabelText("Broker URL *"), "mqtts://broker.example.test");
     await userEvent.type(screen.getByLabelText("Base topic *"), "home/loomarr");
     const caCertificate = "-----BEGIN CERTIFICATE-----\nprivate-ca\n-----END CERTIFICATE-----";
@@ -251,7 +257,7 @@ describe("NotificationDestinationsPanel", () => {
     render(<NotificationDestinationsPanel />, { wrapper });
 
     await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
+    await chooseProvider("Slack");
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     const labelInputs = screen.getAllByLabelText("Label *");
@@ -280,7 +286,7 @@ describe("NotificationDestinationsPanel", () => {
     render(<NotificationDestinationsPanel />, { wrapper });
 
     await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "slack");
+    await chooseProvider("Slack");
     await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     expect(await screen.findByText("Choose at least one event.")).toBeInTheDocument();
@@ -324,7 +330,7 @@ describe("NotificationDestinationsPanel", () => {
     render(<NotificationDestinationsPanel />, { wrapper });
 
     await userEvent.click(await screen.findByRole("button", { name: "Add provider" }));
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "web_push");
+    await chooseProvider("Browser Push");
     expect(requestPermission).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Push endpoint *")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "Proposal Approved" }));
