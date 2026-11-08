@@ -1,4 +1,4 @@
-// Package playoutbench is the cross-hardware playout bench (#1512 G8): a redistributable corpus run
+// Package bench is the cross-hardware playout bench (#1512 G8): a redistributable corpus run
 // through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged
 // against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 //

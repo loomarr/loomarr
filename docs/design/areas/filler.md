@@ -16,16 +16,12 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/loudness`, `media/tools`, `platform/diagnostics`, `platform/langcode`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`filler/admission`**
-  Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`filler/clips`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`filler/defectfloor`** · 2 importers · → `filler`, `media/creative`, `media/defects`, `platform/llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/media/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`filler/enrichment`** · 3 importers · → `filler/station`, `filler/taxonomy`, `platform/llm`
   Owns progressive descriptive understanding for filler clips.
-- **`filler/eval`**
-  The budget arithmetic that paid filler assessment shares with certification.
 - **`filler/fetch`** · 3 importers · → `filler`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`filler/location`** · 3 importers

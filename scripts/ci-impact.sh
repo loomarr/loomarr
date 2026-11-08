@@ -516,11 +516,6 @@ classify() {
       select_gate go
       select_gate go_full
       ;;
-    internal/filler/eval/corpus/*)
-      known=true
-      select_gate contracts
-      select_gate go
-      ;;
     internal/eval/testdata/*)
       known=true
       select_gate contracts

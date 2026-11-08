@@ -1,4 +1,4 @@
-// Package binder plans how an APPROVED proposal changes a channel (§7): create it
+// Package approval plans how an APPROVED proposal changes a channel (§7): create it
 // on first approval, patch it (preserving operator-owned fields) on re-approval or
 // refine. Local persistence belongs to the approval transaction; codec measurement
 // and backend reconciliation run only after that transaction commits.

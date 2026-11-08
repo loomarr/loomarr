@@ -791,7 +791,7 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
 	  $(RESEARCH_RUN) filler-cert \
-	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/filler/eval/corpus/seed-v1.json}" \
+	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-research/corpus/seed-v1.json}" \
 	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
 	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
 	    --split "$${LOOMARR_FILLER_EVAL_SPLIT:-holdout}" \
