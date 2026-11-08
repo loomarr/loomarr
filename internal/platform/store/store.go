@@ -792,6 +792,7 @@ type Store interface {
 	LibraryItemFactsReader
 	LibraryEpisodeReader
 	LibraryTitleReader
+	LibraryReferenceStore
 
 	// Close releases the underlying database handle.
 	Close() error
