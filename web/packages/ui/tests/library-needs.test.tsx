@@ -223,7 +223,12 @@ describe("LibraryNeedsCards", () => {
 
   // A show is checked by its episodes, never its length (decision 57).
   it("says a show's episodes fit", () => {
-    const show = guess({ kind: "series", name: "Harbour Lights", lengthMatches: false, episodesMatches: true });
+    const show = guess({
+      kind: "series",
+      name: "Harbour Lights",
+      lengthMatches: false,
+      episodesMatches: true,
+    });
     const { host, cleanup } = mount(cards({ needs: [need("90000822", { best: show })] }));
     expect(host.textContent).toContain("The name and episodes match.");
     cleanup();

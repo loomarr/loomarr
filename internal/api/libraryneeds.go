@@ -61,8 +61,8 @@ type libraryCandidateDTO struct {
 	Overview string    `json:"overview,omitempty"`
 	Poster   *ImageDTO `json:"poster,omitempty" doc:"Absent when it has none, or while it is still being fetched"`
 	// The agreement flags say which of the file's facts the candidate shares.
-	NameMatches   bool `json:"nameMatches"`
-	YearMatches   bool `json:"yearMatches"`
+	NameMatches     bool `json:"nameMatches"`
+	YearMatches     bool `json:"yearMatches"`
 	LengthMatches   bool `json:"lengthMatches" doc:"Movies only: its runtime and the file's length agree"`
 	EpisodesMatches bool `json:"episodesMatches" doc:"Series only: every season and episode on disk fits its seasons"`
 }
