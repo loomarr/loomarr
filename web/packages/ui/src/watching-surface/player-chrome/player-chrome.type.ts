@@ -148,6 +148,32 @@ interface PlayerTransportProps {
   onLeave: () => void;
 }
 
+interface ClipTransportProps {
+  density: Density;
+  /** Pointer devices get tooltips naming each tool's key. */
+  pointer: boolean;
+  playing: boolean;
+  onTogglePlay: () => void;
+  muted: boolean;
+  /** 0–1. */
+  volume: number;
+  onToggleMute: () => void;
+  onVolume: (volume: number) => void;
+  elapsedMs: number;
+  /** Omitted until the file's length is known; the elapsed readout waits for it. */
+  durationMs?: number;
+  fullscreen: boolean;
+  onFullscreen: () => void;
+}
+
+interface ClipChromeProps extends ClipTransportProps {
+  /** The player's auto-hide: hidden chrome is transparent and out of reach of pointer and AT. */
+  shown: boolean;
+  title?: string;
+  /** A caller's control at the top-left of the frame (a dialog's close button). */
+  leading?: ReactNode;
+}
+
 interface PlayerSheetProps {
   /** The channel the sheet is about, beside its title ("CH 7 · Coast 90s"). */
   channelLabel: string;
@@ -159,6 +185,8 @@ interface PlayerSheetProps {
 }
 
 export type {
+  ClipChromeProps,
+  ClipTransportProps,
   PlaybarBreak,
   PlaybarProgramme,
   PlaybarSegment,

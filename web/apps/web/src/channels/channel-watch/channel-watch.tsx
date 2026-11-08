@@ -16,8 +16,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer } from "@/channels/channel-drawer";
+import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
-import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
 import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -409,7 +409,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       onChannelStep={player.step}
       // Wider than a portrait phone, the picture fills the window (letterboxed by the <video>); a
       // portrait phone keeps its 16:9 picture over the panel.
-      className={cn("bg-black", !onPhone && "aspect-auto h-full")}
+      fill={!onPhone}
     />
   );
 

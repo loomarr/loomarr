@@ -16,10 +16,10 @@ import { VideoPlayer } from "./video-player";
 // live stream. Putting `ClipDTO` in here would make "core primitive" a lie the first time
 // something that is not a clip needed a player.
 //
-// The scrubber is Radix Slider (§14), not a hand-rolled `role="slider"`: a seek bar IS a slider,
-// and the WAI-ARIA keyboard contract is the kind of thing that rots silently when hand-written.
+// A clip's controls are the design system's ClipChrome: the live player's play disc, tools and
+// volume, at a clip player's size.
 const meta = {
-  title: "UI/VideoPlayer",
+  title: "Player/VideoPlayer",
   component: VideoPlayer,
   decorators: [widthFrame(560)],
   // Shoot once the fixture has loaded and its length is known, as the filler stories do. The

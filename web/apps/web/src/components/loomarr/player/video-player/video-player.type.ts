@@ -66,7 +66,9 @@ interface VideoPlayerProps {
   // Live-tuner navigation. Kept as a direction callback so this transport-agnostic primitive does
   // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
   onChannelStep?: (direction: -1 | 1) => void;
-  className?: string;
+  // Fill the container's height instead of keeping a 16:9 frame; the <video> letterboxes the
+  // picture inside it. Watch uses it wider than a portrait phone, where the picture fills the window.
+  fill?: boolean;
 }
 
 // What a live player's caller draws its controls from (`renderChrome`).

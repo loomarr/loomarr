@@ -1,5 +1,5 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
-import { VideoPlayer } from "@/components/ui/video-player";
+import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import type { ClipPreviewProps } from "./clip-preview.type";
 
 // Exact clip identity and media addressing belong here; controls stay in the shared player.

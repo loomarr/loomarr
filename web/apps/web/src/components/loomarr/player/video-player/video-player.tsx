@@ -1,17 +1,15 @@
+import { ClipChrome } from "@loomarr/ui";
 import { useLayoutEffect, useRef } from "react";
-import { cn } from "@/lib/utils";
-import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";
 import { useFullscreen } from "./internal/use-fullscreen";
 import { usePlaybackState } from "./internal/use-playback-state";
-import { PlayToggle } from "./play-toggle";
 import type { VideoPlayerProps } from "./video-player.type";
-import { VolumeControl } from "./volume-control";
 
 // VideoPlayer — the app's own video surface, with Loomarr's controls rather than the browser's
-// (V39, frontend-design §3 Layer 1). A clip gets its named controls (PlayToggle, VolumeControl,
-// FullscreenButton); a live channel gets the caller's §9 player chrome through `renderChrome`.
+// (V39). A clip gets the design system's ClipChrome; a live channel gets the caller's §9 player
+// chrome through `renderChrome`. This file is the DOM half: the element, its keys, fullscreen and
+// the auto-hide. What the controls look like is the chrome's.
 //
 // ⚠ **Custom controls rather than `<video controls>` — a maintainer decision (2026-08-03).** Native
 // controls are keyboard-correct and free; hand-built ones make that this file's job (see the
@@ -20,12 +18,6 @@ import { VolumeControl } from "./volume-control";
 // ⚠ **Knows NOTHING about clips or channels.** It takes a `src`/`attach` and slots (`overlay`,
 // `renderChrome`); the filler catalog hands it a clip URL, channel-watch hands it hls.js and the
 // player chrome. Putting `ClipDTO`/channel concepts in here would make "core primitive" a lie.
-
-// mmss renders a media time (m:ss) — for the non-live clip player's progress readout.
-const mmss = (seconds: number): string => {
-  const total = Math.max(0, Math.floor(seconds || 0));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-};
 
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
@@ -47,7 +39,7 @@ const VideoPlayer = ({
   onShortcut,
   attach,
   onChannelStep,
-  className,
+  fill = false,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -183,10 +175,14 @@ const VideoPlayer = ({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: shortcut layer over a composite widget; every action also has a focusable control inside */}
       <div
         ref={wrapperRef}
-        className={cn(
-          "group/player relative aspect-video w-full overflow-hidden bg-black outline-none",
-          className,
-        )}
+        style={{
+          ...(fill ? { height: "100%" } : { aspectRatio: "16 / 9" }),
+          backgroundColor: "black",
+          outline: "none",
+          overflow: "hidden",
+          position: "relative",
+          width: "100%",
+        }}
         // Focusable by script only (not a Tab stop) so the mount claim above can land on the surface.
         tabIndex={-1}
         onKeyDown={onKeyDown}
@@ -201,7 +197,12 @@ const VideoPlayer = ({
           ref={videoRef}
           // `attach` owns the source when present (hls.js binds via attachMedia); else the plain URL.
           src={attach ? undefined : src}
-          className={cn("size-full cursor-pointer", !controlsShown && "cursor-none")}
+          style={{
+            cursor: controlsShown ? "pointer" : "none",
+            display: "block",
+            height: "100%",
+            width: "100%",
+          }}
           autoPlay={autoPlay}
           muted={muted}
           playsInline
@@ -214,7 +215,9 @@ const VideoPlayer = ({
         {/* OVERLAY SLOT — a caller-rendered transient state (channel-watch's TunerLoader during
           warm-up). Sits directly over the video but UNDER the control-bar scrims below, so the
           controls stay operable. pointer-events-none so it never eats a click on the frame. */}
-        {overlay && <div className="pointer-events-none absolute inset-0 z-0">{overlay}</div>}
+        {overlay && (
+          <div style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 0 }}>{overlay}</div>
+        )}
 
         {/* LIVE: the caller's chrome (§9), drawn from the player's own state. */}
         {live &&
@@ -235,52 +238,29 @@ const VideoPlayer = ({
             volume,
           })}
 
-        {/* TOP BAR (a clip) — `leading` (left) + `title` (right), over a scrim, fading with the
-          controls. */}
-        {!live && (title || leading) && (
-          <div
-            className={cn(
-              "pointer-events-none absolute top-0 right-0 left-0 flex items-center gap-2.5 bg-linear-to-b from-black/70 to-transparent p-3 transition-opacity duration-200",
-              controlsShown ? "opacity-100" : "opacity-0",
-            )}
-          >
-            <div className="pointer-events-auto shrink-0">{leading}</div>
-            {title && (
-              <p className="text-static-100 pointer-events-auto ml-auto min-w-0 truncate text-right text-sm font-medium">
-                {title}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* CONTROL BAR (a clip) — over a bottom scrim, auto-hiding: play, volume and the elapsed time
-          left-packed, fullscreen at the far edge. */}
+        {/* A CLIP: `leading` and the title over the top, the transport over the bottom, fading with
+          the auto-hide. Dragging the level to zero mutes and off zero un-mutes, as every player does. */}
         {!live && (
-          <div
-            className={cn(
-              "absolute right-0 bottom-0 left-0 flex flex-col gap-2.5 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
-              controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
-            )}
-          >
-            <fieldset className="flex min-w-0 items-center gap-2 border-0 p-0 sm:gap-3">
-              <legend className="sr-only">Playback controls</legend>
-              <PlayToggle playing={playing} onToggle={toggle} />
-              <VolumeControl
-                volume={volume}
-                muted={muted}
-                onVolumeChange={setVolume}
-                onMutedChange={setMuted}
-              />
-              {ready && (
-                <span className="text-static-300 shrink-0 font-mono text-xs tabular-nums">
-                  {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-1.5">
-                <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
-              </div>
-            </fieldset>
-          </div>
+          <ClipChrome
+            density="pointer"
+            durationMs={ready ? duration * 1000 : undefined}
+            elapsedMs={current * 1000}
+            fullscreen={fullscreen}
+            leading={leading}
+            muted={muted}
+            onFullscreen={toggleFullscreen}
+            onToggleMute={() => setMuted((m) => !m)}
+            onTogglePlay={toggle}
+            onVolume={(level) => {
+              setVolume(level);
+              setMuted(level === 0);
+            }}
+            playing={playing}
+            pointer
+            shown={controlsShown}
+            title={title}
+            volume={volume}
+          />
         )}
       </div>
     </HoldControlsContext.Provider>

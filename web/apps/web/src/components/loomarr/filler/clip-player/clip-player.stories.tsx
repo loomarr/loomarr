@@ -16,7 +16,7 @@ import { ClipPlayer } from "./clip-player";
 // `#storybook-root` and waits for a visible child of it — so a forced-open dialog hangs that wait
 // until the test times out. It shipped that way once already.
 //
-// The player's own surface IS covered, at `UI/VideoPlayer`, which renders unportalled. Rebuilding
+// The player's own surface IS covered, at `Player/VideoPlayer`, which renders unportalled. Rebuilding
 // its chrome here with hand-written markup would snapshot a lookalike rather than the component,
 // which is worse than not snapshotting it.
 const meta = {

@@ -1,6 +1,7 @@
 import type { ClipDTO } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ClipPlayer } from "./clip-player";
 
 // The clip player dialog (V39). Thin by design — the playing is `VideoPlayer`'s job and is tested

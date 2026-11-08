@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { SegmentPreview } from "./segment-preview";
 
 // The affordance that makes the split-review gate answerable (§10 V54). Before it, an operator was
