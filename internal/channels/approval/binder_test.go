@@ -441,7 +441,7 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 	if codec.channelID != ch.ID || reconciler.channelID != ch.ID {
 		t.Errorf("post-commit calls = codec:%q reconcile:%q, want %q", codec.channelID, reconciler.channelID, ch.ID)
 	}
-	if activity.kind != "channel.reconcile" || activity.subjectID != ch.ID || activity.text == "" {
+	if activity.kind != store.ActivityKindChannel || activity.subjectID != ch.ID || activity.text == "" {
 		t.Errorf("reconcile failure activity = %+v", activity)
 	}
 }

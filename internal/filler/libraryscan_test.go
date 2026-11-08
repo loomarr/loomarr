@@ -8,25 +8,15 @@ import (
 	"testing"
 )
 
-// fakeLister stands in for a media server. `err` makes the server unreachable.
-type fakeLister struct {
-	clips []LibraryClip
-	err   error
-	calls int
-}
-
-func (f *fakeLister) ListLibraryClips(context.Context, string) ([]LibraryClip, error) {
-	f.calls++
-	return f.clips, f.err
-}
-
-// libraryOnDisk writes files where a media server would have them, and returns the LibraryClips
-// pointing at those paths — the shared-storage case that makes a library scannable.
-func libraryOnDisk(t *testing.T, names ...string) (dir string, clips []LibraryClip) {
+// libraryOnDisk writes clip files into a library folder, with subfolders as the names say.
+func libraryOnDisk(t *testing.T, names ...string) string {
 	t.Helper()
-	dir = t.TempDir()
+	dir := t.TempDir()
 	for i, name := range names {
 		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		body := make([]byte, 2048)
 		for j := range body {
 			body[j] = byte(i*7 + j%251)
@@ -34,25 +24,30 @@ func libraryOnDisk(t *testing.T, names ...string) (dir string, clips []LibraryCl
 		if err := os.WriteFile(p, body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		clips = append(clips, LibraryClip{Name: name, Path: p})
 	}
-	return dir, clips
+	return dir
 }
 
 // The whole point of the kind: clips land in the WATCH folder, so intake files them exactly as it
 // files a hand-dropped file. Copying them straight into the clip folder would be a second way in
-// — a divergent path where the hash, the dedupe and the sidecar could each be forgotten.
+// — a divergent path where the hash, the dedupe and the sidecar could each be forgotten. The
+// library folder itself is the household's and is left exactly as it was.
 func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
-	_, clips := libraryOnDisk(t, "Crunchlings 1993.mp4", "Station ID.mp4")
+	lib := libraryOnDisk(t, "Crunchlings 1993.mp4", "Idents/Station ID.mkv", "Idents/cover.jpg", ".staging/part.mp4")
 	watch := filepath.Join(t.TempDir(), "watch")
 
-	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
+	res, err := NewLibraryScanner(nil).Scan(context.Background(), lib, watch, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Found != 2 || res.Copied != 2 || res.Unreadable != 0 {
-		t.Fatalf("Scan = %+v, want 2 found and 2 copied", res)
+		t.Fatalf("Scan = %+v, want the 2 clips in the folder and its subfolder copied, the cover and "+
+			"the dot-folder skipped", res)
+	}
+	for _, name := range []string{"Crunchlings 1993.mp4", "Idents/Station ID.mkv"} {
+		if _, err := os.Stat(filepath.Join(lib, name)); err != nil {
+			t.Errorf("the library's own %s is gone — a library folder is copied from, never drained", name)
+		}
 	}
 
 	// ⚠ The ORIGINAL FILENAME is preserved. §8 grounds an era only on a year that appears
@@ -64,82 +59,58 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 	}
 }
 
-// A re-scan of an unchanged library writes nothing. Without this every scheduled scan re-copies
-// the whole library; intake would correctly discard it all as duplicates, but Loomarr would be
-// reading the operator's entire library off disk on a timer forever.
-func TestLibraryScan_ReScanDoesNotReCopy(t *testing.T) {
-	_, clips := libraryOnDisk(t, "a.mp4", "b.mp4")
-	watch := filepath.Join(t.TempDir(), "watch")
-	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-
-	if _, err := s.Scan(context.Background(), "Commercials", watch, nil); err != nil {
-		t.Fatal(err)
-	}
-	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Copied != 0 {
-		t.Errorf("Copied = %d on a re-scan, want 0 — the library is being re-read every pass", res.Copied)
-	}
-}
-
-// A clip the catalog already holds is not copied, and an all-catalogued library is not mistaken for
-// unreachable storage (#1605).
+// A clip still waiting in the watch folder, or one the catalog already holds, is not copied again,
+// and an all-catalogued folder is not mistaken for unreachable storage (#1605). Intake empties the
+// watch folder, so without the catalog check every scheduled scan would read the household's whole
+// folder off disk again, forever.
 func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
-	_, clips := libraryOnDisk(t, "filed.mp4", "new.mp4")
-	filedID, err := ClipID(clips[0].Path)
+	lib := libraryOnDisk(t, "filed.mp4", "new.mp4", "waiting.mp4")
+	filedID, err := ClipID(filepath.Join(lib, "filed.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	watch := filepath.Join(t.TempDir(), "watch")
-	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch, func(id, ext string) bool {
+	if err := os.MkdirAll(watch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(watch, "waiting.mp4"), []byte("queued"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := NewLibraryScanner(nil).Scan(context.Background(), lib, watch, func(id, ext string) bool {
 		return id == filedID && ext == ".mp4"
 	})
-	if err != nil || res.Copied != 1 || res.Catalogued != 1 || res.Unreadable != 0 {
-		t.Fatalf("Scan = %+v, %v; want the new clip copied and the filed one skipped", res, err)
+	if err != nil || res.Found != 3 || res.Copied != 1 || res.Catalogued != 1 || res.Unreadable != 0 {
+		t.Fatalf("Scan = %+v, %v; want the new clip copied and the filed and waiting ones skipped", res, err)
 	}
 	if _, err := os.Stat(filepath.Join(watch, "filed.mp4")); err == nil {
 		t.Error("a catalogued clip was copied into the watch folder again")
 	}
 
-	res, err = NewLibraryScanner(&fakeLister{clips: clips[:1]}, nil).Scan(context.Background(), "Commercials",
-		filepath.Join(t.TempDir(), "watch"), func(string, string) bool { return true })
+	all := libraryOnDisk(t, "filed.mp4")
+	res, err = NewLibraryScanner(nil).Scan(context.Background(), all, filepath.Join(t.TempDir(), "watch"),
+		func(string, string) bool { return true })
 	if err != nil || res.Catalogued != 1 {
 		t.Errorf("all-catalogued Scan = %+v, %v; want no error", res, err)
 	}
 }
 
-// ⚠ Listed clips that cannot be OPENED mean Loomarr and the media server do not share storage —
-// a mount problem, not an empty library. A silent zero result is indistinguishable from "this
-// library has no clips", and the two remedies are completely different: mount a volume, or add
-// some clips. The named error is what lets the UI say the right one.
-func TestLibraryScan_UnreadableStorageIsNamedNotSilent(t *testing.T) {
-	clips := []LibraryClip{
-		{Name: "a.mp4", Path: "/not/a/real/mount/a.mp4"},
-		{Name: "b.mp4", Path: "/not/a/real/mount/b.mp4"},
-	}
+// ⚠ A folder that isn't there is a mount problem, not an empty library. A silent zero result is
+// indistinguishable from "this folder has no clips", and the two remedies are completely
+// different: mount a volume, or add some clips. The named error is what lets the UI say which.
+func TestLibraryScan_AnUnreadableFolderIsNamedNotSilent(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
-
-	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
+	_, err := NewLibraryScanner(nil).Scan(context.Background(), filepath.Join(t.TempDir(), "not-mounted"), watch, nil)
 	if !errors.Is(err, ErrLibraryUnreachableStorage) {
 		t.Errorf("err = %v, want ErrLibraryUnreachableStorage — an operator cannot tell a mount "+
 			"problem from an empty library without it", err)
 	}
-	if res.Unreadable != 2 {
-		t.Errorf("Unreadable = %d, want 2", res.Unreadable)
-	}
 }
 
-// A genuinely EMPTY library is not a storage error. The mirror of the test above: if both
-// answered the same way, the named error would carry no information.
+// A genuinely EMPTY folder is not a storage error. The mirror of the test above: if both answered
+// the same way, the named error would carry no information.
 func TestLibraryScan_AnEmptyLibraryIsNotAnError(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
-	s := NewLibraryScanner(&fakeLister{}, nil)
-
-	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
+	res, err := NewLibraryScanner(nil).Scan(context.Background(), t.TempDir(), watch, nil)
 	if err != nil {
 		t.Errorf("an empty library reported %v, want no error", err)
 	}
@@ -148,42 +119,13 @@ func TestLibraryScan_AnEmptyLibraryIsNotAnError(t *testing.T) {
 	}
 }
 
-// ⚠ A partially readable library still copies what it can. Failing the whole scan because one
-// file is missing would let a single stray item cost an operator their entire commercial break.
-func TestLibraryScan_PartialReadabilityStillCopiesTheRest(t *testing.T) {
-	_, clips := libraryOnDisk(t, "good.mp4")
-	clips = append(clips, LibraryClip{Name: "gone.mp4", Path: "/not/a/real/mount/gone.mp4"})
-	watch := filepath.Join(t.TempDir(), "watch")
-
-	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
-	if err != nil {
-		t.Fatalf("a partly readable library failed the whole scan: %v", err)
-	}
-	if res.Copied != 1 || res.Unreadable != 1 {
-		t.Errorf("Scan = %+v, want 1 copied and 1 unreadable", res)
-	}
-}
-
-// An unreachable media server is an ERROR the caller logs and moves past — never a panic, and
-// never a silent success that would look like an empty library.
-func TestLibraryScan_UnreachableServerReportsRatherThanPretending(t *testing.T) {
-	watch := filepath.Join(t.TempDir(), "watch")
-	s := NewLibraryScanner(&fakeLister{err: errors.New("connection refused")}, nil)
-
-	if _, err := s.Scan(context.Background(), "Commercials", watch, nil); err == nil {
-		t.Error("an unreachable media server reported success — it is indistinguishable from " +
-			"an empty library, which is the wrong thing to tell an operator")
-	}
-}
-
 // Nothing configured is a no-op. The sync calls this for every source row, and a library row with
-// no name must not become a scan of everything.
+// no folder must not become a scan of everything.
 func TestLibraryScan_UnconfiguredIsANoOp(t *testing.T) {
-	s := NewLibraryScanner(&fakeLister{clips: []LibraryClip{{Name: "a", Path: "/tmp/a"}}}, nil)
+	s := NewLibraryScanner(nil)
 	for _, tc := range []struct{ name, lib, watch string }{
-		{"no library name", "", "/tmp/watch"},
-		{"no watch folder", "Commercials", ""},
+		{"no folder", "", "/tmp/watch"},
+		{"no watch folder", t.TempDir(), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := s.Scan(context.Background(), tc.lib, tc.watch, nil)
@@ -206,50 +148,26 @@ func (f fakeScanSources) ListScanSources(context.Context) ([]ScanSource, error) 
 	return f.srcs, f.err
 }
 
-// countingLister fails for one named library and succeeds for the rest, so a test can prove the
-// loop CONTINUES past a failure rather than merely that it does not crash.
-type countingLister struct {
-	failFor string
-	byName  map[string][]LibraryClip
-	seen    []string
-}
-
-func (c *countingLister) ListLibraryClips(_ context.Context, name string) ([]LibraryClip, error) {
-	c.seen = append(c.seen, name)
-	if name == c.failFor {
-		return nil, errors.New("connection refused")
-	}
-	return c.byName[name], nil
-}
-
-// ⚠ THE §9.1 guarantee, one level down. One unreachable source must not cost the others: an
-// operator whose media server is off must still get the clips sitting in their watched folders.
-// A `return err` in that loop would mean a single dead source silently costs a channel every
-// commercial it already had on disk.
+// ⚠ THE §9.1 guarantee, one level down. One unreadable source must not cost the others: an
+// operator whose library volume is unmounted must still get the clips sitting in their other
+// folders. A `return err` in that loop would mean a single dead source silently costs a channel
+// every commercial it already had on disk.
 func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
-	_, good := libraryOnDisk(t, "reachable.mp4")
+	good := libraryOnDisk(t, "reachable.mp4")
 	watch := filepath.Join(t.TempDir(), "watch")
-	lister := &countingLister{
-		failFor: "Broken",
-		byName:  map[string][]LibraryClip{"Working": good},
-	}
 
 	clipDir := t.TempDir()
 	s := &Syncer{
 		dir:   clipDir,
 		watch: watch,
 		scanSources: fakeScanSources{srcs: []ScanSource{
-			{ID: "lib:broken", Kind: "library", URI: "Broken"},
-			{ID: "lib:working", Kind: "library", URI: "Working"},
+			{ID: "lib:broken", Kind: "library", URI: filepath.Join(t.TempDir(), "not-mounted")},
+			{ID: "lib:working", Kind: "library", URI: good},
 		}},
-		libraries: NewLibraryScanner(lister, nil),
+		libraries: NewLibraryScanner(nil),
 	}
 	s.drainScanSources(context.Background(), nil)
 
-	// The loop reached the SECOND library after the first one failed.
-	if len(lister.seen) != 2 {
-		t.Fatalf("listed %v, want both libraries — the loop stopped at the failure", lister.seen)
-	}
 	var filed string
 	_ = filepath.WalkDir(clipDir, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && filepath.Ext(path) == ".mp4" {
@@ -410,9 +328,9 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 	}
 }
 
-// An install with NO media server still drains its folders. Library rows do no work rather than
-// failing — the same rule Tunarr registration follows, and the one §9.1 exists to protect.
-func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
+// A library row still naming a media-server library rather than a folder (one the cutover could
+// not rewrite) does no work, and the folder rows still drain.
+func TestDrainScanSources_AnUnrewrittenLibraryRowDoesNoWork(t *testing.T) {
 	clipDir := t.TempDir()
 	extra := t.TempDir()
 	body := make([]byte, 2048)
@@ -430,12 +348,12 @@ func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
 			{ID: "lib:none", Kind: "library", URI: "Commercials"},
 			{ID: "folder:extra", Kind: "folder", URI: extra},
 		}},
-		libraries: nil, // no media server configured
+		libraries: NewLibraryScanner(nil),
 	}
 	s.drainScanSources(context.Background(), nil)
 
 	if left, _ := os.ReadDir(extra); len(left) != 0 {
-		t.Error("a library row with no media server stopped the folder rows from draining")
+		t.Error("a library row naming a library rather than a folder stopped the folder rows from draining")
 	}
 }
 
@@ -446,24 +364,23 @@ func TestDrainScanSources_UnwiredIsANoOp(t *testing.T) {
 	s.drainScanSources(context.Background(), nil) // must not panic
 }
 
-// #1605: re-syncing an UNCHANGED library must add nothing. Intake moves each copy out of the
-// watch folder, and the transcode then re-keys the filed clip to its normalized derivative's
+// #1605: re-syncing an UNCHANGED library folder must add nothing. Intake moves each copy out of
+// the watch folder, and the transcode then re-keys the filed clip to its normalized derivative's
 // hash, so neither the watch folder nor the raw hash's filed path remembers the clip any more.
 // A second scan that copies the clip again files it as new, and its transcode later collides
 // with the first copy's derivative on clips.hash.
 func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
-	_, clips := libraryOnDisk(t, "Crunchlings 1993.mp4")
-	rawID, err := ClipID(clips[0].Path)
+	lib := libraryOnDisk(t, "Crunchlings 1993.mp4")
+	rawID, err := ClipID(filepath.Join(lib, "Crunchlings 1993.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	clipDir := t.TempDir()
-	lister := &countingLister{byName: map[string][]LibraryClip{"Commercials": clips}}
 	s := &Syncer{
 		dir:         clipDir,
 		watch:       filepath.Join(t.TempDir(), "watch"),
-		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "lib:ads", Kind: "library", URI: "Commercials"}}},
-		libraries:   NewLibraryScanner(lister, nil),
+		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "lib:ads", Kind: "library", URI: lib}}},
+		libraries:   NewLibraryScanner(nil),
 	}
 
 	s.drainScanSources(context.Background(), nil)

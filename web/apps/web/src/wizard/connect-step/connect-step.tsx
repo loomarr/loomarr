@@ -1,8 +1,7 @@
 import { humanizeSettingKey } from "@loomarr/core/format";
-import { Loader2 } from "lucide-react";
+import { Action } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ChecklistItem } from "@/components/loomarr/setup/checklist-item";
-import { Button } from "@/components/ui/button";
 import type { ConnectStepProps } from "./connect-step.type";
 
 // The shape shared by the two one-click wiring steps (§13 steps 3 and 5): explain what
@@ -28,15 +27,14 @@ const ConnectStep = ({ check, cta, onConnect, isPending = false, error, children
         />
       )}
 
-      <Button
-        variant={connected ? "outline" : "default"}
-        className="w-fit"
-        onClick={onConnect}
+      <Action
         disabled={isPending}
+        onPress={onConnect}
+        style={{ alignSelf: "flex-start" }}
+        variant={connected ? "outline" : undefined}
       >
-        {isPending && <Loader2 className="animate-spin" aria-hidden />}
         {isPending ? "Working…" : connected ? "Run again" : cta}
-      </Button>
+      </Action>
     </div>
   );
 };

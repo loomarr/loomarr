@@ -4,12 +4,12 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
-import { Button } from "@/components/ui/button";
 import { AiModelSettings } from "@/settings/ai-model-settings";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -81,14 +81,14 @@ const WizardAiBlock = () => {
       {patch.error != null && <ErrorState error={patch.error} />}
 
       {dirty && (
-        <Button
-          variant="outline"
-          className="self-start"
+        <Action
           disabled={patch.isPending}
-          onClick={() => patch.mutate({ data: { edits } })}
+          onPress={() => patch.mutate({ data: { edits } })}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
         >
           {patch.isPending ? "Saving…" : "Save provider"}
-        </Button>
+        </Action>
       )}
 
       {/* Auto-detect header — only meaningful on the local (Ollama) branch. */}

@@ -9,10 +9,10 @@ tables:
     about: >
       One row per movie, show or episode, however many importers report it. Created by the first
       report. Items are kept when an importer stops seeing them (the report is marked missing
-      instead); one is deleted only when its last report moves to another item.
+      instead).
     retention: >
-      Deleted only when its last report moves to another item; an item no importer sees any more is
-      kept, so the table grows as files come and go.
+      Deleted when its last report moves to another item, or by the nightly housekeeping once its
+      last report was deleted for being missing 180 days.
     columns:
       id: >
         Identifies the item. Other inventory tables point here, and the library's tables name it as
@@ -28,8 +28,8 @@ tables:
       One importer's latest report of one item. Replaced each time that importer reports the item
       again. Kept when the importer no longer sees it, with missing_at set.
     retention: >
-      Unbounded: nothing deletes these rows; a report the importer stops seeing is only marked
-      missing, and its item is never deleted while it has a report.
+      Marked missing when the importer stops seeing it, and cleared if it comes back. The nightly
+      housekeeping deletes it 180 days after it went missing, with its source reports.
     columns:
       authority_id: >
         The importer that reported it. `scan:` and a fingerprint of the scanned folder, or
@@ -67,8 +67,8 @@ tables:
       One playable file (or media server version) of an item. Created by the first report that
       lists it; it moves with its report if the report joins another item.
     retention: >
-      Unbounded: nothing deletes these rows; a file that disappears keeps its row, because its item
-      is never deleted while the item has a source.
+      Goes with its item. A source left with no report is deleted by the nightly housekeeping, with
+      its measurement and analysis, once it is 180 days old.
     columns:
       id: Identifies the source. Other inventory tables and playout point here.
       item_id: The item the source plays (inventory_items.id).
@@ -88,8 +88,8 @@ tables:
       reports it again. Kept when the importer no longer sees it, with missing_at set. Deleted with
       the source or the item's report.
     retention: >
-      Unbounded: nothing deletes these rows; a source the importer stops seeing is only marked
-      missing, and neither its source nor its item's report is ever deleted.
+      Marked missing when the importer stops seeing it. The nightly housekeeping deletes it 180 days
+      after it went missing; it also goes with its source or its item's report.
     columns:
       authority_id: The importer that reported it (part of inventory_item_origins).
       external_item_id: The importer's id for the item (part of inventory_item_origins).

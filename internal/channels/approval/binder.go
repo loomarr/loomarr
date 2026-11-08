@@ -243,7 +243,7 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
-				b.acts.Error(ctx, "channel.reconcile", channelID,
+				b.acts.Error(ctx, store.ActivityKindChannel, channelID,
 					fmt.Sprintf("%q couldn't converge its playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}

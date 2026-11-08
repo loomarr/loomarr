@@ -1,5 +1,5 @@
+import { Action } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
 import type { HomeStripProps } from "./home-strip.type";
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -30,7 +30,7 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
     return (
       <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
         <h2 className="m-0 text-lg font-semibold">Couldn’t load your channels.</h2>
-        <Button onClick={onRetry}>Try again</Button>
+        <Action onPress={onRetry}>Try again</Action>
       </section>
     );
   }
@@ -40,9 +40,9 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
       <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
         <h2 className="m-0 text-lg font-semibold">Your first channel starts here</h2>
         <p className="text-static-400 m-0">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
-        <Button render={<Link to="/guide" search={{ new: "1" }} />}>
+        <Action accessibilityRole="link" render={<Link to="/guide" search={{ new: "1" }} />}>
           {isAdmin ? "Add your first channel" : "Request a channel"}
-        </Button>
+        </Action>
       </section>
     );
   }

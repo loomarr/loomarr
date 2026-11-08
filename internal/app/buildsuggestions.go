@@ -105,7 +105,7 @@ func buildSuggestions(
 		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
-	result.collections = libraryCollections{lib: libraryClient}
+	result.collections = libraryCollections{own: st, lib: libraryClient}
 	result.ideaLibrary = &libraryIdeaItems{lib: libraryClient, now: time.Now}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,

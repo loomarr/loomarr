@@ -10,7 +10,7 @@ import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
@@ -61,18 +61,18 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={busy} onClick={onRequest}>
+            <Action disabled={busy} onPress={onRequest}>
               Request channel
-            </Button>
+            </Action>
             {/* Opens the manual builder preloaded with this idea's own lineup (#1817) — the
                 shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
-            <Link
-              to="/guide"
-              search={{ manual: "1", ideaId: idea.id }}
-              className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+            <Action
+              accessibilityRole="link"
+              render={<Link to="/guide" search={{ manual: "1", ideaId: idea.id }} />}
+              variant="ghost"
             >
               Edit first
-            </Link>
+            </Action>
             <Button
               size="sm"
               variant="ghost"
@@ -202,9 +202,13 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
           blank. The shipped grid above already names this as waiting on the mock; #1872 is the
           approved one. */}
       <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
-        <Link to="/guide" search={{ manual: "1" }} className={cn(buttonVariants({ variant: "ghost" }))}>
+        <Action
+          accessibilityRole="link"
+          render={<Link to="/guide" search={{ manual: "1" }} />}
+          variant="ghost"
+        >
           Don’t see it? Describe your own channel
-        </Link>
+        </Action>
       </div>
     </section>
   );

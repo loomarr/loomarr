@@ -3,6 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useGuideWindow } from "@loomarr/core/guide";
+import { Action } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
@@ -17,7 +18,6 @@ import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-
 import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
@@ -192,12 +192,12 @@ const ChannelProgramming = ({
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
               <div className="border-border flex items-center gap-2 border-t pt-4">
-                <Button variant="suggest" size="sm" disabled={rules.isApplying} onClick={rules.apply}>
+                <Action disabled={rules.isApplying} onPress={rules.apply} variant="suggest">
                   {rules.isApplying ? "Applying…" : "Apply rules"}
-                </Button>
-                <Button variant="ghost" size="sm" disabled={rules.isApplying} onClick={rules.discard}>
+                </Action>
+                <Action disabled={rules.isApplying} onPress={rules.discard} variant="ghost">
                   Discard
-                </Button>
+                </Action>
                 <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
               </div>
             )}

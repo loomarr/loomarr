@@ -103,11 +103,6 @@ func buildFillerSubsystem(
 	} else if n > 0 {
 		log.Info("recovered interrupted interactive operations", "operations", n)
 	}
-	if n, err := st.RecoverInterruptedSpokenSafetyRuns(recoveryCtx, time.Now().UTC()); err != nil {
-		log.Warn("could not recover interrupted spoken-safety runs", "err", err)
-	} else if n > 0 {
-		log.Info("recovered interrupted spoken-safety runs", "runs", n)
-	}
 	recoveryCancel()
 
 	if dir := layout.ClipDir(); dir != "" {

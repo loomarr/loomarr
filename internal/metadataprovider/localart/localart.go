@@ -23,19 +23,6 @@ import (
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 )
 
-// Artwork kinds, named as the arrs and TMDB name them so precedence picks one per kind.
-const (
-	KindPoster    = "poster"
-	KindFanart    = "fanart"
-	KindClearlogo = "clearlogo"
-	KindBanner    = "banner"
-	KindLandscape = "landscape"
-	KindClearart  = "clearart"
-	KindDiscart   = "discart"
-	// KindThumb is an episode's still.
-	KindThumb = "thumb"
-)
-
 // extensions are the image types a sidecar may use, in the order one is preferred.
 var extensions = []string{".jpg", ".jpeg", ".png", ".webp"}
 
@@ -58,17 +45,17 @@ type rule struct {
 
 // folderRules are the names a series folder, or a folder holding one movie, uses.
 var folderRules = []rule{
-	{KindPoster, []string{"poster", "folder", "cover"}},
-	{KindFanart, []string{"fanart", "backdrop", "background"}},
-	{KindClearlogo, []string{"clearlogo", "logo"}},
-	{KindBanner, []string{"banner"}},
-	{KindLandscape, []string{"landscape"}},
-	{KindClearart, []string{"clearart"}},
-	{KindDiscart, []string{"discart", "disc"}},
+	{mp.KindPoster, []string{"poster", "folder", "cover"}},
+	{mp.KindFanart, []string{"fanart", "backdrop", "background"}},
+	{mp.KindClearlogo, []string{"clearlogo", "logo"}},
+	{mp.KindBanner, []string{"banner"}},
+	{mp.KindLandscape, []string{"landscape"}},
+	{mp.KindClearart, []string{"clearart"}},
+	{mp.KindDiscart, []string{"discart", "disc"}},
 }
 
 // movieKinds are the kinds a movie file's own "<name>-<kind>" sidecar may hold.
-var movieKinds = []string{KindPoster, KindFanart, KindClearlogo, KindBanner, KindLandscape, KindClearart, KindDiscart}
+var movieKinds = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo, mp.KindBanner, mp.KindLandscape, mp.KindClearart, mp.KindDiscart}
 
 // Provider reads artwork sidecars from the local filesystem.
 type Provider struct{}
@@ -153,7 +140,7 @@ func Beside(kind mp.Kind, media string, names []string, sole bool) (mp.Record, e
 	var rules []rule
 	switch kind {
 	case mp.KindEpisode:
-		rules = []rule{{KindThumb, []string{stem + "-thumb"}}}
+		rules = []rule{{mp.KindThumb, []string{stem + "-thumb"}}}
 	case mp.KindMovie:
 		for _, kind := range movieKinds {
 			rules = append(rules, rule{kind, []string{stem + "-" + kind}})

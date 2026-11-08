@@ -18,6 +18,9 @@ type LibraryCollection struct {
 	Description string
 	// ImportedFrom names the media server it was brought over from at cutover; "" made in Loomarr.
 	ImportedFrom string
+	// ImportedID is the media server's id for the collection it was brought over from; "" made in
+	// Loomarr. An update keeps it.
+	ImportedID string
 	// Members are library item ids, in order. A title that has left the library stays here, so it
 	// comes back in its place.
 	Members   []string
@@ -96,7 +99,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	if id != "" {
 		where, args = " WHERE c.id = ?", []any{id}
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.updated_at_ms,
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
 		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
 		ORDER BY LOWER(c.name), c.id, m.position`), args...)
@@ -109,7 +112,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 		var c LibraryCollection
 		var updated int64
 		var member string
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.ImportedFrom, &updated, &member); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.ImportedFrom, &c.ImportedID, &updated, &member); err != nil {
 			return nil, fmt.Errorf("scan library collection: %w", err)
 		}
 		if n := len(out); n == 0 || out[n-1].ID != c.ID {
@@ -132,8 +135,8 @@ func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollect
 	id := strings.ToLower(rand.Text())
 	err := s.writeLibraryCollection(ctx, id, c, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collections (id, name, description, imported_from,
-			created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)`),
-			id, c.Name, c.Description, c.ImportedFrom, at.UnixMilli(), at.UnixMilli())
+			imported_id, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+			id, c.Name, c.Description, c.ImportedFrom, c.ImportedID, at.UnixMilli(), at.UnixMilli())
 		return err
 	})
 	if err != nil {
