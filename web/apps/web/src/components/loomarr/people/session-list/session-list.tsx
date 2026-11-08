@@ -1,7 +1,12 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
 import { Action, Badge } from "@loomarr/design-system";
+import { ConfirmStep } from "@loomarr/ui";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { SessionListProps } from "./session-list.type";
+
+// Session ids are opaque hashes, so this can't collide with a row's confirm.
+const ALL = "all-sessions";
 
 // SessionList — who is signed in as this user, and the ability to end it (§11: sessions
 // are revocable rows, and disabling a user kills them immediately). Surfaced because
@@ -20,6 +25,8 @@ const SessionList = ({
   now = Date.now(),
   className,
 }: SessionListProps) => {
+  // Signing a session out can't be taken back, so the first press only asks (one row at a time).
+  const [confirming, setConfirming] = useState<string>();
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading sessions…</p>;
   }
@@ -37,40 +44,70 @@ const SessionList = ({
         <p className="text-muted-foreground text-sm">
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
         </p>
-        {onRevokeAll && (
-          <Action onPress={onRevokeAll} variant="outline">
+        {onRevokeAll && confirming !== ALL && (
+          <Action onPress={() => setConfirming(ALL)} variant="destructive">
             Sign out everywhere
           </Action>
         )}
       </div>
+      {confirming === ALL && (
+        <ConfirmStep
+          confirmLabel="Sign out everywhere"
+          message={`Sign ${userName} out of every device? Each one has to sign in again.`}
+          onCancel={() => setConfirming(undefined)}
+          onConfirm={() => {
+            setConfirming(undefined);
+            onRevokeAll?.();
+          }}
+        />
+      )}
 
       <ul className="flex flex-col gap-2">
-        {sessions.map((s) => (
-          <li
-            key={s.id}
-            className="border-static-800 flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-          >
-            <div className="min-w-0">
-              <p className="flex items-center gap-2 text-sm">
-                {`Signed in ${formatRelative(s.createdAt, now)}`}
-                {s.current && (
-                  <Badge shape="square" tone="tune">
-                    This device
-                  </Badge>
-                )}
-              </p>
-              <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
-            </div>
-            <Action
-              disabled={revoking === s.id}
-              icon={revoking === s.id ? "loading" : undefined}
-              onPress={() => onRevoke?.(s.id)}
-              variant="ghost"
+        {sessions.map((s) =>
+          // The confirm takes the row's place, as Delete channel's replaces its choices.
+          confirming === s.id ? (
+            <li key={s.id}>
+              <ConfirmStep
+                confirmLabel="Sign out"
+                message={
+                  s.current
+                    ? "Sign out of this device? You'll need to sign in again."
+                    : `Sign out the session from ${formatRelative(s.createdAt, now)}? That device has to sign in again.`
+                }
+                onCancel={() => setConfirming(undefined)}
+                onConfirm={() => {
+                  setConfirming(undefined);
+                  onRevoke?.(s.id);
+                }}
+              />
+            </li>
+          ) : (
+            <li
+              key={s.id}
+              className="border-static-800 flex items-center justify-between gap-3 rounded-md border px-3 py-2"
             >
-              {s.current ? "Sign out (this device)" : "Sign out"}
-            </Action>
-          </li>
-        ))}
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm">
+                  {`Signed in ${formatRelative(s.createdAt, now)}`}
+                  {s.current && (
+                    <Badge shape="square" tone="tune">
+                      This device
+                    </Badge>
+                  )}
+                </p>
+                <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
+              </div>
+              <Action
+                disabled={revoking === s.id}
+                icon={revoking === s.id ? "loading" : undefined}
+                onPress={() => setConfirming(s.id)}
+                variant="destructive"
+              >
+                {s.current ? "Sign out (this device)" : "Sign out"}
+              </Action>
+            </li>
+          ),
+        )}
       </ul>
     </div>
   );
