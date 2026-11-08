@@ -183,7 +183,6 @@ var migratedTests = []string{
 	"web/apps/web/src/components/loomarr/people/invitation-join/",
 	"web/apps/web/src/components/loomarr/shell/search-command/",
 	"web/apps/web/src/components/ui/panel-row/",
-	"web/apps/web/src/components/ui/sheet/",
 	"web/apps/web/src/components/ui/video-player/",
 	"web/apps/web/src/lib/policy-overrides/",
 	"web/apps/web/src/queue/request-detail/",
