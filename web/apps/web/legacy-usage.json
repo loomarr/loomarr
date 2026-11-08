@@ -550,8 +550,7 @@
       "tailwindClasses": 19
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 37,
-      "legacyUi": 1
+      "tailwindClasses": 37
     },
     "src/home/new-this-week/new-this-week.tsx": {
       "tailwindClasses": 68
@@ -559,12 +558,8 @@
     "src/home/on-now/on-now.tsx": {
       "tailwindClasses": 58
     },
-    "src/home/on-the-way/on-the-way.tsx": {
-      "legacyUi": 1
-    },
     "src/home/recently-tuned/recently-tuned.tsx": {
-      "tailwindClasses": 34,
-      "legacyUi": 1
+      "tailwindClasses": 34
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -584,24 +579,20 @@
       "tailwindClasses": 14
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 65,
-      "legacyUi": 1
+      "tailwindClasses": 65
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 27,
-      "legacyUi": 1
+      "tailwindClasses": 27
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 73,
-      "legacyUi": 1
+      "tailwindClasses": 73
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 23,
       "legacyUi": 2
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 38,
-      "legacyUi": 1
+      "tailwindClasses": 38
     },
     "src/routes/_authed/channels/$id/info.tsx": {
       "tailwindClasses": 38
