@@ -198,7 +198,7 @@ type authResponse struct {
 
 // AuthenticateByName verifies credentials (§11). On success it best-effort logs
 // the media-server session out (we only needed to confirm the password) and
-// returns the User; callers issue their own session (Phase 9).
+// returns the User; callers issue their own session.
 func (c *Client) AuthenticateByName(ctx context.Context, username, password string) (User, error) {
 	c, err := c.operation()
 	if err != nil {
