@@ -206,7 +206,7 @@ type LibraryOrigin struct {
 	Key       string
 }
 
-// LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
+// LibraryItemImageOwner is the image owner kind of a library item's artwork (library_item_images). The ref is the
 // one record of which image is its poster: an adopted image changes hash when its bytes arrive,
 // and the image service moves the refs with it.
 const LibraryItemImageOwner = "library_item"
@@ -307,8 +307,8 @@ const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
 // countFiles is how many of title i's files hold also, a condition on f ("" for all).
 // itemImage is the image hash a title's ref in role names, or "".
 func itemImage(role string) string {
-	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+	return `COALESCE((SELECT MIN(r.image_hash) FROM library_item_images r
+			WHERE r.item_id = i.id AND r.role = '` + role + `'), '')`
 }
 
 func countFiles(also string) string {

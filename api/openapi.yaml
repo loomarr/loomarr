@@ -17597,12 +17597,18 @@ paths:
             examples:
               - member
             type: string
-        - description: What this image decorates, e.g. channel
+        - description: What kind of thing this image decorates; ownerId names which one, and it must exist
           explode: false
           in: query
           name: ownerKind
           schema:
-            description: What this image decorates, e.g. channel
+            description: What kind of thing this image decorates; ownerId names which one, and it must exist
+            enum:
+              - clip
+              - filler_split_proposal
+              - channel
+              - library_item
+              - library_candidate
             type: string
         - description: The id of the thing it decorates
           explode: false
