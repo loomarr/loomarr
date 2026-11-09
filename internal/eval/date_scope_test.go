@@ -9,7 +9,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -31,7 +30,7 @@ func TestDateScopePolicyAccuracy(t *testing.T) {
 		{name: "explicit none accepts absence", expected: none, proposal: dateScopeProposal(nil), accurate: true},
 		{name: "explicit none rejects empty date scope", expected: none, proposal: dateScopeProposal(&schedule.DateScope{})},
 		{name: "explicit none rejects dates", expected: none, proposal: dateScopeProposal(&schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}}})},
-		{name: "failed proposal cannot satisfy none", expected: none, err: suggest.ErrNoGroundedTitles},
+		{name: "failed proposal cannot satisfy none", expected: none, err: proposals.ErrNoGroundedTitles},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			card := dateScopeRunner(tc.proposal, tc.err).Run(context.Background(), []Case{{

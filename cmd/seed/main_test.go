@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -30,7 +31,7 @@ func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	flow := workflow.New(st, func() string { return "unused" }, time.Now)
+	flow := workflow.New(st, func() string { return "unused" }, time.Now, suggest.IntentHash)
 	journeys, err := flow.List(ctx, workflow.Viewer{UserID: "admin-test", Admin: true}, workflow.ListOptions{})
 	if err != nil {
 		t.Fatalf("List seeded Proposal Jobs through the workflow: %v", err)

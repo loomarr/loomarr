@@ -235,7 +235,7 @@ func TestReleaseGateStructuralCasesUseProductionGrounding(t *testing.T) {
 			}
 			prop, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
 			if tc.wantError {
-				if !errors.Is(suggestErr, suggest.ErrNoGroundedTitles) || len(allItems(prop)) != 0 {
+				if !errors.Is(suggestErr, proposals.ErrNoGroundedTitles) || len(allItems(prop)) != 0 {
 					t.Fatalf("ungrounded response = (%+v, %v), want explicit abstention", prop, suggestErr)
 				}
 				return

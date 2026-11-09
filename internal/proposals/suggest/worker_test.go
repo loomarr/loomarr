@@ -53,7 +53,7 @@ func marigoldLibrary() *catalogfixture.ScriptedLibrary {
 }
 
 func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
-	return buildServiceWith(t, st, workflow.New(st, idGen(), time.Now), llmMock)
+	return buildServiceWith(t, st, workflow.New(st, idGen(), time.Now, suggest.IntentHash), llmMock)
 }
 
 // buildServiceWith is buildService over a caller-chosen durable workflow.
@@ -73,7 +73,7 @@ type claimSignalWorkflow struct {
 	claimed chan struct{}
 }
 
-func (w *claimSignalWorkflow) Claim(context.Context, time.Time, time.Duration, int) ([]suggest.WorkflowWork, error) {
+func (w *claimSignalWorkflow) Claim(context.Context, time.Time, time.Duration, int) ([]workflow.Work, error) {
 	select {
 	case w.claimed <- struct{}{}:
 	default:
@@ -597,7 +597,7 @@ func btoi(b bool) int {
 
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
-	flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
+	flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now, suggest.IntentHash)
 	// The first empty, no-tool answer receives the bounded grounding retry; a second
 	// explicit empty answer proves the retry exhausted and preserves the typed failure.
 	svc := buildServiceWith(t, st, flow, testkit.NewLLM(
@@ -755,7 +755,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
-			flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
+			flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now, suggest.IntentHash)
 			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
@@ -806,7 +806,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
-	flow := workflow.New(st, idGen(), time.Now)
+	flow := workflow.New(st, idGen(), time.Now, suggest.IntentHash)
 	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -927,7 +927,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			suggester := suggest.New(llmMock,
 				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
-			flow := workflow.New(base, idGen(), time.Now)
+			flow := workflow.New(base, idGen(), time.Now, suggest.IntentHash)
 			terminal := newDoneEmitter()
 			svc := suggest.NewService(serviceStore, flow, suggester,
 				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -998,7 +998,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			suggester := suggest.New(llmMock,
 				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
-			flow := workflow.New(st, func() string { return "job-fresh" }, time.Now)
+			flow := workflow.New(st, func() string { return "job-fresh" }, time.Now, suggest.IntentHash)
 			terminal := newDoneEmitter()
 			svc := suggest.NewService(st, flow, suggester,
 				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -1055,7 +1055,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	cat := catalog.New(lib, tm)
 	sug := suggest.New(slow, cat, tm, 10)
 	terminal := newDoneEmitter()
-	svc := suggest.NewService(st, workflow.New(st, idGen(), time.Now), sug,
+	svc := suggest.NewService(st, workflow.New(st, idGen(), time.Now, suggest.IntentHash), sug,
 		suggest.Config{Workers: 2, Timeout: 200 * time.Millisecond, CacheTTL: time.Hour},
 		time.Now, testkit.Logger()).WithProgressEmitter(terminal)
 
