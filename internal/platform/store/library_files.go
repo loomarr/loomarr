@@ -154,10 +154,19 @@ func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeByte
 	return tracks, true, nil
 }
 
+// libraryLink writes a link to another library_items row: NULL for "" (not known yet), which the
+// foreign key allows, since no row has "" as its id. Reads turn it back with COALESCE(col, '').
+func libraryLink(id string) any {
+	if id == "" {
+		return nil
+	}
+	return id
+}
+
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
-		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
-		WHERE root = ? ORDER BY path`), root)
+		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
+		FROM library_files WHERE root = ? ORDER BY path`), root)
 	if err != nil {
 		return nil, fmt.Errorf("list library files: %w", err)
 	}
@@ -217,7 +226,7 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 			missing = f.MissingAt.UnixMilli()
 		}
 		if _, err := stmt.ExecContext(ctx, f.Path, f.Root, f.Size, f.ModifiedNs, f.Identity, f.Kind, header,
-			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, f.ItemID, f.SeriesID); err != nil {
+			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, libraryLink(f.ItemID), libraryLink(f.SeriesID)); err != nil {
 			return fmt.Errorf("save library file: %w", err)
 		}
 	}

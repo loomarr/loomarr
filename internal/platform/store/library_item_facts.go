@@ -46,11 +46,11 @@ func (s *sqlStore) libraryItemFacts(ctx context.Context, ids []string, out map[s
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id, i.series_id, i.overview, i.year,
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
 		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
 			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
-		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id AND i.series_id <> ''
+		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id
 		WHERE i.id IN (`+in+`)`), args...)
 	if err != nil {
 		return err

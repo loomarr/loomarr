@@ -25,6 +25,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "show", Kind: "series", Name: "Show", Rating: "TV-Y", IDs: []LibraryID{{"tvdb", "90000002"}, {"tmdb", "90000003"}}},
+		{ID: "show-e1", Kind: "episode", Name: "Pilot"},
 	}, recent); err != nil {
 		t.Fatal(err)
 	}
