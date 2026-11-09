@@ -113,7 +113,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		return c
 	}
 	fresh := clip("fresh", 1988, nil)
-	// A held clip reads as not playable until the score rung, last in the conveyor, places it.
+	// A held clip reads as not playable until the ready commit, last in the conveyor, places it.
 	held := clip("held", 2012, func(c *DefectClip) {
 		c.Held, c.Stage, c.Placement = true, pipelinestate.StageDefects, clips.PlacementNotPlayable
 	})

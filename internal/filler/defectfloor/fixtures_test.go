@@ -16,8 +16,9 @@ import (
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests, which an
 // external package cannot import; production code exports nothing for them.
 
-// mediaAssetManifestVersion is filler's manifest version. A wrong value makes filler read the
-// sidecar as invalid, which fails the tests that depend on it rather than passing silently.
+// mediaAssetManifestVersion mirrors asset.ManifestVersion. A wrong value makes the sidecar reader
+// treat the sidecar as invalid, which fails the tests that depend on it rather than passing
+// silently.
 const mediaAssetManifestVersion = 1
 
 // writeContentAddressedClip stores body at its content-addressed catalog path under dir and
@@ -87,7 +88,7 @@ func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, t
 }
 
 // screeningSubjectManifest is a complete media-asset manifest (source master, evidence and
-// playback lineage). filler's sidecar reader validates it, so an incomplete one reads as invalid.
+// playback lineage). The sidecar reader validates it, so an incomplete one reads as invalid.
 func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	t.Helper()
 	tool := tools.MediaToolIdentity{
