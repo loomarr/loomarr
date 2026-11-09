@@ -1,19 +1,10 @@
 package watermark
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"unicode"
 )
-
-// CallsignProposer is the seam for the issue's LLM callsign pick: one small call after channel
-// creation, off Add a channel's latency path, its answer stored as policy.watermark.callsign so
-// airtime never waits on a model. It is deliberately not wired while the LLM is off; with no
-// stored callsign, DeriveCallsign names every Plate.
-type CallsignProposer interface {
-	ProposeCallsign(ctx context.Context, channelName string) (string, error)
-}
 
 // callsignStopwords are skipped for initials: "The Sci-Fi Vault" is SV.
 var callsignStopwords = map[string]bool{"a": true, "an": true, "and": true, "the": true, "of": true,
