@@ -192,6 +192,16 @@ describe("PlayerChrome", () => {
     expect(onGoLive).toHaveBeenCalledOnce();
   });
 
+  it("sets the title as the logo's accessible name when there is a logo, and as text when there is none", () => {
+    const logo = { height: 100, src: "data:image/png;base64,AAAA", srcSetWebp: "", width: 600 };
+    const withLogo = mount(chrome({ band: { ...band, logo } }));
+    expect(withLogo.querySelector('[role="img"][aria-label="An ensemble comedy"]')).not.toBeNull();
+    expect(withLogo.textContent).not.toContain("An ensemble comedy");
+    const without = mount(chrome());
+    expect(without.querySelector('[role="img"]')).toBeNull();
+    expect(without.textContent).toContain("An ensemble comedy");
+  });
+
   it("reads a break as the programme's title with Back in n min, and no badge", () => {
     const host = mount(chrome({ band: { ...band, breakMinutesLeft: 3, inBreak: true, line: undefined } }));
     expect(host.textContent).toContain("An ensemble comedy");
