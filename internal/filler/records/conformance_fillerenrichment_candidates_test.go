@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // testFillerEnrichmentCandidateSelection pins what the candidate read selects now that it picks
@@ -20,7 +20,7 @@ func testFillerEnrichmentCandidateSelection(t *testing.T, newStore NewStoreFunc)
 	at := time.Unix(1_700_000_000, 0).UTC()
 	put := func(hash string, created time.Time, edit func(*Clip)) {
 		t.Helper()
-		clip := sampleClip(hash, hash, filler.Commercial, 0, "", "")
+		clip := sampleClip(hash, hash, clips.Commercial, 0, "", "")
 		clip.CreatedAt, clip.UpdatedAt = created, created
 		if edit != nil {
 			edit(&clip)
@@ -32,7 +32,7 @@ func testFillerEnrichmentCandidateSelection(t *testing.T, newStore NewStoreFunc)
 	put("c-late", at.Add(2*time.Second), nil)
 	put("b-early", at, nil)
 	put("a-early", at, func(c *Clip) { c.Held = true })
-	put("d-unplayable", at.Add(3*time.Second), func(c *Clip) { c.Placement = filler.PlacementNotPlayable })
+	put("d-unplayable", at.Add(3*time.Second), func(c *Clip) { c.Placement = clips.PlacementNotPlayable })
 	put("e-composite", at, func(c *Clip) { c.IsComposite = true })
 	put("f-removed", at, nil)
 	removed, err := s.GetClip(ctx, "f-removed")

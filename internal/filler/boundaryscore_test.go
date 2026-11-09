@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The boundary-confidence ladder (§10 V34). ⚠ These pin the SHAPE of the rule — best evidence per
@@ -83,8 +84,8 @@ func TestBoundaryCuts_CollidingMidpointsUnionTheirEvidence(t *testing.T) {
 	// passing with the branch deleted. They are separated (90_002 < 90_004) but both midpoints
 	// clamp to durationMs-1, so they arrive at the dedupe as two cuts at the same millisecond.
 	cuts := boundaryCuts([]detectedGap{
-		{Interval: Interval{StartMs: 89_998, EndMs: 90_002}, Src: split.SrcBlack},
-		{Interval: Interval{StartMs: 90_004, EndMs: 90_010}, Src: split.SrcSilence},
+		{Interval: tools.Interval{StartMs: 89_998, EndMs: 90_002}, Src: split.SrcBlack},
+		{Interval: tools.Interval{StartMs: 90_004, EndMs: 90_010}, Src: split.SrcSilence},
 	}, 90_000)
 
 	if len(cuts) != 1 {

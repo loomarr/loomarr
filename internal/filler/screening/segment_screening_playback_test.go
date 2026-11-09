@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -109,12 +108,12 @@ func TestPlaybackIntegrityEvaluatorHoldsArtifactOrSidecarDrift(t *testing.T) {
 func TestPlaybackIntegrityEvaluatorMapsMeasuredQualityToClosedOutcome(t *testing.T) {
 	tests := []struct {
 		name        string
-		quality     filler.MediaQuality
+		quality     tools.MediaQuality
 		wantOutcome SegmentScreeningOutcome
 		wantReason  string
 	}{
-		{name: "dead air", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: ScreenReject, wantReason: "playback_quality_reject"},
-		{name: "long black", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: ScreenHold, wantReason: "playback_quality_hold"},
+		{name: "dead air", quality: playbackIntegrityQuality([]tools.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: ScreenReject, wantReason: "playback_quality_reject"},
+		{name: "long black", quality: playbackIntegrityQuality([]tools.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: ScreenHold, wantReason: "playback_quality_hold"},
 		{name: "clear", quality: validPlaybackIntegrityQuality(), wantOutcome: ScreenPass, wantReason: "playback_verified"},
 	}
 	for _, test := range tests {
@@ -171,7 +170,7 @@ func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *te
 		t.Fatal("playback sidecar is unavailable")
 	}
 	playback := *tags.MediaAssets.Playback
-	playback.Quality.Black = []filler.Interval{{StartMs: 0, EndMs: 5_000}}
+	playback.Quality.Black = []tools.Interval{{StartMs: 0, EndMs: 5_000}}
 	manifest := *tags.MediaAssets
 	manifest.Playback = &playback
 	tags.MediaAssets = &manifest
@@ -191,12 +190,12 @@ func mustPlaybackIntegrityEvaluator(t *testing.T, repository SegmentScreeningAxi
 	return evaluator
 }
 
-func validPlaybackIntegrityQuality() filler.MediaQuality {
+func validPlaybackIntegrityQuality() tools.MediaQuality {
 	return playbackIntegrityQuality(nil, nil, nil)
 }
 
-func playbackIntegrityQuality(black, silence, freeze []filler.Interval) filler.MediaQuality {
-	return filler.MediaQuality{
+func playbackIntegrityQuality(black, silence, freeze []tools.Interval) tools.MediaQuality {
+	return tools.MediaQuality{
 		EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
@@ -206,7 +205,7 @@ func playbackIntegrityQuality(black, silence, freeze []filler.Interval) filler.M
 	}
 }
 
-func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) SegmentScreeningMedia {
+func playbackIntegrityMediaFixture(t *testing.T, quality tools.MediaQuality) SegmentScreeningMedia {
 	t.Helper()
 	root := t.TempDir()
 	manifest := screeningSubjectManifest(t)

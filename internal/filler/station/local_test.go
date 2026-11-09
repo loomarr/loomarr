@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -37,8 +37,8 @@ func TestLocalStationsResolvesThePickedPlaceAgainstTheSeededDirectory(t *testing
 	}
 
 	household := pod.Geography{Country: "US", Place: "4560349"}.Resolve(local.Resolve)
-	clevelandNews := filler.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:59441"}
-	philadelphiaNews := filler.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:25453"}
+	clevelandNews := clips.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:59441"}
+	philadelphiaNews := clips.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:25453"}
 	if pod.GeographicallyEligible(clevelandNews, household) || !pod.GeographicallyEligible(philadelphiaNews, household) {
 		t.Fatal("want Philadelphia station news eligible in Philadelphia and Cleveland's not")
 	}

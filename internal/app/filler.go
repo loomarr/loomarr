@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -422,12 +423,12 @@ type fillerChannelWake struct {
 	log *slog.Logger
 }
 
-func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
+func (w *fillerChannelWake) Run(ctx context.Context, snapshots []clips.Clip) {
 	if w == nil || w.st == nil || w.channels == nil {
 		return
 	}
 	if targeted, ok := w.channels.(interface {
-		ReconcileFillerChange(context.Context, []filler.Clip) error
+		ReconcileFillerChange(context.Context, []clips.Clip) error
 	}); ok {
 		if err := targeted.ReconcileFillerChange(ctx, snapshots); err != nil && w.log != nil {
 			w.log.Warn("filler catalog changed but affected-channel reconcile failed; sweep will retry", "err", err)
@@ -591,8 +592,8 @@ func (a clipExposureAdapter) FillerAirings(ctx context.Context) (pod.AiringHisto
 // coverage and the filler-list builder all read through here, so the exclusion living in
 // ListClips means none of them can forget it. Adding IncludeHeld to this call would put every
 // unreviewed download into live channels.
-func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
+func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]clips.Clip, error) {
+	rows, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -600,8 +601,8 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Clip, len(clips))
-	for i, c := range clips {
+	out := make([]clips.Clip, len(rows))
+	for i, c := range rows {
 		out[i] = c.Clip
 		out[i].Variants = variants[c.Hash]
 	}
@@ -665,8 +666,8 @@ func (a fillerSplitStoreAdapter) ReleaseCompositeHolds(ctx context.Context, path
 	return updated, err
 }
 
-func fillerClipsByPath(ctx context.Context, st store.Store, paths []string) []filler.Clip {
-	out := make([]filler.Clip, 0, len(paths))
+func fillerClipsByPath(ctx context.Context, st store.Store, paths []string) []clips.Clip {
+	out := make([]clips.Clip, 0, len(paths))
 	for _, path := range paths {
 		if clip, err := st.GetClipByPath(ctx, path); err == nil {
 			out = append(out, clip.Clip)
@@ -1386,7 +1387,7 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 	}
 	out := make(map[string]pod.Fit, len(chans))
 	for _, ch := range chans {
-		// `store.Clip` embeds `filler.Clip`, so this is the same value the catalog load hands
+		// `store.Clip` embeds `clips.Clip`, so this is the same value the catalog load hands
 		// the assembler — not a re-derivation.
 		out[ch.ID] = a.pods.FitForChannel(ch.ID, channels.SelectionForChannel(ch), clip.Clip)
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -33,9 +34,9 @@ type progMemStore struct {
 
 func newProgMemStore(hash string) *progMemStore {
 	return &progMemStore{
-		clips: map[string]cliplibrary.StoreClip{hash: {Clip: Clip{
+		clips: map[string]cliplibrary.StoreClip{hash: {Clip: clips.Clip{
 			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
-			Role: Unclassified, Source: "test-source", Held: true,
+			Role: clips.Unclassified, Source: "test-source", Held: true,
 		}}},
 		rows: map[string]pipelinestate.ClipPipeline{hash: {
 			ClipHash: hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionRunning,

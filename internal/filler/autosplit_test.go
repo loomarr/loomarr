@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -29,7 +30,7 @@ func policy(on bool, minConf int, maxDur time.Duration) *filler.AutoSplitPolicy 
 func goodSeg(i int, startMs, endMs int64) split.Segment {
 	return split.Segment{
 		Index: i, StartMs: startMs, EndMs: endMs,
-		Name: "Advert", Era: 1993, Audience: filler.Kids, Category: "toys",
+		Name: "Advert", Era: 1993, Audience: clips.Kids, Category: "toys",
 		BoundaryConfidence: 90, StartEvidence: "black + silence", EndEvidence: "black + silence",
 	}
 }

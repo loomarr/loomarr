@@ -45,9 +45,9 @@ type TranscodeClipStore interface {
 // TranscodeStage owns retained-source resolution and verified derivative publication.
 type TranscodeStage struct {
 	store   TranscodeClipStore
-	probe   Prober
+	probe   tools.Prober
 	clipDir string
-	profile MezzanineProfile
+	profile tools.MezzanineProfile
 	// host, when set, is this machine's hardware profile, read per clip (WithEncodeHost): the
 	// derivatives encode on its measured family instead of the fixed profile.
 	host func() encode.HostProfile
@@ -59,11 +59,11 @@ type TranscodeStage struct {
 	now        func() time.Time
 	// transcode is a seam around the ffmpeg driver. Production always uses tools.Transcode;
 	// tests replace it with a byte writer so the lifecycle can be exercised without a host binary.
-	transcode func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
+	transcode func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error)
 	// evidenceTranscode and identifyFFmpeg are enabled together by WithMediaDerivatives. Keeping
 	// this explicit lets legacy recovery tests exercise only the historical playback saga while
 	// the production composition root always opts into the V66 two-derivative contract.
-	evidenceTranscode func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
+	evidenceTranscode func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error)
 	identifyFFmpeg    func(context.Context, string) (tools.MediaToolIdentity, error)
 	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (tools.DerivativeQC, error)
 	condition         func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error)
@@ -100,7 +100,7 @@ func (s *TranscodeStage) WithEncodeHost(host func() encode.HostProfile) *Transco
 // encodeTarget is what one clip's derivatives encode to, read once per clip: the recipes it
 // records must name the encoder that made the bytes, even when detection settles mid-encode.
 type encodeTarget struct {
-	profile MezzanineProfile
+	profile tools.MezzanineProfile
 	host    encode.HostProfile
 }
 
@@ -141,7 +141,7 @@ func (s *TranscodeStage) WithStorageGovernor(governor *storagegovernor.Governor)
 }
 
 // NewTranscodeStage builds the stage.
-func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, profile MezzanineProfile, ffmpegPath func() string, targetLUFS func() float64, now func() time.Time) *TranscodeStage {
+func NewTranscodeStage(store TranscodeClipStore, probe tools.Prober, clipDir string, profile tools.MezzanineProfile, ffmpegPath func() string, targetLUFS func() float64, now func() time.Time) *TranscodeStage {
 	if probe == nil {
 		probe = cliplibrary.FFprobe
 	}
@@ -308,7 +308,7 @@ func (s *TranscodeStage) run(ctx context.Context, c cliplibrary.StoreClip, swap 
 		Diagnostics: s.diagnostics,
 	}
 	transcodeCtx, finishStorage := storageWrites.Monitor(ctx, stageFull)
-	var quality MediaQuality
+	var quality tools.MediaQuality
 	if evidence != nil && job == nil {
 		// One encode, two roles (#2121). Evidence and playback share the recipe, so a top-level
 		// clip's playback rendition is the evidence bytes: copied, never encoded twice. Its
@@ -666,10 +666,10 @@ func tooQuietToCorrect(target float64, l tools.ConditioningLoudness) (StageResul
 // stagedPlayback is the verified encode waiting in staging, under the identity it will publish as.
 type stagedPlayback struct {
 	path, hash, rel string
-	in, out         Probed
-	quality         MediaQuality
+	in, out         tools.Probed
+	quality         tools.MediaQuality
 	// profile is the playback profile the bytes were encoded to.
-	profile MezzanineProfile
+	profile tools.MezzanineProfile
 	// evidence is nil on the legacy single-derivative path, which records no playback lineage.
 	evidence *asset.DerivativeLineage
 	tool     tools.MediaToolIdentity
@@ -708,7 +708,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster asset.Identity, p stagedPlayba
 // clip's catalog facts so a rescan restores them, and this encode's evidence. Split children
 // historically had no sidecar; seeding OriginalName from the durable display name is what
 // prevents their next scan from presenting the old hash as the title.
-func (s *TranscodeStage) replacementSidecar(tags asset.SidecarTags, c cliplibrary.StoreClip, mezzanine string, assets *asset.Manifest, quality MediaQuality, publication *asset.ConditioningPublication, conditioning *asset.ConditioningEvidence) asset.SidecarTags {
+func (s *TranscodeStage) replacementSidecar(tags asset.SidecarTags, c cliplibrary.StoreClip, mezzanine string, assets *asset.Manifest, quality tools.MediaQuality, publication *asset.ConditioningPublication, conditioning *asset.ConditioningEvidence) asset.SidecarTags {
 	// A viewer-visible name the sidecar cannot rebuild goes beside the new bytes with its
 	// provenance, so the next scan does not demote it to the filename (#1988). A seeded
 	// originalName of unrecorded origin is marked so; an arrival filename is left as one.
@@ -808,7 +808,7 @@ func isConditioningCancellation(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func mediaQualityResult(c cliplibrary.StoreClip, quality MediaQuality) StageResult {
+func mediaQualityResult(c cliplibrary.StoreClip, quality tools.MediaQuality) StageResult {
 	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
 	switch verdict {

@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The PROBE stage (§10 V51b): measure the file, and refuse the ones that are not clips.
@@ -30,7 +31,7 @@ type ProbeClipStore interface {
 
 // ProbeStage measures a clip and applies the hard rejects.
 type ProbeStage struct {
-	probe   Prober
+	probe   tools.Prober
 	store   ProbeClipStore
 	clipDir string
 	// minDurationMs is the floor below which a file is not a usable clip. A closure so a settings
@@ -44,7 +45,7 @@ type ProbeStage struct {
 }
 
 // NewProbeStage builds the stage. A nil prober defaults to the real ffprobe.
-func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
+func NewProbeStage(probe tools.Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
 	if probe == nil {
 		probe = cliplibrary.FFprobe
 	}
@@ -158,7 +159,7 @@ func (s *ProbeStage) looksComposite(c cliplibrary.StoreClip) bool {
 // video-only file plays as dead air mid-break (which reads as the stream dropping), and a file
 // with no video stream is not something a channel can show. Offering a human a button here would
 // be offering a control that cannot work.
-func (s *ProbeStage) verdict(pr Probed) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
+func (s *ProbeStage) verdict(pr tools.Probed) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
 	floor := int64(0)
 	if s.minDurationMs != nil {
 		floor = s.minDurationMs()

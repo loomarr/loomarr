@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -33,8 +33,8 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	const hash = "hash-dismissed"
 	seedForDecision(t, st, func() {
-		putClip(t, st, filler.Clip{
-			Hash: hash, Path: "1985/dismissed.mp4", Name: "Dismissed", Role: filler.Commercial,
+		putClip(t, st, clips.Clip{
+			Hash: hash, Path: "1985/dismissed.mp4", Name: "Dismissed", Role: clips.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
 	}, hash, pipelinestate.DispositionReview)
@@ -59,8 +59,8 @@ func TestBulkRemoveFiller_RestoreUndoesADismissal(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	const hash = "hash-restored"
 	seedForDecision(t, st, func() {
-		putClip(t, st, filler.Clip{
-			Hash: hash, Path: "1985/restored.mp4", Name: "Restored", Role: filler.Commercial,
+		putClip(t, st, clips.Clip{
+			Hash: hash, Path: "1985/restored.mp4", Name: "Restored", Role: clips.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
 	}, hash, pipelinestate.DispositionDismissed)

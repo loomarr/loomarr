@@ -100,7 +100,7 @@ type airingSwap struct {
 
 // admit is the gate between the verified encode and its publication: the media-quality report
 // and the defect floor must both pass the staged bytes.
-func (w *airingSwap) admit(ctx context.Context, c cliplibrary.StoreClip, staged, newHash string, quality MediaQuality) error {
+func (w *airingSwap) admit(ctx context.Context, c cliplibrary.StoreClip, staged, newHash string, quality tools.MediaQuality) error {
 	if newHash == c.Hash {
 		return fmt.Errorf("%w: the re-encode reproduced the airing bytes", ErrReplacementRefused)
 	}

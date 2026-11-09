@@ -38,7 +38,7 @@ type PodEntryDTO struct {
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
 	// Era and Quality are DISPLAY context for the guide's pod hover card (§12): they explain
 	// why a break looks the way it does ("1994 · 480p" reads as an authentic capture rather
-	// than a playback fault). Neither affects selection — see filler.Clip.Quality.
+	// than a playback fault). Neither affects selection — see clips.Clip.Quality.
 	Era     int    `json:"era,omitempty" doc:"The clip's tagged era (1994); 0 when untagged"`
 	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only"`
 	// Brand, Audience, Category and VisibleText are the richer §10 V44 display context, the

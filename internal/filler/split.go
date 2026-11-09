@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // Compilation splitting (§10, V34) — domain types and the PURE segment logic.
@@ -182,13 +183,13 @@ func scoreBoundaries(segs []split.Segment) {
 type dropTally struct {
 	Count int
 	Ms    int64
-	Spans []Interval
+	Spans []tools.Interval
 }
 
 func (d *dropTally) add(startMs, endMs int64) {
 	d.Count++
 	d.Ms += endMs - startMs
-	d.Spans = append(d.Spans, Interval{StartMs: startMs, EndMs: endMs})
+	d.Spans = append(d.Spans, tools.Interval{StartMs: startMs, EndMs: endMs})
 }
 
 // SplitSegmentArtwork is the persisted binding between one exact proposal span and its temporary
@@ -356,7 +357,7 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 // ⚠ A filler-local type rather than a field on `Interval`: that alias belongs to `media/tools` and
 // is used in ~110 places, none of which care who found a gap.
 type detectedGap struct {
-	Interval
+	tools.Interval
 	Src split.BoundarySource
 }
 
@@ -407,7 +408,7 @@ func boundaryCuts(gaps []detectedGap, durationMs int64) []boundaryCut {
 	return out
 }
 
-func midpoint(g Interval, durationMs int64) int64 {
+func midpoint(g tools.Interval, durationMs int64) int64 {
 	m := (g.StartMs + g.EndMs) / 2
 	if m < 1 {
 		m = 1
@@ -429,7 +430,7 @@ func makeSegment(index int, start, end int64, floor segmentFloor, startSrc, endS
 // a pre-chaptered source splits for free). Chapters that abut produce no gaps;
 // slivers are dropped as usual. Chapters carry their own titles, which beat any
 // generated name.
-func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]split.Segment, dropTally) {
+func segmentsFromChapters(chapters []tools.Chapter, floor segmentFloor) ([]split.Segment, dropTally) {
 	var out []split.Segment
 	var dropped dropTally
 	for _, ch := range chapters {
@@ -457,7 +458,7 @@ func overlong(s split.Segment) bool { return s.EndMs-s.StartMs > OverlongSegment
 // TranscriptText renders a transcript as timestamped lines for the LLM prompt
 // ("[01:23] …"). mm:ss is what the model reads most reliably, and it is what the
 // rescue asks it to answer in.
-func TranscriptText(segs []TranscriptSegment) string {
+func TranscriptText(segs []tools.TranscriptSegment) string {
 	var b strings.Builder
 	for _, s := range segs {
 		text := strings.Join(strings.Fields(s.Text), " ")

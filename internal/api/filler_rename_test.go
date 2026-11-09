@@ -13,7 +13,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -46,9 +45,9 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 
 func seedFilenameNamedClip(t *testing.T, st records.Store) {
 	t.Helper()
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: "h-widgetmax", Path: "Widgetmax Ad 1991.mp4", Name: "Widgetmax Ad 1991",
-		NameSource: clips.NameFromFilename, Role: filler.Commercial, DurationMs: 30_000,
+		NameSource: clips.NameFromFilename, Role: clips.Commercial, DurationMs: 30_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}

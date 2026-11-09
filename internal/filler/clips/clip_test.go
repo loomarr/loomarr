@@ -1,10 +1,9 @@
-package filler_test
+package clips_test
 
 import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
@@ -17,7 +16,7 @@ func TestFillerNeverBecomesAProgram(t *testing.T) {
 	// A pod.Entry has no TunarrProgramID→program bridge: its Kind is always a filler
 	// Kind, never a program. Assert the domain offers no way to make a program slot
 	// from a clip — the only slot constructor filler feeds is SlotFiller.
-	clip := filler.Clip{Path: "c1", Role: filler.Commercial, DurationMs: 30000}
+	clip := clips.Clip{Path: "c1", Role: clips.Commercial, DurationMs: 30000}
 
 	slot := schedule.Slot{Kind: schedule.SlotFiller, LibraryItemID: clip.Path, DurationMs: clip.DurationMs}
 	if slot.IsProgram() {
@@ -25,7 +24,7 @@ func TestFillerNeverBecomesAProgram(t *testing.T) {
 	}
 	// And a clip's Kind is always in the filler kind set — never "program".
 	switch clip.Role {
-	case filler.Commercial, filler.Bumper, filler.StationID, filler.PSA, filler.Trailer, filler.Interstitial:
+	case clips.Commercial, clips.Bumper, clips.StationID, clips.PSA, clips.Trailer, clips.Interstitial:
 		// ok — all filler kinds
 	default:
 		t.Fatalf("clip has a non-filler kind %q", clip.Role)
@@ -33,14 +32,14 @@ func TestFillerNeverBecomesAProgram(t *testing.T) {
 }
 
 func TestClip_Tagged(t *testing.T) {
-	full := filler.Clip{Era: 1992, Audience: filler.Kids, Category: "toys"}
+	full := clips.Clip{Era: 1992, Audience: clips.Kids, Category: "toys"}
 	if !full.Tagged() {
 		t.Error("fully-tagged clip should report Tagged()")
 	}
-	for _, c := range []filler.Clip{
-		{Audience: filler.Kids, Category: "toys"}, // no era
-		{Era: 1992, Category: "toys"},             // no audience
-		{Era: 1992, Audience: filler.Kids},        // no category
+	for _, c := range []clips.Clip{
+		{Audience: clips.Kids, Category: "toys"}, // no era
+		{Era: 1992, Category: "toys"},            // no audience
+		{Era: 1992, Audience: clips.Kids},
 	} {
 		if c.Tagged() {
 			t.Errorf("partially-tagged clip should not report Tagged(): %+v", c)
@@ -50,17 +49,17 @@ func TestClip_Tagged(t *testing.T) {
 
 // KindFromName records explicit filename conventions without inventing a playable role.
 func TestKindFromName(t *testing.T) {
-	cases := map[string]filler.Role{
-		"2002 Pellham Drugs Commercial": filler.Commercial,
-		"Saturday Morning Bumper":       filler.Bumper,
-		"WLMR Station Ident":            filler.StationID,
-		"Bramble Badger PSA":            filler.PSA,
-		"Emberfall Canyon Trailer":      filler.Trailer,
-		"Local break interstitial":      filler.Interstitial,
-		"Beer ad":                       filler.Commercial,
-		"random clip":                   filler.Unclassified,
-		"Commercialization report":      filler.Unclassified,
-		"Station tour":                  filler.Unclassified,
+	cases := map[string]clips.Role{
+		"2002 Pellham Drugs Commercial": clips.Commercial,
+		"Saturday Morning Bumper":       clips.Bumper,
+		"WLMR Station Ident":            clips.StationID,
+		"Bramble Badger PSA":            clips.PSA,
+		"Emberfall Canyon Trailer":      clips.Trailer,
+		"Local break interstitial":      clips.Interstitial,
+		"Beer ad":                       clips.Commercial,
+		"random clip":                   clips.Unclassified,
+		"Commercialization report":      clips.Unclassified,
+		"Station tour":                  clips.Unclassified,
 	}
 	for name, want := range cases {
 		if got := clips.RoleFromName(name); got != want {

@@ -47,7 +47,7 @@ type VisionClipStore interface {
 
 // VisionStage reads a clip's frames.
 type VisionStage struct {
-	tools    MediaTools
+	tools    tools.MediaTools
 	provider llm.VisionProvider
 	store    VisionClipStore
 	clipDir  string
@@ -57,7 +57,7 @@ type VisionStage struct {
 
 // NewVisionStage builds the stage. A nil provider is the un-opted-in default — an install with no
 // vision model (the common case) pays nothing, and its ladder says so on every clip.
-func NewVisionStage(tools MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
+func NewVisionStage(tools tools.MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
 	if now == nil {
 		now = time.Now
 	}

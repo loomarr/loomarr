@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -100,11 +101,11 @@ func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte
 	return s.frames, s.err
 }
 
-func (s *scriptedVision) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedVision) Chapters(context.Context, string) ([]tools.Chapter, error) { return nil, nil }
+func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]tools.Interval, []tools.Interval, error) {
 	return nil, nil, nil
 }
-func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
+func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]tools.TranscriptSegment, error) {
 	return nil, nil
 }
 func (s *scriptedVision) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
@@ -151,8 +152,8 @@ var oneFrame = [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}
 // visionClip builds an untagged candidate clip vision has not read. Hash is DERIVED from the
 // path rather than equal to it, so a hash-keyed call and a path-keyed one stay distinguishable.
 func visionClip(path string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial, DurationMs: 30_000,
+	return cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial, DurationMs: 30_000,
 	}}
 }
 
@@ -169,13 +170,13 @@ func wordless(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 // a vision candidate.
 func fullyTagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 	c.Era = 1994
-	c.Audience = filler.Kids
+	c.Audience = clips.Kids
 	c.Category = "toys"
 	return c
 }
 
 // newVisionStage wires the rung with a scripted store/tools/provider, always ENABLED.
-func newVisionStage(st filler.VisionClipStore, tools filler.MediaTools, provider llm.VisionProvider) *filler.VisionStage {
+func newVisionStage(st filler.VisionClipStore, tools tools.MediaTools, provider llm.VisionProvider) *filler.VisionStage {
 	return filler.NewVisionStage(tools, provider, st, "/filler",
 		func() bool { return true },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })

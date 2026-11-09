@@ -9,17 +9,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 func TestFillerExactClipSourceProvenance(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
-	putClip(t, st, filler.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Role: filler.Commercial, IsComposite: true})
-	putClip(t, st, filler.Clip{Hash: "source-child", Path: "child.mp4", Name: "Rendered child", Role: filler.Commercial, ParentHash: "source-reel"})
-	putClip(t, st, filler.Clip{Hash: "unrelated", Path: "reel.mp4", Name: "Reused filename", Role: filler.Commercial})
+	putClip(t, st, clips.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Role: clips.Commercial, IsComposite: true})
+	putClip(t, st, clips.Clip{Hash: "source-child", Path: "child.mp4", Name: "Rendered child", Role: clips.Commercial, ParentHash: "source-reel"})
+	putClip(t, st, clips.Clip{Hash: "unrelated", Path: "reel.mp4", Name: "Reused filename", Role: clips.Commercial})
 	if err := st.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: "source-run", Trigger: acquisition.TriggerManual, Status: acquisition.RunSuccess, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}

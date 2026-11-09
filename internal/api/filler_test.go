@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -386,8 +387,8 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 	srv, st, _ := newFillerServerWithImages(t, imageService)
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
-		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Role: filler.Commercial,
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
+		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Role: clips.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
 	}}); err != nil {
 		t.Fatal(err)
@@ -424,9 +425,9 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
-		Role: filler.Commercial, DurationMs: 30_000, Source: source.ID,
+		Role: clips.Commercial, DurationMs: 30_000, Source: source.ID,
 	}}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -464,7 +465,7 @@ func clearSeededSources(t *testing.T, st records.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era int, aud filler.Audience, cat string) {
+func seedClip(t *testing.T, st records.Store, id string, kind clips.Role, era int, aud clips.Audience, cat string) {
 	t.Helper()
 	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
@@ -487,7 +488,7 @@ func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era i
 
 // tagCategory asserts a fixture's category as a taxonomy leaf. Category is derived from the tags
 // on read (#2323), so it exists only once the clip is tagged.
-func tagCategory(t *testing.T, st store.Store, c filler.Clip) {
+func tagCategory(t *testing.T, st store.Store, c clips.Clip) {
 	t.Helper()
 	if c.Category == "" {
 		return
@@ -499,9 +500,9 @@ func tagCategory(t *testing.T, st store.Store, c filler.Clip) {
 
 func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
-	seedClip(t, st, "b1", filler.Bumper, 1992, filler.General, "")
+	seedClip(t, st, "c1", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "c2", clips.Commercial, 1994, clips.Kids, "toys")
+	seedClip(t, st, "b1", clips.Bumper, 1992, clips.General, "")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler?role=commercial", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -526,8 +527,8 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 
 func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "cereal-ad", filler.Commercial, 1992, filler.Kids, "")
-	seedClip(t, st, "beer-ad", filler.Commercial, 1994, filler.General, "")
+	seedClip(t, st, "cereal-ad", clips.Commercial, 1992, clips.Kids, "")
+	seedClip(t, st, "beer-ad", clips.Commercial, 1994, clips.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"cereal-ad","tags":["cereal"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag cereal-ad → %d", p.StatusCode)
@@ -553,8 +554,8 @@ func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
 
 func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "classified-bumper", filler.Bumper, 0, "", "")
-	seedClip(t, st, "unclassified-bumper", filler.Bumper, 0, "", "")
+	seedClip(t, st, "classified-bumper", clips.Bumper, 0, "", "")
+	seedClip(t, st, "unclassified-bumper", clips.Bumper, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"classified-bumper","tags":["promo"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag classified-bumper → %d", p.StatusCode)
@@ -576,8 +577,8 @@ func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
 
 func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "format-only", filler.Bumper, 0, "", "")
-	seedClip(t, st, "product-and-format", filler.Commercial, 0, "", "")
+	seedClip(t, st, "format-only", clips.Bumper, 0, "", "")
+	seedClip(t, st, "product-and-format", clips.Commercial, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"format-only","tags":["promo"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag format-only → %d", p.StatusCode)
@@ -603,7 +604,7 @@ func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
 
 func TestPatchClip_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", "", `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member patch → %d, want 401", resp.StatusCode)
@@ -612,7 +613,7 @@ func TestPatchClip_RequiresAdmin(t *testing.T) {
 
 func TestPatchClip_AdminEditsTags(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
 	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":"  Brightfield's  ","tags":["cereal"]}`)
@@ -687,7 +688,7 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 
 func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
+	seedClip(t, st, "geo", clips.Commercial, 1994, "kids", "cereal")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"geo","era":1991,"audience":"kids","geography":{"scope":"local","network":"Kestrel One","station":"wews-tv","airDate":"1991-03-10"}}`)
 	if resp.StatusCode != http.StatusOK {
@@ -757,7 +758,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 
 func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	seedClip(t, st, "stuck", filler.Commercial, 0, "", "")
+	seedClip(t, st, "stuck", clips.Commercial, 0, "", "")
 
 	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"vision"}`)
 	if member.StatusCode != http.StatusForbidden {
@@ -781,7 +782,7 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 // PATCHing era confirms it: once the clip has a verified era the suggestion's era is hidden.
 func TestPatchClip_ConfirmsObservedEra(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	if err := st.RecordFillerEraObservation(context.Background(), "u1", 1985, research.ObservedByVision, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -847,8 +848,8 @@ func TestSyncFiller_AdminOnly(t *testing.T) {
 // LLM grounding path — the leak §10 exists to prevent.
 func TestFiller_NameSearch(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
+	seedClip(t, st, "c1", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "c2", clips.Commercial, 1994, clips.Kids, "toys")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler?q=C1", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -875,7 +876,7 @@ func TestFiller_NameSearch(t *testing.T) {
 // structurally wrong pods rather than merely a mis-tagged clip.
 func TestFiller_PatchCorrectsRole(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
+	seedClip(t, st, "t1", clips.Commercial, 1994, clips.Kids, "toys")
 
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"t1","era":1994,"audience":"kids","tags":["toys"],"role":"trailer"}`)
@@ -886,7 +887,7 @@ func TestFiller_PatchCorrectsRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Role != filler.Trailer {
+	if got.Role != clips.Trailer {
 		t.Errorf("kind = %q, want trailer", got.Role)
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "t1")
@@ -908,7 +909,7 @@ func TestFiller_PatchCorrectsRole(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tag-only patch → %d, want 200", resp.StatusCode)
 	}
-	if got, _ = st.GetClip(context.Background(), "t1"); got.Role != filler.Trailer {
+	if got, _ = st.GetClip(context.Background(), "t1"); got.Role != clips.Trailer {
 		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Role)
 	}
 }
@@ -1390,7 +1391,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []split.Segment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: clips.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
 	}
@@ -1566,7 +1567,7 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	for i := range 120 {
-		seedClip(t, st, fmt.Sprintf("p%03d", i), filler.Commercial, 1992, filler.Kids, "cereal")
+		seedClip(t, st, fmt.Sprintf("p%03d", i), clips.Commercial, 1992, clips.Kids, "cereal")
 	}
 
 	var body struct {
@@ -1612,8 +1613,8 @@ func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
 // an unreviewed clip identically to a filed one.
 func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
+	seedClip(t, st, "filed", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "waiting", clips.Commercial, 1992, clips.Kids, "cereal")
 	if _, err := st.HoldClips(context.Background(), []string{"waiting"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -1654,7 +1655,7 @@ func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	for _, id := range []string{"k1", "k2", "k3"} {
-		seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "cereal")
+		seedClip(t, st, id, clips.Commercial, 1992, clips.Kids, "cereal")
 	}
 	var body struct {
 		Clips []struct{ Hash string }

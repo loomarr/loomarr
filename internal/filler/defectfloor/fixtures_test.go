@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -104,9 +103,9 @@ func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := filler.Probed{DurationMs: 30_000, Height: 480}
-	output := filler.Probed{DurationMs: 30_000, Height: 480}
-	quality := filler.MediaQuality{
+	input := tools.Probed{DurationMs: 30_000, Height: 480}
+	output := tools.Probed{DurationMs: 30_000, Height: 480}
+	quality := tools.MediaQuality{
 		EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,

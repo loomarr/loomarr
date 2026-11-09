@@ -137,7 +137,7 @@ func TestSync_RegistersTheConfiguredSharedVolumePath(t *testing.T) {
 // raw builds a scanned clip. ⚠ ID and Path are set SEPARATELY — id is the content hash, path is
 // where the file sits. The fixtures below pass the same string for both where the distinction
 // does not matter; the tests that turn on it (see the two-folder case) pass different ones.
-func raw(id, name string, kind filler.Role, dur int64, era int) cliplibrary.RawClip {
+func raw(id, name string, kind clips.Role, dur int64, era int) cliplibrary.RawClip {
 	return cliplibrary.RawClip{ID: id, Path: id, Name: name, Role: kind, DurationMs: dur, Era: era}
 }
 
@@ -148,8 +148,8 @@ func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
 
 func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw("c1", "Crunchlings 1992", filler.Commercial, 30000, 1992),
-		raw("b1", "Bumper", filler.Bumper, 5000, 0),
+		raw("c1", "Crunchlings 1992", clips.Commercial, 30000, 1992),
+		raw("b1", "Bumper", clips.Bumper, 5000, 0),
 	}}
 	st := newMemStore()
 	res, err := newSyncer(source, st).Sync(context.Background())
@@ -173,7 +173,7 @@ func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 // the server only owns id/name/duration. Category is derived from the taxonomy
 // tags, which the upsert never touches (#2323).
 func TestSync_PreservesTagsOnResync(t *testing.T) {
-	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", filler.Commercial, 30000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", clips.Commercial, 30000, 0)}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 
@@ -183,11 +183,11 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 	// A human/AI tags it.
 	tagged := st.clips["c1"]
 	tagged.Era = 1994
-	tagged.Audience = filler.Kids
+	tagged.Audience = clips.Kids
 	st.clips["c1"] = tagged
 
 	// The media server re-lists the same clip (maybe with a corrected name).
-	source.clips = []cliplibrary.RawClip{raw("c1", "clip (renamed)", filler.Commercial, 30000, 0)}
+	source.clips = []cliplibrary.RawClip{raw("c1", "clip (renamed)", clips.Commercial, 30000, 0)}
 	res, err := s.Sync(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 	after := st.clips["c1"]
 	// Tags survive.
-	if after.Era != 1994 || after.Audience != filler.Kids {
+	if after.Era != 1994 || after.Audience != clips.Kids {
 		t.Fatalf("re-sync clobbered loomarr-owned tags: %+v", after.Clip)
 	}
 	// Server-owned name updated.
@@ -209,7 +209,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 // Idempotent: a no-change re-sync makes no updates.
 func TestSync_IdempotentNoChange(t *testing.T) {
-	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", filler.Commercial, 30000, 1992)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", clips.Commercial, 30000, 1992)}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
@@ -232,7 +232,7 @@ func TestSync_IdempotentNoChange(t *testing.T) {
 // been exercised, because a still was always generated on the pass that first inserted the clip.
 func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 	// First pass: a clip whose artwork has not been rendered yet (the pre-V39 catalog).
-	bare := raw("c1", "clip", filler.Commercial, 30000, 1992)
+	bare := raw("c1", "clip", clips.Commercial, 30000, 1992)
 	source := &fakeSource{clips: []cliplibrary.RawClip{bare}}
 	st := newMemStore()
 	s := newSyncer(source, st)
@@ -271,15 +271,15 @@ func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw("c1", "keep", filler.Commercial, 30000, 1992),
-		raw("c2", "goes away", filler.Commercial, 30000, 1993),
+		raw("c1", "keep", clips.Commercial, 30000, 1992),
+		raw("c2", "goes away", clips.Commercial, 30000, 1993),
 	}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 
 	// c2 disappears from the media server.
-	source.clips = []cliplibrary.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
+	source.clips = []cliplibrary.RawClip{raw("c1", "keep", clips.Commercial, 30000, 1992)}
 	res, _ := s.Sync(context.Background())
 	if res.Pruned != 1 {
 		t.Errorf("pruned = %d, want 1", res.Pruned)
@@ -297,7 +297,7 @@ func guardCatalog(n int) []cliplibrary.RawClip {
 	out := make([]cliplibrary.RawClip, n)
 	for i := range out {
 		id := fmt.Sprintf("9000%04d", i)
-		out[i] = cliplibrary.RawClip{ID: id, Path: "ads/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000}
+		out[i] = cliplibrary.RawClip{ID: id, Path: "ads/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000}
 	}
 	return out
 }
@@ -343,13 +343,13 @@ func TestSync_UnreadSubtreeKeepsItsClipsAndTheRestStillPrunes(t *testing.T) {
 	var catalog []cliplibrary.RawClip
 	for i := range 10 {
 		id := fmt.Sprintf("9000%04d", i)
-		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "a/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "a/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000})
 	}
 	for i := 10; i < 20; i++ {
 		id := fmt.Sprintf("9000%04d", i)
-		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "b/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "b/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000})
 	}
-	sibling := cliplibrary.RawClip{ID: "90000020", Path: "bb/90000020.mp4", Name: "sibling", Role: filler.Commercial, DurationMs: 30_000}
+	sibling := cliplibrary.RawClip{ID: "90000020", Path: "bb/90000020.mp4", Name: "sibling", Role: clips.Commercial, DurationMs: 30_000}
 	catalog = append(catalog, sibling)
 
 	source := &fakeSource{clips: catalog}
@@ -403,7 +403,7 @@ func TestSync_ListingThatDropsMostOfTheCatalogStillPrunes(t *testing.T) {
 
 func TestSync_FailedListingPreservesLastKnownCatalog(t *testing.T) {
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw("c1", "known clip", filler.Commercial, 30000, 1992),
+		raw("c1", "known clip", clips.Commercial, 30000, 1992),
 	}}
 	st := newMemStore()
 	syncer := newSyncer(source, st)
@@ -437,8 +437,8 @@ func TestSync_HoldsDownloadedAndHandCopiedClips(t *testing.T) {
 	}
 
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
-		raw("copied.mp4", "Copied ad", filler.Commercial, 30000, 0),
+		raw("fetched.mp4", "Fetched ad", clips.Commercial, 30000, 0),
+		raw("copied.mp4", "Copied ad", clips.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir),
@@ -495,7 +495,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 		ClipHash: clipHash, State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0),
+		raw(clipHash, "Downloaded ad", clips.Commercial, 30_000, 0),
 	}}
 	source.clips[0].Path = filepath.ToSlash(relative)
 	st := newMemStore()
@@ -539,7 +539,7 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 		MediaSHA256: strings.Repeat("f", 64), MediaBytes: size, ClipHash: clipHash,
 		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
-	source := &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Substituted", filler.Commercial, 30_000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Substituted", clips.Commercial, 30_000, 0)}}
 	source.clips[0].Path = filepath.Base(media)
 	st := newMemStore()
 	syncer := filler.NewSyncer(source, st, testLayout(dir), func() time.Time { return now }, discardLog()).
@@ -566,7 +566,7 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := &fakeSource{clips: []cliplibrary.RawClip{
-		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
+		raw("fetched.mp4", "Fetched ad", clips.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir),
@@ -601,21 +601,21 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 }
 
 func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
-	source := &fakeSource{clips: []cliplibrary.RawClip{raw("clip", "Mystery", filler.Unclassified, 31_000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("clip", "Mystery", clips.Unclassified, 31_000, 0)}}
 	for _, tc := range []struct {
 		name     string
-		kind     filler.Role
+		kind     clips.Role
 		held     bool
-		wantKind filler.Role
+		wantKind clips.Role
 		wantHeld bool
 	}{
-		{name: "ready role survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
-		{name: "held legacy default is retired", kind: filler.Commercial, held: true, wantKind: filler.Unclassified, wantHeld: true},
-		{name: "unknown role does not invent a hold", wantKind: filler.Unclassified, wantHeld: false},
+		{name: "ready role survives rescan", kind: clips.Commercial, wantKind: clips.Commercial},
+		{name: "held legacy default is retired", kind: clips.Commercial, held: true, wantKind: clips.Unclassified, wantHeld: true},
+		{name: "unknown role does not invent a hold", wantKind: clips.Unclassified, wantHeld: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newMemStore()
-			st.clips["clip"] = cliplibrary.StoreClip{Clip: filler.Clip{
+			st.clips["clip"] = cliplibrary.StoreClip{Clip: clips.Clip{
 				Hash: "clip", Path: "clip", Name: "Old name", Role: tc.kind,
 				DurationMs: 30_000, Held: tc.held,
 			}}
@@ -641,9 +641,9 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
 	source := &fakeSource{clips: []cliplibrary.RawClip{
 		{ID: "hash-sparkra-1985", Path: "ads/sparkra.mp4", Name: "Sparkra 1985",
-			Role: filler.Commercial, DurationMs: 30000},
+			Role: clips.Commercial, DurationMs: 30000},
 		{ID: "hash-sparkra-1992", Path: "ads/sparkra.mp4", Name: "Sparkra 1992",
-			Role: filler.Commercial, DurationMs: 15000},
+			Role: clips.Commercial, DurationMs: 15000},
 	}}
 	st := newMemStore()
 
@@ -680,8 +680,8 @@ type realScanSource struct{ dir string }
 
 func (r realScanSource) EnsureLocalSource(context.Context, string) error { return nil }
 func (r realScanSource) ListLocalClips(ctx context.Context) ([]cliplibrary.RawClip, error) {
-	clips, _, err := filler.ScanDir(ctx, r.dir, func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000}, nil
+	clips, _, err := filler.ScanDir(ctx, r.dir, func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000}, nil
 	})
 	return clips, err
 }
@@ -957,7 +957,7 @@ func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *te
 	}
 	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{
 		Mezzanine: tools.DefaultMezzanine().ID(),
-		MediaQuality: &filler.MediaQuality{
+		MediaQuality: &tools.MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
@@ -1347,12 +1347,12 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	}
 
 	source := &fakeSource{clips: []cliplibrary.RawClip{{
-		ID: actual, Path: oldRel, Name: stale, Role: filler.Commercial, DurationMs: 30_000,
+		ID: actual, Path: oldRel, Name: stale, Role: clips.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
-	st.clips[actual] = cliplibrary.StoreClip{Clip: filler.Clip{
-		Hash: actual, Path: oldRel, Name: stale, Role: filler.Commercial,
-		Brand: "Sparkra-Cola", Era: 1992, Audience: filler.Family,
+	st.clips[actual] = cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: actual, Path: oldRel, Name: stale, Role: clips.Commercial,
+		Brand: "Sparkra-Cola", Era: 1992, Audience: clips.Family,
 	}}
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
 	res, err := sync.Sync(context.Background())
@@ -1385,8 +1385,8 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Errorf("repaired provenance = row %q, sidecar %q/%q; want grounded on both", got.NameSource,
 			tags.DisplayName, tags.NameProvenance)
 	}
-	rescanned, _, err := filler.ScanDir(context.Background(), dir, func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000}, nil
+	rescanned, _, err := filler.ScanDir(context.Background(), dir, func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1420,7 +1420,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	}
 	legacyTitle := "299bceca4e5635c05ea454255105152f0b999119"
 	source := &fakeSource{clips: []cliplibrary.RawClip{{
-		ID: actual, Path: rel, Name: legacyTitle, Role: filler.Commercial, DurationMs: 30_000,
+		ID: actual, Path: rel, Name: legacyTitle, Role: clips.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
@@ -1480,18 +1480,18 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	})
 	source := &fakeSource{clips: []cliplibrary.RawClip{
 		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clips.NameFromFilename,
-			Role: filler.Commercial, DurationMs: 30_000},
-		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000},
+			Role: clips.Commercial, DurationMs: 30_000},
+		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Role: clips.Commercial, DurationMs: 30_000},
 		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clips.NameFromCurated,
-			Role: filler.Commercial, DurationMs: 30_000},
+			Role: clips.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
-	st.clips[untitled] = cliplibrary.StoreClip{Clip: filler.Clip{Hash: untitled, Path: untitledRel,
-		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[named] = cliplibrary.StoreClip{Clip: filler.Clip{Hash: named, Path: namedRel,
-		Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[segment] = cliplibrary.StoreClip{Clip: filler.Clip{Hash: segment, Path: segmentRel,
-		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[untitled] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: untitled, Path: untitledRel,
+		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[named] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: named, Path: namedRel,
+		Name: "Summer Sale Spot", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[segment] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: segment, Path: segmentRel,
+		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
 
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
 		t.Fatal(err)

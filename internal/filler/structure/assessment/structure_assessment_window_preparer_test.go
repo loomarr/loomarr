@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
@@ -216,7 +215,7 @@ func TestStructureAssessmentWindowOutputRejectsPerWindowByteOverrun(t *testing.T
 		t.Fatal(err)
 	}
 	window := window.Window{MediaStartMS: 0, MediaEndMS: 10_000}
-	probe := filler.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
+	probe := tools.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
 	if err := validateStructureAssessmentWindowOutput(path, probe, window, profile, media); err == nil {
 		t.Fatal("oversized normalized window was accepted")
 	}
@@ -291,13 +290,13 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 		calls.outputs = append(calls.outputs, output)
 		return os.WriteFile(output, []byte(strings.Repeat("window-"+strconv.Itoa(ordinal), 128)), 0o600)
 	}
-	preparer.probe = func(_ context.Context, path string) (filler.Probed, error) {
+	preparer.probe = func(_ context.Context, path string) (tools.Probed, error) {
 		if strings.Contains(filepath.Base(path), "structure-source-") {
-			return filler.Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+			return tools.Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return filler.Probed{}, err
+			return tools.Probed{}, err
 		}
 		ordinal := -1
 		for candidate := range plan.Windows {
@@ -307,10 +306,10 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 			}
 		}
 		if ordinal < 0 {
-			return filler.Probed{}, errors.New("unknown fixture media")
+			return tools.Probed{}, errors.New("unknown fixture media")
 		}
 		window := plan.Windows[ordinal]
-		return filler.Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+		return tools.Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 	}
 	preparer.decode = func(_ context.Context, _ string, _ string) error {
 		calls.decodes++

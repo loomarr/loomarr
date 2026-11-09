@@ -130,7 +130,7 @@ type SplitPartialCompletion struct {
 // coarse split, which is the honest degradation.
 type Splitter struct {
 	store    SplitStore
-	tools    MediaTools
+	tools    tools.MediaTools
 	provider llm.Provider
 	dropDir  string // FILLER_DIR — clip paths are relative to it (§10)
 	// minClipDuration is `filler.min_duration`, read live so it hot-applies. Composed with
@@ -162,7 +162,7 @@ type SegmentLanguagePolicy struct {
 
 // NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
 // nil, which leaves MinSegmentMs as the only floor.
-func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
+func NewSplitter(store SplitStore, tools tools.MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
 	if now == nil {
 		now = time.Now
 	}
@@ -528,7 +528,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 			p.Detection.Chapters = true
 			p.Detection.ChapterEdges = split.ChapterEdges(chapters)
 			p.Detection.CoarseSegments = segs
-			p.Detection.Discarded = append([]Interval(nil), dropped.Spans...)
+			p.Detection.Discarded = append([]tools.Interval(nil), dropped.Spans...)
 			p.Dropped = dropped
 			if err := sp.saveProposal(ctx, *p); err != nil {
 				return p, false, err
@@ -575,7 +575,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 				}
 				p.Detection.ScannedThroughMs = durationMs
 				p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, nil, floor)
-				p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
+				p.Detection.Discarded = append([]tools.Interval(nil), p.Dropped.Spans...)
 			} else {
 				p.Detection.Black = append(p.Detection.Black, black...)
 				p.Detection.Silence = append(p.Detection.Silence, silence...)
@@ -585,7 +585,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		if p.Detection.ScannedThroughMs >= durationMs && len(p.Detection.CoarseSegments) == 0 {
 			gaps := sourcedGaps(p.Detection.Black, p.Detection.Silence)
 			p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, gaps, floor)
-			p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
+			p.Detection.Discarded = append([]tools.Interval(nil), p.Dropped.Spans...)
 			if len(p.Detection.CoarseSegments) == 0 {
 				return p, false, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
 			}
@@ -731,7 +731,7 @@ func restoreCoarseBoundarySources(progress *split.DetectionProgress, durationMs 
 	}
 }
 
-func sourcedGaps(blacks, silences []Interval) []detectedGap {
+func sourcedGaps(blacks, silences []tools.Interval) []detectedGap {
 	gaps := make([]detectedGap, 0, len(blacks)+len(silences))
 	for _, b := range blacks {
 		gaps = append(gaps, detectedGap{Interval: b, Src: split.SrcBlack})
@@ -1453,8 +1453,8 @@ func validateConfirmedSegments(segs []split.Segment, durationMs int64, floor seg
 
 // sliceTranscript keeps the utterances overlapping [startMs,endMs) — the text a
 // rescued sub-segment is classified from.
-func sliceTranscript(transcript []TranscriptSegment, startMs, endMs int64) []TranscriptSegment {
-	var out []TranscriptSegment
+func sliceTranscript(transcript []tools.TranscriptSegment, startMs, endMs int64) []tools.TranscriptSegment {
+	var out []tools.TranscriptSegment
 	for _, t := range transcript {
 		if t.EndMs > startMs && t.StartMs < endMs {
 			out = append(out, t)

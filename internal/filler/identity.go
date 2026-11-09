@@ -15,6 +15,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -264,8 +265,8 @@ func (ci *CreativeIdentity) upgradeWanted(ctx context.Context, cached map[string
 }
 
 // identityCandidate is a clip that airs as an ad of its own: published, not a compilation.
-func identityCandidate(c Clip) bool {
-	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != PlacementNotPlayable
+func identityCandidate(c clips.Clip) bool {
+	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != clips.PlacementNotPlayable
 }
 
 // compareCopies orders two copies of one ad best first: the cleaner copy, with fewer checks near

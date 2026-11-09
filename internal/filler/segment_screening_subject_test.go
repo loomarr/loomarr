@@ -24,9 +24,9 @@ func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := Probed{DurationMs: 30_000, Height: 480}
-	output := Probed{DurationMs: 30_000, Height: 480}
-	quality := MediaQuality{
+	input := tools.Probed{DurationMs: 30_000, Height: 480}
+	output := tools.Probed{DurationMs: 30_000, Height: 480}
+	quality := tools.MediaQuality{
 		EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
@@ -119,7 +119,7 @@ func TestSegmentScreeningSubjectRejectsIncompleteOrDriftedChildIdentity(t *testi
 
 func TestSegmentScreeningSubjectRequiresMeasuredDerivativeQuality(t *testing.T) {
 	manifest := screeningSubjectManifest(t)
-	manifest.Playback.Quality = MediaQuality{}
+	manifest.Playback.Quality = tools.MediaQuality{}
 	if _, err := asset.NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, asset.SidecarTags{MediaAssets: &manifest}); err == nil {
 		t.Fatal("subject accepted playback without measured media quality")
 	}

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -15,13 +15,13 @@ import (
 func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 	cases := []struct {
 		name string
-		clip filler.Clip
+		clip clips.Clip
 		want bool
 	}{
-		{"tagged commercial", filler.Clip{Role: filler.Commercial, Era: 1991, Audience: filler.Kids, Category: "toys"}, false},
-		{"commercial missing category", filler.Clip{Role: filler.Commercial, Era: 1991, Audience: filler.Kids}, true},
-		{"bare commercial", filler.Clip{Role: filler.Commercial}, true},
-		{"bare bumper", filler.Clip{Role: filler.Bumper}, false},
+		{"tagged commercial", clips.Clip{Role: clips.Commercial, Era: 1991, Audience: clips.Kids, Category: "toys"}, false},
+		{"commercial missing category", clips.Clip{Role: clips.Commercial, Era: 1991, Audience: clips.Kids}, true},
+		{"bare commercial", clips.Clip{Role: clips.Commercial}, true},
+		{"bare bumper", clips.Clip{Role: clips.Bumper}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

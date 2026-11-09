@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -31,9 +32,9 @@ func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC().Add(-time.Hour)
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
-		Hash: hash, Path: "ab/" + hash + ".mp4", Name: hash + ".mp4", Role: filler.Commercial,
-		DurationMs: 30_000, Source: "archive", Placement: filler.PlacementBreakBody,
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clips.Clip{
+		Hash: hash, Path: "ab/" + hash + ".mp4", Name: hash + ".mp4", Role: clips.Commercial,
+		DurationMs: 30_000, Source: "archive", Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestPipeline_RunningRowForAlreadyReleasedClipSettlesWithoutRepublishing(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Held || before.Placement != filler.PlacementBreakBody {
+	if before.Held || before.Placement != clips.PlacementBreakBody {
 		t.Fatalf("seed is not the released shape: held=%v placement=%q", before.Held, before.Placement)
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // The defect floor (internal/filler/defectfloor) drops an admitted clip's evidence copy by rewriting
@@ -20,7 +21,7 @@ func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 		if err := asset.WriteSidecarTags(filepath.Join(dir, rel), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
 			t.Fatal(err)
 		}
-		return cliplibrary.StoreClip{Clip: Clip{Hash: hash, Path: rel}}
+		return cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: rel}}
 	}
 	released := manifest
 	released.Evidence = nil
@@ -31,7 +32,7 @@ func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 	if p.evidenceReleased(clip("an ad still holding its evidence", manifest)) {
 		t.Error("a clip still naming its evidence copy was read as released")
 	}
-	if p.evidenceReleased(cliplibrary.StoreClip{Clip: Clip{Hash: "no-sidecar", Path: "00/00/" + "0000000000000000000000000000000000000000000000000000000000000000.mp4"}}) {
+	if p.evidenceReleased(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "no-sidecar", Path: "00/00/" + "0000000000000000000000000000000000000000000000000000000000000000.mp4"}}) {
 		t.Error("a clip with no sidecar was read as released")
 	}
 }

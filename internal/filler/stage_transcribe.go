@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The TRANSCRIBE stage (§10 V51b): what does the clip SAY?
@@ -47,7 +48,7 @@ type TranscribeClipStore interface {
 
 // TranscribeStage turns speech into the tagger's richest input.
 type TranscribeStage struct {
-	tools   MediaTools
+	tools   tools.MediaTools
 	store   TranscribeClipStore
 	clipDir string
 	// drop is FILLER_DIR as an fs.FS, for reading the sidecar that decides whether a clip's source
@@ -59,7 +60,7 @@ type TranscribeStage struct {
 }
 
 // NewTranscribeStage builds the stage.
-func NewTranscribeStage(tools MediaTools, store TranscribeClipStore, clipDir string, drop fs.FS, enabled func() bool, now func() time.Time) *TranscribeStage {
+func NewTranscribeStage(tools tools.MediaTools, store TranscribeClipStore, clipDir string, drop fs.FS, enabled func() bool, now func() time.Time) *TranscribeStage {
 	if now == nil {
 		now = time.Now
 	}

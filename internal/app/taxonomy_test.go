@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -30,12 +30,12 @@ func (taxonomyAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResol
 }
 
 type taxonomyWakeRecorder struct {
-	snapshots []filler.Clip
+	snapshots []clips.Clip
 }
 
 func (*taxonomyWakeRecorder) Reconcile(context.Context, string) error { return nil }
 
-func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshots []filler.Clip) error {
+func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshots []clips.Clip) error {
 	r.snapshots = append(r.snapshots, snapshots...)
 	return nil
 }
@@ -43,9 +43,9 @@ func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshot
 func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
-		DurationMs: 30_000, Era: 1994, Audience: filler.General,
+	clip := clips.Clip{
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
+		DurationMs: 30_000, Era: 1994, Audience: clips.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
@@ -113,9 +113,9 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
-		DurationMs: 30_000, Era: 1994, Audience: filler.General,
+	clip := clips.Clip{
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
+		DurationMs: 30_000, Era: 1994, Audience: clips.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
