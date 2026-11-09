@@ -1,4 +1,4 @@
-package filler
+package cliplibrary
 
 import (
 	"context"
@@ -178,7 +178,7 @@ func (s *LibraryScanner) Scan(ctx context.Context, folder, watchDir string, cata
 // The re-keyed identities come from the filed clips' sidecars: the transcode records the source
 // master's identity there, and the catalog row keeps only the derivative's hash. Read once per
 // sync, and only when a library source is about to be scanned.
-func cataloguedClips(clipDir string, inferior map[string]bool) func(clipID, ext string) bool {
+func CataloguedClips(clipDir string, inferior map[string]bool) func(clipID, ext string) bool {
 	rekeyed := map[string]bool{}
 	if filed, err := collectMedia(clipDir); err == nil {
 		for _, path := range filed {

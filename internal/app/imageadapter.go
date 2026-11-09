@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -377,7 +377,7 @@ func (a artworkAdoptStore) ListPendingArtwork(ctx context.Context, limit int) ([
 		// an install with no filler is a supported shape (§10).
 		return nil, nil
 	}
-	cache := filepath.Join(dir, filler.ThumbDirName)
+	cache := filepath.Join(dir, cliplibrary.ThumbDirName)
 
 	rows, err := a.st.ListClipsPendingArtworkAdoption(ctx, limit)
 	if err != nil {

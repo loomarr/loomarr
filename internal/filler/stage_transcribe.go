@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
@@ -21,25 +23,6 @@ import (
 // The transcript is one of the text signals the tagger grounds against, so a tagger that runs
 // first scores a clip against a transcript that arrives ten minutes later — which is precisely
 // what two independent cron schedules produced. `StageOrder` states the dependency once.
-
-// TranscriptNone is the sentinel a wordless clip records (§10 V44) — the transcript column's
-// analogue of the language gate's language.None.
-//
-// ⚠ **A NON-EMPTY marker is load-bearing.** The transcript column has the same two meanings
-// `language` does — "not yet transcribed" and "transcribed, wordless" — and the row default for
-// BOTH is `""`. Recording a literal `""` for a silent clip could not distinguish them, so every
-// pass would re-run Whisper on every wordless clip forever, ~341s each under QEMU.
-//
-// It is deliberately a bracketed marker, not real speech, so a search over transcripts never
-// surfaces it as content and the tagger — which reads `Transcript` as a text signal — sees a token
-// it will not ground a brand or era on. A wordless clip must still be tagged from its OTHER
-// signals (its filename, its sidecar, or the vision rung), never from this placeholder.
-//
-// ⚠ **A documented tension with 00038's column note**, surfaced rather than papered over: that
-// migration says the row stores `""` for a wordless clip and "does not need to tell [the two
-// meanings] apart". Both cannot hold. This resolves it toward the never-re-run guarantee the same
-// migration states as its whole point.
-const TranscriptNone = "[no speech]"
 
 // TranscriptionPassVersion changes when the media-to-transcript semantics change. Progressive
 // enrichment binds completion to this identity so a changed implementation may revisit eligible
@@ -87,7 +70,7 @@ func (s *TranscribeStage) ID() pipelinestate.StageID { return pipelinestate.Stag
 func (s *TranscribeStage) Cost() StageCost           { return CostWhisper }
 
 // Applies when transcription is on, the clip has not been heard, and it stands to gain.
-func (s *TranscribeStage) Applies(_ context.Context, c StoreClip) (bool, string) {
+func (s *TranscribeStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
 	if s.tools == nil {
 		return false, "no transcription backend is configured"
 	}
@@ -108,7 +91,7 @@ func (s *TranscribeStage) Applies(_ context.Context, c StoreClip) (bool, string)
 
 // Observe transcribes without persisting. Progressive catch-up uses this half so the transcript,
 // accepted facts, and completion identity can commit atomically in its own store transaction.
-func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult, string, error) {
+func (s *TranscribeStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (StageResult, string, error) {
 	start, end := language.Span(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 
@@ -127,7 +110,7 @@ func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult
 		// ⚠ The NON-EMPTY sentinel, never a literal "". See TranscriptNone: `""`-vs-`""` is not a
 		// distinction, so recording an empty string for a silent clip would make every pass hear
 		// it again forever.
-		text = TranscriptNone
+		text = clips.TranscriptNone
 	}
 	updated := c
 	updated.Transcript = text
@@ -138,7 +121,7 @@ func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult
 }
 
 // Run is the readiness-stage adapter around Observe.
-func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *TranscribeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	result, transcript, err := s.Observe(ctx, c)
 	if err != nil {
 		return StageResult{}, err
@@ -159,7 +142,7 @@ func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, er
 // A clip with a RICH description that is nonetheless still UNTAGGED is also a candidate — the
 // description did not carry what the tagger needed, so the spoken text is the next signal to try.
 // Only a clip that is BOTH richly-described AND already tagged has nothing to gain.
-func (s *TranscribeStage) needsTranscription(c StoreClip) bool {
+func (s *TranscribeStage) needsTranscription(c cliplibrary.StoreClip) bool {
 	if s.sourceTextThin(c) {
 		return true
 	}
@@ -170,7 +153,7 @@ func (s *TranscribeStage) needsTranscription(c StoreClip) bool {
 //
 // ⚠ Reads the sidecar via `SidecarText`, the SAME signal the tagger reads, so "thin" here means
 // exactly "thin to the tagger".
-func (s *TranscribeStage) sourceTextThin(c StoreClip) bool {
+func (s *TranscribeStage) sourceTextThin(c cliplibrary.StoreClip) bool {
 	if s.drop == nil || c.Path == "" {
 		return true
 	}

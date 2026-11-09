@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -38,7 +39,7 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 		records.NewFillerSource("folder", "folder", "", "Drop folder", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	layout, err := filler.NewLayout("/data/filler", "")
+	layout, err := cliplibrary.NewLayout("/data/filler", "")
 	if err != nil {
 		t.Fatal(err)
 	}

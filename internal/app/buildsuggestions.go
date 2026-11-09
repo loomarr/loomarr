@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/moviecollections"
@@ -56,7 +56,7 @@ func buildSuggestions(
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
-	fillerLayout filler.Layout,
+	fillerLayout cliplibrary.Layout,
 	activityRecorder *activity.Recorder,
 	log *slog.Logger,
 	libraryClient *library.Client,

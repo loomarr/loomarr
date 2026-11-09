@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
@@ -67,7 +68,7 @@ func compilationGate(set resolved) filler.CompilationGate {
 func buildFillerSubsystem(
 	st records.Store,
 	set resolved,
-	layout filler.Layout,
+	layout cliplibrary.Layout,
 	log *slog.Logger,
 	libraryClient *library.Client,
 	eventBus *events.Bus,
@@ -180,7 +181,7 @@ func buildFillerSubsystem(
 	defectJudge := defectfloor.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
 	defectFloor := defectfloor.NewDefectFloor(
-		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
+		fillerDefectStoreAdapter{st}, cliplibrary.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return tools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
 		},

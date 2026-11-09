@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -82,7 +83,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	st := testkit.MigratedSQLiteStore(t)
 	parentRel := filepath.Base(fixtures.Compilation)
 	parentProbe, err := probe(ctx, fixtures.Compilation)

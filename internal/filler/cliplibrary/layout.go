@@ -1,4 +1,4 @@
-package filler
+package cliplibrary
 
 import (
 	"errors"
@@ -207,7 +207,7 @@ func componentPrefix(parent, child []string) bool {
 // the catalog root. Overlap in either direction is unsafe: an ancestor walks the whole catalog,
 // while a descendant can name an already-filed shard. In both cases TakeIn's duplicate cleanup
 // can remove the source path, which is the live catalog file when the paths are aliases.
-func (l Layout) intakeSource(path string) (string, error) {
+func (l Layout) IntakeSource(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("filler layout: source folder is empty")

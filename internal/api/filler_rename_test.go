@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -30,7 +31,7 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 	if err := os.WriteFile(filepath.Join(dir, "Widgetmax Ad 1991.mp4"), []byte("MP4BYTES"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	layout, err := filler.NewLayout(dir, "")
+	layout, err := cliplibrary.NewLayout(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}

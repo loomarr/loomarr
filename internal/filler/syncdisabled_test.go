@@ -6,17 +6,18 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // countingSource records whether the syncer reached the filesystem at all.
 type countingSource struct {
 	ensured int
 	listed  int
-	clips   []filler.RawClip
+	clips   []cliplibrary.RawClip
 }
 
 func (c *countingSource) EnsureLocalSource(context.Context, string) error { c.ensured++; return nil }
-func (c *countingSource) ListLocalClips(context.Context) ([]filler.RawClip, error) {
+func (c *countingSource) ListLocalClips(context.Context) ([]cliplibrary.RawClip, error) {
 	c.listed++
 	return c.clips, nil
 }
@@ -24,9 +25,12 @@ func (c *countingSource) ListLocalClips(context.Context) ([]filler.RawClip, erro
 // recordingStore fails loudly if a disabled sync writes anything.
 type recordingStore struct{ upserts, prunes int }
 
-func (r *recordingStore) UpsertClip(context.Context, filler.StoreClip) error { r.upserts++; return nil }
-func (r *recordingStore) GetClip(context.Context, string) (filler.StoreClip, bool, error) {
-	return filler.StoreClip{}, false, nil
+func (r *recordingStore) UpsertClip(context.Context, cliplibrary.StoreClip) error {
+	r.upserts++
+	return nil
+}
+func (r *recordingStore) GetClip(context.Context, string) (cliplibrary.StoreClip, bool, error) {
+	return cliplibrary.StoreClip{}, false, nil
 }
 func (r *recordingStore) LiveClipPaths(context.Context) (map[string]string, error) { return nil, nil }
 func (r *recordingStore) DeleteClipsNotIn(context.Context, []string) (int, error) {
@@ -38,7 +42,7 @@ func (r *recordingStore) DeleteClipsNotIn(context.Context, []string) (int, error
 // behaviour claim, so it is asserted as behaviour: no scan, no writes, and a distinct error
 // the caller can turn into an answer naming the switch.
 func TestSync_DisabledSourceDoesNoWork(t *testing.T) {
-	src := &countingSource{clips: []filler.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
+	src := &countingSource{clips: []cliplibrary.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
 	st := &recordingStore{}
 	syncer := filler.NewSyncer(src, st, testLayout("/data/filler"), nil, discardLog()).
 		WithEnabled(func() bool { return false })
@@ -65,7 +69,7 @@ func TestSync_DisabledSourceDoesNoWork(t *testing.T) {
 // Switching it back on resumes: the switch withdraws a source from future work, it does not
 // tear anything down.
 func TestSync_EnabledSourceScansNormally(t *testing.T) {
-	src := &countingSource{clips: []filler.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
+	src := &countingSource{clips: []cliplibrary.RawClip{{Path: "a.mp4", Name: "a.mp4", DurationMs: 30_000}}}
 	on := false
 	syncer := filler.NewSyncer(src, &recordingStore{}, testLayout("/data/filler"), nil, discardLog()).
 		WithEnabled(func() bool { return on })

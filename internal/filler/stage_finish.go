@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -22,10 +23,10 @@ func (s *FinishStage) ID() pipelinestate.StageID { return pipelinestate.StageFin
 func (s *FinishStage) Cost() StageCost           { return CostCheap }
 
 // Applies: always. The ready commit depends on this rung having run.
-func (s *FinishStage) Applies(context.Context, StoreClip) (bool, string) { return true, "" }
+func (s *FinishStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) { return true, "" }
 
 // Run completes the rung and hands the clip to terminal readiness.
-func (s *FinishStage) Run(ctx context.Context, _ StoreClip) (StageResult, error) {
+func (s *FinishStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (StageResult, error) {
 	reportProgress(ctx, pipelinestate.StageFinish, 100)
 	return StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }

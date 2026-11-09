@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -81,17 +82,17 @@ func offerCuratedSources(ctx context.Context, st records.Store, log *slog.Logger
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
-func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog.Logger,
+func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
-	src := filler.DirSource{
+	src := cliplibrary.DirSource{
 		Layout: layout,
-		Probe:  filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
 		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
 		// points that setting at a custom build (the whole reason it exists — see the
 		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
 		// silently, and the setting appeared to do nothing here.
-		Artwork: filler.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
+		Artwork: cliplibrary.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
 		Storage: governor,
 		// The quality gate's floor (§10 V40).
 		MinDuration: func() time.Duration { return settings.FillerMinDuration.Get(set) },
@@ -117,7 +118,7 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 		WithStorageGovernor(governor).
 		WithInferiorCopies(st)
 
-	libScanner := filler.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
+	libScanner := cliplibrary.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
 	cutover := &fillerLibraryCutover{st: st, roots: st, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
 	return syncer.WithScanSources(fillerScanSourceAdapter{st: st, cutover: cutover}, libScanner)
 }
@@ -136,7 +137,7 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 // ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
+func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
 	ytPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
 	ffPath := resolveTool(settings.IngestFFmpegPath.Get(set), "ffmpeg")
 	if ffPath == "" {
@@ -166,7 +167,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -202,7 +203,7 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 // to the next span without restarting, matching the rest of the filler settings contract.
 func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmpegTools {
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	mediaTools := tools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+	mediaTools := tools.NewFFmpegTools(ffmpegPath, cliplibrary.FFprobePathNextTo(ffmpegPath),
 		settings.IngestWhisperPath.Get(set), settings.IngestWhisperModel.Get(set), "")
 	hosted := &tools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
@@ -264,7 +265,7 @@ func intakeLanguages(st interface {
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
@@ -353,7 +354,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		fillerPipelineClipAdapter{st}, cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		clipDir, tools.DefaultMezzanine(),
 		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
@@ -373,7 +374,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
-			filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), fillerPipelineClipAdapter{st}, clipDir,
+			cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), fillerPipelineClipAdapter{st}, clipDir,
 			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
 			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,

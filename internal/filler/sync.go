@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
@@ -32,111 +32,10 @@ import (
 // playout (a uuid is not a playable input) and why the dependency ran the wrong
 // way (no Tunarr ⇒ no catalog ⇒ no commercials, on a service §9.1 makes optional).
 
-// RawClip is one clip as discovered by a scan, before catalog metadata is merged.
-type RawClip struct {
-	// ID is the identity: the clip's sparse content hash (§10 V38c).
-	//
-	// ⚠ Separate from Path since V38c. Identity used to BE the path, which broke the moment many
-	// watched folders were allowed — two folders each holding `ads/coke.mp4` produced one id and
-	// silently overwrote each other. Hashing the bytes also answers the question a path cannot:
-	// *is this the same advert?*, which is what lets intake skip duplicates.
-	ID string
-	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` for anything intake
-	// has filed. Data, not identity.
-	Path string
-	// Source is the registered source id restored from Loomarr's sidecar. Empty is a hand-copied
-	// or legacy clip and resolves through the folder source policy.
-	Source string
-	// ParentHash is restored only from Loomarr's conditioning lineage sidecar. It reconnects a
-	// reviewed child to its composite after the rebuildable clip catalog is empty.
-	ParentHash string
-	// LineageInvalid keeps a damaged child fail-closed during catalog reconstruction. ParentHash
-	// may still name the retained parent, but the child remains held until its sidecar is repaired.
-	LineageInvalid bool
-	// ConditioningHold keeps a valid lineage-only child and malformed conditioning state out of
-	// rotation across an empty-catalog rebuild until complete post-rewrite evidence exists.
-	ConditioningHold bool
-	// SidecarInvalid prevents catalog repair from overwriting or laundering unreadable durable
-	// metadata. The clip is held until an operator repairs the sidecar.
-	SidecarInvalid bool
-	// IsComposite is derived for retained parents from valid child lineage before any rows are
-	// written, so filesystem traversal order cannot briefly make the parent airable.
-	IsComposite bool
-	// TunarrProgramID is set only when the clip was ALSO seen through Tunarr's local
-	// source, so Tunarr-backed channels can still build filler-lists. Empty on an
-	// install with no Tunarr, which is a supported configuration, not a degraded one.
-	TunarrProgramID string
-	Name            string
-	// NameSource is where the scan found Name (#1988); the catalog row takes it with the name.
-	NameSource      clips.NameSource
-	DurationMs      int64
-	Role            Role
-	Era             int // initial era from filename; 0 if none
-	GeographicScope pod.GeographicScope
-	Country         string
-	Network         string
-	Station         string
-	AirDate         string
-	GeoEvidence     string
-	// Quality is the resolution label ("1080p", "480p") derived from the probed video
-	// height; "" when the file has no video stream or was never re-probed. Display-only —
-	// the guide's pod hover card shows it so a grainy 240p advert is explicable rather
-	// than surprising. It never affects selection (V17c adds an opt-in floor).
-	Quality string
-	// License is the licence URL the source declared, read from the clip's info-JSON sidecar
-	// at scan time (V33). "" means UNKNOWN — the common case, ~92% of archive.org items — and
-	// never "public domain".
-	License string
-	// Thumbnail is the extracted frame's path relative to the thumbnail cache dir; "" when
-	// extraction failed or has not run. Filled by a SEPARATE pass (GenerateThumbnails), not
-	// by the probe — see thumbnail.go for why it cannot ride along with ffprobe.
-	Thumbnail string
-	// Preview is the animated hover preview's path relative to the preview cache dir; "" when
-	// the render failed or has not run (V39). A third pass again (GeneratePreviews) for the same
-	// reason as the still: it is a distinct ffmpeg invocation, and a failed render must cost a
-	// preview rather than a clip.
-	Preview string
-}
-
-// FillerSource discovers the clips in FILLER_DIR.
-//
-// Implemented by DirSource (the local scan, §9.1) and satisfied in tests by a double. It was
-// previously implemented by the Tunarr client — EnsureLocalSource registered the drop-folder
-// as a Tunarr `local` media source and ListLocalClips read back what Tunarr had scanned.
-//
-// EnsureLocalSource is retained because Tunarr-backed channels still need that registration
-// (their filler-lists reference Tunarr program ids). It is now BEST-EFFORT: an install with no
-// Tunarr fails it harmlessly and still gets a full catalog from the local scan, which is the
-// whole point of the change.
-type FillerSource interface {
-	EnsureLocalSource(ctx context.Context, dir string) error
-	ListLocalClips(ctx context.Context) ([]RawClip, error)
-}
-
-// LocalScan is one listing of the clip folder: the clips found and the subtrees that could not be
-// read, which the listing says nothing about (#2673).
-type LocalScan struct {
-	Clips []RawClip
-	// Unread are subtrees the scan could not read, as slash paths relative to the clip folder, in
-	// the same form as RawClip.Path. A catalog row under one is neither confirmed nor gone.
-	Unread []string
-}
-
-// ScanningSource is a FillerSource that also reports the subtrees it could not read. The sync
-// prefers it, so a clip under an unreadable subfolder is kept rather than pruned. A source that
-// does not implement it reports no unreadable subtrees, which is only true of one that cannot
-// have any; DirSource implements it.
-type ScanningSource interface {
-	FillerSource
-	ScanLocalClips(ctx context.Context) (LocalScan, error)
-}
-
-var _ ScanningSource = DirSource{}
-
 // Store is the slice of the store the sync needs.
 type Store interface {
-	UpsertClip(ctx context.Context, c StoreClip) error
-	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
+	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
+	GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error)
 	// LiveClipPaths is every clip the prune can delete, as identity to location. The prune guard
 	// weighs a listing against it (#2673).
 	LiveClipPaths(ctx context.Context) (map[string]string, error)
@@ -150,13 +49,6 @@ type AcquisitionManifestStore interface {
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []AcquisitionArtifact) error
 }
 
-// StoreClip is the persistence view the sync round-trips (mirrors store.Clip;
-// declared here so filler doesn't import store — the adapter in main bridges them).
-type StoreClip struct {
-	Clip
-	UpdatedAt time.Time
-}
-
 // ErrSourceDisabled reports that the drop-folder is switched off on the Sources tab (§10 V35).
 //
 // ⚠ A distinct error rather than a silent zero result, and that is the difference between the
@@ -167,9 +59,9 @@ var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched o
 
 // Syncer reconciles the clip catalog against the Tunarr `local` filler source.
 type Syncer struct {
-	source FillerSource
+	source cliplibrary.FillerSource
 	store  Store
-	layout Layout
+	layout cliplibrary.Layout
 	dir    string // resolved local traversal root for this application generation
 	watch  string // immutable arrival folder paired with dir for this application generation
 	log    *slog.Logger
@@ -182,9 +74,9 @@ type Syncer struct {
 	// scanSources lists the registered folders and libraries to drain (§10 V38c). nil ⇒ only the
 	// configured clip folder is scanned, which is exactly the pre-V38c behaviour — so every
 	// existing construction keeps working without opting in.
-	scanSources ScanSourceStore
+	scanSources cliplibrary.ScanSourceStore
 	// libraries copies clips out of library folders. nil ⇒ library rows do no work.
-	libraries    *LibraryScanner
+	libraries    *cliplibrary.LibraryScanner
 	acquisitions AcquisitionManifestStore
 	storage      *storagegovernor.Governor
 	// inferior names copies of an ad that lost to a better copy (#2033). nil ⇒ none.
@@ -244,18 +136,18 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 			}
 			layout := s.layout
 			if layout.ClipDir() == "" {
-				layout, err = NewLayout(s.dir, s.watch)
+				layout, err = cliplibrary.NewLayout(s.dir, s.watch)
 				if err != nil {
 					s.warnSource("filler: could not validate a watched folder", src, err)
 					continue
 				}
 			}
-			sourceDir, err := layout.intakeSource(src.URI)
+			sourceDir, err := layout.IntakeSource(src.URI)
 			if err != nil {
 				s.warnSource("filler: skipped a watched folder that overlaps the clip library", src, err)
 				continue
 			}
-			if res, err := takeInFrom(ctx, sourceDir, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
+			if res, err := cliplibrary.TakeInFrom(ctx, sourceDir, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
 				s.warnSource("filler: could not drain a watched folder", src, err)
 			} else if s.log != nil && res.Taken > 0 {
 				s.log.Info("filler: filed clips from a watched folder",
@@ -269,7 +161,7 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 			}
 			layout := s.layout
 			if layout.ClipDir() == "" {
-				layout, err = NewLayout(s.dir, s.watch)
+				layout, err = cliplibrary.NewLayout(s.dir, s.watch)
 				if err != nil {
 					s.warnSource("filler: could not validate a library folder", src, err)
 					continue
@@ -277,13 +169,13 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 			}
 			// The same guard as a watched folder: a library folder holding the clip folder would
 			// copy the whole catalog back through intake on every pass.
-			sourceDir, err := layout.intakeSource(src.URI)
+			sourceDir, err := layout.IntakeSource(src.URI)
 			if err != nil {
 				s.warnSource("filler: skipped a library folder that overlaps the clip library", src, err)
 				continue
 			}
 			if catalogued == nil {
-				catalogued = cataloguedClips(s.dir, inferior)
+				catalogued = cliplibrary.CataloguedClips(s.dir, inferior)
 			}
 			res, err := s.libraries.Scan(ctx, sourceDir, watch, catalogued)
 			if err != nil {
@@ -299,7 +191,7 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 					"source", src.ID, "folder", src.URI, "copied", res.Copied)
 			}
 			if res.Copied > 0 {
-				if _, err := takeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
+				if _, err := cliplibrary.TakeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
 					s.warnSource("filler: could not file library folder clips", src, err)
 				}
 			}
@@ -308,7 +200,7 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 }
 
 // warnSource logs a per-source failure against the row an operator can see.
-func (s *Syncer) warnSource(msg string, src ScanSource, err error) {
+func (s *Syncer) warnSource(msg string, src cliplibrary.ScanSource, err error) {
 	if s.log != nil {
 		s.log.Warn(msg, "source", src.ID, "kind", src.Kind, "uri", src.URI, "err", err)
 	}
@@ -327,7 +219,7 @@ func (s *Syncer) logAttrs(msg string, args ...any) {
 
 // NewSyncer builds a catalog syncer over one immutable storage layout. The clip root is
 // registered with Tunarr as a `local` media source and the paired watch folder drains into it.
-func NewSyncer(source FillerSource, store Store, layout Layout, now func() time.Time, log *slog.Logger) *Syncer {
+func NewSyncer(source cliplibrary.FillerSource, store Store, layout cliplibrary.Layout, now func() time.Time, log *slog.Logger) *Syncer {
 	if now == nil {
 		now = time.Now
 	}
@@ -355,7 +247,7 @@ func (s *Syncer) WithEnabled(enabled func() bool) *Syncer {
 // configuration rather than a degraded one: folder rows still drain, and library rows simply do
 // no work. This is the same rule EnsureLocalSource follows for Tunarr — an optional service is
 // never allowed to become a precondition for having a catalog.
-func (s *Syncer) WithScanSources(srcs ScanSourceStore, libraries *LibraryScanner) *Syncer {
+func (s *Syncer) WithScanSources(srcs cliplibrary.ScanSourceStore, libraries *cliplibrary.LibraryScanner) *Syncer {
 	s.scanSources = srcs
 	s.libraries = libraries
 	return s
@@ -459,7 +351,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Failures are logged, not returned: a watch folder that cannot be drained (a permissions
 	// problem, a full disk) must not take the catalog down with it. The clips already filed are
 	// still there, and the arrivals stay put for the next pass.
-	if taken, err := takeInFrom(ctx, s.watch, s.dir, false, "", s.logAttrs, s.bindAcquisitionArtifact(ctx), s.storage, inferior); err != nil {
+	if taken, err := cliplibrary.TakeInFrom(ctx, s.watch, s.dir, false, "", s.logAttrs, s.bindAcquisitionArtifact(ctx), s.storage, inferior); err != nil {
 		if s.log != nil {
 			s.log.Warn("filler: could not drain the watch folder; scanning what is already filed",
 				"watch", s.watch, "err", err)
@@ -470,10 +362,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	}
 
 	var (
-		scan LocalScan
+		scan cliplibrary.LocalScan
 		err  error
 	)
-	if scanning, ok := s.source.(ScanningSource); ok {
+	if scanning, ok := s.source.(cliplibrary.ScanningSource); ok {
 		scan, err = scanning.ScanLocalClips(ctx)
 	} else {
 		scan.Clips, err = s.source.ListLocalClips(ctx)
@@ -555,7 +447,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		}
 		keep = append(keep, rc.ID)
 
-		merged := StoreClip{UpdatedAt: s.now()}
+		merged := cliplibrary.StoreClip{UpdatedAt: s.now()}
 		merged.Hash = rc.ID
 		merged.Path = rc.Path
 		merged.ParentHash = rc.ParentHash
@@ -825,7 +717,7 @@ func (s *Syncer) warnQuarantined(clipPath string, err error) {
 		"clip", clipPath, "err", err)
 }
 
-func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (AcquisitionArtifact, bool, error) {
+func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawClip) (AcquisitionArtifact, bool, error) {
 	if s.acquisitions == nil {
 		return AcquisitionArtifact{}, false, nil
 	}
@@ -922,8 +814,8 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 // repairOpaqueDisplayName removes implementation identifiers from the user-facing title even when
 // the media is already at its canonical path. Both the former 40-character digest and the current
 // 64-character content id are recognised; arbitrary hex-like operator names are left alone.
-func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
-	if !isHashDisplayName(rc.Name) {
+func (s *Syncer) repairOpaqueDisplayName(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
+	if !cliplibrary.IsHashDisplayName(rc.Name) {
 		return rc, false, nil
 	}
 	grounded := Clip{Role: rc.Role}
@@ -936,9 +828,9 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	}
 	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
 	tags, _ := asset.ReadSidecarTags(full)
-	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
+	if tags.OriginalName == "" || cliplibrary.IsHashDisplayName(tags.OriginalName) {
 		tags.OriginalName = rc.Name
-		carryNameProvenance(&tags, rc.Name, rc.NameSource)
+		cliplibrary.CarryNameProvenance(&tags, rc.Name, rc.NameSource)
 		if found {
 			tags.Kind = string(existing.Role)
 			tags.Era = existing.Era
@@ -957,13 +849,13 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 // stem does not match the full hash-shaped identity computed from the bytes. Arbitrary operator
 // filenames are deliberately untouched. The canonical media and sidecar are published without
 // replacement before the stale links are removed, so interruption can only leave a duplicate.
-func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
+func (s *Syncer) repairLegacyContentPath(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
 	stem := strings.TrimSuffix(filepath.Base(filepath.FromSlash(rc.Path)), filepath.Ext(rc.Path))
-	if !split.IsContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
+	if !split.IsContentHash(rc.ID) || !cliplibrary.IsOpaqueHash(stem) || stem == rc.ID {
 		return rc, false, nil
 	}
 	ext := filepath.Ext(rc.Path)
-	canonical := filepath.ToSlash(ClipRelPath(rc.ID, ext))
+	canonical := filepath.ToSlash(cliplibrary.ClipRelPath(rc.ID, ext))
 	if rc.Path == canonical {
 		return rc, false, nil
 	}
@@ -978,15 +870,15 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 	repairName, repairSource := "", clips.NameFromUnknown
 	if found {
 		repairName, repairSource = existing.Name, existing.NameSource
-		if isHashDisplayName(repairName) {
+		if cliplibrary.IsHashDisplayName(repairName) {
 			repairName, repairSource = groundedRepairName(existing.Clip), clips.NameFromGrounded
 		}
 	}
 	if repairName != "" {
 		tags, _ := asset.ReadSidecarTags(oldFull)
-		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
+		if tags.OriginalName == "" || cliplibrary.IsHashDisplayName(tags.OriginalName) {
 			tags.OriginalName = repairName
-			carryNameProvenance(&tags, repairName, repairSource)
+			cliplibrary.CarryNameProvenance(&tags, repairName, repairSource)
 			tags.Kind = string(existing.Role)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
@@ -1053,7 +945,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 // When there are none, it uses a neutral kind label rather than exposing an implementation id as
 // if that were a title.
 func groundedRepairName(c Clip) string {
-	name, _ := GroundedName(c)
+	name, _ := cliplibrary.GroundedName(c)
 	return name
 }
 
@@ -1065,7 +957,7 @@ func groundedRepairName(c Clip) string {
 // "Untitled <kind>", or the pre-#1452 brand/category/era derivation. A source title or a name a
 // person gave is left alone. The derived name goes to `displayName`, never `originalName`, which
 // is the text era grounding reads.
-func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
+func (s *Syncer) repairPlaceholderDisplayName(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
 	if !found || rc.SidecarInvalid {
 		return rc, false, nil
 	}
@@ -1084,12 +976,12 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	}
 	legacy := existing.Clip
 	legacy.Transcript, legacy.VisibleText = "", ""
-	legacyName, _ := GroundedName(legacy)
+	legacyName, _ := cliplibrary.GroundedName(legacy)
 	derived := tags.NameSource != "" || strings.HasPrefix(rc.Name, "Untitled ") || rc.Name == legacyName
 	if !derived {
 		return rc, false, nil
 	}
-	name, source := GroundedName(existing.Clip)
+	name, source := cliplibrary.GroundedName(existing.Clip)
 	if name == rc.Name && tags.NameSource == string(source) {
 		return rc, false, nil
 	}
@@ -1099,15 +991,6 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	}
 	rc.Name, rc.NameSource = name, clips.NameFromGrounded
 	return rc, true, nil
-}
-
-func isHashDisplayName(value string) bool {
-	base := filepath.Base(value)
-	return isOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
-}
-
-func isOpaqueHash(value string) bool {
-	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
 }
 
 // serverFieldsUnchanged reports whether the SCAN-owned fields match (so a re-sync is a no-op

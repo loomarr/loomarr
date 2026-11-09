@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -23,14 +24,14 @@ import (
 type conditioningRekeyCrashStore struct {
 	st         records.Store
 	afterRekey bool
-	target     filler.StoreClip
+	target     cliplibrary.StoreClip
 }
 
-func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
+func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
 	return fillerPipelineClipAdapter{st: s.st}.GetClip(ctx, hash)
 }
 
-func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target filler.StoreClip) error {
+func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target cliplibrary.StoreClip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (fillerPipelineClipAdapter{st: s.st}).ReplaceClipIdentity(ctx, oldHash, target); err != nil {
@@ -40,7 +41,7 @@ func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, o
 	return errors.New("injected conditioning transaction failure")
 }
 
-func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target filler.StoreClip) error {
+func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target cliplibrary.StoreClip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (fillerPipelineClipAdapter{st: s.st}).CommitConditioningPublication(ctx, publication, target); err != nil {
@@ -161,7 +162,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				return stage
 			}
 			first := newStage(crashStore)
-			out, err := first.Run(ctx, filler.StoreClip{Clip: filler.Clip{
+			out, err := first.Run(ctx, cliplibrary.StoreClip{Clip: filler.Clip{
 				Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child",
 				Role: filler.Commercial, ParentHash: parentHash,
 			}})
@@ -183,11 +184,11 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			}
 
 			if !tc.afterRekey {
-				layout, err := filler.NewLayout(dir, "")
+				layout, err := cliplibrary.NewLayout(dir, "")
 				if err != nil {
 					t.Fatal(err)
 				}
-				source := filler.DirSource{Layout: layout,
+				source := cliplibrary.DirSource{Layout: layout,
 					Probe: func(context.Context, string) (filler.Probed, error) {
 						return filler.Probed{DurationMs: 30_000, Height: 480}, nil
 					},
@@ -209,7 +210,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				t.Fatal(err)
 			}
 			restarted := newStage(fillerPipelineClipAdapter{st})
-			result, err := restarted.Run(ctx, filler.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
+			result, err := restarted.Run(ctx, cliplibrary.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
 			if err != nil || result.Verdict != pipelinestate.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
 				t.Fatalf("restart result = %+v, %v; want committed target %s", result, err, crashStore.target.Hash)
 			}

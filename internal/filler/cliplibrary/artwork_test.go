@@ -1,4 +1,4 @@
-package filler_test
+package cliplibrary_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -80,7 +80,7 @@ esac
 	still := filepath.Join(dir, "clip.jpg")
 	anim := filepath.Join(dir, "clip.webp")
 
-	err := filler.FFmpegArtwork(ffmpeg)(t.Context(), filepath.Join(dir, "clip.mp4"), still, anim, 3)
+	err := cliplibrary.FFmpegArtwork(ffmpeg)(t.Context(), filepath.Join(dir, "clip.mp4"), still, anim, 3)
 	if err != nil {
 		t.Fatalf("render with no libwebp: %v", err)
 	}
@@ -100,7 +100,7 @@ esac
 
 // fakeArtwork writes stand-in files, recording the start offset it was asked for. No binary runs
 // — the same injection seam Prober uses (unit tests never exec, per AGENTS.md).
-func fakeArtwork(starts *[]float64, fail bool) filler.ArtworkRenderer {
+func fakeArtwork(starts *[]float64, fail bool) cliplibrary.ArtworkRenderer {
 	return func(_ context.Context, _, stillDst, animDst string, startSeconds float64) error {
 		*starts = append(*starts, startSeconds)
 		if fail {
@@ -126,15 +126,15 @@ func TestArtworkPathsPreserveStructure(t *testing.T) {
 		{"14/36/14365f2b.mp4", "14/36/14365f2b.jpg", "14/36/14365f2b.webp"},
 		{"", "", ""},
 	} {
-		if got := filler.ThumbPathFor(tc.in); got != tc.still {
+		if got := cliplibrary.ThumbPathFor(tc.in); got != tc.still {
 			t.Errorf("ThumbPathFor(%q) = %q, want %q", tc.in, got, tc.still)
 		}
-		if got := filler.PreviewPathFor(tc.in); got != tc.anim {
+		if got := cliplibrary.PreviewPathFor(tc.in); got != tc.anim {
 			t.Errorf("PreviewPathFor(%q) = %q, want %q", tc.in, got, tc.anim)
 		}
 	}
 
-	if filler.ThumbPathFor("1994/intro.mp4") == filler.ThumbPathFor("1988/intro.mp4") {
+	if cliplibrary.ThumbPathFor("1994/intro.mp4") == cliplibrary.ThumbPathFor("1988/intro.mp4") {
 		t.Error("two clips named intro.mp4 in different folders must not share an artwork path")
 	}
 }
@@ -143,10 +143,10 @@ func TestArtworkPathsPreserveStructure(t *testing.T) {
 func TestGenerateArtwork_FillsBothPathsInOnePass(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "1994", "toys.mp4"), "video")
-	clips := []filler.RawClip{{Path: "1994/toys.mp4", Name: "toys", DurationMs: 30_000}}
+	clips := []cliplibrary.RawClip{{Path: "1994/toys.mp4", Name: "toys", DurationMs: 30_000}}
 
 	var starts []float64
-	if failed := filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false)); failed != 0 {
+	if failed := cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false)); failed != 0 {
 		t.Fatalf("failed = %d, want 0", failed)
 	}
 	if clips[0].Thumbnail != "1994/toys.jpg" {
@@ -157,7 +157,7 @@ func TestGenerateArtwork_FillsBothPathsInOnePass(t *testing.T) {
 	}
 	// Relative in the row, absolute on disk.
 	for _, name := range []string{"toys.jpg", "toys.webp"} {
-		if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, "1994", name)); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, cliplibrary.ThumbDirName, "1994", name)); err != nil {
 			t.Errorf("no %s written: %v", name, err)
 		}
 	}
@@ -178,7 +178,7 @@ func TestDirSource_RefusesArtworkBeforeCreatingCacheOrStartingRenderer(t *testin
 	})
 	renders := 0
 	logs := 0
-	source := filler.DirSource{
+	source := cliplibrary.DirSource{
 		Layout: testLayout(dir), Probe: fakeProbe(30_000), Storage: governor,
 		Artwork: func(context.Context, string, string, string, float64) error {
 			renders++
@@ -200,7 +200,7 @@ func TestDirSource_RefusesArtworkBeforeCreatingCacheOrStartingRenderer(t *testin
 	if logs != 1 {
 		t.Fatalf("warning logs = %d, want one aggregate artwork warning", logs)
 	}
-	if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(dir, cliplibrary.ThumbDirName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("artwork cache exists after refusal: %v", err)
 	}
 }
@@ -214,7 +214,7 @@ func TestDirSource_StopsAndRemovesArtworkThatExceedsItsReservation(t *testing.T)
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	logs := 0
-	source := filler.DirSource{
+	source := cliplibrary.DirSource{
 		Layout: testLayout(dir), Probe: fakeProbe(30_000), Storage: governor,
 		Artwork: func(_ context.Context, _ string, still, animated string, _ float64) error {
 			if err := os.MkdirAll(filepath.Dir(still), 0o750); err != nil {
@@ -241,8 +241,8 @@ func TestDirSource_StopsAndRemovesArtworkThatExceedsItsReservation(t *testing.T)
 	if logs != 1 {
 		t.Fatalf("warning logs = %d, want one aggregate artwork warning", logs)
 	}
-	for _, rel := range []string{filler.ThumbPathFor(clips[0].Path), filler.PreviewPathFor(clips[0].Path)} {
-		if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, filepath.FromSlash(rel))); !errors.Is(err, os.ErrNotExist) {
+	for _, rel := range []string{cliplibrary.ThumbPathFor(clips[0].Path), cliplibrary.PreviewPathFor(clips[0].Path)} {
+		if _, err := os.Stat(filepath.Join(dir, cliplibrary.ThumbDirName, filepath.FromSlash(rel))); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("oversized artwork survived at %s: %v", rel, err)
 		}
 	}
@@ -257,9 +257,9 @@ func TestArtworkStart_PicksAWindowThatFitsTheClip(t *testing.T) {
 		t.Helper()
 		dir := t.TempDir()
 		writeAt(t, filepath.Join(dir, "c.mp4"), "video")
-		clips := []filler.RawClip{{Path: "c.mp4", DurationMs: durationMs}}
+		clips := []cliplibrary.RawClip{{Path: "c.mp4", DurationMs: durationMs}}
 		var starts []float64
-		if failed := filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false)); failed != 0 {
+		if failed := cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false)); failed != 0 {
 			t.Fatalf("%d failed, want 0", failed)
 		}
 		if len(starts) != 1 {
@@ -310,9 +310,9 @@ func TestArtworkStart_NeverRunsPastTheEnd(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "c.mp4"), "video")
 	// 6.5s: 15% is 0.975 → floored to 1, but only 0.5s of clip remains after the window.
-	clips := []filler.RawClip{{Path: "c.mp4", DurationMs: 6_500}}
+	clips := []cliplibrary.RawClip{{Path: "c.mp4", DurationMs: 6_500}}
 	var starts []float64
-	filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
+	cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
 
 	if starts[0] > 0.5 {
 		t.Errorf("start %.2fs leaves less than the 6s window; ffmpeg would write a short file", starts[0])
@@ -324,12 +324,12 @@ func TestArtworkStart_NeverRunsPastTheEnd(t *testing.T) {
 func TestGenerateArtwork_AdoptsWhatIsAlreadyThere(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "1994", "toys.mp4"), "video")
-	writeAt(t, filepath.Join(dir, filler.ThumbDirName, "1994", "toys.jpg"), "already here")
-	writeAt(t, filepath.Join(dir, filler.ThumbDirName, "1994", "toys.webp"), "RIFF....WEBP")
-	clips := []filler.RawClip{{Path: "1994/toys.mp4", DurationMs: 30_000}}
+	writeAt(t, filepath.Join(dir, cliplibrary.ThumbDirName, "1994", "toys.jpg"), "already here")
+	writeAt(t, filepath.Join(dir, cliplibrary.ThumbDirName, "1994", "toys.webp"), "RIFF....WEBP")
+	clips := []cliplibrary.RawClip{{Path: "1994/toys.mp4", DurationMs: 30_000}}
 
 	var starts []float64
-	filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
+	cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
 	if len(starts) != 0 {
 		t.Errorf("renderer ran %d times for existing artwork, want 0 — a timed scan would do this forever", len(starts))
 	}
@@ -345,11 +345,11 @@ func TestGenerateArtwork_AdoptsWhatIsAlreadyThere(t *testing.T) {
 func TestGenerateArtwork_RendersWhenOnlyTheStillExists(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "a.mp4"), "video")
-	writeAt(t, filepath.Join(dir, filler.ThumbDirName, "a.jpg"), "pre-V39 still")
-	clips := []filler.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
+	writeAt(t, filepath.Join(dir, cliplibrary.ThumbDirName, "a.jpg"), "pre-V39 still")
+	clips := []cliplibrary.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
 
 	var starts []float64
-	filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
+	cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
 
 	if len(starts) != 1 {
 		t.Fatalf("renderer ran %d times, want 1 — an upgraded catalog must gain previews", len(starts))
@@ -366,10 +366,10 @@ func TestGenerateArtwork_CountsFailuresAndLeavesPathsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "a.mp4"), "video")
 	writeAt(t, filepath.Join(dir, "b.mp4"), "video")
-	clips := []filler.RawClip{{Path: "a.mp4"}, {Path: "b.mp4"}}
+	clips := []cliplibrary.RawClip{{Path: "a.mp4"}, {Path: "b.mp4"}}
 
 	var starts []float64
-	failed := filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, true))
+	failed := cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, true))
 	if failed != 2 {
 		t.Errorf("failed = %d, want 2 — a silent skip is what once produced an empty catalog", failed)
 	}
@@ -387,7 +387,7 @@ func TestGenerateArtwork_CountsFailuresAndLeavesPathsEmpty(t *testing.T) {
 func TestGenerateArtwork_KeepsTheStillWhenOnlyTheAnimationFails(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "a.mp4"), "video")
-	clips := []filler.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
+	clips := []cliplibrary.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
 
 	// The shape of a missing libwebp: the JPEG lands, the webp does not, ffmpeg exits non-zero.
 	halfBroken := func(_ context.Context, _, stillDst, _ string, _ float64) error {
@@ -399,7 +399,7 @@ func TestGenerateArtwork_KeepsTheStillWhenOnlyTheAnimationFails(t *testing.T) {
 		}
 		return errors.New("ffmpeg: unknown encoder libwebp")
 	}
-	failed := filler.GenerateArtwork(context.Background(), dir, clips, halfBroken)
+	failed := cliplibrary.GenerateArtwork(context.Background(), dir, clips, halfBroken)
 
 	if failed != 1 {
 		t.Errorf("failed = %d, want 1 — the operator still needs telling", failed)
@@ -417,12 +417,12 @@ func TestGenerateArtwork_KeepsTheStillWhenOnlyTheAnimationFails(t *testing.T) {
 func TestGenerateArtwork_RetriesAZeroByteFile(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "a.mp4"), "video")
-	writeAt(t, filepath.Join(dir, filler.ThumbDirName, "a.jpg"), "")
-	writeAt(t, filepath.Join(dir, filler.ThumbDirName, "a.webp"), "")
-	clips := []filler.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
+	writeAt(t, filepath.Join(dir, cliplibrary.ThumbDirName, "a.jpg"), "")
+	writeAt(t, filepath.Join(dir, cliplibrary.ThumbDirName, "a.webp"), "")
+	clips := []cliplibrary.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
 
 	var starts []float64
-	filler.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
+	cliplibrary.GenerateArtwork(context.Background(), dir, clips, fakeArtwork(&starts, false))
 	if len(starts) != 1 {
 		t.Errorf("a zero-byte file must be retried, renderer ran %d times", len(starts))
 	}
@@ -433,7 +433,7 @@ func TestGenerateArtwork_RetriesAZeroByteFile(t *testing.T) {
 func TestGenerateArtwork_RemovesOnlyTheEmptyPartials(t *testing.T) {
 	dir := t.TempDir()
 	writeAt(t, filepath.Join(dir, "a.mp4"), "video")
-	clips := []filler.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
+	clips := []cliplibrary.RawClip{{Path: "a.mp4", DurationMs: 30_000}}
 
 	// Writes a good still and a truncated (empty) animation, then fails — a kill mid-encode.
 	partial := func(_ context.Context, _, stillDst, animDst string, _ float64) error {
@@ -448,12 +448,12 @@ func TestGenerateArtwork_RemovesOnlyTheEmptyPartials(t *testing.T) {
 		}
 		return errors.New("ffmpeg: killed")
 	}
-	filler.GenerateArtwork(context.Background(), dir, clips, partial)
+	cliplibrary.GenerateArtwork(context.Background(), dir, clips, partial)
 
-	if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, "a.webp")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, cliplibrary.ThumbDirName, "a.webp")); err == nil {
 		t.Error("the empty animation survived; the next pass would adopt it and never retry")
 	}
-	if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, "a.jpg")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, cliplibrary.ThumbDirName, "a.jpg")); err != nil {
 		t.Error("the good still was deleted along with the failed animation")
 	}
 }
@@ -461,10 +461,10 @@ func TestGenerateArtwork_RemovesOnlyTheEmptyPartials(t *testing.T) {
 // The no-op guards: nothing to do, and nowhere to do it.
 func TestGenerateArtwork_NoDirOrNoClips(t *testing.T) {
 	var starts []float64
-	if failed := filler.GenerateArtwork(context.Background(), "", []filler.RawClip{{Path: "c.mp4"}}, fakeArtwork(&starts, false)); failed != 0 {
+	if failed := cliplibrary.GenerateArtwork(context.Background(), "", []cliplibrary.RawClip{{Path: "c.mp4"}}, fakeArtwork(&starts, false)); failed != 0 {
 		t.Errorf("failed = %d with no dir, want 0", failed)
 	}
-	if failed := filler.GenerateArtwork(context.Background(), t.TempDir(), nil, fakeArtwork(&starts, false)); failed != 0 {
+	if failed := cliplibrary.GenerateArtwork(context.Background(), t.TempDir(), nil, fakeArtwork(&starts, false)); failed != 0 {
 		t.Errorf("failed = %d with no clips, want 0", failed)
 	}
 	if len(starts) != 0 {
@@ -473,13 +473,13 @@ func TestGenerateArtwork_NoDirOrNoClips(t *testing.T) {
 }
 
 // artworkLog captures the one aggregate warning ListLocalClips emits for artwork.
-func artworkLog(t *testing.T, render filler.ArtworkRenderer, names ...string) (msg string, args map[string]any) {
+func artworkLog(t *testing.T, render cliplibrary.ArtworkRenderer, names ...string) (msg string, args map[string]any) {
 	t.Helper()
 	dir := t.TempDir()
 	for _, n := range names {
 		writeAt(t, filepath.Join(dir, n), "video")
 	}
-	source := filler.DirSource{
+	source := cliplibrary.DirSource{
 		Layout: testLayout(dir), Probe: fakeProbe(30_000), Artwork: render,
 		Log: func(m string, kv ...any) {
 			if !strings.Contains(m, "artwork") {

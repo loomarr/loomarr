@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // foreignSidecar leaves at root/download.info.json a valid sidecar that belongs to ANOTHER
@@ -173,7 +174,7 @@ func TestRecover_MissingMediaWithNoFileAnywhereBecomesTerminal(t *testing.T) {
 func TestRecover_MissingMediaWhoseFileExistsIsLeftForSync(t *testing.T) {
 	root := t.TempDir()
 	artifact := stagedRecoveryArtifact(t, root)
-	media, err := filler.ClipPath(root, artifact.ClipHash, ".mp4")
+	media, err := cliplibrary.ClipPath(root, artifact.ClipHash, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}

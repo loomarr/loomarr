@@ -5,6 +5,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // FILLER-NEVER-A-PROGRAM (§10/§19). This is a structural guarantee, and this test
@@ -62,17 +63,17 @@ func TestKindFromName(t *testing.T) {
 		"Station tour":                  filler.Unclassified,
 	}
 	for name, want := range cases {
-		if got := filler.RoleFromName(name); got != want {
+		if got := clips.RoleFromName(name); got != want {
 			t.Errorf("KindFromName(%q) = %s, want %s", name, got, want)
 		}
 	}
 }
 
 func TestEraFromName(t *testing.T) {
-	if got := filler.EraFromName("Sunmeal-Cereal 1985.mp4"); got != 1985 {
+	if got := clips.EraFromName("Sunmeal-Cereal 1985.mp4"); got != 1985 {
 		t.Errorf("EraFromName = %d, want 1985", got)
 	}
-	if got := filler.EraFromName("no year here"); got != 0 {
+	if got := clips.EraFromName("no year here"); got != 0 {
 		t.Errorf("EraFromName(no year) = %d, want 0", got)
 	}
 }

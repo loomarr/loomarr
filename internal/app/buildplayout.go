@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
@@ -53,7 +53,7 @@ type playoutDeps struct {
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
-	layout                filler.Layout
+	layout                cliplibrary.Layout
 	channels              *channels.Engine
 	liveTVConnector       *livetvpublish.LiveTVConnector
 	backendView           backendtransition.CheckpointView

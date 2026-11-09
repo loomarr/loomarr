@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -408,7 +409,7 @@ func clipPipelineWhere(f pipelinestate.PipelineFilter, includeCursor bool) (stri
 // ⚠ Removed clips are excluded. A tombstoned clip is not work: enrolling it would run the whole
 // ladder against something deliberately taken out of rotation. Held clips and composites are
 // work, so the read includes them.
-func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error) {
+func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error) {
 	q := `SELECT hash FROM clips WHERE removed_at = 0 AND NOT EXISTS (
 			SELECT 1 FROM filler_clip_pipeline p WHERE p.clip_hash = clips.hash)
 		ORDER BY hash`
@@ -438,9 +439,9 @@ func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]f
 		return nil, fmt.Errorf("list clips without pipeline: %w", err)
 	}
 	sort.Slice(clips, func(i, j int) bool { return clips[i].Hash < clips[j].Hash })
-	out := make([]filler.StoreClip, 0, len(clips))
+	out := make([]cliplibrary.StoreClip, 0, len(clips))
 	for _, c := range clips {
-		out = append(out, filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+		out = append(out, cliplibrary.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 	}
 	return out, nil
 }

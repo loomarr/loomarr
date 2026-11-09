@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -235,7 +236,7 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	ffmpeg := testkit.Executable(t, "ffmpeg", "#!/bin/sh\nexit 0\n")
 	clipDir := filepath.Join(t.TempDir(), "clips")
 	watchDir := filepath.Join(t.TempDir(), "incoming")
-	layout, err := filler.NewLayout(clipDir, watchDir)
+	layout, err := cliplibrary.NewLayout(clipDir, watchDir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
@@ -32,9 +33,9 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []clipstore.Clip
 			t.Fatalf("seed clip %s: %v", c.Path, err)
 		}
 	}
-	layout, err := filler.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
+	layout, err := cliplibrary.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
 	if err != nil {
-		t.Fatalf("filler.NewLayout: %v", err)
+		t.Fatalf("cliplibrary.NewLayout: %v", err)
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
@@ -448,7 +449,7 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	cfg := map[string]string{"filler.dir": "/data/filler"}
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
-	layout, err := filler.NewLayout(cfg["filler.dir"], "")
+	layout, err := cliplibrary.NewLayout(cfg["filler.dir"], "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,10 +518,10 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 		Store: st,
 		Auth:  httpcore.NewTokenAuthorizer(adminToken),
 		Log:   slog.New(slog.DiscardHandler),
-		FillerLayout: func() filler.Layout {
-			layout, layoutErr := filler.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
+		FillerLayout: func() cliplibrary.Layout {
+			layout, layoutErr := cliplibrary.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
 			if layoutErr != nil {
-				t.Fatalf("filler.NewLayout: %v", layoutErr)
+				t.Fatalf("cliplibrary.NewLayout: %v", layoutErr)
 			}
 			return layout
 		}(),

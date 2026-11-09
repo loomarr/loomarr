@@ -1,4 +1,4 @@
-package filler
+package cliplibrary
 
 import (
 	"context"
@@ -79,7 +79,7 @@ func QualityFromHeight(h int) string {
 // unread names the subtrees the walk could not read (slash paths relative to dir). It is not the
 // same as skipped: a clip in an unreadable subtree was not rejected, it was never seen, so the
 // catalog's rows under it say nothing about whether the files still exist (#2673).
-func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
+func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
 	if dir == "" {
 		return nil, 0, nil, nil
 	}
@@ -232,9 +232,9 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			}
 		}
 
-		kind := RoleFromName(heuristicName)
-		if tags.Kind != "" && Role(tags.Kind).Valid() {
-			kind = Role(tags.Kind)
+		kind := clips.RoleFromName(heuristicName)
+		if tags.Kind != "" && clips.Role(tags.Kind).Valid() {
+			kind = clips.Role(tags.Kind)
 		}
 		found = append(found, RawClip{
 			ID:               id,
@@ -253,7 +253,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// clean title would silently lose filename-encoded eras. An absent explicit role leaves the
 			// clip held and unclassified until exact role authority exists.
 			Role:            kind,
-			Era:             EraFromName(heuristicName),
+			Era:             clips.EraFromName(heuristicName),
 			GeographicScope: pod.GeographicScope(tags.GeographicScope),
 			Country:         tags.Country, Network: tags.Network,
 			Station: tags.Station, AirDate: tags.AirDate, GeoEvidence: tags.GeoEvidence,
@@ -316,7 +316,7 @@ func scannedNameSource(tags asset.SidecarTags, state asset.SidecarReadState) cli
 // A viewer-visible name goes to displayName beside its provenance; an info-JSON title needs
 // nothing, since it travels in the same file; an unrecorded one is marked unknown. A sidecar
 // that already names the clip keeps its own record.
-func carryNameProvenance(tags *asset.SidecarTags, name string, source clips.NameSource) {
+func CarryNameProvenance(tags *asset.SidecarTags, name string, source clips.NameSource) {
 	if tags.DisplayName != "" || tags.NameProvenance != "" {
 		return
 	}
@@ -341,7 +341,7 @@ func WriteCuratedName(mediaPath, name string) error {
 // JSON output rather than the `-show_entries … -of csv` form: csv silently yields "N/A" for a
 // file with no duration metadata, which parses to 0 and is indistinguishable from a real
 // zero-length result. JSON gives an absent field we can tell apart.
-func FFprobe(ctx context.Context, path string) (Probed, error) {
+func FFprobe(ctx context.Context, path string) (tools.Probed, error) {
 	return ffprobeWith(ctx, "ffprobe", path)
 }
 
@@ -359,9 +359,9 @@ func FFprobe(ctx context.Context, path string) (Probed, error) {
 // ffmpeg invocation, so EVERY probe failed — and because ScanDir skips unprobeable files by
 // design, the catalog came back silently empty with no error anywhere. The name now says which
 // binary it wants.
-func FFprobeNextTo(ffmpegPath string) Prober {
+func FFprobeNextTo(ffmpegPath string) tools.Prober {
 	bin := FFprobePathNextTo(ffmpegPath)
-	return func(ctx context.Context, path string) (Probed, error) {
+	return func(ctx context.Context, path string) (tools.Probed, error) {
 		return ffprobeWith(ctx, bin, path)
 	}
 }
@@ -375,7 +375,7 @@ func FFprobePathNextTo(ffmpegPath string) string {
 	return tools.FFprobePathNextTo(ffmpegPath)
 }
 
-func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
+func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 	// Duration comes from -show_format, not from a stream: container duration is what a pod
 	// needs (how long the clip occupies a break), and a stream's duration can differ from it —
 	// an audio stream running a few frames past the video is normal and would give a subtly
@@ -387,7 +387,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 		path,
 	).Output()
 	if err != nil {
-		return Probed{}, fmt.Errorf("ffprobe %s: %w", filepath.Base(path), err)
+		return tools.Probed{}, fmt.Errorf("ffprobe %s: %w", filepath.Base(path), err)
 	}
 
 	var probed struct {
@@ -407,17 +407,17 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 		} `json:"streams"`
 	}
 	if err := json.Unmarshal(out, &probed); err != nil {
-		return Probed{}, fmt.Errorf("ffprobe %s: parse output: %w", filepath.Base(path), err)
+		return tools.Probed{}, fmt.Errorf("ffprobe %s: parse output: %w", filepath.Base(path), err)
 	}
 	if probed.Format.Duration == "" {
-		return Probed{}, fmt.Errorf("ffprobe %s: no duration in the container", filepath.Base(path))
+		return tools.Probed{}, fmt.Errorf("ffprobe %s: no duration in the container", filepath.Base(path))
 	}
 	secs, err := strconv.ParseFloat(probed.Format.Duration, 64)
 	if err != nil {
-		return Probed{}, fmt.Errorf("ffprobe %s: duration %q: %w", filepath.Base(path), probed.Format.Duration, err)
+		return tools.Probed{}, fmt.Errorf("ffprobe %s: duration %q: %w", filepath.Base(path), probed.Format.Duration, err)
 	}
 	if secs <= 0 {
-		return Probed{}, fmt.Errorf("ffprobe %s: duration %v is not positive", filepath.Base(path), secs)
+		return tools.Probed{}, fmt.Errorf("ffprobe %s: duration %v is not positive", filepath.Base(path), secs)
 	}
 
 	// The VIDEO stream's height specifically. Taking streams[0] would read the audio track on
@@ -426,7 +426,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	result := Probed{DurationMs: int64(secs * 1000)}
+	result := tools.Probed{DurationMs: int64(secs * 1000)}
 	hasAudio, hasVideo, selectedAudio, selectedVideo := false, false, false, false
 	for _, s := range probed.Streams {
 		if s.CodecType == "video" {
@@ -549,7 +549,7 @@ type DirSource struct {
 	// the applied watch subtree, so a delayed arrival is never catalogued before intake files it.
 	Layout Layout
 	// Probe reads durations; nil ⇒ FFprobeDuration.
-	Probe Prober
+	Probe tools.Prober
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
 	// supported configuration — an install with no Tunarr — not a degraded one.
 	Tunarr TunarrClipSource
