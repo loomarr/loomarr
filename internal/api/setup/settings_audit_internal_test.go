@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func TestSettingsAuditNamesTheAuthorAndNeverAnID(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := &Server{store: st}
+	s := &Handlers{store: st}
 	ctx := httpcore.WithUser(context.Background(), identitystore.User{ID: "90000002bbbbbbbbbbbbbbbbbbbbbbbb"})
 
 	got, err := s.withAuditNames(ctx, []SettingEntry{

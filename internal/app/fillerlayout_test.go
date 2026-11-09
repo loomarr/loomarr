@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -218,7 +218,7 @@ func assertDesiredLayout(t *testing.T, h http.Handler, token, wantRoot, wantWatc
 		t.Fatalf("GET /v1/settings = %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Settings []api.SettingEntry `json:"settings"`
+		Settings []setupapi.SettingEntry `json:"settings"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)

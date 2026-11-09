@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
@@ -66,18 +67,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
-		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
-		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
+		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
+		channels:  opts.Channels,
 		suggest:   opts.Suggest,
 		now:       opts.Now,
 		viewing:   viewing.New(),
-		systemLLM: opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
-		settings:                 opts.Settings,
-		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
-		webPushPublicKey:  opts.WebPushPublicKey,
-		provision:         opts.Provision,
+		systemLLM: opts.SystemLLM, activity: opts.Activity,
 		liveSettings:      opts.LiveSettings,
-		libraryConfigured: opts.LibraryConfigured,
 		playoutCapability: opts.PlayoutCapability,
 		playoutSecret:     opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
@@ -88,6 +84,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
 	srv.registerMiddleware(humaAPI)
+	setupRoutes := setupapi.New(setupapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings,
+		NotificationDestinations: opts.NotificationDestinations, WebPushPublicKey: opts.WebPushPublicKey,
+		BackendTransition: opts.BackendTransition, LiveTV: opts.LiveTV, TunarrConnect: opts.TunarrConnect,
+		ArrDiscovery: opts.ArrDiscovery, LibraryConfigured: opts.LibraryConfigured,
+	})
 	catalogapi.New(catalogapi.Deps{
 		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Search,
 	}).Register(humaAPI)
@@ -97,8 +99,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Invitations: opts.Invitations, InvitationDelivery: opts.InvitationDelivery,
 		InvitationRedemption: opts.InvitationRedemption, PasswordRecovery: opts.PasswordRecovery,
 		AccessPublicURL: opts.AccessPublicURL, Devices: opts.Devices, DeviceLimiter: opts.DeviceLimiter,
-		DevLogin: opts.DevLogin, SSO: opts.SSO,
-		ConfigInt: srv.configInt, LibraryUnconfigured: srv.libraryUnconfigured,
+		DevLogin: opts.DevLogin, SSO: opts.SSO, Provision: opts.Provision, Demo: opts.Demo,
+		ConfigInt: setupRoutes.ConfigInt, LibraryUnconfigured: setupRoutes.LibraryUnconfigured,
 	}, false).Register(humaAPI)
 	system.New(system.Deps{
 		Log: log,
@@ -110,7 +112,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		BackupSQLite: opts.BackupSQLite,
 		Backups:      opts.Backups, Database: opts.Database, Encryption: opts.Encryption, Jobs: opts.Jobs,
 		SystemLLM: opts.SystemLLM, Restart: opts.Restart, RestartDrift: opts.RestartDrift,
-		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks,
+		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: setupRoutes.ConnectionChecks,
 	}, false).Register(humaAPI)
 	imageRoutes := imagesapi.New(imagesapi.Deps{Log: log, Images: opts.Images})
 	channelDeps := channelsapi.Deps{
@@ -144,7 +146,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		guideDeps.LibraryImage = imageRoutes.LibraryImage
 	}
 	guideapi.New(guideDeps).Register(humaAPI)
-	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{
 		Store: opts.Store, Suggest: opts.Suggest, Approver: opts.Approver, ProposalOutlook: opts.ProposalOutlook,
 		ProposalWorkflow: opts.ProposalWorkflow, ProposalProgress: opts.ProposalProgress, Settings: opts.Settings,
@@ -188,15 +189,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		DiagnosticEvents: opts.DiagnosticEvents, DiagnosticProcesses: opts.DiagnosticProcesses,
 		DiagnosticBundles: opts.DiagnosticBundles, DiagnosticCapture: opts.DiagnosticCapture,
 		ClientDiagnostics: opts.ClientDiagnostics, ClientCrashes: opts.ClientCrashes,
-		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks, StoreFacts: storeFacts(opts.Store),
+		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: setupRoutes.ConnectionChecks, StoreFacts: storeFacts(opts.Store),
 	}
 	if opts.Devices != nil {
 		opsDeps.Devices = opts.Devices // a typed nil must stay a nil interface
 	}
 	opsapi.New(opsDeps, false).Register(humaAPI)
-	srv.registerSettings(humaAPI)
-	srv.registerNotificationDestinations(humaAPI)
-	srv.registerProvisioning(humaAPI)
+	setupRoutes.Register(humaAPI)
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp

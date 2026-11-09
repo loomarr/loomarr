@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
-func (s *Server) registerNotificationDestinations(api huma.API) {
+func (s *Handlers) registerNotificationDestinations(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-provider-types-list", Method: http.MethodGet,
 		Path: "/v1/notifications/provider-types", Summary: "List notification provider types",
@@ -82,7 +82,7 @@ type notificationProviderTypesListOutput struct {
 	}
 }
 
-func (s *Server) notificationProviderTypesList(
+func (s *Handlers) notificationProviderTypesList(
 	ctx context.Context,
 	_ *struct{},
 ) (*notificationProviderTypesListOutput, error) {
@@ -198,7 +198,7 @@ type notificationDestinationTestOutput struct {
 	}
 }
 
-func (s *Server) notificationDestinationsList(
+func (s *Handlers) notificationDestinationsList(
 	ctx context.Context,
 	_ *struct{},
 ) (*notificationDestinationsListOutput, error) {
@@ -217,7 +217,7 @@ func (s *Server) notificationDestinationsList(
 	return out, nil
 }
 
-func (s *Server) notificationDestinationCreate(
+func (s *Handlers) notificationDestinationCreate(
 	ctx context.Context,
 	in *notificationDestinationCreateInput,
 ) (*notificationDestinationCreateOutput, error) {
@@ -244,7 +244,7 @@ func (s *Server) notificationDestinationCreate(
 	return &notificationDestinationCreateOutput{Body: notificationDestinationDTO(summary)}, nil
 }
 
-func (s *Server) notificationDestinationUpdate(
+func (s *Handlers) notificationDestinationUpdate(
 	ctx context.Context,
 	in *notificationDestinationUpdateInput,
 ) (*notificationDestinationUpdateOutput, error) {
@@ -261,7 +261,7 @@ func (s *Server) notificationDestinationUpdate(
 	return &notificationDestinationUpdateOutput{Body: notificationDestinationDTO(summary)}, nil
 }
 
-func (s *Server) notificationDestinationDelete(
+func (s *Handlers) notificationDestinationDelete(
 	ctx context.Context,
 	in *notificationDestinationDeleteInput,
 ) (*notificationDestinationDeleteOutput, error) {
@@ -286,7 +286,7 @@ func (s *Server) notificationDestinationDelete(
 	return out, nil
 }
 
-func (s *Server) notificationDestinationTest(
+func (s *Handlers) notificationDestinationTest(
 	ctx context.Context,
 	in *notificationDestinationTestInput,
 ) (*notificationDestinationTestOutput, error) {

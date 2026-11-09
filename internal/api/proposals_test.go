@@ -18,6 +18,7 @@ import (
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -64,7 +65,7 @@ func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposa
 }
 
 type proposalHarnessConfig struct {
-	Settings        api.SettingsService
+	Settings        setupapi.SettingsService
 	DecisionQuality proposalsapi.ProposalDecisionQuality
 }
 

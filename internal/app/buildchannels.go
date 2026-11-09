@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -36,9 +36,9 @@ import (
 
 type channelBuild struct {
 	channelService         guideapi.ChannelService
-	liveTV                 api.LiveTVService
+	liveTV                 setupapi.LiveTVService
 	tunerRescanner         channelsapi.TunerRescanner
-	tunarrConnector        api.TunarrConnector
+	tunarrConnector        setupapi.TunarrConnector
 	backendController      *backendtransition.Controller
 	refreshBackendSettings func(context.Context) error
 	desiredBackend         func(context.Context) (string, error)
@@ -70,9 +70,9 @@ func buildChannels(
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc guideapi.ChannelService
-	var liveTVSvc api.LiveTVService
+	var liveTVSvc setupapi.LiveTVService
 	var tunerRescanner channelsapi.TunerRescanner
-	var tunarrConnectSvc api.TunarrConnector
+	var tunarrConnectSvc setupapi.TunarrConnector
 	var mediaSource *livetvpublish.MediaSourceConnector
 	var channelEngine *channels.Engine
 	var liveTVConnector *livetvpublish.LiveTVConnector

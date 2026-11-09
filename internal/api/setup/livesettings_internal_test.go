@@ -1,4 +1,4 @@
-package api
+package setup
 
 // mapSettings is a settings.Reader answering from a fixed map; a key it does not hold is
 // unanswered (nil), so a handle reads that setting's declared default.

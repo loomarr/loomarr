@@ -20,7 +20,7 @@ Pages in the app have three extra rules, all tested in `docs/embed_test.go`:
   absolute site URL, or the app opens "Help page not found".
 
 Headings in `guides/troubleshooting.md` are an API contract: setup checks deep-link to them. Don't
-rename one without updating `internal/api/setup.go`. When you rename or move any app page or
+rename one without updating `internal/api/setup/setup.go`. When you rename or move any app page or
 heading, add the old link to `movedPages` or `movedSections` in `docs/embed.go`; the frozen list in
 `docs/testdata/` fails until you do.
 

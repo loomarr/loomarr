@@ -85,7 +85,7 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 	}
 
 	// CookieSecure and TrustProxy arrive grouped, as Server.origin (httpcore.Origin).
-	rename := map[string]string{"LiveTV": "livetv", "SSO": "sso", "CookieSecure": "origin", "TrustProxy": "origin"}
+	rename := map[string]string{"CookieSecure": "origin", "TrustProxy": "origin"}
 	ot := reflect.TypeOf(Options{})
 	st := reflect.TypeOf(Server{})
 

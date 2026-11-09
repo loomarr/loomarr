@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // registerProvisioning mounts the identity-provisioning routes (§11): first-run
 // bootstrap (unauthenticated, self-gating) and explicit media-server import
 // (admin-only). These are the ONLY routes that create users.
-func (s *Server) registerProvisioning(api huma.API) {
+func (s *Handlers) registerProvisioning(api huma.API) {
 	if s.provision == nil && !s.schemaOnly {
 		return
 	}
@@ -44,6 +44,23 @@ func (s *Server) registerProvisioning(api huma.API) {
 	}, httpcore.RoleAdmin), s.importCandidates)
 }
 
+// Provisioner owns first-run bootstrap + explicit import (§11). Together with
+// PasswordService.CreateLocal these are the ONLY paths that create users — every
+// one of them an explicit admin action, never a side effect of someone signing in.
+// Implemented by auth.Provisioner.
+type Provisioner interface {
+	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
+	Bootstrap(ctx context.Context, username, password string) (identitystore.User, error)
+	// Import allowlists the named media-server user ids (admin-only).
+	Import(ctx context.Context, ids []string) (int, error)
+	// Candidates lists media-server accounts available to import, each flagged with
+	// whether it is already allowlisted (§11). Read-only — listing never provisions.
+	Candidates(ctx context.Context) ([]auth.Candidate, error)
+	// Bootstrapped reports whether an owning admin exists — the one fact the
+	// unauthenticated GET /v1/setup/state exposes (§7).
+	Bootstrapped(ctx context.Context) (bool, error)
+}
+
 // ImportCandidate is one media-server account an admin may allowlist (§11).
 type ImportCandidate struct {
 	ID       string `json:"id" doc:"Media-server user id — the value POST /v1/users/import takes."`
@@ -61,7 +78,7 @@ type importCandidatesOutput struct {
 
 // importCandidates gives the UI something real to pick from. Without it, importing
 // would require knowing raw media-server user ids (§11 read side).
-func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCandidatesOutput, error) {
+func (s *Handlers) importCandidates(ctx context.Context, _ *struct{}) (*importCandidatesOutput, error) {
 	if s.provision == nil || s.libraryUnconfigured() {
 		return nil, httpcore.NotImplemented("Media server not connected", "Connect a media server in Settings to import its users.")
 	}
@@ -117,7 +134,7 @@ type SetupDemo struct {
 // safe direction: provisioning is unwired only in schema-only/partial servers, and
 // claiming to be UNclaimed there would route every visitor into a wizard whose
 // bootstrap step cannot work.
-func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput, error) {
+func (s *Handlers) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput, error) {
 	out := &setupStateOutput{}
 	out.Body.SSO = s.sso != nil && s.sso.Available()
 	// Mirrors exactly what registerAuth mounted, so the login screen can never offer a
@@ -156,7 +173,7 @@ type bootstrapOutput struct {
 
 // bootstrap creates the first local admin (§11). No requireAdmin: it is gated
 // internally on "no admin exists yet" — a second call 409s.
-func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapOutput, error) {
+func (s *Handlers) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapOutput, error) {
 	u, err := s.provision.Bootstrap(ctx, in.Body.Username, in.Body.Password)
 	if errors.Is(err, auth.ErrBootstrapClosed) {
 		return nil, httpcore.Conflict("Already set up", "An admin account already exists, so first-run setup is closed.")
@@ -188,7 +205,7 @@ type importUsersOutput struct {
 }
 
 // importUsers allowlists media-server users (§11). Admin-only.
-func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*importUsersOutput, error) {
+func (s *Handlers) importUsers(ctx context.Context, in *importUsersInput) (*importUsersOutput, error) {
 	if s.provision == nil || s.libraryUnconfigured() {
 		return nil, httpcore.NotImplemented("Media server not connected",
 			"Connect a media server in Settings to import its users.")

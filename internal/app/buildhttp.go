@@ -11,6 +11,7 @@ import (
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/people"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -40,8 +41,8 @@ type httpBuild struct {
 	restart                  system.RestartService
 	bootConfig               *config.Config
 	guide                    guideapi.GuideReader
-	settings                 api.SettingsService
-	notificationDestinations api.NotificationDestinationService
+	settings                 setupapi.SettingsService
+	notificationDestinations setupapi.NotificationDestinationService
 	webPushPublicKey         string
 	invitationDelivery       people.InvitationDeliveryService
 	passwordRecovery         people.PasswordRecoveryService
@@ -119,7 +120,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		DevLogin:             ov.DevLogin,
 		Pprof:                ov.Pprof,
 		MetricsToken:         ov.MetricsToken,
-		Demo:                 api.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
+		Demo:                 people.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
 		Channels:             channelSvc,
 		LiveTV:               liveTVSvc,
 		TunerRescanner:       tunerRescanner,

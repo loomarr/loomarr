@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 // registerSettings mounts /v1/settings* (config-design §8): the typed settings
 // surface the Settings UI and the wizard both drive. All admin-only; secrets are
 // masked by the service before they cross this boundary (§4).
-func (s *Server) registerSettings(api huma.API) {
+func (s *Handlers) registerSettings(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-list", Method: http.MethodGet, Path: "/v1/settings",
 		Summary: "List settings", Description: "Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
@@ -67,7 +67,7 @@ type settingsListOutput struct {
 	}
 }
 
-func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOutput, error) {
+func (s *Handlers) settingsList(ctx context.Context, _ *struct{}) (*settingsListOutput, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -84,14 +84,14 @@ func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOu
 // withAuditNames turns each entry's stored author (a user id) into that person's name, and marks
 // the caller's own changes, so the audit line reads "Changed by Sam" or "you" and never shows a
 // 32-character id (#2736). An author no account matches is left unnamed rather than shown raw.
-func (s *Server) withAuditNames(ctx context.Context, entries []SettingEntry) ([]SettingEntry, error) {
+func (s *Handlers) withAuditNames(ctx context.Context, entries []SettingEntry) ([]SettingEntry, error) {
 	if s.store == nil {
 		for i := range entries {
 			entries[i].UpdatedBy = ""
 		}
 		return entries, nil
 	}
-	names, err := s.personNames(ctx)
+	names, err := httpcore.LoadPersonNames(ctx, s.store)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ type settingsPatchOutput struct {
 	}
 }
 
-func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*settingsPatchOutput, error) {
+func (s *Handlers) settingsPatch(ctx context.Context, in *settingsPatchInput) (*settingsPatchOutput, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -159,7 +159,7 @@ var mediaSourceWiringKeys = map[string]struct{}{
 // autoWireMediaSourceAfterSave retains the independent Tunarr media-source consequence. Live TV
 // publication is intentionally absent: mutateLiveTVSettings owns that complete distributed
 // workflow, so there is no second transition algorithm in the HTTP layer.
-func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
+func (s *Handlers) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
 	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil &&
 		!s.unconfigured(settings.TunarrURL) && !s.libraryUnconfigured() {
@@ -175,7 +175,7 @@ func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[str
 // cross-replica lock. If lock acquisition fails, mutation never ran and the request must fail. Once
 // mutation ran, its result is authoritative: later convergence/publication errors are logged and
 // retried by maintenance rather than misreported as a failed save.
-func (s *Server) mutateLiveTVSettings(
+func (s *Handlers) mutateLiveTVSettings(
 	ctx context.Context,
 	affectsLiveTV bool,
 	mutation func(context.Context) bool,
@@ -238,13 +238,13 @@ func touchesAny(edits map[string]string, keys map[string]struct{}) bool {
 }
 
 // logw / logi guard against a nil logger (unit tests wire deps directly).
-func (s *Server) logw(msg string, err error) {
+func (s *Handlers) logw(msg string, err error) {
 	if s.log != nil {
 		s.log.Warn(msg, "error", err)
 	}
 }
 
-func (s *Server) logi(msg string) {
+func (s *Handlers) logi(msg string) {
 	if s.log != nil {
 		s.log.Info(msg)
 	}
@@ -257,7 +257,7 @@ type settingsClearInput struct {
 // settingsClear is the explicit clear (config-design §8). It exists because an
 // empty-string PATCH on a secret is rejected (§9, replace-only) — so unsetting one
 // has to be a deliberate act rather than a side effect of writing settings back.
-func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*struct{}, error) {
+func (s *Handlers) settingsClear(ctx context.Context, in *settingsClearInput) (*struct{}, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -292,7 +292,7 @@ type settingsEnvOverrideInput struct {
 // one control that overrides the deploy configuration. It is audited through the same
 // updated_by the rest of the settings surface uses, so an operator debugging a box that is
 // not behaving like its `.env` can find out from the app that someone took a key back.
-func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrideInput) (*struct{}, error) {
+func (s *Handlers) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrideInput) (*struct{}, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -330,7 +330,7 @@ type settingsTestOutput struct {
 	}
 }
 
-func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*settingsTestOutput, error) {
+func (s *Handlers) settingsTest(ctx context.Context, in *settingsTestInput) (*settingsTestOutput, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -354,7 +354,7 @@ type secretRevealOutput struct {
 // secretReveal is the read half of §4's "viewable on demand" — the eye toggle for the
 // API_TOKEN an operator pastes into machine clients. It never rotates: revealing is
 // looking at what's already in use.
-func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
+func (s *Handlers) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
@@ -377,7 +377,7 @@ type secretRegenerateOutput struct {
 	}
 }
 
-func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput) (*secretRegenerateOutput, error) {
+func (s *Handlers) secretRegenerate(ctx context.Context, in *secretRegenerateInput) (*secretRegenerateOutput, error) {
 	if s.settings == nil {
 		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}

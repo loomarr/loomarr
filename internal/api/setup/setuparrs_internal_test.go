@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func (f fakeArrDiscovery) Reachable(_ context.Context, _, url, _ string) error {
 // first one when it reaches none, with Seerr's key. A connection already set is left alone.
 func TestArrsFromRequester(t *testing.T) {
 	settings := &patchOnlySettings{patched: map[string]string{}}
-	s := &Server{
+	s := &Handlers{
 		settings:     settings,
 		liveSettings: mapSettings{"radarr.url": "http://radarr.invalid:7878"},
 		arrDiscovery: fakeArrDiscovery{
