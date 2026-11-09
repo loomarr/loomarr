@@ -79,9 +79,13 @@ func (l *Library) Search(context.Context, string, int) ([]library.SearchResult, 
 
 // Presence is a deterministic library-ownership adapter.
 type Presence struct {
-	mu    sync.Mutex
-	Hits  map[int]catalog.Presence
-	calls []int
+	mu   sync.Mutex
+	Hits map[int]catalog.Presence
+	// Err, when set, fails every lookup, as an unreachable library store does.
+	Err error
+	// OnCall, when set, runs on every lookup before it answers (a test cancels its context here).
+	OnCall func()
+	calls  []int
 }
 
 func (p *Presence) Present(
@@ -90,9 +94,16 @@ func (p *Presence) Present(
 	tmdbID, _ int,
 ) (catalog.Presence, bool, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.calls = append(p.calls, tmdbID)
 	hit, ok := p.Hits[tmdbID]
+	err, onCall := p.Err, p.OnCall
+	p.mu.Unlock()
+	if onCall != nil {
+		onCall()
+	}
+	if err != nil {
+		return catalog.Presence{}, false, err
+	}
 	return hit, ok, nil
 }
 
