@@ -107,7 +107,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/rating` | — |
 | `platform/settings` | `library`, `platform/config` |
 | `platform/storagegovernor` | — |
-| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
+| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/identitystore`, `proposals`, `proposals/quality`, `provision` |
+| `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications` |
 | `playout` | `channels/schedule`, `media/encode`, `platform/config`, `platform/diagnostics`, `provision` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
 | `proposals/accept` | `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision` |

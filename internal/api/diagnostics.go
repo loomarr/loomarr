@@ -389,7 +389,7 @@ func (s *Server) ingestClientDiagnostics(
 			"Client diagnostic ingestion isn't available on this Loomarr generation.")
 	}
 	actorID := "api_token"
-	if user, ok := userFrom(ctx); ok {
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		actorID = user.ID
 	}
 	accepted, err := s.clientDiagnostics.Ingest(ctx, actorID, input.Body)

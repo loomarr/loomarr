@@ -70,8 +70,7 @@ type Server struct {
 	// deviceLimiter bounds pairing starts and code-approval attempts. The user code is short by
 	// design (a human reads it off a TV), so a bounded attempt count is what makes it safe.
 	deviceLimiter *auth.RateLimiter
-	cookieSecure  string // COOKIE_SECURE: auto|true|false (§11)
-	trustProxy    bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	origin        httpcore.Origin // COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11)
 	// devLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
 	// development (§11). Set from LOOMARR_DEV_LOGIN at boot and read ONCE here, when
 	// routes are registered: an unset flag means the route never exists, which is a

@@ -80,7 +80,7 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope store.Feedba
 	if !validFeedbackRequest(scope, scopeID, target) {
 		return nil, httpcore.BadRequest("Invalid discovery feedback", "Choose household scope or a specific channel and a grounded movie or series.")
 	}
-	actor := userIDFromHuma(ctx)
+	actor := httpcore.UserIDFrom(ctx)
 	if actor == "" {
 		actor = "api-token"
 	}

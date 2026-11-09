@@ -124,7 +124,7 @@ func (s *Server) ideasUser(ctx context.Context) (string, error) {
 	if s.store == nil {
 		return "", httpcore.FeatureNotConfigured("Channel ideas unavailable", "The persistence service is not configured.")
 	}
-	userID := userIDFromHuma(ctx)
+	userID := httpcore.UserIDFrom(ctx)
 	if userID == "" {
 		return "", httpcore.Unauthorized("Not signed in", "Channel ideas belong to a person. Sign in, or use a paired device.")
 	}
@@ -220,7 +220,7 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 	if err != nil {
 		return nil, err
 	}
-	if u, ok := userFrom(ctx); ok && u.Role == identitystore.RoleAdmin {
+	if u, ok := httpcore.UserFrom(ctx); ok && u.Role == identitystore.RoleAdmin {
 		return nil, httpcore.Problem(http.StatusForbidden, "Channel ideas are for members",
 			"Requests go to an admin for approval. As an admin, make the channel yourself from the guide.")
 	}

@@ -137,15 +137,7 @@ const ssoStateTTL = 10 * time.Minute
 // the same COOKIE_SECURE policy as the session cookie (§11) — a plain-HTTP LAN install must
 // still be able to sign in.
 func (s *Server) stateCookie(r *http.Request, state string, expires time.Time) http.Cookie {
-	return http.Cookie{
-		Name:     ssoStateCookie,
-		Value:    state,
-		Path:     "/v1/auth/sso",
-		Expires:  expires,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   s.secureCookie(r),
-	}
+	return s.origin.Cookie(r, ssoStateCookie, state, "/v1/auth/sso", http.SameSiteLaxMode, expires)
 }
 
 // clearStateCookie expires the state cookie. Called on every callback outcome, so one
