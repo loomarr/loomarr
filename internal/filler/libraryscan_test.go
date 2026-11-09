@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // libraryOnDisk writes clip files into a library folder, with subfolders as the names say.
@@ -65,7 +67,7 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 // folder off disk again, forever.
 func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
 	lib := libraryOnDisk(t, "filed.mp4", "new.mp4", "waiting.mp4")
-	filedID, err := ClipID(filepath.Join(lib, "filed.mp4"))
+	filedID, err := asset.ClipID(filepath.Join(lib, "filed.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +296,7 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 			if err := os.WriteFile(candidate, body, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			id, err := ClipID(candidate)
+			id, err := asset.ClipID(candidate)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -371,7 +373,7 @@ func TestDrainScanSources_UnwiredIsANoOp(t *testing.T) {
 // with the first copy's derivative on clips.hash.
 func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	lib := libraryOnDisk(t, "Crunchlings 1993.mp4")
-	rawID, err := ClipID(filepath.Join(lib, "Crunchlings 1993.mp4"))
+	rawID, err := asset.ClipID(filepath.Join(lib, "Crunchlings 1993.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +410,7 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	if err := os.WriteFile(derivedProbe, derived, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	derivedID, err := ClipID(derivedProbe)
+	derivedID, err := asset.ClipID(derivedProbe)
 	if err != nil {
 		t.Fatal(err)
 	}

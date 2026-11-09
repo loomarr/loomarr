@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -16,7 +17,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err := os.WriteFile(source, []byte("archive source master"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceHash, err := ClipID(source)
+	sourceHash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err := os.WriteFile(playable, []byte("playback derivative bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	playableHash, err := ClipID(playable)
+	playableHash, err := asset.ClipID(playable)
 	if err != nil {
 		t.Fatal(err)
 	}

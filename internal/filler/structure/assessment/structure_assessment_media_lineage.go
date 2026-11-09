@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 )
@@ -114,11 +114,11 @@ func publishStructureAssessmentMedia(ctx context.Context, staged, target, digest
 	} else if !errors.Is(err, os.ErrExist) {
 		return err
 	}
-	existingDigest, existingSize, err := filler.FileSHA256(target)
+	existingDigest, existingSize, err := asset.FileSHA256(target)
 	if err != nil || existingDigest != digest || existingSize != size {
 		return errors.New("existing structure assessment media does not match its content address")
 	}
-	equal, err := filler.ExactFileBytesEqual(ctx, staged, target, cut.MaximumVideoBytes)
+	equal, err := asset.ExactFileBytesEqual(ctx, staged, target, cut.MaximumVideoBytes)
 	if err != nil || !equal {
 		return errors.New("existing structure assessment media does not match exact bytes")
 	}

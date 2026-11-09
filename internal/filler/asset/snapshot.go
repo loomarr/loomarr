@@ -1,4 +1,4 @@
-package filler
+package asset
 
 import (
 	"context"
@@ -11,21 +11,16 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
-// SnapshotOwnedFile is the one file-writing snapshot an outside package gets (the structure
-// assessment media preparer). It is the same ownership copy snapshotOwnedFile performs, already
-// bound to the conditioning size cap, so a caller cannot choose the cap or reach the bounded seam.
+// SnapshotOwnedFile is the file-writing snapshot used where a source snapshot is an ownership
+// boundary. It binds the copy to one open regular-file descriptor and never exposes a partial
+// destination. It is permanently bound to the conditioning size cap, so a caller cannot choose
+// the cap or reach the bounded seam.
 func SnapshotOwnedFile(ctx context.Context, source, destination string) error {
-	return snapshotOwnedFile(ctx, source, destination)
-}
-
-// snapshotOwnedFile is used only where a source snapshot is an ownership boundary. It binds the
-// copy to one open regular-file descriptor and never exposes a partial destination.
-func snapshotOwnedFile(ctx context.Context, source, destination string) error {
 	return snapshotOwnedFileBounded(ctx, source, destination, tools.ConditioningMaxSnapshotBytes, nil)
 }
 
 // snapshotOwnedFileBounded is the private deterministic seam for proving the ownership copy.
-// Production callers use snapshotOwnedFile, which is permanently bound to the conditioning cap.
+// Production callers use SnapshotOwnedFile, which is permanently bound to the conditioning cap.
 func snapshotOwnedFileBounded(ctx context.Context, source, destination string, limit int64, afterChunk func()) error {
 	if err := ctx.Err(); err != nil {
 		return err

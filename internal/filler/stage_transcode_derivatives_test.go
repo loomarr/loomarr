@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -63,7 +64,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	if err := os.WriteFile(parentSource, []byte("parent source master bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	parentSourceHash, err := ClipID(parentSource)
+	parentSourceHash, err := asset.ClipID(parentSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,20 +418,20 @@ func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
 			}
 
 			full := derivativeAssetPath(t, dir, clip, role)
-			beforeSparse, err := ClipID(full)
+			beforeSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeFull, size, err := FileSHA256(full)
+			beforeFull, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
 			mutateDerivativeMiddleByte(t, full, size)
-			afterSparse, err := ClipID(full)
+			afterSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			afterFull, afterSize, err := FileSHA256(full)
+			afterFull, afterSize, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -511,7 +512,7 @@ func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testi
 			}
 			clip = out.Clip
 			full := derivativeAssetPath(t, dir, clip, role)
-			_, size, err := FileSHA256(full)
+			_, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -643,7 +644,7 @@ func derivativeAssetPath(t *testing.T, dir string, clip StoreClip, role MediaAss
 
 func mutateDerivativeMiddleByte(t *testing.T, path string, size int64) {
 	t.Helper()
-	if size <= 2*hashWindow {
+	if size <= 2*asset.HashWindow {
 		t.Fatalf("derivative is %d bytes; need more than two sparse-hash windows", size)
 	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0)

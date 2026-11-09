@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -37,7 +38,7 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	if err := os.WriteFile(source, []byte("source master bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(source)
+	clipHash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +79,7 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 	if err := os.WriteFile(source, []byte("source master bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(source)
+	clipHash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}

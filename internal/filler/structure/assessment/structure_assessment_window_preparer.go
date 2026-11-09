@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -103,7 +104,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	if err := p.decode(ctx, p.ffmpegPath, outputPath); err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("decode: %w", err)
 	}
-	mediaSHA, mediaBytes, err := filler.FileSHA256(outputPath)
+	mediaSHA, mediaBytes, err := asset.FileSHA256(outputPath)
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
 	}
@@ -163,7 +164,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window reuse authority drifted")
 	}
 	mediaPath := structureAssessmentMediaPath(p.mediaRoot, lineage.Media.SHA256)
-	mediaSHA, mediaBytes, err := filler.FileSHA256(mediaPath)
+	mediaSHA, mediaBytes, err := asset.FileSHA256(mediaPath)
 	if err != nil || mediaSHA != lineage.Media.SHA256 || mediaBytes != lineage.Media.Bytes {
 		return StructureAssessmentWindowMedia{}, errors.New("reused structure assessment window bytes do not match lineage")
 	}

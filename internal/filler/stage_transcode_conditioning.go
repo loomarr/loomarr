@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -65,7 +66,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 				ClipHash: evidence.Asset.ClipHash, Path: evidence.Asset.Path, DurationMs: evidence.DurationMs,
 			}
 		case split.SourceLegacyPlayback:
-			digest, size, err := FileSHA256(parentFull)
+			digest, size, err := asset.FileSHA256(parentFull)
 			if err != nil || digest != tags.ConditioningLineage.ParentAssetSHA256 {
 				return review("conditioning parent playback asset changed")
 			}

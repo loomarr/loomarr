@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -515,6 +516,6 @@ func (diskSink) Inspect(path string) (string, int64, string, error) {
 
 func inspectBytes(data []byte) (string, int64, string, error) {
 	digest := sha256.Sum256(data)
-	clipHash, err := filler.ClipIDFromReaderAt(bytes.NewReader(data), int64(len(data)))
+	clipHash, err := asset.ClipIDFromReaderAt(bytes.NewReader(data), int64(len(data)))
 	return fmt.Sprintf("%x", digest[:]), int64(len(data)), clipHash, err
 }

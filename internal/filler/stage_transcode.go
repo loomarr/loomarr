@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
@@ -397,7 +398,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		}
 		reportProgress(ctx, StageTranscode, 95)
 	}
-	newHash, err := ClipID(stageFull)
+	newHash, err := asset.ClipID(stageFull)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("hash transformed clip %s: %w", oldRel, err)
 	}
@@ -450,8 +451,8 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		}
 	}
 	if job != nil {
-		sourceEqual, sourceErr := exactFileBytesEqual(ctx, sourceMasterFull, inputFull, tools.ConditioningMaxSnapshotBytes)
-		parentEqual, parentErr := exactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, tools.ConditioningMaxSnapshotBytes)
+		sourceEqual, sourceErr := asset.ExactFileBytesEqual(ctx, sourceMasterFull, inputFull, tools.ConditioningMaxSnapshotBytes)
+		parentEqual, parentErr := asset.ExactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 			return conditioningReview(c, "conditioning source or parent changed while evidence was prepared"), nil
 		}
@@ -463,7 +464,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	// now occupies the catalog name. Re-open the visible source before publication so a replacement
 	// cannot be re-keyed and then deleted as if it were the bytes we preserved.
 	if sourceMaster.ClipHash == c.Hash {
-		sourceStillOwned, sourceErr := exactFileBytesEqual(ctx, oldFull, sourceMasterFull, tools.ConditioningMaxSnapshotBytes)
+		sourceStillOwned, sourceErr := asset.ExactFileBytesEqual(ctx, oldFull, sourceMasterFull, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || !sourceStillOwned {
 			if job != nil {
 				return conditioningReview(c, "conditioning source changed while evidence was prepared"), nil
@@ -685,7 +686,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster MediaAssetIdentity, p stagedPl
 	if err != nil {
 		return MediaAssetManifest{}, err
 	}
-	digest, size, err := FileSHA256(p.path)
+	digest, size, err := asset.FileSHA256(p.path)
 	if err != nil {
 		return MediaAssetManifest{}, fmt.Errorf("digest playback derivative: %w", err)
 	}

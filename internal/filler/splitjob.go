@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -1087,7 +1088,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			}
 			return nil, err
 		}
-		id, err := ClipID(tmp)
+		id, err := asset.ClipID(tmp)
 		if err != nil {
 			return nil, fmt.Errorf("split confirm: hash segment %d: %w", i, err)
 		}
@@ -1136,7 +1137,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := asset.ExactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}

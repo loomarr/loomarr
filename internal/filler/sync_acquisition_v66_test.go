@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -46,11 +47,11 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	if err := os.WriteFile(sourcePath, []byte("exact acquired source bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sourceSHA, sourceBytes, err := FileSHA256(sourcePath)
+	sourceSHA, sourceBytes, err := asset.FileSHA256(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceHash, err := ClipID(sourcePath)
+	sourceHash, err := asset.ClipID(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	playbackHash := writeContentAddressedClip(t, root, []byte("conditioned playback derivative"), ".mp4")
 	playbackRel := filepath.ToSlash(ClipRelPath(playbackHash, ".mp4"))
 	playbackPath := filepath.Join(root, filepath.FromSlash(playbackRel))
-	playbackSHA, playbackBytes, err := FileSHA256(playbackPath)
+	playbackSHA, playbackBytes, err := asset.FileSHA256(playbackPath)
 	if err != nil {
 		t.Fatal(err)
 	}

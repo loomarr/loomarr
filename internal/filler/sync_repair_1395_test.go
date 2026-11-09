@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 const missingMediaReason = "manifested media is missing, symlinked, or not a regular file"
@@ -23,7 +24,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 	if err := os.WriteFile(temporary, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(temporary)
+	clipHash, err := asset.ClipID(temporary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 	if err := os.Rename(temporary, media); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(media)
+	digest, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}

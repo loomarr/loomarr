@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -257,11 +258,11 @@ func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, ident
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sha256, bytes, err := filler.FileSHA256(path)
+	sha256, bytes, err := asset.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(path)
+	clipHash, err := asset.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}

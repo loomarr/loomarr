@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -1360,7 +1361,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newHash, err := ClipID(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	newHash, err := asset.ClipID(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1568,7 +1569,7 @@ func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := ClipID(tmp)
+	hash, err := asset.ClipID(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}

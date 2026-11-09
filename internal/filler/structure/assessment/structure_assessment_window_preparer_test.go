@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -238,11 +239,11 @@ func structureAssessmentWindowSource(t *testing.T) (string, split.AssessmentSour
 	if err := os.WriteFile(path, []byte(strings.Repeat("long-source", 128)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(path)
+	digest, size, err := asset.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(path)
+	clipHash, err := asset.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +262,7 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 	t.Helper()
 	calls := &structureAssessmentWindowCalls{}
 	preparer := &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: filler.SnapshotOwnedFile,
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: asset.SnapshotOwnedFile,
 		profile: cut.SoftwareProfile(),
 		identify: func(context.Context, string) (tools.MediaToolIdentity, error) {
 			return structureAssessmentToolFixture(), nil

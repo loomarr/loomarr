@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -778,12 +779,12 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 			if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 				return errors.New(ArtifactMediaMissing)
 			}
-			digest, size, digestErr := FileSHA256(path)
+			digest, size, digestErr := asset.FileSHA256(path)
 			if digestErr != nil {
 				return errors.New("manifested media cannot be hashed: " + digestErr.Error())
 			}
 			if observedHash == "" {
-				observedHash, digestErr = ClipID(path)
+				observedHash, digestErr = asset.ClipID(path)
 				if digestErr != nil {
 					return errors.New("manifested media cannot be identified: " + digestErr.Error())
 				}
@@ -893,7 +894,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
 			return artifact, true, errors.New(artifact.RepairReason)
 		}
-		digest, size, err := FileSHA256(path)
+		digest, size, err := asset.FileSHA256(path)
 		if err != nil {
 			return fail("manifested media cannot be hashed: " + err.Error())
 		}
@@ -1001,7 +1002,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 	}
 	targetExists := false
 	if _, err := os.Stat(newFull); err == nil {
-		id, hashErr := ClipID(newFull)
+		id, hashErr := asset.ClipID(newFull)
 		if hashErr != nil || id != rc.ID {
 			return rc, false, fmt.Errorf("canonical target exists with different content")
 		}
