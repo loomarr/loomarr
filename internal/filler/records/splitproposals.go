@@ -394,14 +394,8 @@ func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
 		return fmt.Errorf("prune orphan split proposals: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	// Proposal stills are owned by the proposal, not by the source clip. Remove those references
-	// in the same transaction so image GC can reclaim the files after an unreviewed source vanishes.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM image_refs
-		WHERE owner_kind = 'filler_split_proposal' AND owner_id IN (
-			SELECT p.id FROM filler_split_proposals p
-			WHERE NOT EXISTS (SELECT 1 FROM clips c WHERE c.hash = p.clip_hash))`); err != nil {
-		return fmt.Errorf("prune orphan split proposal images: %w", err)
-	}
+	// Proposal stills are owned by the proposal: filler_split_proposal_images cascades, so the image
+	// GC can reclaim them once an unreviewed source vanishes.
 	_, err = tx.ExecContext(ctx,
 		`DELETE FROM filler_split_proposals WHERE NOT EXISTS (
 			SELECT 1 FROM clips c WHERE c.hash = filler_split_proposals.clip_hash)`)

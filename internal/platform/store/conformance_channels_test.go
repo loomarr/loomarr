@@ -292,14 +292,11 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-// Deleting a channel must drop its IMAGE REFS — the cascade that replaced the `channel_icons` retired-ok
-// cleanup when the table went (V52 phase 8).
+// Deleting a channel must drop its IMAGE REFS (channel_images cascades, #2793).
 //
-// ⚠ **This is a regression test for a real leak, not a rename of the old icon round-trip.** Phase 5
-// moved icon bytes into the image service but left DeleteChannel deleting the old blob table, so a
-// deleted channel's `image_refs` row survived it. A ref is precisely what tells the GC an image is
-// still in use (§22), so the icon was never orphaned and never collected — bytes on disk owned by a
-// channel that no longer exists, forever. `DeleteImageRefs` had no caller at all until phase 8.
+// ⚠ **This is a regression test for a real leak.** A deleted channel's ref once survived it, and a
+// ref is precisely what tells the GC an image is still in use (§22), so the icon was never orphaned
+// and never collected — bytes on disk owned by a channel that no longer exists, forever.
 func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

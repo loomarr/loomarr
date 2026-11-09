@@ -491,7 +491,9 @@ var clipReferences = []clipReference{
 	{"filler_clip_fingerprints", "clip_hash", rekeyDrop},
 	// So does the defect record (#2034): the new bytes are measured on the next pass.
 	{"filler_clip_defects", "clip_hash", rekeyDrop},
-	{"image_refs", "owner_id", rekeyByCode},
+	// Copied onto the new hash by its own step: a re-key in place moves them by ON UPDATE CASCADE
+	// first, but adopting a conditioned clip deletes the source row, which would cascade them away.
+	{"clip_images", "clip_hash", rekeyByCode},
 	{"filler_airings", "clip_hash", rekeyByCode},
 	{"filler_clip_variants", "a_hash", rekeyByCode},
 	{"filler_clip_variants", "b_hash", rekeyByCode},
@@ -517,9 +519,12 @@ func (s *Store) rekeyClipReferencesTx(ctx context.Context, tx storedb.Tx, oldHas
 			return fmt.Errorf("replace clip identity %s references in %s: %w", oldHash, ref.table, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`),
-		newHash, "clip", oldHash); err != nil {
-		return fmt.Errorf("replace clip identity %s references in image_refs: %w", oldHash, err)
+	// A re-key in place has already moved these (ON UPDATE CASCADE), so this finds none; adopting a
+	// conditioned clip has not, and its source row is deleted next, taking anything left behind.
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO clip_images (clip_hash, role, image_hash)
+		SELECT ?, role, image_hash FROM clip_images WHERE clip_hash = ?
+		ON CONFLICT (clip_hash, role, image_hash) DO NOTHING`), newHash, oldHash); err != nil {
+		return fmt.Errorf("replace clip identity %s references in clip_images: %w", oldHash, err)
 	}
 	for _, step := range identityHistoryMoves(oldHash, newHash) {
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {

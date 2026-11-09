@@ -342,7 +342,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   files, or a series' episodes by season.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
-  through an `image_refs` row (owner `library_item`, role `poster`, `backdrop` or `logo`); that
+  through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that
   ref is the one record of which image it is, and a kind replaces only its own role's ref. Banner,
   landscape, clearart and discart stay references: nothing shows them. A clear logo's alpha is its
   shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
