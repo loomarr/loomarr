@@ -79,6 +79,7 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	mustUsers(t, s, "u-member")
 	ch := sampleChannel("ch-named", 1, time.Time{})
 	ch.IntentRef = "job-origin"
 	ch.IntentJSON = `{"description":"first"}`

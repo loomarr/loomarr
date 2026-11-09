@@ -1,17 +1,16 @@
 -- +goose Up
--- Schema to a 10 (#2793, item 1): who asked for a channel, and who gave feedback about what, are
--- foreign keys.
+-- Schema to a 10 (#2793, item 1): who asked for a channel, and which channel feedback is about,
+-- are foreign keys.
 --
 --   - channels.requested_by references users; a deleted person leaves the channel with no
 --     requester (SET NULL), as one no member asked for;
---   - discovery_feedback.actor_id references users and goes with its person, like their favourites;
 --   - discovery_feedback.scope_id references channels and goes with its channel, which
 --     DeleteChannel used to do by hand.
 --
 -- requested_by and scope_id used '' for "none", which no row has as its id, so they become
 -- nullable and the copy turns each '' into NULL; the feedback scope CHECK tests scope_id for NULL.
--- A requester naming no user is cleared the same way, and feedback whose person or channel is gone
--- is dropped.
+-- A requester naming no user is cleared the same way, and feedback whose channel is gone is
+-- dropped. Feedback's actor stays a plain id: the API token writes one that is no user.
 --
 -- SQLite cannot add a foreign key in place, so channels is rebuilt with its children (the 00192
 -- pattern): children are renamed first, created after the parent, and dropped first.
@@ -144,7 +143,7 @@ CREATE INDEX idx_channel_lineup_title ON channel_lineup (title_key);
 ALTER TABLE discovery_feedback RENAME TO discovery_feedback_old;
 CREATE TABLE discovery_feedback (
     id            TEXT   PRIMARY KEY,
-    actor_id      TEXT   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_id      TEXT   NOT NULL,
     scope         TEXT   NOT NULL CHECK (scope IN ('household', 'channel')),
     scope_id      TEXT   REFERENCES channels(id) ON DELETE CASCADE,
     target_key    TEXT   NOT NULL,
@@ -156,12 +155,11 @@ CREATE TABLE discovery_feedback (
 INSERT INTO discovery_feedback
 SELECT id, actor_id, scope, NULLIF(scope_id, ''), target_key, action, reason, created_at_ns
 FROM discovery_feedback_old f
-WHERE EXISTS (SELECT 1 FROM users u WHERE u.id = f.actor_id)
-  AND (f.scope = 'household' OR EXISTS (SELECT 1 FROM channels c WHERE c.id = f.scope_id));
+WHERE f.scope = 'household' OR EXISTS (SELECT 1 FROM channels c WHERE c.id = f.scope_id);
 DROP TABLE discovery_feedback_old;
 CREATE INDEX idx_discovery_feedback_scope_created
     ON discovery_feedback (scope, scope_id, created_at_ns DESC, id DESC);
-CREATE INDEX idx_discovery_feedback_actor ON discovery_feedback (actor_id);
+CREATE INDEX idx_discovery_feedback_scope_id ON discovery_feedback (scope_id);
 
 -- +goose Down
 -- No down: forward-only (§16).
