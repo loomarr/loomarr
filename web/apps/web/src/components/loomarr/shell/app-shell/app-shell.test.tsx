@@ -246,6 +246,43 @@ describe("AppShell", () => {
         vi.unstubAllGlobals();
       }
     });
+
+    // #2751: Search, top right in a header row on every page, wired to the rail's same handler.
+    it("puts Search in a phone header that opens the shell's search", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        addEventListener: vi.fn(),
+        matches: false,
+        media: query,
+        removeEventListener: vi.fn(),
+      }));
+      const onOpenCommand = vi.fn();
+      try {
+        render(
+          <LoomarrProvider theme="dark">
+            <RouterHarness
+              content={
+                <AppShell isAdmin onOpenCommand={onOpenCommand}>
+                  content
+                </AppShell>
+              }
+            />
+          </LoomarrProvider>,
+        );
+        const header = await screen.findByRole("banner");
+        await userEvent.click(await within(header).findByRole("button", { name: "Search" }));
+        expect(onOpenCommand).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
+  // Desktop is unchanged: the rail's Search button, and no phone header row.
+  it("renders no phone header at desktop width", async () => {
+    renderShell(true);
+    await screen.findByRole("main");
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phone-header-placeholder")).not.toBeInTheDocument();
   });
 
   // #1817 item 3, decision X2: Watch is the rail's second entry — matching the position the

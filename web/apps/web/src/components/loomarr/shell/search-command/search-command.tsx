@@ -1,4 +1,4 @@
-import { Badge, Text } from "@loomarr/design-system";
+import { Action, Badge, Text } from "@loomarr/design-system";
 import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,8 @@ const SearchCommand = ({
   loading = false,
   placeholder = "Search titles, channels, help…",
   onEscape,
+  fill = false,
+  onClose,
   className,
 }: SearchCommandProps) => {
   const listboxId = useId();
@@ -156,7 +158,8 @@ const SearchCommand = ({
   return (
     <div
       className={cn(
-        "border-border bg-popover flex w-full flex-col overflow-hidden rounded-lg border shadow-lg",
+        "bg-popover flex w-full flex-col overflow-hidden",
+        fill ? "h-full" : "border-border rounded-lg border shadow-lg",
         className,
       )}
     >
@@ -177,9 +180,15 @@ const SearchCommand = ({
           aria-activedescendant={flat.length > 0 ? optionId(active) : undefined}
           className="placeholder:text-muted-foreground h-11 w-full bg-transparent text-sm outline-none"
         />
-        <kbd className="border-border bg-static-800 text-2xs text-static-400 shrink-0 rounded border px-1.5 py-0.5 font-mono">
-          ESC
-        </kbd>
+        {onClose ? (
+          <Action density="touch" icon="close" layout="icon" onPress={onClose} variant="ghost">
+            Close search
+          </Action>
+        ) : (
+          <kbd className="border-border bg-static-800 text-2xs text-static-400 shrink-0 rounded border px-1.5 py-0.5 font-mono">
+            ESC
+          </kbd>
+        )}
       </div>
 
       {/* The `listbox` role exists ONLY while there are options to put in it. An empty listbox
@@ -190,7 +199,7 @@ const SearchCommand = ({
       <div
         ref={listRef}
         {...(empty ? {} : { id: listboxId, role: "listbox", "aria-label": "Search results" })}
-        className="max-h-80 overflow-y-auto p-1.5"
+        className={cn("overflow-y-auto p-1.5", fill ? "flex-1" : "max-h-80")}
       >
         {empty && (
           <p className="text-muted-foreground px-3 py-6 text-center text-sm">

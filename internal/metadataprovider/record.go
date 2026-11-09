@@ -131,11 +131,36 @@ type Descriptive struct {
 	// It says how many episodes each season holds, never which file is which: TMDB and TVDB number
 	// some shows differently.
 	Seasons []SeasonSize
-	// Orderings counts the other episode orderings the catalog knows for a series (TMDB's episode
-	// groups: DVD, absolute, story arc). Nil is unknown. Only a series with none is numbered by
-	// season and episode (#2151 decision 53).
-	Orderings *int
+	// Orders are the other episode orders the catalog knows for a series (TMDB's episode groups:
+	// DVD, absolute, story arc), besides Seasons. Nil is unknown; empty is none. Only a series with
+	// none is numbered by season and episode on its own; with some, the household picks the one its
+	// files follow (#2151 decision 53).
+	Orders []EpisodeOrder
 }
+
+// EpisodeOrder is one other way a catalog numbers a series' episodes.
+type EpisodeOrder struct {
+	// ID is the catalog's id for the order, what its layout is fetched by.
+	ID   string
+	Name string
+	Kind OrderKind
+	// Seasons and Episodes are how many groups and episodes it has.
+	Seasons  int
+	Episodes int
+}
+
+// OrderKind is what an episode order follows.
+type OrderKind string
+
+const (
+	OrderAired      OrderKind = "aired"
+	OrderAbsolute   OrderKind = "absolute"
+	OrderDVD        OrderKind = "dvd"
+	OrderDigital    OrderKind = "digital"
+	OrderStory      OrderKind = "story"
+	OrderProduction OrderKind = "production"
+	OrderTV         OrderKind = "tv"
+)
 
 // FilmCredit is one title in a person's filmography (#2151 decision 50): a movie or series by its
 // id in the catalog the filmography came from, what they did on it, and an actor's character.

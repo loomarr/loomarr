@@ -260,11 +260,15 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 // details.
 func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
-	series := func(orderings, seasonOne int) mp.Record {
+	series := func(orders, seasonOne int) mp.Record {
+		known := []mp.EpisodeOrder{}
+		for range orders {
+			known = append(known, mp.EpisodeOrder{ID: "90000799a", Name: "DVD Order", Kind: mp.OrderDVD})
+		}
 		return mp.Record{
 			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
 			Descriptive: &mp.Descriptive{
-				Title: "Golf Show", Orderings: &orderings,
+				Title: "Golf Show", Orders: known,
 				Seasons: []mp.SeasonSize{{Number: 0, Episodes: 2}, {Number: 1, Episodes: seasonOne}},
 			},
 		}

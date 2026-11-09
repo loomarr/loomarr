@@ -64,10 +64,18 @@ export {
   SectionHeader,
   useWindowWidth,
 } from "./src/layout";
-export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";
+export type {
+  ActivityIndicatorProps,
+  LoadingStripProps,
+  SignalLoaderProps,
+  SkeletonProps,
+  SkeletonShape,
+} from "./src/loading";
 export {
   ActivityIndicator,
   activityIndicatorMotion,
+  LoadingStrip,
+  loadingStripMotion,
   SignalLoader,
   Skeleton,
   signalLoaderMotion,

@@ -1,6 +1,6 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Badge } from "@loomarr/design-system";
-import { CalendarClock, Loader2, ShieldCheck, UserRound } from "lucide-react";
+import { Action, Badge, LoadingStrip } from "@loomarr/design-system";
+import { CalendarClock, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -26,7 +26,7 @@ const InvitationJoin = ({
   if (isLoading) {
     return (
       <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
+        <LoadingStrip decorative width={32} />
         Checking invitation…
       </div>
     );

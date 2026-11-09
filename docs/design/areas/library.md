@@ -17,9 +17,9 @@ One area of the [package map](../package-map.md#start-here).
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`episodeevidence`** · 2 importers
   Owns playable structure and bounded editorial facts used for episode curation.
-- **`inventory`** · 7 importers
+- **`inventory`** · 8 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
-- **`library`** · 12 importers · → `inventory`, `platform/httpx`, `platform/metrics`
+- **`library`** · 13 importers · → `inventory`, `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
@@ -41,11 +41,11 @@ One area of the [package map](../package-map.md#start-here).
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
-- **`provision`** · 27 importers
+- **`provision`** · 28 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `provision`, `requester`
   Provisioning backstop (design §4, §7, §18).
 - **`requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`tmdb`** · 5 importers · → `catalog`, `moviecollections`, `platform/httpx`, `platform/metrics`, `provision`
+- **`tmdb`** · 6 importers · → `catalog`, `moviecollections`, `platform/httpx`, `platform/metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.

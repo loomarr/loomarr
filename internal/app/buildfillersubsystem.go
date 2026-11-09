@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -71,7 +72,7 @@ func buildFillerSubsystem(
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
@@ -162,7 +163,7 @@ func buildFillerSubsystem(
 	result.preview = podPreviewAdapter{store: st, pods: pods}
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
-		playoutResolver.pods = result.preview
+		playoutResolver.SetPods(result.preview)
 	}
 	if engine, ok := channelService.(*channels.Engine); ok {
 		engine.WithPods(pods)

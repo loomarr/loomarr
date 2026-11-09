@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-// probeCapacity measures this host's per-class stream costs and encoder session limit once at boot
+// ProbeCapacity measures this host's per-class stream costs and encoder session limit once at boot
 // (#1512 G5) and runs the tone-map self-check (G11). A stored table for the same FFmpeg, GPU and
 // encoder is reused, but the HDR class is measured at every start: the self-check is a startup
 // check, and a driver update can break a tone-mapper without changing the fingerprint.
-func (r *playoutResolver) probeCapacity(ctx context.Context, foreground playout.Foreground) {
+func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foreground) {
 	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		enc = r.detectedEncoder(ctx)
@@ -102,7 +102,7 @@ func (r *playoutResolver) probeCapacity(ctx context.Context, foreground playout.
 }
 
 // CostsFor is the measured cost table for enc, nil until the probe has published one for it.
-func (r *playoutResolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
+func (r *Resolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
 	m := r.measuredCosts.Load()
 	if m == nil || m.Encoder != enc {
 		return nil
@@ -113,7 +113,7 @@ func (r *playoutResolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
 // ToneCurve is the curve the live chain maps HDR with (playout.ToneCurveSource): the probe keys its
 // HDR measurement by it and the budget picks the HDR cells by it. It is the live playout.tone_curve
 // setting, the same one the spawner maps with. Nil-safe.
-func (r *playoutResolver) ToneCurve() playout.ToneCurve {
+func (r *Resolver) ToneCurve() playout.ToneCurve {
 	if r == nil || r.toneCurve == nil {
 		return playout.DefaultToneCurve
 	}
@@ -128,9 +128,9 @@ func costsForLog(costs map[playout.CostKey]playout.ClassCost) map[string]playout
 	return out
 }
 
-// tonemapObservation is the Diagnostics health of the tone-map self-check: a failure is red and
+// TonemapObservation is the Diagnostics health of the tone-map self-check: a failure is red and
 // immediate (G11: never silent); a tone-map too slow for a live channel is a warning.
-func tonemapObservation(check playout.TonemapCheck) (diagnostics.HealthObservation, bool) {
+func TonemapObservation(check playout.TonemapCheck) (diagnostics.HealthObservation, bool) {
 	const route = "/settings/system/playback"
 	switch {
 	case !check.Ran:

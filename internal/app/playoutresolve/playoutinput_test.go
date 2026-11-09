@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func TestPlayoutItemInputReadsOnlyALibraryItemsOwnFile(t *testing.T) {
 	if err := os.WriteFile(film, []byte("matroska"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &playoutResolver{libraryFile: fakeLibraryFiles{"lib-1": film, "lib-gone": filepath.Join(dir, "gone.mkv")}}
+	r := &Resolver{libraryFile: fakeLibraryFiles{"lib-1": film, "lib-gone": filepath.Join(dir, "gone.mkv")}}
 	ctx := context.Background()
 	if got := r.itemInput(ctx, "lib-1"); got != film {
 		t.Errorf("library item = %q, want its file", got)
@@ -33,7 +33,7 @@ func TestPlayoutItemInputReadsOnlyALibraryItemsOwnFile(t *testing.T) {
 			t.Errorf("%s = %q, want nothing to play", id, got)
 		}
 	}
-	if got := (&playoutResolver{}).itemInput(ctx, "lib-1"); got != "" {
+	if got := (&Resolver{}).itemInput(ctx, "lib-1"); got != "" {
 		t.Errorf("with no Library = %q, want nothing to play", got)
 	}
 	if readableFile(dir) {

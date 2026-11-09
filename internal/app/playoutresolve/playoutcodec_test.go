@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func TestMajorityBroadcastCodec(t *testing.T) {
 func TestComputeChannelCodecRetriesAChangingChannel(t *testing.T) {
 	t.Parallel()
 	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 2, 2, 2}}
-	r := &playoutResolver{channels: access, codecs: access}
+	r := &Resolver{channels: access, codecs: access}
 
 	got, err := r.ComputeChannelCodec(context.Background(), "ch1")
 	if err != nil {
@@ -70,7 +70,7 @@ func TestComputeChannelCodecRetriesAStaleTargetedWrite(t *testing.T) {
 		ReadRevisions: []int64{1, 1, 2, 2},
 		WriteErrors:   []error{store.ErrChannelStale, nil},
 	}
-	r := &playoutResolver{channels: access, codecs: access}
+	r := &Resolver{channels: access, codecs: access}
 
 	if _, err := r.ComputeChannelCodec(context.Background(), "ch1"); err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("database unavailable")
 	access := &testkit.ChannelCodecStore{ReadRevisions: []int64{1, 1}, WriteErrors: []error{boom}}
-	r := &playoutResolver{channels: access, codecs: access}
+	r := &Resolver{channels: access, codecs: access}
 
 	_, err := r.ComputeChannelCodec(context.Background(), "ch1")
 	if !errors.Is(err, boom) {
@@ -106,7 +106,7 @@ func TestMeasureChannelCodecProbesTheLibrarysFiles(t *testing.T) {
 	}
 	files["lib-gone"] = filepath.Join(dir, "gone.mkv")
 	var inputs []string
-	r := &playoutResolver{
+	r := &Resolver{
 		engine: stubCycle{slots: []schedule.Slot{
 			{Kind: schedule.SlotProgram, LibraryItemID: "lib-1"},
 			{Kind: schedule.SlotProgram, LibraryItemID: "lib-gone"},

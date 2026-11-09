@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -69,7 +70,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			return catalog.LibraryOwnership{Titles: st}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: itemMetadata{facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
+			Titles: st, Library: playoutresolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}

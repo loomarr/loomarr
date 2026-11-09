@@ -1,7 +1,7 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Disclosure } from "@loomarr/design-system";
-import { Check, LoaderCircle } from "lucide-react";
+import { Action, Disclosure, LoadingStrip } from "@loomarr/design-system";
+import { Check } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
@@ -56,7 +56,7 @@ const MovieCollectionChoices = ({
   if (actionableCollections.length === 0) {
     return loading ? (
       <p role="status" className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-        <LoaderCircle className="size-4 animate-spin" aria-hidden /> Checking for movie collections…
+        <LoadingStrip decorative width={32} /> Checking for movie collections…
       </p>
     ) : null;
   }

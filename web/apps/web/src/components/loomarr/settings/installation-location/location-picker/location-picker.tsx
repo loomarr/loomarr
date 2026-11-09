@@ -1,9 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, LoadingStrip } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Check, Loader2, Lock } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -235,7 +235,7 @@ const LocationPicker = ({
                   className="border-border text-muted-foreground flex items-center gap-2 border-t px-3 py-2 text-xs"
                   role="status"
                 >
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  <LoadingStrip decorative width={32} />
                   Searching…
                 </div>
               )}
