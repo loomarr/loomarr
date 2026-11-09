@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -46,7 +47,7 @@ type IdentityStore interface {
 
 // IdentityClip is a catalog clip and when it was admitted, the last tie-break between copies.
 type IdentityClip struct {
-	StoreClip
+	cliplibrary.StoreClip
 	CreatedAt time.Time
 	// Defects is the clip's current defect assessment; nil until the floor has measured it.
 	Defects *defects.Assessment
@@ -121,7 +122,7 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 			res.Pending++
 			continue
 		}
-		full, err := ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
+		full, err := cliplibrary.ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
 		if err != nil {
 			continue
 		}
@@ -305,7 +306,7 @@ func defectsFound(c IdentityClip) int {
 // correctionNeeded is how far a copy's measured playback loudness sits from the target, in dB. An
 // unmeasured copy ranks last on this rung.
 func (ci *CreativeIdentity) correctionNeeded(c IdentityClip) float64 {
-	full, err := ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
+	full, err := cliplibrary.ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil || ci.targetLUFS == nil {
 		return math.Inf(1)
 	}
@@ -336,7 +337,7 @@ func qualityRank(q string) int {
 // correctness story, as in SplitSweeper.retire: once the merge commits, Sync never catalogues the
 // loser again, so a failed unlink leaves only bytes, never a second copy on air.
 func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityClip, referenced map[string]int) error {
-	full, err := ClipPath(ci.clipDir, loser.Path, filepath.Ext(loser.Path))
+	full, err := cliplibrary.ClipPath(ci.clipDir, loser.Path, filepath.Ext(loser.Path))
 	if err != nil {
 		return fmt.Errorf("loser path: %w", err)
 	}
@@ -392,7 +393,7 @@ func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map
 // is decremented as assets are claimed. It reports each file it could not remove, and an
 // unresolvable clipRef as a single failure with nothing deleted.
 func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
-	full, err := ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
+	full, err := cliplibrary.ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
 	if err != nil {
 		return map[string]error{clipRef: err}
 	}
@@ -412,7 +413,7 @@ func derivativePath(d *asset.DerivativeLineage) string {
 func ReferencedAssets(clipDir string, paths []string) map[string]int {
 	out := map[string]int{}
 	for _, path := range paths {
-		full, err := ClipPath(clipDir, path, filepath.Ext(path))
+		full, err := cliplibrary.ClipPath(clipDir, path, filepath.Ext(path))
 		if err != nil {
 			continue
 		}

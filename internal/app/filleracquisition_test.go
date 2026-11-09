@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -21,7 +22,7 @@ import (
 // it before durable ownership is consulted.
 func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	dir := t.TempDir()
-	layout, err := filler.NewLayout(dir, "")
+	layout, err := cliplibrary.NewLayout(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source := filler.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
+	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
@@ -93,7 +94,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 		t.Skip("root bypasses the read-only directory that injects the failed move")
 	}
 	dir := t.TempDir()
-	layout, err := filler.NewLayout(dir, "")
+	layout, err := cliplibrary.NewLayout(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	failedDestination, err := filler.ClipPath(layout.ClipDir(), failedHash, filepath.Ext(failedArrival))
+	failedDestination, err := cliplibrary.ClipPath(layout.ClipDir(), failedHash, filepath.Ext(failedArrival))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 		t.Fatal(err)
 	}
 
-	source := filler.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
+	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
@@ -258,7 +259,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 
 func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.T) {
 	dir := t.TempDir()
-	layout, err := filler.NewLayout(dir, "")
+	layout, err := cliplibrary.NewLayout(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +283,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	destination, err := filler.ClipPath(layout.ClipDir(), clipHash, filepath.Ext(arrival))
+	destination, err := cliplibrary.ClipPath(layout.ClipDir(), clipHash, filepath.Ext(arrival))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +327,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 		t.Fatal(err)
 	}
 
-	source := filler.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
+	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (filler.Probed, error) {
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).

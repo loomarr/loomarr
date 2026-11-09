@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -91,11 +92,11 @@ func activeFillerVisionCapability(set resolved) enrichment.CapabilitySelection {
 }
 
 type fillerTranscriptObserver interface {
-	Observe(context.Context, filler.StoreClip) (filler.StageResult, string, error)
+	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, string, error)
 }
 
 type fillerVisionObserver interface {
-	Observe(context.Context, filler.StoreClip) (filler.StageResult, filler.VisionObservation, error)
+	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error)
 }
 
 // fillerMediaExecutor is intentionally narrower than filler.Stage: the enrichment coordinator has

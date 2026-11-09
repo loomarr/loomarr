@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 )
@@ -79,8 +81,8 @@ func utter(text string) filler.TranscriptSegment {
 // ⚠ Hash is DERIVED from the path rather than equal to it. A fixture that sets the two to the same
 // string cannot tell a hash-keyed call from a path-keyed one, which is how two shipped bugs
 // survived their own tests (see conformance_filler.go).
-func transcribeClip(path, transcript string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
+func transcribeClip(path, transcript string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: filler.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
 		DurationMs: 30_000, Transcript: transcript,
 	}}
@@ -88,7 +90,7 @@ func transcribeClip(path, transcript string) filler.StoreClip {
 
 // tagged marks a clip fully tagged (era + audience + category), so it is NOT a candidate on the
 // "still untagged" arm — only its source text can make it one.
-func tagged(c filler.StoreClip) filler.StoreClip {
+func tagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 	c.Era = 1994
 	c.Audience = filler.Kids
 	c.Category = "toys"
@@ -110,7 +112,7 @@ func sidecar(clipPath, description string) fstest.MapFS {
 
 // runIfApplies is the two-question shape every rung has: does this apply, and if so what happens.
 // Returning the applied flag lets a test assert "did not run" by COST rather than by outcome.
-func runIfApplies(t *testing.T, s filler.Stage, c filler.StoreClip) (filler.StageResult, bool) {
+func runIfApplies(t *testing.T, s filler.Stage, c cliplibrary.StoreClip) (filler.StageResult, bool) {
 	t.Helper()
 	if applies, _ := s.Applies(context.Background(), c); !applies {
 		return filler.StageResult{}, false
@@ -197,9 +199,9 @@ func TestTranscribeStage_WordlessRecordsSentinelAndDoesNotRevisit(t *testing.T) 
 	}
 	// Recorded as the sentinel — present AND non-empty, so an `!= ""` check treats it as handled.
 	got, ok := st.transcripts["silent.mp4"]
-	if !ok || got != filler.TranscriptNone {
+	if !ok || got != clips.TranscriptNone {
 		t.Fatalf("transcripts[silent.mp4] = (%q, present=%v), want (%q, true) so the clip is never re-run",
-			got, ok, filler.TranscriptNone)
+			got, ok, clips.TranscriptNone)
 	}
 	if len(st.setPaths) != 1 {
 		t.Fatalf("SetClipTranscript called %d times, want exactly 1 for the wordless clip", len(st.setPaths))

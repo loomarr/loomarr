@@ -1,4 +1,4 @@
-package filler_test
+package cliplibrary_test
 
 import (
 	"context"
@@ -7,22 +7,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	catalogclips "github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // fakeProbe reports a fixed duration, so the scanner is testable without ffmpeg.
-func fakeProbe(ms int64) filler.Prober {
-	return func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: ms}, nil
+func fakeProbe(ms int64) tools.Prober {
+	return func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: ms}, nil
 	}
 }
 
 // fakeProbeHD reports a duration AND a 1080p-shaped height, for the quality assertions.
-func fakeProbeHD(ms int64, height int) filler.Prober {
-	return func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: ms, Height: height}, nil
+func fakeProbeHD(ms int64, height int) tools.Prober {
+	return func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: ms, Height: height}, nil
 	}
 }
 
@@ -46,7 +47,7 @@ func TestScanDir_IdentityIsTheRelativePath(t *testing.T) {
 	writeFile(t, dir, "1994/toys-robo-rabbits.mp4")
 	writeFile(t, dir, "station-id.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testi
 		t.Fatal(err)
 	}
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestScanDir_ShowsDerivedNameButGroundsEraFromOriginalName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ab/cd/hash.info.json"), []byte(sidecar), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,32 +127,32 @@ func TestScanDir_RecordsNameSource(t *testing.T) {
 	for _, tc := range []struct {
 		name, file, sidecar string
 		wantName            string
-		wantSource          clips.NameSource
+		wantSource          catalogclips.NameSource
 	}{
-		{"bare filename", "Widgetmax Ad 1991.mp4", "", "Widgetmax Ad 1991", clips.NameFromFilename},
+		{"bare filename", "Widgetmax Ad 1991.mp4", "", "Widgetmax Ad 1991", catalogclips.NameFromFilename},
 		{"arrival filename", "ab/cd/hash.mp4", `{"loomarr":{"originalName":"Widgetmax Ad 1991.mp4"}}`,
-			"Widgetmax Ad 1991", clips.NameFromFilename},
+			"Widgetmax Ad 1991", catalogclips.NameFromFilename},
 		{"info-JSON title", "ab/cd/hash.mp4", `{"title":"Fizzbolt Summer Sale","loomarr":{"originalName":"fizzbolt-1991.mp4"}}`,
-			"Fizzbolt Summer Sale", clips.NameFromSidecar},
+			"Fizzbolt Summer Sale", catalogclips.NameFromSidecar},
 		{"grounded before provenance", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"spot 1993.mp4","displayName":"Fizzbolt — 1993","nameSource":"brand"}}`,
-			"Fizzbolt — 1993", clips.NameFromGrounded},
+			"Fizzbolt — 1993", catalogclips.NameFromGrounded},
 		{"operator-named segment", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Zap Cola.mp4","displayName":"Zap Cola","nameProvenance":"curated","splitPublicationToken":"tok"}}`,
-			"Zap Cola", clips.NameFromCurated},
+			"Zap Cola", catalogclips.NameFromCurated},
 		{"fallback segment", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Clip 2 from widgetmax tape.mp4","nameProvenance":"filename","splitPublicationToken":"tok"}}`,
-			"Clip 2 from widgetmax tape", clips.NameFromFilename},
+			"Clip 2 from widgetmax tape", catalogclips.NameFromFilename},
 		{"segment before provenance", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Zap Cola.mp4","splitPublicationToken":"tok"}}`,
-			"Zap Cola", clips.NameFromUnknown},
+			"Zap Cola", catalogclips.NameFromUnknown},
 		// An operator's rename (#1990) outranks the source title it replaced.
 		{"renamed over an info-JSON title", "ab/cd/hash.mp4",
 			`{"title":"fizzbolt_upload_v2","loomarr":{"originalName":"fizzbolt-1991.mp4","displayName":"Fizzbolt Summer Sale","nameProvenance":"curated"}}`,
-			"Fizzbolt Summer Sale", clips.NameFromCurated},
+			"Fizzbolt Summer Sale", catalogclips.NameFromCurated},
 		{"unrecognised provenance reads as grounded", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"spot.mp4","displayName":"Zap Cola","nameProvenance":"bogus"}}`,
-			"Zap Cola", clips.NameFromGrounded},
+			"Zap Cola", catalogclips.NameFromGrounded},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -162,7 +163,7 @@ func TestScanDir_RecordsNameSource(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+			clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30000))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -182,14 +183,14 @@ func TestScanDir_KeepsACuratedRename(t *testing.T) {
 	if err := os.WriteFile(side, []byte(`{"title":"fizzbolt_upload_v2","loomarr":{"originalName":"fizzbolt-1991.mp4"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteCuratedName(filepath.Join(dir, "ab/cd/hash.mp4"), "Fizzbolt Summer Sale"); err != nil {
+	if err := cliplibrary.WriteCuratedName(filepath.Join(dir, "ab/cd/hash.mp4"), "Fizzbolt Summer Sale"); err != nil {
 		t.Fatal(err)
 	}
-	found, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	found, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 1 || found[0].Name != "Fizzbolt Summer Sale" || found[0].NameSource != clips.NameFromCurated {
+	if len(found) != 1 || found[0].Name != "Fizzbolt Summer Sale" || found[0].NameSource != catalogclips.NameFromCurated {
 		t.Fatalf("clips = %+v, want the curated rename", found)
 	}
 	if found[0].Era != 1991 {
@@ -208,7 +209,7 @@ func TestScanDir_IgnoresNonMediaFiles(t *testing.T) {
 		writeFile(t, dir, junk)
 	}
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(15000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(15000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,13 +225,13 @@ func TestScanDir_SkipsUnprobeableFilesRatherThanFailing(t *testing.T) {
 	writeFile(t, dir, "good.mp4")
 	writeFile(t, dir, "broken.mp4")
 
-	probe := func(_ context.Context, path string) (filler.Probed, error) {
+	probe := func(_ context.Context, path string) (tools.Probed, error) {
 		if strings.Contains(path, "broken") {
-			return filler.Probed{}, os.ErrInvalid
+			return tools.Probed{}, os.ErrInvalid
 		}
-		return filler.Probed{DurationMs: 30000}, nil
+		return tools.Probed{DurationMs: 30000}, nil
 	}
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, probe)
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, probe)
 	if err != nil {
 		t.Fatalf("one bad file failed the whole scan: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestScanDir_RejectsZeroDuration(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "empty.mp4")
 
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, fakeProbe(0))
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +272,7 @@ func TestScanDir_RejectsAClipShorterThanTheFloor(t *testing.T) {
 	writeFile(t, dir, "truncated.mp4")
 
 	// The real fragment's length, against the shipped 10s floor.
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, fakeProbe(33), 10_000)
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(33), 10_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +290,7 @@ func TestScanDir_KeepsAClipAtTheFloor(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "spot.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(10_000), 10_000)
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(10_000), 10_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +305,7 @@ func TestScanDir_NoFloorGivenAdmitsAShortClip(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "tiny.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(500))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(500))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,10 +323,10 @@ func TestScanDir_RejectsAClipWithNoAudioStream(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "silent.mp4")
 
-	silent := func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000, Height: 480, Silent: true}, nil
+	silent := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480, Silent: true}, nil
 	}
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, silent, 10_000)
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, silent, 10_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,10 +342,10 @@ func TestScanDir_RejectsAClipWithNoVideoStream(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "audio-only.mp4")
 
-	audioOnly := func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000, NoVideo: true}, nil
+	audioOnly := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, NoVideo: true}, nil
 	}
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, audioOnly, 10_000)
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, audioOnly, 10_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,12 +361,12 @@ func TestScanDir_RejectsAClipWithNoVideoStream(t *testing.T) {
 // one IS an error: it is almost always a misconfigured path, and silently returning nothing
 // presents as "filler mysteriously does nothing".
 func TestScanDir_UnsetIsEmptyButMissingIsAnError(t *testing.T) {
-	clips, _, err := filler.ScanDir(context.Background(), "", fakeProbe(1000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), "", fakeProbe(1000))
 	if err != nil || len(clips) != 0 {
 		t.Errorf("unset dir: got %d clips, err %v — want empty and no error", len(clips), err)
 	}
 
-	if _, _, err := filler.ScanDir(context.Background(), "/definitely/not/here", fakeProbe(1000)); err == nil {
+	if _, _, err := cliplibrary.ScanDir(context.Background(), "/definitely/not/here", fakeProbe(1000)); err == nil {
 		t.Error("a missing FILLER_DIR must be reported, not silently empty")
 	}
 }
@@ -377,21 +378,21 @@ func TestScanDir_InfersKindAndEraFromTheFilename(t *testing.T) {
 	writeFile(t, dir, "bumper-back-soon.mp4")
 	writeFile(t, dir, "mystery-1994.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(20000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(20000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	byPath := map[string]filler.RawClip{}
+	byPath := map[string]cliplibrary.RawClip{}
 	for _, c := range clips {
 		byPath[c.Path] = c
 	}
 	if got := byPath["1994-toys-ad.mp4"]; got.Era != 1994 {
 		t.Errorf("era not inferred from the filename: %+v", got)
 	}
-	if got := byPath["bumper-back-soon.mp4"]; got.Role != filler.Bumper {
+	if got := byPath["bumper-back-soon.mp4"]; got.Role != catalogclips.Bumper {
 		t.Errorf("kind not inferred from the filename: %+v", got)
 	}
-	if got := byPath["mystery-1994.mp4"]; got.Role != filler.Unclassified || got.Era != 1994 {
+	if got := byPath["mystery-1994.mp4"]; got.Role != catalogclips.Unclassified || got.Era != 1994 {
 		t.Errorf("unknown role did not remain unclassified with independent era evidence: %+v", got)
 	}
 }
@@ -402,15 +403,15 @@ func TestScanDir_RestoresCatalogKindFromPortableSidecar(t *testing.T) {
 	if err := os.WriteFile(media, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := asset.WriteSidecarTags(media, asset.SidecarTags{OriginalName: "untitled clip.mp4", Kind: string(filler.PSA)}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{OriginalName: "untitled clip.mp4", Kind: string(catalogclips.PSA)}, false); err != nil {
 		t.Fatal(err)
 	}
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(20_000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(20_000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(clips) != 1 || clips[0].Role != filler.PSA {
+	if len(clips) != 1 || clips[0].Role != catalogclips.PSA {
 		t.Fatalf("rebuilt clips=%+v, want portable PSA kind", clips)
 	}
 }
@@ -449,7 +450,7 @@ func TestDirSource_NoTunarrStillProducesAFullCatalog(t *testing.T) {
 	writeFile(t, dir, "ad1.mp4")
 	writeFile(t, dir, "ad2.mp4")
 
-	src := filler.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}
+	src := cliplibrary.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}
 	clips, err := src.ListLocalClips(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -473,7 +474,7 @@ func TestDirSource_ExcludesAppliedCustomWatchSubtree(t *testing.T) {
 	writeFile(t, dir, "filed.mp4")
 	writeFile(t, dir, "inbox/still-arriving.mp4")
 
-	src := filler.DirSource{Layout: testLayout(dir, watch), Probe: fakeProbe(30000)}
+	src := cliplibrary.DirSource{Layout: testLayout(dir, watch), Probe: fakeProbe(30000)}
 	clips, err := src.ListLocalClips(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -494,7 +495,7 @@ func TestDirSource_ExcludesAliasedNestedWatchSubtree(t *testing.T) {
 	if err := os.Symlink(realRoot, aliasB); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	layout, err := filler.NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
+	layout, err := cliplibrary.NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +505,7 @@ func TestDirSource_ExcludesAliasedNestedWatchSubtree(t *testing.T) {
 	writeFile(t, layout.ClipDir(), "filed.mp4")
 	writeFile(t, layout.WatchDir(), "still-arriving.mp4")
 
-	clips, err := (filler.DirSource{Layout: layout, Probe: fakeProbe(30000)}).ListLocalClips(context.Background())
+	clips, err := (cliplibrary.DirSource{Layout: layout, Probe: fakeProbe(30000)}).ListLocalClips(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +520,7 @@ func TestDirSource_AnnotatesWithTunarrIDsWhenAvailable(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ad1.mp4")
 
-	src := filler.DirSource{
+	src := cliplibrary.DirSource{
 		Layout: testLayout(dir), Probe: fakeProbe(30000),
 		Tunarr: stubTunarr{ids: map[string]string{"ad1": "tun-123"}},
 	}
@@ -542,7 +543,7 @@ func TestDirSource_TunarrFailureDoesNotFailTheScan(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ad1.mp4")
 
-	src := filler.DirSource{
+	src := cliplibrary.DirSource{
 		Layout: testLayout(dir), Probe: fakeProbe(30000),
 		Tunarr: stubTunarr{err: os.ErrDeadlineExceeded},
 	}
@@ -567,7 +568,7 @@ func TestDirSource_TunarrFailureDoesNotFailTheScan(t *testing.T) {
 // empty with no error anywhere. Only running it end to end surfaced that.
 func TestFFprobeDurationNextTo_DerivesFfprobeFromTheFfmpegPath(t *testing.T) {
 	// A path that does not exist, so the error text tells us which binary it TRIED.
-	probe := filler.FFprobeNextTo("/opt/custom/bin/ffmpeg")
+	probe := cliplibrary.FFprobeNextTo("/opt/custom/bin/ffmpeg")
 	_, err := probe(context.Background(), "whatever.mp4")
 	if err == nil {
 		t.Fatal("expected a failure for a nonexistent binary")
@@ -595,7 +596,7 @@ func TestQualityFromHeight_BucketsRealWorldHeights(t *testing.T) {
 		{240, "240p"},
 		{0, ""}, // no video stream: no badge, rather than a claimed resolution
 	} {
-		if got := filler.QualityFromHeight(tc.height); got != tc.want {
+		if got := cliplibrary.QualityFromHeight(tc.height); got != tc.want {
 			t.Errorf("QualityFromHeight(%d) = %q, want %q", tc.height, got, tc.want)
 		}
 	}
@@ -606,7 +607,7 @@ func TestScanDir_RecordsClipQuality(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "sunnyd.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbeHD(30000, 480))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbeHD(30000, 480))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,7 +625,7 @@ func TestScanDir_NoVideoStreamStillYieldsAClip(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "jingle.mp4")
 
-	clips, skipped, err := filler.ScanDir(context.Background(), dir, fakeProbeHD(5000, 0))
+	clips, skipped, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbeHD(5000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,11 +644,11 @@ func TestScanDir_NoVideoStreamStillYieldsAClip(t *testing.T) {
 func TestScanDir_SkipsTheWatchFolder(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "filed.mp4")
-	writeFile(t, dir, filler.WatchDirName+"/just-arrived.mp4")
+	writeFile(t, dir, cliplibrary.WatchDirName+"/just-arrived.mp4")
 	// Nested, too — a downloader may write into a subfolder of the watch folder.
-	writeFile(t, dir, filler.WatchDirName+"/pending/also-arriving.mp4")
+	writeFile(t, dir, cliplibrary.WatchDirName+"/pending/also-arriving.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30_000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30_000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,9 +671,9 @@ func TestScanDir_SkipsTheWatchFolder(t *testing.T) {
 func TestScanDir_SkipsANestedWatchFolderToo(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ads/filed.mp4")
-	writeFile(t, dir, "ads/"+filler.WatchDirName+"/arriving.mp4")
+	writeFile(t, dir, "ads/"+cliplibrary.WatchDirName+"/arriving.mp4")
 
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30_000))
+	clips, _, err := cliplibrary.ScanDir(context.Background(), dir, fakeProbe(30_000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -696,7 +697,7 @@ func TestDirSource_ReportsAnUnreadableSubdirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(shut, 0o750) })
 
-	scan, err := (filler.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}).ScanLocalClips(context.Background())
+	scan, err := (cliplibrary.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}).ScanLocalClips(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

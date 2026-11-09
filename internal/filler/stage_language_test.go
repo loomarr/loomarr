@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -54,8 +55,8 @@ func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (s
 	return d.lang, d.err
 }
 
-func langClip(path, language string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
+func langClip(path, language string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: filler.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
 		DurationMs: 30_000, Language: language,
 	}}
@@ -233,7 +234,7 @@ func TestLanguageStage_DoesNotApplyToAnAlreadyHeardClip(t *testing.T) {
 	stage := newLangStage(newFakeLangStore(), det, "en")
 	for _, tc := range []struct {
 		name string
-		clip filler.StoreClip
+		clip cliplibrary.StoreClip
 		want bool
 	}{
 		{"never heard", langClip("fresh.mp4", ""), true},

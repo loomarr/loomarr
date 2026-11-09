@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -22,7 +23,7 @@ import (
 
 // ProbeClipStore is the slice of the store the probe stage writes through.
 type ProbeClipStore interface {
-	UpsertClip(ctx context.Context, c StoreClip) error
+	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
 	// SetClipComposite marks a clip as a CONTAINER of adverts rather than one (§10 V45).
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 }
@@ -45,7 +46,7 @@ type ProbeStage struct {
 // NewProbeStage builds the stage. A nil prober defaults to the real ffprobe.
 func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
 	if probe == nil {
-		probe = FFprobe
+		probe = cliplibrary.FFprobe
 	}
 	if now == nil {
 		now = time.Now
@@ -61,10 +62,10 @@ func (s *ProbeStage) Cost() StageCost           { return CostCheap }
 
 // Applies: always. Every clip is measured, including one that already has a duration — the file
 // may have been replaced under a stable path, and re-probing is one cheap exec.
-func (s *ProbeStage) Applies(context.Context, StoreClip) (bool, string) { return true, "" }
+func (s *ProbeStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) { return true, "" }
 
 // Run measures the clip and either updates it or refuses it.
-func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	if c.Path == "" {
 		return StageResult{}, fmt.Errorf("clip %s has no location to probe", c.Hash)
 	}
@@ -100,7 +101,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// facts, in its DO UPDATE list by design), so this needs no new writer.
 	updated := c
 	updated.DurationMs = pr.DurationMs
-	if q := QualityFromHeight(pr.Height); q != "" {
+	if q := cliplibrary.QualityFromHeight(pr.Height); q != "" {
 		updated.Quality = q
 	}
 	updated.UpdatedAt = s.now().UTC()
@@ -139,7 +140,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 // default-off `IncludeComposites` filter exclude it immediately, so the worst case is a long
 // recording sitting out of rotation until its cuts are reviewed, rather than sixteen minutes of
 // unrelated adverts airing as one break.
-func (s *ProbeStage) looksComposite(c StoreClip) bool {
+func (s *ProbeStage) looksComposite(c cliplibrary.StoreClip) bool {
 	if c.IsComposite {
 		return true // already marked; nothing to re-measure
 	}

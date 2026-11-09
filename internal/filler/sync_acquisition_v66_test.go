@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -35,7 +36,7 @@ func (a *consumedAcquisitionAuthority) UpsertAcquisitionArtifacts(
 type consumedV66Fixture struct {
 	syncer       *Syncer
 	authority    *consumedAcquisitionAuthority
-	clip         RawClip
+	clip         cliplibrary.RawClip
 	masterPath   string
 	playbackPath string
 }
@@ -67,7 +68,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	}
 
 	playbackHash := writeContentAddressedClip(t, root, []byte("conditioned playback derivative"), ".mp4")
-	playbackRel := filepath.ToSlash(ClipRelPath(playbackHash, ".mp4"))
+	playbackRel := filepath.ToSlash(cliplibrary.ClipRelPath(playbackHash, ".mp4"))
 	playbackPath := filepath.Join(root, filepath.FromSlash(playbackRel))
 	playbackSHA, playbackBytes, err := asset.FileSHA256(playbackPath)
 	if err != nil {
@@ -104,7 +105,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	syncer := &Syncer{dir: root, acquisitions: authority, now: func() time.Time { return now }}
 	return consumedV66Fixture{
 		syncer: syncer, authority: authority,
-		clip:       RawClip{ID: playbackHash, Path: playbackRel},
+		clip:       cliplibrary.RawClip{ID: playbackHash, Path: playbackRel},
 		masterPath: masterPath, playbackPath: playbackPath,
 	}
 }

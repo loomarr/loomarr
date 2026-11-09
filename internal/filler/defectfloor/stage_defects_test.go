@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -68,7 +69,7 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 			if tc.rec != nil {
 				verdicts["h"] = *tc.rec
 			}
-			out, err := NewDefectsStage(verdicts).Run(t.Context(), filler.StoreClip{Clip: filler.Clip{Hash: "h", Era: 1988}})
+			out, err := NewDefectsStage(verdicts).Run(t.Context(), cliplibrary.StoreClip{Clip: filler.Clip{Hash: "h", Era: 1988}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,14 +86,14 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 // A clip in the conveyor is not placed until the score rung, so it reads as not playable; the rung
 // must still judge it, or nothing new is ever held to the floor.
 func TestDefectsStage_AppliesToAHeldClipNotYetPlaced(t *testing.T) {
-	c := filler.StoreClip{Clip: filler.Clip{Hash: "h", Held: true, Placement: filler.PlacementNotPlayable, Role: filler.Unclassified}}
+	c := cliplibrary.StoreClip{Clip: filler.Clip{Hash: "h", Held: true, Placement: filler.PlacementNotPlayable, Role: filler.Unclassified}}
 	if ok, why := NewDefectsStage(fakeDefectVerdicts{}).Applies(t.Context(), c); !ok {
 		t.Fatalf("a new arrival skipped the floor: %s", why)
 	}
 }
 
 func TestDefectsStage_SkipsARecordedBreak(t *testing.T) {
-	if ok, _ := NewDefectsStage(fakeDefectVerdicts{}).Applies(t.Context(), filler.StoreClip{Clip: filler.Clip{Hash: "r", IsComposite: true}}); ok {
+	if ok, _ := NewDefectsStage(fakeDefectVerdicts{}).Applies(t.Context(), cliplibrary.StoreClip{Clip: filler.Clip{Hash: "r", IsComposite: true}}); ok {
 		t.Fatal("a composite recording was put to the floor; its segments are judged instead")
 	}
 }

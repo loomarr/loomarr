@@ -9,15 +9,16 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestSegmentScreeningStageAppliesOnlyToMaterializedChildren(t *testing.T) {
 	stage := NewSegmentScreeningStage(nil, nil, t.TempDir())
-	if applies, _ := stage.Applies(t.Context(), filler.StoreClip{}); applies {
+	if applies, _ := stage.Applies(t.Context(), cliplibrary.StoreClip{}); applies {
 		t.Fatal("screening stage applied to a top-level clip")
 	}
-	if applies, note := stage.Applies(t.Context(), filler.StoreClip{Clip: filler.Clip{ParentHash: "parent"}}); !applies || note != "" {
+	if applies, note := stage.Applies(t.Context(), cliplibrary.StoreClip{Clip: filler.Clip{ParentHash: "parent"}}); !applies || note != "" {
 		t.Fatalf("screening stage did not apply to child: applies=%v note=%q", applies, note)
 	}
 }
@@ -81,7 +82,7 @@ func TestSegmentScreeningStageTurnsOperationalFailureIntoReview(t *testing.T) {
 	}
 }
 
-func renderedChildStageFixture(t *testing.T) (filler.StoreClip, asset.SidecarTags, string) {
+func renderedChildStageFixture(t *testing.T) (cliplibrary.StoreClip, asset.SidecarTags, string) {
 	t.Helper()
 	root := t.TempDir()
 	tags := screeningChildTagsFixture(t)
@@ -95,7 +96,7 @@ func renderedChildStageFixture(t *testing.T) (filler.StoreClip, asset.SidecarTag
 	if err := asset.WriteSidecarTags(path, tags, false); err != nil {
 		t.Fatal(err)
 	}
-	clip := filler.StoreClip{Clip: filler.Clip{
+	clip := cliplibrary.StoreClip{Clip: filler.Clip{
 		Hash: tags.MediaAssets.Playback.Asset.ClipHash, Path: tags.MediaAssets.Playback.Asset.Path,
 		ParentHash: tags.ConditioningLineage.ParentHash,
 	}}

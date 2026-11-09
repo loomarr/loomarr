@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
-func resolveSplitSource(ctx context.Context, clipDir string, clip StoreClip, bound split.SourceAsset) (split.SourceAsset, string, error) {
+func resolveSplitSource(ctx context.Context, clipDir string, clip cliplibrary.StoreClip, bound split.SourceAsset) (split.SourceAsset, string, error) {
 	if bound == (split.SourceAsset{}) {
 		playable := filepath.Join(clipDir, filepath.FromSlash(clip.Path))
 		if tags, ok := asset.ReadSidecarTags(playable); ok && tags.MediaAssets != nil && tags.MediaAssets.Evidence != nil {

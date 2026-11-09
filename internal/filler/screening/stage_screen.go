@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
@@ -28,14 +29,14 @@ func NewSegmentScreeningStage(runtime *SegmentScreeningRuntime, certification *S
 func (s *SegmentScreeningStage) ID() pipelinestate.StageID { return pipelinestate.StageScreen }
 func (s *SegmentScreeningStage) Cost() filler.StageCost    { return filler.CostVision }
 
-func (s *SegmentScreeningStage) Applies(_ context.Context, clip filler.StoreClip) (bool, string) {
+func (s *SegmentScreeningStage) Applies(_ context.Context, clip cliplibrary.StoreClip) (bool, string) {
 	if !clip.IsSegment() {
 		return false, "not a materialized compilation child"
 	}
 	return true, ""
 }
 
-func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) (filler.StageResult, error) {
+func (s *SegmentScreeningStage) Run(ctx context.Context, clip cliplibrary.StoreClip) (filler.StageResult, error) {
 	if err := ctx.Err(); err != nil {
 		return filler.StageResult{}, err
 	}
@@ -104,7 +105,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, nil
 }
 
-func segmentScreeningReview(clip filler.StoreClip, note string) filler.StageResult {
+func segmentScreeningReview(clip cliplibrary.StoreClip, note string) filler.StageResult {
 	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictReview, Note: note}
 }
 

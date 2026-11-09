@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -521,7 +522,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			t.Errorf("segment %q became airable before conditioning", s.Name)
 		}
 		// Filed where its identity says it lives, and the bytes are actually there.
-		if want := filler.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
+		if want := cliplibrary.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
 			t.Errorf("segment %q path = %q, want the sharded %q", s.Name, s.Path, want)
 		}
 		if _, err := os.Stat(filepath.Join(drop, s.Path)); err != nil {

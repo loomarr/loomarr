@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -87,7 +87,7 @@ func (s stubPods) Pool(context.Context) (pod.PoolReport, error) {
 // tests caught exactly that when identity changed, which is what they are for.
 func clipAt(name string) string {
 	sum := sha256.Sum256([]byte(name))
-	return filler.ClipRelPath(hex.EncodeToString(sum[:]), ".mp4")
+	return cliplibrary.ClipRelPath(hex.EncodeToString(sum[:]), ".mp4")
 }
 
 func fillerResolver(t *testing.T, dir string, brk pod.Pod) *Resolver {

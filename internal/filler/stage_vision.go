@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -72,7 +73,7 @@ func (s *VisionStage) Cost() StageCost           { return CostVision }
 // resolved has nothing for vision to add and a real cost to avoid. Nothing here asks whether vision
 // already read it — the ladder does. A done rung is never re-run, and a Rewind that resets it is a
 // deliberate request to look again.
-func (s *VisionStage) Applies(_ context.Context, c StoreClip) (bool, string) {
+func (s *VisionStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
 	if s.tools == nil || s.provider == nil {
 		return false, "no vision model is configured"
 	}
@@ -94,7 +95,7 @@ type VisionObservation struct {
 
 // Observe extracts keyframes and grounds the answer without persisting it. Progressive catch-up
 // uses this half so its raw signal, accepted axes, and completion identity commit atomically.
-func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, VisionObservation, error) {
+func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (StageResult, VisionObservation, error) {
 	// ⚠ Loaded per clip rather than cached on the stage, and the vision BUDGET is what makes that
 	// affordable: at most `MaxVision` clips reach this rung in a pass. The alternative — a forest
 	// cached for the process — goes stale the moment an operator edits the taxonomy, and a
@@ -170,7 +171,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 }
 
 // Run is the readiness-stage adapter around Observe.
-func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *VisionStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	result, observation, err := s.Observe(ctx, c)
 	if err != nil {
 		return StageResult{}, err

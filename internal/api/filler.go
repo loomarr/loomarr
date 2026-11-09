@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/language"
@@ -828,7 +829,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		// sidecar ahead of its row is healed by that scan. A clip with no file in the drop-folder is
 		// never rescanned, so the row alone is enough for it.
 		if full, ok := s.clipFileOnDisk(clip.Path); ok {
-			if err := filler.WriteCuratedName(full, name); err != nil {
+			if err := cliplibrary.WriteCuratedName(full, name); err != nil {
 				return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the name",
 					"The clip's metadata file could not be updated, so nothing was changed. Try again.", err)
 			}

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
@@ -226,7 +227,7 @@ func observedRoles(c AcquisitionCandidate) []Role {
 	if len(c.ObservedRoles) > 0 {
 		return c.ObservedRoles
 	}
-	if kind := RoleFromName(c.Title); kind != Unclassified {
+	if kind := clips.RoleFromName(c.Title); kind != Unclassified {
 		return []Role{kind}
 	}
 	return nil

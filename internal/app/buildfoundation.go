@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/activity"
@@ -29,7 +29,7 @@ type foundationBuild struct {
 	set                    resolved
 	desiredSet             resolved
 	appliedRestartSettings map[string]string
-	fillerLayout           filler.Layout
+	fillerLayout           cliplibrary.Layout
 	secrets                *settings.Secrets
 	log                    *slog.Logger
 	libraryClient          *library.Client
@@ -143,7 +143,7 @@ func buildFoundation(
 			"generated secrets are available", "", "")
 		result.desiredSet = set
 		result.set, result.appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
-		result.fillerLayout, err = filler.NewLayout(
+		result.fillerLayout, err = cliplibrary.NewLayout(
 			settings.FillerDir.Get(result.set), settings.FillerWatchDir.Get(result.set),
 		)
 		if err != nil {

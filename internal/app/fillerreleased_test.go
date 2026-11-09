@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -16,10 +17,10 @@ import (
 // passStage is a rung that runs and lets the clip continue.
 type passStage struct{ id pipelinestate.StageID }
 
-func (s passStage) ID() pipelinestate.StageID                              { return s.id }
-func (passStage) Applies(context.Context, filler.StoreClip) (bool, string) { return true, "" }
-func (passStage) Cost() filler.StageCost                                   { return filler.CostCheap }
-func (passStage) Run(context.Context, filler.StoreClip) (filler.StageResult, error) {
+func (s passStage) ID() pipelinestate.StageID                                   { return s.id }
+func (passStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) { return true, "" }
+func (passStage) Cost() filler.StageCost                                        { return filler.CostCheap }
+func (passStage) Run(context.Context, cliplibrary.StoreClip) (filler.StageResult, error) {
 	return filler.StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }
 

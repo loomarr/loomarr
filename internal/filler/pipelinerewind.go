@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -157,8 +158,8 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.S
 
 // evidenceReleased reports whether the clip keeps a source master but no evidence copy: admitted,
 // with its evidence dropped.
-func (p *Pipeline) evidenceReleased(clip StoreClip) bool {
-	full, err := ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
+func (p *Pipeline) evidenceReleased(clip cliplibrary.StoreClip) bool {
+	full, err := cliplibrary.ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
 	if err != nil {
 		return false
 	}
@@ -280,7 +281,7 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 }
 
 // invalidate clears the derived data owned by every rung at or after `idx`.
-func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) error {
+func (p *Pipeline) invalidate(ctx context.Context, clip cliplibrary.StoreClip, idx int) error {
 	now := p.now().UTC()
 	at := func(id pipelinestate.StageID) bool { return pipelinestate.StageIndex(id) >= idx }
 

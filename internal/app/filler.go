@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -38,7 +39,7 @@ import (
 )
 
 // fillerSourceAdapter bridges the optional Tunarr annotation slice used by
-// filler.DirSource (§10): it registers FILLER_DIR and joins Tunarr program uuids
+// cliplibrary.DirSource (§10): it registers FILLER_DIR and joins Tunarr program uuids
 // onto Loomarr's locally-scanned, content-hash-identified clips.
 type fillerSourceAdapter struct {
 	prog       tunarrFillerClient
@@ -95,12 +96,12 @@ func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string
 }
 
 // fillerClip is the filler package's view of a stored clip.
-func fillerClip(c clipstore.Clip) filler.StoreClip {
-	return filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+func fillerClip(c clipstore.Clip) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
 }
 
-func fillerClips(clips []clipstore.Clip) []filler.StoreClip {
-	out := make([]filler.StoreClip, len(clips))
+func fillerClips(clips []clipstore.Clip) []cliplibrary.StoreClip {
+	out := make([]cliplibrary.StoreClip, len(clips))
 	for i, c := range clips {
 		out[i] = fillerClip(c)
 	}
@@ -114,7 +115,7 @@ func fillerClips(clips []clipstore.Clip) []filler.StoreClip {
 // the gate already tombstoned must not come back round as work: it would be re-detected forever,
 // and on the local backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer
 // already recorded.
-func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]filler.StoreClip, error) {
+func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
 	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: f.IncludeHeld})
 	if err != nil {
 		return nil, err
@@ -125,16 +126,16 @@ func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]f
 // fillerStoreAdapter bridges the store's clip methods → filler.Store (the sync).
 type fillerStoreAdapter struct{ st records.Store }
 
-func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
 	return a.st.UpsertClip(ctx, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
-func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
 	c, err := a.st.GetClip(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return filler.StoreClip{}, false, nil
+		return cliplibrary.StoreClip{}, false, nil
 	}
 	if err != nil {
-		return filler.StoreClip{}, false, err
+		return cliplibrary.StoreClip{}, false, err
 	}
 	return fillerClip(c), true, nil
 }
@@ -150,20 +151,20 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 //
 // ⚠ The PIPELINE table itself needs no adapter — `store.Store` satisfies `filler.PipelineStore`
 // directly, because those five methods already speak `pipelinestate.ClipPipeline`. This adapter exists
-// only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
+// only for the clip-row translation (`store.Clip` ⇄ `cliplibrary.StoreClip`) every other filler
 // adapter here performs.
 type fillerPipelineClipAdapter struct{ st records.Store }
 
-func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
 	return fillerStoreAdapter(a).GetClip(ctx, id)
 }
-func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
 	return fillerStoreAdapter(a).UpsertClip(ctx, c)
 }
-func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
+func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c cliplibrary.StoreClip) error {
 	return a.st.ReplaceClipIdentity(ctx, oldHash, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
-func (a fillerPipelineClipAdapter) ReplaceAiringClip(ctx context.Context, oldHash string, c filler.StoreClip, rec defects.Record) error {
+func (a fillerPipelineClipAdapter) ReplaceAiringClip(ctx context.Context, oldHash string, c cliplibrary.StoreClip, rec defects.Record) error {
 	return a.st.ReplaceAiringClip(ctx, oldHash, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, rec)
 }
 
@@ -171,10 +172,10 @@ func (a fillerPipelineClipAdapter) ReplaceAiringClip(ctx context.Context, oldHas
 // filter leaves out held, removed and composite clips.
 type fillerAiringClipsAdapter struct{ st records.Store }
 
-func (a fillerAiringClipsAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+func (a fillerAiringClipsAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
-func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, c filler.StoreClip) error {
+func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, c cliplibrary.StoreClip) error {
 	return a.st.CommitConditioningPublication(ctx, publication, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
@@ -290,7 +291,7 @@ func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c fil
 	})
 }
 
-// fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
+// fillerScanSourceAdapter bridges the store → cliplibrary.ScanSourceStore (§10 V38c).
 //
 // ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the
 // fetch path puts its `Enabled && Fetchable()` check. Both predicates are the store's domain
@@ -303,7 +304,7 @@ type fillerScanSourceAdapter struct {
 	cutover *fillerLibraryCutover
 }
 
-func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.ScanSource, error) {
+func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]cliplibrary.ScanSource, error) {
 	srcs, err := a.st.ListFillerSources(ctx)
 	if err != nil {
 		return nil, err
@@ -311,10 +312,10 @@ func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.
 	if a.cutover != nil {
 		a.cutover.rewrite(ctx, srcs)
 	}
-	out := make([]filler.ScanSource, 0, len(srcs))
+	out := make([]cliplibrary.ScanSource, 0, len(srcs))
 	for _, s := range srcs {
 		if s.EffectiveEnabled() && s.Scannable() {
-			out = append(out, filler.ScanSource{ID: s.ID, Kind: s.Kind, URI: s.URI})
+			out = append(out, cliplibrary.ScanSource{ID: s.ID, Kind: s.Kind, URI: s.URI})
 		}
 	}
 	return out, nil
@@ -454,7 +455,7 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 type fillerLanguageStoreAdapter struct{ st store.Store }
 
 // ListClips is the job's work list: held candidates in, removed clips out (listWorkClips).
-func (a fillerLanguageStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+func (a fillerLanguageStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -470,7 +471,7 @@ func (a fillerLanguageStoreAdapter) SetClipsRemoved(ctx context.Context, paths [
 // has the language gate's polarity (listWorkClips).
 type fillerTranscribeStoreAdapter struct{ st store.Store }
 
-func (a fillerTranscribeStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+func (a fillerTranscribeStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -482,7 +483,7 @@ func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, pat
 // the transcribe adapter — held candidates in, removed clips out.
 type fillerVisionStoreAdapter struct{ st records.Store }
 
-func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -614,10 +615,10 @@ type fillerSplitStoreAdapter struct {
 	wake *fillerChannelWake
 }
 
-func (a fillerSplitStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+func (a fillerSplitStoreAdapter) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
 	return fillerStoreAdapter{st: a.st}.GetClip(ctx, id)
 }
-func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreClip, error) {
+func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]cliplibrary.StoreClip, error) {
 	clips, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, err
@@ -630,7 +631,7 @@ func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algor
 func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
-func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
 	return a.st.UpsertClip(ctx, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerSplitStoreAdapter) RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error {
@@ -1687,7 +1688,7 @@ func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash 
 	return err
 }
 
-func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
+func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
 	return fillerStoreAdapter(a).GetClip(ctx, hash)
 }
 

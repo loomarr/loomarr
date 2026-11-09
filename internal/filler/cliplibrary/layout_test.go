@@ -1,4 +1,4 @@
-package filler_test
+package cliplibrary_test
 
 import (
 	"io/fs"
@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 func TestNewLayout_NormalizesAndDerivesWatchFolder(t *testing.T) {
 	base := t.TempDir()
-	layout, err := filler.NewLayout("  "+filepath.Join(base, "nested", "..", "clips")+"  ", "  ")
+	layout, err := cliplibrary.NewLayout("  "+filepath.Join(base, "nested", "..", "clips")+"  ", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestNewLayout_NormalizesAndDerivesWatchFolder(t *testing.T) {
 	if layout.ClipDir() != wantRoot {
 		t.Errorf("clip dir = %q, want %q", layout.ClipDir(), wantRoot)
 	}
-	if want := filepath.Join(wantRoot, filler.WatchDirName); layout.WatchDir() != want {
+	if want := filepath.Join(wantRoot, cliplibrary.WatchDirName); layout.WatchDir() != want {
 		t.Errorf("watch dir = %q, want %q", layout.WatchDir(), want)
 	}
 	if _, err := fs.Stat(layout.FS(), "."); err != nil {
@@ -32,7 +32,7 @@ func TestNewLayout_NormalizesAndDerivesWatchFolder(t *testing.T) {
 
 func TestNewLayout_NormalizesExplicitWatchFolder(t *testing.T) {
 	base := t.TempDir()
-	layout, err := filler.NewLayout(filepath.Join(base, "clips"), filepath.Join(base, "in", "..", "watch"))
+	layout, err := cliplibrary.NewLayout(filepath.Join(base, "clips"), filepath.Join(base, "in", "..", "watch"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,33 +42,33 @@ func TestNewLayout_NormalizesExplicitWatchFolder(t *testing.T) {
 }
 
 func TestNewLayout_EmptyPairIsTheOnlyZeroLayout(t *testing.T) {
-	layout, err := filler.NewLayout("", "")
+	layout, err := cliplibrary.NewLayout("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if layout.ClipDir() != "" || layout.WatchDir() != "" || layout.FS() != nil {
 		t.Fatalf("empty pair = (%q, %q, %v), want zero layout", layout.ClipDir(), layout.WatchDir(), layout.FS())
 	}
-	if _, err := filler.NewLayout("", filepath.Join(t.TempDir(), "watch")); err == nil {
+	if _, err := cliplibrary.NewLayout("", filepath.Join(t.TempDir(), "watch")); err == nil {
 		t.Fatal("watch folder without a clip folder was accepted")
 	}
 }
 
 func TestNewLayout_RejectsFilesystemRoots(t *testing.T) {
 	root := string(filepath.Separator)
-	if _, err := filler.NewLayout(root, ""); err == nil {
+	if _, err := cliplibrary.NewLayout(root, ""); err == nil {
 		t.Fatal("filesystem root was accepted as clip folder")
 	}
-	if _, err := filler.NewLayout(t.TempDir(), root); err == nil {
+	if _, err := cliplibrary.NewLayout(t.TempDir(), root); err == nil {
 		t.Fatal("filesystem root was accepted as watch folder")
 	}
 }
 
 func TestNewLayout_RejectsRelativePaths(t *testing.T) {
-	if _, err := filler.NewLayout("relative/clips", ""); err == nil {
+	if _, err := cliplibrary.NewLayout("relative/clips", ""); err == nil {
 		t.Fatal("relative clip folder was accepted")
 	}
-	if _, err := filler.NewLayout(t.TempDir(), "relative/watch"); err == nil {
+	if _, err := cliplibrary.NewLayout(t.TempDir(), "relative/watch"); err == nil {
 		t.Fatal("relative watch folder was accepted")
 	}
 }
@@ -81,7 +81,7 @@ func TestNewLayout_RejectsWatchFolderContainingClipLibrary(t *testing.T) {
 		"parent":      base,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := filler.NewLayout(clipDir, watchDir); err == nil {
+			if _, err := cliplibrary.NewLayout(clipDir, watchDir); err == nil {
 				t.Fatalf("NewLayout(%q, %q) accepted a watch folder containing the clip library", clipDir, watchDir)
 			}
 		})
@@ -98,7 +98,7 @@ func TestNewLayout_RejectsExistingSymlinkAliasOfClipLibrary(t *testing.T) {
 	if err := os.Symlink(clipDir, alias); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	if _, err := filler.NewLayout(clipDir, alias); err == nil {
+	if _, err := cliplibrary.NewLayout(clipDir, alias); err == nil {
 		t.Fatal("NewLayout accepted a watch symlink resolving to the clip library")
 	}
 }
@@ -111,7 +111,7 @@ func TestNewLayout_RejectsSymlinkedParentBeforeClipFolderExists(t *testing.T) {
 	}
 
 	clipDir := filepath.Join(aliasRoot, "clips") // deliberately absent
-	if _, err := filler.NewLayout(clipDir, realRoot); err == nil {
+	if _, err := cliplibrary.NewLayout(clipDir, realRoot); err == nil {
 		t.Fatalf("NewLayout(%q, %q) accepted a symlinked parent containing the future clip library", clipDir, realRoot)
 	}
 }
@@ -130,7 +130,7 @@ func TestNewLayout_RejectsAliasedPrefixesWhenBothFinalPathsAreMissing(t *testing
 
 	watchDir := filepath.Join(aliasA, "inbox")
 	clipDir := filepath.Join(aliasB, "inbox", "clips")
-	if _, err := filler.NewLayout(clipDir, watchDir); err == nil {
+	if _, err := cliplibrary.NewLayout(clipDir, watchDir); err == nil {
 		t.Fatalf("NewLayout(%q, %q) accepted missing paths beneath aliased prefixes", clipDir, watchDir)
 	}
 }
@@ -139,7 +139,7 @@ func TestNewLayout_RejectsCaseFoldedMissingAncestor(t *testing.T) {
 	base := t.TempDir()
 	watchDir := filepath.Join(base, "Inbox")
 	clipDir := filepath.Join(base, "inbox", "clips")
-	if _, err := filler.NewLayout(clipDir, watchDir); err == nil {
+	if _, err := cliplibrary.NewLayout(clipDir, watchDir); err == nil {
 		t.Fatalf("NewLayout(%q, %q) accepted a layout unsafe on a case-insensitive filesystem", clipDir, watchDir)
 	}
 }
@@ -150,10 +150,10 @@ func TestNewLayout_RejectsExistingFilesAsFolders(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := filler.NewLayout(file, filepath.Join(base, "watch")); err == nil {
+	if _, err := cliplibrary.NewLayout(file, filepath.Join(base, "watch")); err == nil {
 		t.Fatal("NewLayout accepted a regular file as the clip folder")
 	}
-	if _, err := filler.NewLayout(filepath.Join(base, "clips"), file); err == nil {
+	if _, err := cliplibrary.NewLayout(filepath.Join(base, "clips"), file); err == nil {
 		t.Fatal("NewLayout accepted a regular file as the watch folder")
 	}
 }
@@ -171,7 +171,7 @@ func TestNewLayout_NormalizesSafeSymlinkRootsForTraversal(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	layout, err := filler.NewLayout(clipAlias, watchAlias)
+	layout, err := cliplibrary.NewLayout(clipAlias, watchAlias)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestNewLayout_NormalizesAliasedNestedWatchToClipTraversal(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	layout, err := filler.NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
+	layout, err := cliplibrary.NewLayout(filepath.Join(aliasA, "clips"), filepath.Join(aliasB, "clips", "inbox"))
 	if err != nil {
 		t.Fatal(err)
 	}

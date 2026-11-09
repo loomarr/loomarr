@@ -468,7 +468,7 @@ func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era i
 	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
 	// both so assertions stay legible — the store does not care what a hash looks like, and the
-	// 64-hex shape is enforced (and tested) in `filler.ClipPath`.
+	// 64-hex shape is enforced (and tested) in `cliplibrary.ClipPath`.
 	c.Hash = id
 	c.Path = id
 	c.TunarrProgramID = "tun-" + id

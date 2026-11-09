@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -401,7 +401,7 @@ func connectionTests(
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			layout, err := filler.NewLayout(root, settings.FillerWatchDir.Get(set))
+			layout, err := cliplibrary.NewLayout(root, settings.FillerWatchDir.Get(set))
 			if err != nil {
 				return false, "filler storage layout is unsafe: " + err.Error()
 			}
