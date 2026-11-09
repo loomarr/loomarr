@@ -121,7 +121,7 @@ var areas = []area{
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
 			"real hardware.",
 		Packages: []string{
-			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/tunarr",
+			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
 			"playout/landiscovery",
 		},

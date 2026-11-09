@@ -1,5 +1,6 @@
 // Package watermark renders a channel's bug (#1512 phase 1d): the small mark burned into a
-// channel's programmes by the GPU overlay (internal/playout, watermark.go).
+// channel's programmes by the GPU overlay (internal/playout, watermark.go). internal/playout/channelbug
+// resolves a channel's policy to the bug rendered here.
 //
 // Rendering is deterministic and happens once per channel, output size and source image: shapes are
 // drawn supersampled from bundled data (Geist Bold, SIL OFL 1.1, fonts/OFL.txt) and reduced, with
