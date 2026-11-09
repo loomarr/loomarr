@@ -1,12 +1,12 @@
-package catalog_test
+package titlesearch_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -62,7 +62,7 @@ func TestLibrarySearchAnswersFromTheLibrary(t *testing.T) {
 	ctx := context.Background()
 	facts := itemFactsFake{"lib-film": {Year: 1999, Overview: "A lighthouse.", Genres: []string{"Drama"}, RuntimeMs: 95 * 60_000}}
 
-	got, err := catalog.LibrarySearch{Titles: ownedTitles, Facts: facts}.Search(ctx, "harbor", 10)
+	got, err := titlesearch.LibrarySearch{Titles: ownedTitles, Facts: facts}.Search(ctx, "harbor", 10)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("search = %+v, %v; want the Library's two titles", got, err)
 	}
@@ -73,7 +73,7 @@ func TestLibrarySearchAnswersFromTheLibrary(t *testing.T) {
 	if show := got[1]; show.LibraryItemID != "lib-show" || show.MediaType != library.Series || show.TVDBID != 90000002 {
 		t.Errorf("show = %+v", show)
 	}
-	if got, err := (catalog.LibrarySearch{Titles: libraryTitlesFake{}, Facts: facts}).Search(ctx, "nothing", 10); err != nil || len(got) != 0 {
+	if got, err := (titlesearch.LibrarySearch{Titles: libraryTitlesFake{}, Facts: facts}).Search(ctx, "nothing", 10); err != nil || len(got) != 0 {
 		t.Errorf("no match = %+v, %v; want no results and no error", got, err)
 	}
 }
@@ -82,7 +82,7 @@ func TestLibrarySearchAnswersFromTheLibrary(t *testing.T) {
 // falling back to TVDB; a title the Library lacks is absent.
 func TestLibraryOwnershipReadsTheLibrary(t *testing.T) {
 	ctx := context.Background()
-	owned := catalog.LibraryOwnership{Titles: ownedTitles}
+	owned := titlesearch.LibraryOwnership{Titles: ownedTitles}
 	got, ok, err := owned.Present(ctx, provision.Movie, 90000001, 0)
 	if err != nil || !ok || got.LibraryItemID != "lib-film" || got.OfficialRating != "PG" || got.SizeBytes != 4_000 ||
 		len(got.Genres) != 1 {
@@ -94,7 +94,7 @@ func TestLibraryOwnershipReadsTheLibrary(t *testing.T) {
 	if _, ok, err := owned.Present(ctx, provision.Movie, 90000009, 0); err != nil || ok {
 		t.Errorf("a title the Library lacks: ok = %v, %v; want absent", ok, err)
 	}
-	if _, ok, err := (catalog.LibraryOwnership{}).Present(ctx, provision.Movie, 90000001, 0); err != nil || ok {
+	if _, ok, err := (titlesearch.LibraryOwnership{}).Present(ctx, provision.Movie, 90000001, 0); err != nil || ok {
 		t.Errorf("no Library: ok = %v, %v; want absent", ok, err)
 	}
 }

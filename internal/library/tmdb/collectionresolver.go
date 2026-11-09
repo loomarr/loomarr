@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -29,13 +29,13 @@ type CollectionRef struct {
 type SourceCollection struct {
 	TMDBID  int
 	Name    string
-	Members []catalog.Candidate
+	Members []titlesearch.Candidate
 }
 
 type Collection struct {
 	TMDBID  int
 	Name    string
-	Members []catalog.Candidate
+	Members []titlesearch.Candidate
 }
 
 type CollectionResolution struct {
@@ -45,14 +45,14 @@ type CollectionResolution struct {
 
 type CollectionResolver struct {
 	source   CollectionSource
-	presence catalog.LibraryPresenceSource
+	presence titlesearch.LibraryPresenceSource
 }
 
 func NewCollectionResolver(source CollectionSource) *CollectionResolver {
 	return &CollectionResolver{source: source}
 }
 
-func (r *CollectionResolver) WithPresenceSource(source catalog.LibraryPresenceSource) *CollectionResolver {
+func (r *CollectionResolver) WithPresenceSource(source titlesearch.LibraryPresenceSource) *CollectionResolver {
 	r.presence = source
 	return r
 }
@@ -106,7 +106,7 @@ func (r *CollectionResolver) Resolve(ctx context.Context, keys []provision.Key) 
 		return resolution, firstErr
 	}
 
-	var presence catalog.LibraryPresence
+	var presence titlesearch.LibraryPresence
 	if r.presence != nil {
 		presence = r.presence()
 	}
@@ -182,8 +182,8 @@ func (r *CollectionResolver) Resolve(ctx context.Context, keys []provision.Key) 
 	return resolution, nil
 }
 
-func validMembers(candidates []catalog.Candidate) ([]catalog.Candidate, bool) {
-	members := make([]catalog.Candidate, 0, len(candidates))
+func validMembers(candidates []titlesearch.Candidate) ([]titlesearch.Candidate, bool) {
+	members := make([]titlesearch.Candidate, 0, len(candidates))
 	seen := make(map[int]bool, len(candidates))
 	complete := true
 	for _, candidate := range candidates {
@@ -192,7 +192,7 @@ func validMembers(candidates []catalog.Candidate) ([]catalog.Candidate, bool) {
 			continue
 		}
 		seen[candidate.TMDBID] = true
-		candidate.Source = catalog.ScopeTMDB
+		candidate.Source = titlesearch.ScopeTMDB
 		members = append(members, candidate)
 	}
 	sort.SliceStable(members, func(i, j int) bool {

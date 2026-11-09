@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -152,11 +152,11 @@ type keywordResponse struct {
 	Results []keywordResult `json:"results"`
 }
 
-// Search implements catalog.TMDBSearcher: GET /search/multi?query=<q>, mapping
+// Search implements titlesearch.TMDBSearcher: GET /search/multi?query=<q>, mapping
 // movie/tv results to Candidates with real TMDB ids (§8 grounding). Person
 // results are dropped. in_library is false here — the catalog sets it by merging
 // with library results.
-func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.Candidate, error) {
+func (c *Client) Search(ctx context.Context, term string, limit int) ([]titlesearch.Candidate, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 	if err := c.get(ctx, "/search/multi?"+q.Encode(), &resp); err != nil {
 		return nil, err
 	}
-	out := make([]catalog.Candidate, 0, len(resp.Results))
+	out := make([]titlesearch.Candidate, 0, len(resp.Results))
 	for _, r := range resp.Results {
 		mt, ok := mediaType(r.MediaType)
 		if !ok {
@@ -181,7 +181,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 			name = r.Name
 			date = r.FirstAirDate
 		}
-		out = append(out, catalog.Candidate{
+		out = append(out, titlesearch.Candidate{
 			MediaType:        mt,
 			TMDBID:           r.ID,
 			Name:             name,
@@ -193,7 +193,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 			OriginCountries:  normalizedCodes(r.OriginCountries),
 			VoteAverage:      validVoteAverage(r.VoteAverage, r.VoteCount),
 			VoteCount:        validVoteCount(r.VoteAverage, r.VoteCount),
-			Source:           catalog.ScopeTMDB,
+			Source:           titlesearch.ScopeTMDB,
 			RelevanceRank:    len(out) + 1,
 		})
 		if limit > 0 && len(out) >= limit {
@@ -229,7 +229,7 @@ type discoverResponse struct {
 // resolves thematic keywords, maps human genres into endpoint-specific ids, and
 // forwards already-validated scalar qualifiers. Movies + series are blended
 // unless the request pins one media type.
-func (c *Client) Discover(ctx context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+func (c *Client) Discover(ctx context.Context, query titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -252,7 +252,7 @@ func (c *Client) Discover(ctx context.Context, query catalog.DiscoveryQuery, lim
 	if err != nil {
 		return nil, err
 	}
-	var movies, series []catalog.Candidate
+	var movies, series []titlesearch.Candidate
 	if query.MediaType == "" || query.MediaType == provision.Movie {
 		rows, err := c.discover(ctx, "/discover/movie", genreIDsForMedia(query.Genres, provision.Movie), keywordIDs, entities, query, "primary_release_date", limit)
 		if err != nil {
@@ -278,15 +278,15 @@ func (c *Client) Discover(ctx context.Context, query catalog.DiscoveryQuery, lim
 // movies-only result whenever /discover/movie fills the limit before TV rows are
 // appended. An unpinned request gives each populated type half the bounded window;
 // an undersubscribed side yields its unused slots to the other.
-func blendMediaTypes(movies, series []catalog.Candidate, limit int) []catalog.Candidate {
+func blendMediaTypes(movies, series []titlesearch.Candidate, limit int) []titlesearch.Candidate {
 	if limit <= 0 {
 		limit = 20
 	}
 	if len(movies) == 0 {
-		return append([]catalog.Candidate(nil), series[:min(limit, len(series))]...)
+		return append([]titlesearch.Candidate(nil), series[:min(limit, len(series))]...)
 	}
 	if len(series) == 0 {
-		return append([]catalog.Candidate(nil), movies[:min(limit, len(movies))]...)
+		return append([]titlesearch.Candidate(nil), movies[:min(limit, len(movies))]...)
 	}
 	movieSlots := min((limit+1)/2, len(movies))
 	seriesSlots := min(limit/2, len(series))
@@ -294,7 +294,7 @@ func blendMediaTypes(movies, series []catalog.Candidate, limit int) []catalog.Ca
 		movieSlots = min(len(movies), limit-seriesSlots)
 		seriesSlots = min(len(series), limit-movieSlots)
 	}
-	out := make([]catalog.Candidate, 0, movieSlots+seriesSlots)
+	out := make([]titlesearch.Candidate, 0, movieSlots+seriesSlots)
 	// Movie and TV discovery are separate ranked endpoints. Interleave equal
 	// source ranks so a later catalog blend can preserve relevance without one
 	// endpoint consuming the entire mixed-media window.
@@ -361,7 +361,7 @@ func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]in
 //
 // A title with no neighbours (obscure, or newly added to TMDB) returns an empty
 // slice, not an error — one unproductive seed must not fail a whole adjacency walk.
-func (c *Client) Recommendations(ctx context.Context, mt provision.MediaType, tmdbID, limit int) ([]catalog.Candidate, error) {
+func (c *Client) Recommendations(ctx context.Context, mt provision.MediaType, tmdbID, limit int) ([]titlesearch.Candidate, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -387,7 +387,7 @@ func (c *Client) discover(
 	genreIDs []int,
 	keywordIDs []int,
 	entities resolvedDiscoveryEntities,
-	query catalog.DiscoveryQuery,
+	query titlesearch.DiscoveryQuery,
 	dateField string,
 	limit int,
 ) ([]discoverResult, error) {
@@ -462,27 +462,27 @@ func (c *Client) discover(
 	return rows, nil
 }
 
-func appendDiscover(out []catalog.Candidate, rows []discoverResult, mt provision.MediaType) []catalog.Candidate {
+func appendDiscover(out []titlesearch.Candidate, rows []discoverResult, mt provision.MediaType) []titlesearch.Candidate {
 	for _, r := range rows {
 		name, date := r.Title, r.ReleaseDate
 		if mt == provision.Series {
 			name, date = r.Name, r.FirstAirDate
 		}
-		out = append(out, catalog.Candidate{
+		out = append(out, titlesearch.Candidate{
 			MediaType: mt, TMDBID: r.ID, Name: name, Year: yearFromDate(date),
 			InLibrary: false, Genres: genreNames(r.GenreIDs), Overview: r.Overview,
 			OriginalLanguage: normalizedLanguage(r.OriginalLanguage),
 			OriginCountries:  normalizedCodes(r.OriginCountries),
 			VoteAverage:      validVoteAverage(r.VoteAverage, r.VoteCount),
 			VoteCount:        validVoteCount(r.VoteAverage, r.VoteCount),
-			Source:           catalog.ScopeTMDB,
+			Source:           titlesearch.ScopeTMDB,
 			RelevanceRank:    len(out) + 1,
 		})
 	}
 	return out
 }
 
-func attachKeywords(candidates []catalog.Candidate, keywords []string) {
+func attachKeywords(candidates []titlesearch.Candidate, keywords []string) {
 	// Discover's OR query proves that each row matched at least one requested
 	// keyword, but it does not identify which one. Only a singleton query supports
 	// row-level attribution without a follow-up details request.
@@ -664,12 +664,12 @@ func (c *Client) MovieCollection(ctx context.Context, collectionID int) (SourceC
 			return left < right
 		}
 	})
-	members := make([]catalog.Candidate, 0, len(body.Parts))
+	members := make([]titlesearch.Candidate, 0, len(body.Parts))
 	for _, part := range body.Parts {
 		if part.ID <= 0 || strings.TrimSpace(part.Title) == "" {
 			continue
 		}
-		members = append(members, catalog.Candidate{
+		members = append(members, titlesearch.Candidate{
 			MediaType:        provision.Movie,
 			TMDBID:           part.ID,
 			Name:             strings.TrimSpace(part.Title),
@@ -680,7 +680,7 @@ func (c *Client) MovieCollection(ctx context.Context, collectionID int) (SourceC
 			OriginCountries:  normalizedCodes(part.OriginCountries),
 			VoteAverage:      validVoteAverage(part.VoteAverage, part.VoteCount),
 			VoteCount:        validVoteCount(part.VoteAverage, part.VoteCount),
-			Source:           catalog.ScopeTMDB,
+			Source:           titlesearch.ScopeTMDB,
 			RelevanceRank:    len(members) + 1,
 		})
 	}
@@ -994,4 +994,4 @@ func yearFromDate(date string) int {
 	return y
 }
 
-var _ catalog.TMDBSearcher = (*Client)(nil)
+var _ titlesearch.TMDBSearcher = (*Client)(nil)

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -26,7 +26,7 @@ var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership 
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *proposals.DecisionTrace, meaning ValidatedDateMeaning) (proposals.Proposal, error) {
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]titlesearch.Candidate, trace *proposals.DecisionTrace, meaning ValidatedDateMeaning) (proposals.Proposal, error) {
 	name := strings.TrimSpace(intent.ChannelName)
 	if name == "" {
 		name = strings.TrimSpace(out.ChannelName)
@@ -233,7 +233,7 @@ func traceDecision(trace *proposals.DecisionTrace, update proposals.DecisionCand
 	trace.RecordedTotal++
 }
 
-func traceGroundedDecision(trace *proposals.DecisionTrace, candidate catalog.Candidate, disposition, reason string) {
+func traceGroundedDecision(trace *proposals.DecisionTrace, candidate titlesearch.Candidate, disposition, reason string) {
 	key, err := candidate.Key()
 	if err != nil {
 		traceDecision(trace, proposals.DecisionCandidate{Disposition: disposition, Reason: reason})
@@ -565,7 +565,7 @@ func intersectSeries(want, grounded []provision.Key) []provision.Key {
 
 // editorialRole is called only after identity and membership grounding. These
 // categories describe explicit choices and provenance, not inferred preferences.
-func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes int) proposals.EditorialRole {
+func editorialRole(intent Intent, key provision.Key, source titlesearch.Scope, votes int) proposals.EditorialRole {
 	if intent.membershipKeys[key] || intent.referenceKeys[key] || (intent.curatedTitleSet && intent.curatedTitleKey == key) {
 		return proposals.EditorialCore
 	}
@@ -574,7 +574,7 @@ func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes
 			return proposals.EditorialCore
 		}
 	}
-	if source == catalog.ScopeAdjacent && votes > 0 {
+	if source == titlesearch.ScopeAdjacent && votes > 0 {
 		return proposals.EditorialAdjacent
 	}
 	return proposals.EditorialDiscovery
@@ -597,14 +597,14 @@ const (
 // constraints leave it standing. buildProposal applies it to every final pick, and the live
 // progress stream applies the SAME function to each pick as it streams in, so a title can
 // never be shown as chosen that final validation would drop for identity reasons.
-func resolvePick(intent Intent, p pick, surfaced map[provision.Key]catalog.Candidate) (catalog.Candidate, pickRejection) {
+func resolvePick(intent Intent, p pick, surfaced map[provision.Key]titlesearch.Candidate) (titlesearch.Candidate, pickRejection) {
 	key := p.key()
 	if key == "" {
-		return catalog.Candidate{}, pickMalformed
+		return titlesearch.Candidate{}, pickMalformed
 	}
 	cand, ok := surfaced[provision.Key(key)]
 	if !ok {
-		return catalog.Candidate{}, pickNotSurfaced
+		return titlesearch.Candidate{}, pickNotSurfaced
 	}
 	if requiredIdentityConflicts(intent, cand) || titleExplicitlyExcluded(intent, cand.Name) || candidateContradictsExplicitQualifiers(intent, cand) {
 		return cand, pickIrrelevant

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -14,7 +14,7 @@ import (
 // candidate at proposal creation (#1817). A title that still has to be acquired has no
 // size: its fields are absent on the wire, never a 0 that reads as an empty file.
 func TestFromCandidate_LibrarySize(t *testing.T) {
-	owned := fromCandidate(catalog.Candidate{
+	owned := fromCandidate(titlesearch.Candidate{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 		InLibrary: true, LibraryItemID: "lib-90000603", SizeBytes: 21_914_038_799,
 	}, "", 0)
@@ -22,7 +22,7 @@ func TestFromCandidate_LibrarySize(t *testing.T) {
 		t.Errorf("owned pick = %d bytes (%q), want 21914038799 exact", owned.SizeBytes, owned.SizeConfidence)
 	}
 
-	cases := map[string]catalog.Candidate{
+	cases := map[string]titlesearch.Candidate{
 		// A series has no media source of its own; summing episodes would need new calls.
 		"owned series": {MediaType: provision.Series, TMDBID: 90063639, Name: "Ferrocene Station", InLibrary: true, LibraryItemID: "lib-1"},
 		"acquisition":  {MediaType: provision.Movie, TMDBID: 90000604, Name: "Marigold Protocol II"},

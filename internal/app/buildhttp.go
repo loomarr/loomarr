@@ -15,10 +15,10 @@ import (
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -74,8 +74,8 @@ func buildHTTP(deps httpBuild) http.Handler {
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook proposalsapi.ProposalOutlook
 	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
-		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return catalog.LibraryOwnership{Titles: st}
+		additionResolver := approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence {
+			return titlesearch.LibraryOwnership{Titles: st}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
 			Titles: st, Library: playoutresolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),

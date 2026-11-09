@@ -104,7 +104,7 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 | Re-evaluating a channel's intent through the approval gate | `internal/channels/recurate` | `internal/proposals/suggest` |
 | Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/library/provisionbackstop` |
 | Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/playout/livetvpublish` | `internal/platform/config`, `internal/app` |
-| Federated search over library, TMDB and clips | `internal/catalog` | — |
+| Federated search over library, TMDB and clips | `internal/library/titlesearch` | — |
 
 `internal/playout/tunarr` is the Tunarr port and is unrelated to
 [`programming-design.md`](../programming-design.md), which covers `ChannelPolicy` heuristics. The

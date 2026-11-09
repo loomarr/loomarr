@@ -3,7 +3,7 @@ package library
 // SearchResult is one Library title as the catalog, the availability scan and channel ideas read
 // it: its library item id, the external ids grounding and dedupe need, and the facts audience
 // enforcement and theme scoring read. Since #2151 step 16 it is filled from the Library's tables
-// (catalog.LibrarySearchResult), never from the media server.
+// (titlesearch.LibrarySearchResult), never from the media server.
 type SearchResult struct {
 	LibraryItemID string
 	Name          string

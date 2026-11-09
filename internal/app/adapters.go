@@ -13,10 +13,10 @@ import (
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -176,16 +176,16 @@ func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 	}
 }
 
-// searchAdapter maps catalog.Catalog to api.SearchService (converts candidates
+// searchAdapter maps titlesearch.Catalog to api.SearchService (converts candidates
 // to the API's dependency-light shape).
-type searchAdapter struct{ cat *catalog.Catalog }
+type searchAdapter struct{ cat *titlesearch.Catalog }
 
 func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequest) ([]httpcore.SearchCandidate, error) {
-	var cands []catalog.Candidate
+	var cands []titlesearch.Candidate
 	var err error
 	if request.Discovery != nil {
 		discovery := request.Discovery
-		cands, err = a.cat.Discover(ctx, catalog.DiscoveryQuery{
+		cands, err = a.cat.Discover(ctx, titlesearch.DiscoveryQuery{
 			MediaType: provision.MediaType(discovery.MediaType), Keywords: discovery.Keywords, Genres: discovery.Genres,
 			YearFrom: discovery.YearFrom, YearTo: discovery.YearTo,
 			OriginalLanguage: discovery.OriginalLanguage, OriginCountry: discovery.OriginCountry,
@@ -194,9 +194,9 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 			Network: discovery.Network, Cast: discovery.Cast, Creators: discovery.Creators,
 		}, request.Limit)
 	} else {
-		cands, err = a.cat.Search(ctx, request.Query, catalog.ParseScope(request.Scope), request.Limit)
+		cands, err = a.cat.Search(ctx, request.Query, titlesearch.ParseScope(request.Scope), request.Limit)
 		if request.MediaType != "" {
-			filtered := make([]catalog.Candidate, 0, len(cands))
+			filtered := make([]titlesearch.Candidate, 0, len(cands))
 			for _, candidate := range cands {
 				if candidate.MediaType == provision.MediaType(request.MediaType) {
 					filtered = append(filtered, candidate)
@@ -245,7 +245,7 @@ func (a movieCollectionAdapter) ResolveMovieCollections(
 	return out, nil
 }
 
-func searchCandidateFromCatalog(c catalog.Candidate) httpcore.SearchCandidate {
+func searchCandidateFromCatalog(c titlesearch.Candidate) httpcore.SearchCandidate {
 	return httpcore.SearchCandidate{
 		MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
@@ -258,7 +258,7 @@ func searchCandidateFromCatalog(c catalog.Candidate) httpcore.SearchCandidate {
 }
 
 type approvalAdditionAdapter struct {
-	presence catalog.LibraryPresenceSource
+	presence titlesearch.LibraryPresenceSource
 }
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
@@ -341,7 +341,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	t, ok, err := catalog.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
 	if err != nil || !ok {
 		return "", false, err
 	}

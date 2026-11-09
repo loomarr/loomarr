@@ -27,7 +27,7 @@ const (
 
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
 // Identity is always a real external id (the grounding guarantee); Name/Year are
-// for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
+// for display only. It mirrors a titlesearch.Candidate plus the LLM's rationale.
 type ProposalItem struct {
 	EditorialRole EditorialRole       `json:"editorialRole,omitempty" enum:"core,adjacent,discovery"`
 	MediaType     provision.MediaType `json:"mediaType"`

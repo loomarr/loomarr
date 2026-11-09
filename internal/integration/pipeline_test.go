@@ -28,13 +28,13 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -103,7 +103,7 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	// only pick ids the catalog surfaced.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(catalog.LibrarySearch{Titles: st, Facts: st}, tm)
+	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tm)
 	suggester := suggest.New(llmMock, cat, tm, 10)
 
 	// The REAL worker service that runs jobs → persists proposals.

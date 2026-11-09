@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -164,7 +164,7 @@ type toolCandidate struct {
 // convey theme, short enough that 24 candidates fit a small model's context.
 const overviewMax = 240
 
-func toolResult(cands []catalog.Candidate) []toolCandidate {
+func toolResult(cands []titlesearch.Candidate) []toolCandidate {
 	out := make([]toolCandidate, 0, len(cands))
 	for _, c := range cands {
 		key, err := c.Key()

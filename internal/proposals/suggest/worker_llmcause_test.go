@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
@@ -70,7 +70,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			st := newStore(t)
 			lib := catalogfixture.NewScriptedLibrary()
 			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
-			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), catalog.New(lib, tm), tm, 10)
+			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), titlesearch.New(lib, tm), tm, 10)
 			svc := suggest.NewService(st, workflow.New(st, func() string { return "wf-1" }, time.Now), sug,
 				suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour}, time.Now, testkit.Logger())
 			jobID, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
