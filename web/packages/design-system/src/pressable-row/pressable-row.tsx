@@ -52,7 +52,10 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
       return (
         <Pressable
           accessibilityRole={accessibilityRole}
-          accessibilityState={{ ...accessibilityState, disabled, selected }}
+          // `selected` is announced only for a role that has it (option, tab, row): aria-selected on a
+          // plain button is invalid, so a button row shows the fill alone.
+          accessibilityState={{ ...accessibilityState, disabled }}
+          aria-selected={accessibilityRole === "button" ? undefined : selected}
           disabled={disabled}
           onBlur={focusLook.onBlur}
           onFocus={focusLook.onFocus}
