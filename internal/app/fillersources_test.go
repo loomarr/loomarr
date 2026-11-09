@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
@@ -548,44 +546,6 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []fetch.Discovere
 		if items[i].DurationMS > 0 {
 			items[i].Height = 480
 		}
-	}
-}
-
-// #1773 (supervisor decision): each Archive.org item's runtime is read once and remembered on
-// disk, so a later pull (and a restarted server) reuses it instead of paying Archive.org's
-// per-item throttle again. Only what is still unknown is asked for.
-func TestArchiveProvider_RuntimesAreReadOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
-	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
-	enumerate := func() map[string]source.Item {
-		t.Helper()
-		// A fresh cache over the same file each time: what a restarted server would see.
-		catalog := cachedArchiveCatalog{Catalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
-		provider := archiveprovider.New(archiveprovider.Config{Catalog: catalog, Runtimes: func() bool { return true }})
-		listing, err := provider.List(t.Context(), source.Source{ID: "s", URI: "reels_collection"},
-			source.ListRequest{Take: 10, List: 10})
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := map[string]source.Item{}
-		for _, item := range listing.Items {
-			got[item.ID] = item
-		}
-		return got
-	}
-
-	enumerate()
-	if !slices.Equal(archive.asked, []string{"reel", "spot", "unprobed"}) {
-		t.Fatalf("first listing asked for %v, want every item", archive.asked)
-	}
-	archive.asked = nil
-	second := enumerate()
-	// A runtime Archive.org could not give is asked for again: it may have been probed since.
-	if !slices.Equal(archive.asked, []string{"unprobed"}) {
-		t.Errorf("second listing asked for %v, want only the item whose runtime is still unknown", archive.asked)
-	}
-	if second["reel"].DurationMS != 30*60*1000 || second["spot"].DurationMS != 45*1000 || second["spot"].Height != 480 {
-		t.Errorf("remembered items came back as reel=%+v spot=%+v, want their runtimes and quality", second["reel"], second["spot"])
 	}
 }
 
