@@ -37,8 +37,7 @@ describe("CatalogBulkBar", () => {
     const onClear = vi.fn();
     renderBar(onClear);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Set era" }));
-    await userEvent.click(await screen.findByRole("option", { name: "1980" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Set era" }), "1980");
 
     await waitFor(() => expect(bodies).toEqual([{ hashes: ["hash-a", "hash-b"], era: 1980 }]));
     await waitFor(() => expect(onClear).toHaveBeenCalledOnce());
@@ -54,8 +53,7 @@ describe("CatalogBulkBar", () => {
     );
     renderBar();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Set audience" }));
-    await userEvent.click(await screen.findByRole("option", { name: "kids" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Set audience" }), "kids");
 
     await waitFor(() => expect(bodies).toEqual([{ hashes: ["hash-a", "hash-b"], audience: "kids" }]));
   });

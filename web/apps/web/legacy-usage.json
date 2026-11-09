@@ -382,12 +382,11 @@
       "tailwindClasses": 24
     },
     "src/filler/filler-catalog/catalog-bulk-bar/catalog-bulk-bar.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 2
+      "tailwindClasses": 13
     },
     "src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "tailwindClasses": 12,
-      "legacyUi": 3
+      "legacyUi": 1
     },
     "src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
       "tailwindClasses": 5,
@@ -522,8 +521,8 @@
       "tailwindClasses": 73
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
-      "tailwindClasses": 23,
-      "legacyUi": 2
+      "tailwindClasses": 22,
+      "legacyUi": 1
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
       "tailwindClasses": 38

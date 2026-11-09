@@ -1,12 +1,22 @@
-import { Action, Card } from "@loomarr/design-system";
+import { Action, Card, CompactSelect, Tooltip } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { AUDIENCE_LABEL, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { FillerSearch } from "../../filler-search";
 import { type CatalogView, CatalogViewToggle } from "../catalog-view-toggle";
+
+// The no-filter choice; its URL form is an absent filter.
+const ANY = "any";
+const KIND_OPTIONS = [
+  { label: "Any", value: ANY },
+  ...Object.entries(ROLE_LABEL).map(([value, label]) => ({ label, value })),
+];
+const AUDIENCE_OPTIONS = [
+  { label: "Any", value: ANY },
+  ...Object.entries(AUDIENCE_LABEL).map(([value, label]) => ({ label, value })),
+];
 
 interface CatalogToolbarProps {
   /** A phone gets the folded toolbar: search, Filters and the view toggle on one line. */
@@ -79,56 +89,36 @@ const CatalogToolbar = ({
         >
           <div>
             <Label htmlFor="clip-kind">Kind</Label>
-            {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-            <Select
-              value={role || "any"}
-              onValueChange={(v) => onFilterChange({ role: v === "any" ? undefined : v })}
-            >
-              <SelectTrigger id="clip-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="unclassified">Unclassified</SelectItem>
-                <SelectItem value="commercial">Commercial</SelectItem>
-                <SelectItem value="bumper">Bumper</SelectItem>
-                <SelectItem value="station_id">Station ID</SelectItem>
-                <SelectItem value="psa">PSA</SelectItem>
-                <SelectItem value="trailer">Trailer</SelectItem>
-                <SelectItem value="interstitial">Interstitial</SelectItem>
-                <SelectItem value="political">Political ad</SelectItem>
-                <SelectItem value="news">News &amp; weather</SelectItem>
-              </SelectContent>
-            </Select>
+            <CompactSelect
+              id="clip-kind"
+              label="Kind"
+              onValueChange={(v) => onFilterChange({ role: v === ANY ? undefined : v })}
+              options={KIND_OPTIONS}
+              value={role || ANY}
+            />
           </div>
           <div>
             <Label htmlFor="clip-audience">Audience</Label>
-            <Select
-              value={audience || "any"}
-              onValueChange={(v) => onFilterChange({ audience: v === "any" ? undefined : v })}
-            >
-              <SelectTrigger id="clip-audience">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="kids">Kids</SelectItem>
-                <SelectItem value="family">Family</SelectItem>
-                <SelectItem value="general">General</SelectItem>
-                <SelectItem value="late_night">Late night</SelectItem>
-              </SelectContent>
-            </Select>
+            <CompactSelect
+              id="clip-audience"
+              label="Audience"
+              onValueChange={(v) => onFilterChange({ audience: v === ANY ? undefined : v })}
+              options={AUDIENCE_OPTIONS}
+              value={audience || ANY}
+            />
           </div>
-          <Button
-            variant={untagged ? "default" : "outline"}
-            size="sm"
-            onClick={() => onFilterChange({ untagged: untagged ? undefined : true })}
-            // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
-            // without era/audience, so they are never counted as needing work (§10).
-            title="Commercials missing era, audience, or category"
-          >
-            Untagged only
-          </Button>
+          {/* "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
+              without era/audience, so they are never counted as needing work (§10). */}
+          <Tooltip content="Commercials missing era, audience, or category">
+            <Action
+              aria-pressed={untagged}
+              onPress={() => onFilterChange({ untagged: untagged ? undefined : true })}
+              selected={untagged}
+              tone="secondary"
+            >
+              Untagged only
+            </Action>
+          </Tooltip>
         </div>
       ) : null}
     </Card>

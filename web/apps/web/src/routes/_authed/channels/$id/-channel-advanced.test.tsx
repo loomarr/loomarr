@@ -26,8 +26,7 @@ describe("ChannelAdvanced — playout backend", () => {
     const onPolicyChange = vi.fn();
     render(<ChannelAdvanced channel={CHANNEL} onPolicyChange={onPolicyChange} />);
 
-    await userEvent.click(screen.getByLabelText("Streamed by"));
-    await userEvent.click(await screen.findByRole("option", { name: "Loomarr" }));
+    await userEvent.selectOptions(screen.getByLabelText("Streamed by"), "Loomarr");
 
     expect(onPolicyChange).toHaveBeenCalledWith(
       expect.objectContaining({ playout: { backend: "internal" } }),
@@ -50,8 +49,7 @@ describe("ChannelAdvanced — playout backend", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Streamed by"));
-    await userEvent.click(await screen.findByRole("option", { name: "Follow the default" }));
+    await userEvent.selectOptions(screen.getByLabelText("Streamed by"), "Follow the default");
 
     expect(onPolicyChange).toHaveBeenCalledWith(expect.objectContaining({ playout: { backend: "" } }));
   });
@@ -63,11 +61,11 @@ describe("ChannelAdvanced — playout backend", () => {
         onPolicyChange={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("Streamed by")).toHaveTextContent("Tunarr");
+    expect(screen.getByLabelText("Streamed by")).toHaveDisplayValue("Tunarr");
     unmount();
 
     render(<ChannelAdvanced channel={CHANNEL} onPolicyChange={vi.fn()} />);
-    expect(screen.getByLabelText("Streamed by")).toHaveTextContent("Follow the default");
+    expect(screen.getByLabelText("Streamed by")).toHaveDisplayValue("Follow the default");
   });
 
   // The disclosure is otherwise read-only STATUS shown to admins; without a save handler there
