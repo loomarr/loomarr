@@ -94,7 +94,7 @@
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
       "tailwindClasses": 62,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
       "tailwindClasses": 47
@@ -362,7 +362,7 @@
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 116,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 48,
@@ -370,7 +370,7 @@
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
       "tailwindClasses": 108,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,

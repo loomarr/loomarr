@@ -1,11 +1,10 @@
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { CompactSelect, Text } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
 import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
@@ -371,8 +370,8 @@ const ChannelPolicyFields = ({
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
-          forbids an empty-string item value, so "inherit" is the sentinel. */}
+      {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
+          choice "inherit". */}
       {showOrdering && (
         <PolicyField
           id="policy-ordering"
@@ -381,24 +380,14 @@ const ChannelPolicyFields = ({
           help="The channel's normal play order. In order plays the list start to finish and starts over. Shuffled plays a random mix. Syndication deals the list like a deck of cards, so everything plays once before anything repeats. Scheduled rules can temporarily override it."
           {...source("ordering")}
         >
-          <Select
-            value={policy.ordering || "inherit"}
+          <CompactSelect
+            aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
+            id="policy-ordering"
+            label="Play order"
             onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
-          >
-            <SelectTrigger
-              id="policy-ordering"
-              aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {orderingOptions(strategy).map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={orderingOptions(strategy)}
+            value={policy.ordering || "inherit"}
+          />
           {orderConsequence && (
             <Text as="p" id="policy-ordering-consequence" textRole="caption" tone="muted">
               {orderConsequence}
@@ -417,26 +406,18 @@ const ChannelPolicyFields = ({
           help="Content stays at or below this, a safety limit Loomarr never loosens."
           {...source("ceiling")}
         >
-          <Select
-            value={policy.audience?.ceiling || "none"}
+          <CompactSelect
+            id="policy-ceiling"
+            label="Audience ceiling"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-ceiling">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CEILING_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={CEILING_OPTIONS}
+            value={policy.audience?.ceiling || "none"}
+          />
         </PolicyField>
       )}
 
@@ -452,31 +433,28 @@ const ChannelPolicyFields = ({
           help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
           {...source("unrated")}
         >
-          <Select
-            value={policy.audience?.unrated || "default"}
+          <CompactSelect
+            id="policy-unrated"
+            label="Unrated titles"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, unrated: v === "default" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-unrated">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNRATED_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {/* "Automatic" alone is not actionable — the operator cannot tell which way it
-                      falls without knowing the kids-ceiling rule. Naming the current resolution
-                      turns it into a real choice. */}
-                  {o.value === "default"
-                    ? `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
-                    : o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            // "Automatic" alone is not actionable — the operator cannot tell which way it falls
+            // without knowing the kids-ceiling rule. Naming the current resolution turns it into a
+            // real choice.
+            options={UNRATED_OPTIONS.map((o) =>
+              o.value === "default"
+                ? {
+                    ...o,
+                    label: `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`,
+                  }
+                : o,
+            )}
+            value={policy.audience?.unrated || "default"}
+          />
         </PolicyField>
       )}
 
