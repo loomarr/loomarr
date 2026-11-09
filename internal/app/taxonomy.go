@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -24,25 +24,25 @@ type taxonomyEditor struct {
 	holidaysChanged func(context.Context)
 }
 
-func (e taxonomyEditor) Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (fillerapi.TaxonomyImpact, error) {
 	return e.preview(ctx, edit)
 }
 
-func (e taxonomyEditor) Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (fillerapi.TaxonomyImpact, error) {
 	impact, err := e.preview(ctx, edit)
 	if err != nil {
-		return api.TaxonomyImpact{}, err
+		return fillerapi.TaxonomyImpact{}, err
 	}
 	before, err := e.playableSnapshots(ctx, impact.Store.PlayableClipHashes)
 	if err != nil {
-		return api.TaxonomyImpact{}, err
+		return fillerapi.TaxonomyImpact{}, err
 	}
 	now := time.Now
 	if e.now != nil {
 		now = e.now
 	}
 	if err := e.store.ApplyTaxonomyEdit(ctx, edit, now().UTC()); err != nil {
-		return api.TaxonomyImpact{}, err
+		return fillerapi.TaxonomyImpact{}, err
 	}
 	if e.holidaysChanged != nil {
 		// The edit is committed: a client that hangs up now must not leave the snapshot stale.
@@ -65,13 +65,13 @@ func (e taxonomyEditor) Apply(ctx context.Context, edit clipstore.TaxonomyEdit) 
 	return impact, nil
 }
 
-func (e taxonomyEditor) preview(ctx context.Context, edit clipstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) preview(ctx context.Context, edit clipstore.TaxonomyEdit) (fillerapi.TaxonomyImpact, error) {
 	if e.store == nil {
-		return api.TaxonomyImpact{}, fmt.Errorf("preview taxonomy edit: no store configured")
+		return fillerapi.TaxonomyImpact{}, fmt.Errorf("preview taxonomy edit: no store configured")
 	}
 	storeImpact, err := e.store.PreviewTaxonomyEdit(ctx, edit)
 	if err != nil {
-		return api.TaxonomyImpact{}, err
+		return fillerapi.TaxonomyImpact{}, err
 	}
 	targets := map[string]bool{}
 	if edit.Delete {
@@ -83,10 +83,10 @@ func (e taxonomyEditor) preview(ctx context.Context, edit clipstore.TaxonomyEdit
 		targets[descendant.Slug] = true
 	}
 
-	out := api.TaxonomyImpact{Store: storeImpact}
+	out := fillerapi.TaxonomyImpact{Store: storeImpact}
 	channels, err := e.store.ListChannels(ctx)
 	if err != nil {
-		return api.TaxonomyImpact{}, fmt.Errorf("preview taxonomy channel selections: %w", err)
+		return fillerapi.TaxonomyImpact{}, fmt.Errorf("preview taxonomy channel selections: %w", err)
 	}
 	for _, channel := range channels {
 		if channel.Policy.Filler == nil {
@@ -94,7 +94,7 @@ func (e taxonomyEditor) preview(ctx context.Context, edit clipstore.TaxonomyEdit
 		}
 		for _, slug := range channel.Policy.Filler.Categories {
 			if targets[slug] {
-				out.Channels = append(out.Channels, api.TaxonomyChannelImpact{
+				out.Channels = append(out.Channels, fillerapi.TaxonomyChannelImpact{
 					ID: channel.ID, Name: channel.Name, Number: channel.Number,
 				})
 				break

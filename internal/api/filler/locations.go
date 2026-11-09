@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -57,7 +57,7 @@ type locationSuggestionOutput struct {
 	}
 }
 
-func (s *Server) registerLocations(api huma.API) {
+func (s *Handlers) registerLocations(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-search", Method: http.MethodGet, Path: "/v1/locations",
 		Summary: "Search installation locations", Description: "Admin only. Searches Loomarr's embedded city, populated-municipality, and country index; no runtime geocoder is called.",
@@ -80,7 +80,7 @@ func (s *Server) registerLocations(api huma.API) {
 	}, httpcore.RoleAdmin), s.locationSuggestion)
 }
 
-func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput) (*locationsSearchOutput, error) {
+func (s *Handlers) locationsSearch(_ context.Context, input *locationsSearchInput) (*locationsSearchOutput, error) {
 	index, err := location.Default()
 	if err != nil {
 		return nil, httpcore.ServiceUnavailable("Location search unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
@@ -93,7 +93,7 @@ func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput)
 	return out, nil
 }
 
-func (s *Server) locationResolve(_ context.Context, input *locationResolveInput) (*locationOutput, error) {
+func (s *Handlers) locationResolve(_ context.Context, input *locationResolveInput) (*locationOutput, error) {
 	index, err := location.Default()
 	if err != nil {
 		return nil, httpcore.ServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
@@ -108,7 +108,7 @@ func (s *Server) locationResolve(_ context.Context, input *locationResolveInput)
 	return out, nil
 }
 
-func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {
+func (s *Handlers) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {
 	index, err := location.Default()
 	if err != nil {
 		return nil, httpcore.ServiceUnavailable("Location suggestion unavailable", "The built-in location index couldn't be opened. Search for your location instead.")
@@ -202,7 +202,7 @@ type locationGetInput struct {
 	ID string `path:"id" minLength:"1" maxLength:"40" doc:"A saved place id (filler.home_place or a Channel's place)"`
 }
 
-func (s *Server) locationGet(_ context.Context, input *locationGetInput) (*locationOutput, error) {
+func (s *Handlers) locationGet(_ context.Context, input *locationGetInput) (*locationOutput, error) {
 	index, err := location.Default()
 	if err != nil {
 		return nil, httpcore.ServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")

@@ -65,7 +65,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, taxonomy: opts.Taxonomy,
+		suggest: opts.Suggest, search: opts.Search, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
@@ -167,6 +167,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		FillerLayout: opts.FillerLayout, FillerResearch: opts.FillerResearch, FillerDefects: opts.FillerDefects,
 		Channels: opts.Channels, Pods: opts.Pods, IntakeLanguages: opts.IntakeLanguages,
 		SourceProviders: opts.SourceProviders, PlaysCounted: opts.PlayoutResolver != nil, Now: opts.Now,
+		Taxonomy: opts.Taxonomy, Origin: srv.origin,
 	}
 	if opts.Images != nil {
 		fillerDeps.ImageRecords = srv.imageDTOsByHash
@@ -182,14 +183,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		}
 	}
 	fillerapi.New(fillerDeps).Register(humaAPI)
-	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerDiagnostics(humaAPI)
 	srv.registerDiscoveryQuality(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
-	srv.registerLocations(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerProvisioning(humaAPI)

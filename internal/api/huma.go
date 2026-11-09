@@ -29,7 +29,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -79,7 +78,6 @@ type Server struct {
 	images   ImageService
 	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
 	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
-	taxonomy TaxonomyEditor  // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// The jobs, database, encryption, backups, restart and help routes are served by
 	// system.Handlers, built from the same Options in Router. A generation's start time
 	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop
@@ -320,25 +318,6 @@ type SettingResult struct {
 	Problem string `json:"problem,omitempty" doc:"Validation message when status=invalid (never echoes a secret, §4)."`
 }
 
-// TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
-// atomic graph transaction; this seam adds an authoritative preview and post-commit channel
-// convergence without making HTTP handlers understand either implementation.
-type TaxonomyEditor interface {
-	Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
-	Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
-}
-
-type TaxonomyImpact struct {
-	Store    clipstore.TaxonomyEditImpact
-	Channels []TaxonomyChannelImpact
-}
-
-type TaxonomyChannelImpact struct {
-	ID     string
-	Name   string
-	Number int
-}
-
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
 // by suggest.Service + the store; abstracted so the API doesn't couple to the
 // worker internals.
@@ -523,7 +502,7 @@ type Options struct {
 	FillerResearch  fillerapi.ResearchService  // optional structured-first web-search status and validation
 	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
 	Pods            guideapi.PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        TaxonomyEditor             // taxonomy impact + committed channel convergence
+	Taxonomy        fillerapi.TaxonomyEditor   // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout cliplibrary.Layout
