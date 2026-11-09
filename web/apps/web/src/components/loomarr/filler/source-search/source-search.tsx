@@ -145,7 +145,7 @@ const SourceSearch = ({
 
       {results.length > 0 && (
         <>
-          <Text as="span" textRole="captionMono">
+          <Text as="span" textRole="mono">
             {total != null && total > visibleResults.length
               ? `Showing ${visibleResults.length} of ${total} matches`
               : pluralize(visibleResults.length, "match", "matches")}
@@ -191,7 +191,7 @@ const SourceSearch = ({
                         spinner would promise a value that is never coming, and "0:00" would
                         claim the clip is empty. */}
                     {(parts.length > 0 || loadingSet.has(clip.id)) && (
-                      <Text as="span" className="mt-0.5 block" textRole="captionMono">
+                      <Text as="span" className="mt-0.5 block" textRole="mono">
                         {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
                       </Text>
                     )}

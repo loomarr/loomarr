@@ -107,7 +107,7 @@ const ChannelBlock = ({
         width,
       }}
     >
-      <Text density={density} shout textRole="guideIdent" tone={tone} tracking={0.2}>
+      <Text density={density} shout textRole="label" tone={tone} tracking={0.2}>
         CH
       </Text>
       <Text density={density} textRole="channelNumber" tone={tone}>
@@ -130,13 +130,7 @@ const Chip = ({ children, density, solid }: { children: string; density: Density
       paddingVertical: 4,
     }}
   >
-    <Text
-      density={density}
-      shout
-      textRole="guideIdent"
-      tone={solid ? "inverse" : "secondary"}
-      tracking={0.16}
-    >
+    <Text density={density} shout textRole="label" tone={solid ? "inverse" : "secondary"} tracking={0.16}>
       {children}
     </Text>
   </View>

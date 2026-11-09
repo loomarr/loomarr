@@ -41,7 +41,7 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
         {message}
       </Text>
     ) : null}
-    <Text density={density} textRole="guideMeta" tone="muted">
+    <Text density={density} textRole="mono" tone="muted">
       {channelLabel}
     </Text>
     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>

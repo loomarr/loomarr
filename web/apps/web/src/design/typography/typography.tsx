@@ -1,4 +1,7 @@
+import { Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
+
+const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
 
 // Typography — the type system documenting itself (frontend-design §2.2, §5.1a).
 //
@@ -54,6 +57,35 @@ const Typography = () => (
         </div>
       </div>
     </section>
+
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control" padding={0}>
+      <Text as="h2" density="pointer" strong textRole="heading">
+        The five roles
+      </Text>
+      <Text density="pointer" textRole="body" tone="muted">
+        Display, Heading, Body, Label and Mono, sized per density. Mono is for channel numbers and clocks
+        only. Size / weight, read from the tokens.
+      </Text>
+      {TYPE_ROLES.map((role) => (
+        <Surface
+          key={role}
+          backgroundColor="transparent"
+          borderWidth={0}
+          gap="control"
+          padding={0}
+          paddingVertical={12}
+        >
+          <Text density="pointer" textRole={role}>
+            {role === "mono" ? "CH 42 · 21:30" : "Channels play what's ready"}
+          </Text>
+          <Text density="pointer" textRole="mono" tone="muted">
+            {`${role}: ${(["pointer", "touch", "tv"] as const)
+              .map((d) => `${d} ${typography[d][role].size}/${typography[d][role].weight}`)
+              .join(" · ")}`}
+          </Text>
+        </Surface>
+      ))}
+    </Surface>
 
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Scale</h2>

@@ -102,7 +102,11 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                     Manage
                   </CardAction>
                 }
-                lead={<Text textRole="cardInitials">{user.name.slice(0, 1).toUpperCase()}</Text>}
+                lead={
+                  <Text textRole="label" tone="primary">
+                    {user.name.slice(0, 1).toUpperCase()}
+                  </Text>
+                }
                 meta={[
                   user.disabled ? (
                     <CardStatus key="status" label="Disabled" tone="off" />

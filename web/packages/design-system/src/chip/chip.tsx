@@ -82,7 +82,7 @@ const Chip: ForwardRefExoticComponent<ChipProps & RefAttributes<ChipRef>> = forw
         >
           <Text
             strong={on}
-            textRole={mono ? "captionMono" : "caption"}
+            textRole={mono ? "mono" : "caption"}
             tone={on && tone === "muted" ? "primary" : tone}
           >
             {children}

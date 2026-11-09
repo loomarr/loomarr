@@ -77,12 +77,12 @@ const Tooltip = ({
     }}
   >
     {/* One line: the tooltip hangs off a 36 px button, which would otherwise wrap it word by word. */}
-    <Text density={density} numberOfLines={1} textRole="guideLabel" tone="primary">
+    <Text density={density} numberOfLines={1} textRole="label" tone="primary">
       {label}
     </Text>
     {keyHint ? (
       <View style={{ backgroundColor: playerChrome.surfaceHover, borderRadius: 3, paddingHorizontal: 4 }}>
-        <Text density={density} textRole="guideMeta" tone="secondary">
+        <Text density={density} textRole="mono" tone="secondary">
           {keyHint}
         </Text>
       </View>
@@ -300,7 +300,7 @@ const ClipTransport = ({
       <VolumeSlider density={density} muted={muted} onVolume={onVolume} volume={volume} />
     </Capsule>
     {durationMs !== undefined ? (
-      <Text density={density} textRole="captionMono" tone="secondary">
+      <Text density={density} textRole="mono" tone="secondary">
         {formatMmSs(elapsedMs)} / {formatMmSs(durationMs)}
       </Text>
     ) : null}

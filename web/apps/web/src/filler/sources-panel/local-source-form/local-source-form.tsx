@@ -96,7 +96,7 @@ const LocalSourceForm = () => {
         </form.Subscribe>
       </form>
       {addSource.error != null && <ErrorState error={addSource.error} />}
-      <Text as="span" textRole="captionMono">
+      <Text as="span" textRole="mono">
         Uses your location. Every clip is checked before it can play.
       </Text>
     </div>

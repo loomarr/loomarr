@@ -33,8 +33,9 @@ const ChannelIdent = ({ name, number, size = BASE_SIZE }: ChannelIdentProps) => 
       }}
     >
       <Text
-        style={scale === 1 ? undefined : { fontSize: 11 * scale, lineHeight: 14 * scale }}
-        textRole="guideIdent"
+        strong
+        style={scale === 1 ? undefined : { fontSize: 12 * scale, lineHeight: 16 * scale }}
+        textRole="label"
         tone={tone}
       >
         {monogramOf(name)}

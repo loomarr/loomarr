@@ -119,10 +119,10 @@ const TopKey = ({
             ...webOnly({ whiteSpace: "nowrap" }),
           }}
         >
-          <Text density="pointer" numberOfLines={1} textRole="guideLabel" tone="primary">
+          <Text density="pointer" numberOfLines={1} textRole="label" tone="primary">
             {label}
           </Text>
-          <Text density="pointer" textRole="guideMeta" tone="secondary">
+          <Text density="pointer" textRole="mono" tone="secondary">
             {hint}
           </Text>
         </View>

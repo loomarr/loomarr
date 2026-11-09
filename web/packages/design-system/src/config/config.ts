@@ -139,6 +139,8 @@ const bodyFont = createFont({
   },
   letterSpacing: {
     display: -0.8,
+    heading: 0,
+    mono: 0,
     title: -0.25,
     body: 0,
     compact: 0,
