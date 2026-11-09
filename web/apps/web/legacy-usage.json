@@ -325,7 +325,7 @@
       "tailwindClasses": 108
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 265,
+      "tailwindClasses": 264,
       "legacyUi": 2
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
@@ -353,8 +353,7 @@
       "tailwindClasses": 116
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 1
+      "tailwindClasses": 13
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 116,

@@ -6,7 +6,7 @@ import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@lo
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Check, Clipboard, ExternalLink } from "lucide-react";
+import { AlertTriangle, Check, Clipboard } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -161,32 +161,22 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
             value={search}
           />
         </Surface>
-        <Button
-          variant={wrap ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={wrap}
-          onClick={() => setWrap(!wrap)}
-        >
+        <Action aria-pressed={wrap} onPress={() => setWrap(!wrap)} selected={wrap} tone="secondary">
           Wrap
-        </Button>
+        </Action>
         <Tooltip content="Keep the newest output line in view">
-          <Button
-            variant={follow ? "secondary" : "outline"}
-            size="sm"
-            aria-pressed={follow}
-            onClick={() => setFollow(!follow)}
-          >
+          <Action aria-pressed={follow} onPress={() => setFollow(!follow)} selected={follow} tone="secondary">
             Follow tail
-          </Button>
+          </Action>
         </Tooltip>
-        <Button
-          variant={timestamps ? "secondary" : "outline"}
-          size="sm"
+        <Action
           aria-pressed={timestamps}
-          onClick={() => setTimestamps(!timestamps)}
+          onPress={() => setTimestamps(!timestamps)}
+          selected={timestamps}
+          tone="secondary"
         >
           Timestamps
-        </Button>
+        </Action>
         <Action icon="download" onPress={() => void download()} variant="outline">
           Download output
         </Action>
@@ -249,14 +239,14 @@ const ProcessDetail = ({
             <div className="flex">
               <CopyValue label="Channel" value={run.channelId} />
               {onOpenChannel && (
-                <Button
+                <Action
+                  icon="external"
+                  layout="icon"
+                  onPress={() => onOpenChannel(run.channelId ?? "")}
                   variant="ghost"
-                  size="icon"
-                  aria-label="Open Channel"
-                  onClick={() => onOpenChannel(run.channelId ?? "")}
                 >
-                  <ExternalLink aria-hidden />
-                </Button>
+                  Open Channel
+                </Action>
               )}
             </div>
           </div>
