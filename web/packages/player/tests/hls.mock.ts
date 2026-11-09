@@ -24,9 +24,7 @@ class MockHls {
     bitrate?: number;
     height: number;
     videoRange: string;
-  }[] = [
-    { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
-  ];
+  }[] = [{ attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" }];
   startLevel = -1;
   loadLevel = -1;
   currentLevel = -1;
