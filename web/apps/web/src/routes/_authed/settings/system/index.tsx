@@ -63,7 +63,7 @@ const SystemHome = () => (
                       </span>
                     </span>
                     <ArrowRight
-                      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+                      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-colors"
                       aria-hidden
                     />
                   </Link>

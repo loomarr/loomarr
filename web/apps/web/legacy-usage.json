@@ -20,7 +20,7 @@
       "tailwindClasses": 27
     },
     "src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "tailwindClasses": 92
+      "tailwindClasses": 91
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
       "tailwindClasses": 78
@@ -218,7 +218,7 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 123
+      "tailwindClasses": 118
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 14
@@ -359,7 +359,7 @@
       "tailwindClasses": 45
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 108
+      "tailwindClasses": 107
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
       "tailwindClasses": 18
@@ -492,7 +492,7 @@
       "tailwindClasses": 8
     },
     "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 54
+      "tailwindClasses": 53
     },
     "src/routes/_authed/settings/system/storage.tsx": {
       "tailwindClasses": 9
