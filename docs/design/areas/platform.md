@@ -37,9 +37,11 @@ One area of the [package map](../package-map.md#start-here).
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
-- **`platform/llm`** · 11 importers · → `platform/httpx`, `platform/metrics`
+- **`platform/llm`** · 12 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
-- **`platform/llm/selection`** · 1 importer · → `platform/llm`, `platform/metrics`, `platform/settings`
+- **`platform/llm/picker`** · 2 importers · → `platform/llm`, `platform/llm/selection`, `platform/settings`, `platform/store`
+  Language-model picker's service (§8.1): it probes the local Ollama, serves the hosted-provider catalog with live models, validates hosted keys, hot-swaps the active selection, persists the choice, and runs model pulls in the background.
+- **`platform/llm/selection`** · 2 importers · → `platform/llm`, `platform/metrics`, `platform/settings`
   Resolves which language model the install talks to: the active provider, URL, model, key and residency hint from the settings, the concrete provider built for them, and the warm-up that preloads it.
 - **`platform/logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
@@ -53,11 +55,11 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 18 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
+- **`platform/settings`** · 19 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 9 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 30 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 31 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 9 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
