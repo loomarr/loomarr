@@ -25,6 +25,7 @@ type StoreCounts interface {
 	CountProposalJobAttemptsByStatus(ctx context.Context) (map[string]int, error)
 	CountFailedProposalJobsByCode(ctx context.Context) (map[string]int, error)
 	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
+	LatestTableRows(ctx context.Context) (map[string]int64, error)
 }
 
 // knownStates / knownJobStatuses are the label sets the collector zero-fills, so
@@ -52,12 +53,14 @@ type storeCollector struct {
 	proposalOldestAge *prometheus.Desc
 	proposalAttempts  *prometheus.Desc
 	proposalFailures  *prometheus.Desc
+	tableRows         *prometheus.Desc
 	lastTitles        lastSuccessful[map[provision.State]int]
 	lastJobs          lastSuccessful[map[string]int]
 	lastSessions      lastSuccessful[int]
 	lastProposalAge   lastSuccessful[map[string]float64]
 	lastAttempts      lastSuccessful[map[string]int]
 	lastFailures      lastSuccessful[map[string]int]
+	lastTableRows     lastSuccessful[map[string]int64]
 }
 
 type lastSuccessful[T any] struct {
@@ -87,6 +90,7 @@ func (c *storeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.proposalOldestAge
 	ch <- c.proposalAttempts
 	ch <- c.proposalFailures
+	ch <- c.tableRows
 }
 
 func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -175,6 +179,20 @@ func (c *storeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
+	// Table sizes come from the nightly count (#2793), not a live COUNT(*): the label set is the
+	// schema's tables, which only a migration changes.
+	tableRows, err := c.counts.LatestTableRows(ctx)
+	if err != nil {
+		c.scrapeErrors.WithLabelValues("table_rows").Inc()
+	} else {
+		tableRows = maps.Clone(tableRows)
+	}
+	if tableRows, ok := c.lastTableRows.use(tableRows, err); ok {
+		for table, n := range tableRows {
+			ch <- prometheus.MustNewConstMetric(c.tableRows, prometheus.GaugeValue, float64(n), table)
+		}
+	}
+
 	// The registry gathers registered collectors concurrently. Emitting the
 	// error counters from this collector keeps each scrape's query results and
 	// counter values in one ordered collection pass.
@@ -220,6 +238,8 @@ func newStoreCollectorWithErrors(
 			"Retained terminal Proposal Job Attempts by bounded outcome.", []string{"outcome"}, nil),
 		proposalFailures: prometheus.NewDesc("loomarr_proposal_job_failures",
 			"Retained failed Proposal Jobs by bounded requester-safe code.", []string{"code"}, nil),
+		tableRows: prometheus.NewDesc("loomarr_database_table_rows",
+			"Rows in each database table at the last nightly count.", []string{"table"}, nil),
 	}
 	return c
 }

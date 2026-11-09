@@ -10,6 +10,7 @@ loomarr_database_connection_waits_total|counter|
 loomarr_database_connections|gauge|state
 loomarr_database_connections_closed_total|counter|reason
 loomarr_database_max_open_connections|gauge|
+loomarr_database_table_rows|gauge|table
 loomarr_filler_pods_total|counter|match_level
 loomarr_filler_rotation_airings_total|counter|cooldown,repeat
 loomarr_http_outbound_fanout|histogram|method,route

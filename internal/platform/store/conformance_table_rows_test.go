@@ -34,6 +34,9 @@ func testTableRows(t *testing.T, newStore NewStoreFunc) {
 		return n
 	}
 
+	if latest, err := s.LatestTableRows(ctx); err != nil || len(latest) != 0 {
+		t.Fatalf("before any count LatestTableRows = %v, %v; want empty", latest, err)
+	}
 	counted, err := s.RecordTableRows(ctx, day, day.Add(-400*24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -75,5 +78,11 @@ func testTableRows(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, ok := rowsOn(next.Truncate(24*time.Hour).Unix(), "users"); !ok {
 		t.Fatal("tonight's count was forgotten")
+	}
+	// Metrics read the newest night only.
+	latest, err := s.LatestTableRows(ctx)
+	if err != nil || latest["users"] != usersNow() || len(latest) != counted {
+		t.Fatalf("LatestTableRows = %d tables, users %d (%v); want %d tables, users %d",
+			len(latest), latest["users"], err, counted, usersNow())
 	}
 }

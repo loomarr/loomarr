@@ -20,7 +20,12 @@ type fakeCounts struct {
 	oldest   map[string]time.Time
 	attempts map[string]int
 	failures map[string]int
+	tables   map[string]int64
 	err      error
+}
+
+func (f fakeCounts) LatestTableRows(context.Context) (map[string]int64, error) {
+	return f.tables, f.err
 }
 
 func (f fakeCounts) CountTitlesByState(context.Context) (map[provision.State]int, error) {
@@ -49,6 +54,7 @@ func testStoreCollector(counts StoreCounts, now func() time.Time) *storeCollecto
 
 var storeGaugeNames = []string{
 	"loomarr_active_sessions",
+	"loomarr_database_table_rows",
 	"loomarr_jobs",
 	"loomarr_proposal_job_attempts",
 	"loomarr_proposal_job_failures",
@@ -103,6 +109,21 @@ loomarr_titles{state="unavailable"} 0
 loomarr_titles{state="wanted"} 0
 `
 	if err := testutil.CollectAndCompare(c, strings.NewReader(want), storeGaugeNames...); err != nil {
+		t.Error(err)
+	}
+}
+
+// Each table's size is its last nightly count (#2793), one series per table.
+func TestStoreCollectorTableRows(t *testing.T) {
+	c := testStoreCollector(fakeCounts{tables: map[string]int64{"clips": 1110, "channels": 6}},
+		func() time.Time { return time.Unix(0, 0).UTC() })
+	want := `
+# HELP loomarr_database_table_rows Rows in each database table at the last nightly count.
+# TYPE loomarr_database_table_rows gauge
+loomarr_database_table_rows{table="channels"} 6
+loomarr_database_table_rows{table="clips"} 1110
+`
+	if err := testutil.CollectAndCompare(c, strings.NewReader(want), "loomarr_database_table_rows"); err != nil {
 		t.Error(err)
 	}
 }

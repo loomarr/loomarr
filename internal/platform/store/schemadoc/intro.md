@@ -57,6 +57,9 @@ ORDER BY grew_by DESC
 LIMIT 10;
 ```
 
+If Prometheus scrapes Loomarr, the latest counts are also the `loomarr_database_table_rows` gauge,
+one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the same growth.
+
 ## Reading the values
 
 - **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
