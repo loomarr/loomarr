@@ -541,10 +541,9 @@ func (s *Store) ListProposalsByStatus(ctx context.Context, status string) ([]Pro
 //
 // ⚠ NEWEST wins, and that is load-bearing rather than a tiebreak. A job legitimately accrues
 // SEVERAL approved proposals over its life: a refine re-runs the channel's own job, and the
-// channel must bind to the latest approved lineup, not the original (§7; asserted by
-// TestRefine_NewestApprovedWins). The `ORDER BY created_at DESC` here is the same one
-// `ListProposalsByStatus` applies — the caller used to read every approved proposal in the
-// install and take the first match, relying on that ordering from a different method.
+// channel must bind to the latest approved lineup, not the original (§7; asserted by the
+// conformance case that calls this method). The `ORDER BY created_at DESC` here is the same one
+// `ListProposalsByStatus` applies.
 //
 // ⚠ Filtered in SQL and indexed on job_id (00037) because retention deliberately never purges
 // APPROVED proposals — they are the audit trail — so the table this scanned grows monotonically
