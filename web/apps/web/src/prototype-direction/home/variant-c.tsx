@@ -3,9 +3,21 @@
 // tile is a 16:9 still with the channel number and name, what is on and a thin progress line. A
 // channel still downloading its titles is a dimmer tile that says so, instead of airing an ad as
 // its "now". Tonight and New this week sit below. No filled button: the tile is the control.
+// With `?admin=1` the admin additions (#2785, ./admin.tsx) join in one of three placements.
 import { Action, SectionHeader } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { Tint } from "../shared";
+import {
+  NeedsLine,
+  NeedsList,
+  NeedsStrip,
+  tileWatchers,
+  WatchersOnTile,
+  WatchingList,
+  WatchingRow,
+  watchingMeta,
+} from "./admin";
+import { type AdminSearch, viewers as buildViewers, needItems } from "./admin-data";
 import {
   AirProgress,
   NewRow,
@@ -24,11 +36,13 @@ const Tile = ({
   tint,
   last,
   compact,
+  watchers = [],
 }: {
   channel: ProtoChannel;
   tint: Tint;
   last: boolean;
   compact: boolean;
+  watchers?: string[];
 }) => {
   const filling = !channel.ready;
   const name = channel.series ?? channel.title;
@@ -53,6 +67,7 @@ const Tile = ({
             {compact ? "Last" : "You were here"}
           </span>
         )}
+        {!last && <WatchersOnTile names={watchers} compact={compact} />}
       </div>
       <div
         className={`absolute inset-x-0 bottom-0 flex flex-col gap-0.5 ${compact ? "p-2 pb-2.5" : "p-3 pb-4"}`}
@@ -96,36 +111,112 @@ const Tile = ({
   );
 };
 
-const VariantC = ({ state, device, tint }: { state: HomeState; device: string; tint: Tint }) => {
+const VariantC = ({
+  state,
+  device,
+  tint,
+  admin,
+}: {
+  state: HomeState;
+  device: string;
+  tint: Tint;
+  admin?: AdminSearch;
+}) => {
   const phone = device === "phone";
   const data = buildHome(state);
   const filling = data.channels.filter((c) => !c.ready).length;
+  const layout = admin?.admin === "1" ? admin.layout : undefined;
+  const needs = needItems(admin?.needs ?? "zero");
+  const viewers = buildViewers(admin?.watching ?? "none");
+  const fillingMeta =
+    filling > 0
+      ? `${filling} of ${data.channels.length} channels are still filling up`
+      : `${data.channels.length} channels`;
+
+  const wall = (
+    <section aria-labelledby="home-wall">
+      <SectionHeader
+        id="home-wall"
+        title="On now"
+        meta={layout === "B" ? `${fillingMeta} · ${watchingMeta(viewers)}` : fillingMeta}
+      >
+        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
+          Full guide
+        </Action>
+      </SectionHeader>
+      {layout === "B" && (
+        <div className="mb-4">
+          <NeedsLine items={needs} phone={phone} />
+        </div>
+      )}
+      <div
+        className={
+          phone
+            ? "grid grid-cols-2 gap-3"
+            : layout === "C"
+              ? "grid grid-cols-2 gap-4"
+              : "grid grid-cols-3 gap-4"
+        }
+      >
+        {data.channels.map((c) => (
+          <Tile
+            key={c.id}
+            channel={c}
+            tint={tint}
+            last={c.id === data.lastTuned?.id}
+            compact={phone}
+            watchers={layout === "B" ? tileWatchers(viewers, c.id) : undefined}
+          />
+        ))}
+      </div>
+    </section>
+  );
+
+  const below = (
+    <>
+      <TonightList highlights={data.highlights} phone={phone} />
+      <NewRow titles={data.titles} newChannel={data.newChannel} phone={phone} tint={tint} />
+    </>
+  );
+
+  // C on a desktop: the wall and a 320px column beside it; on a phone the column stacks on top.
+  if (layout === "C") {
+    const aside = (
+      <aside aria-label="For admins" className="flex flex-col gap-6">
+        <NeedsList items={needs} />
+        <WatchingList viewers={viewers} channels={data.channels} tint={tint} />
+      </aside>
+    );
+    return (
+      <div className={`flex flex-col gap-8 pb-8 ${phone ? "p-4" : "p-6"}`}>
+        <h1 className="sr-only">Home</h1>
+        {phone ? (
+          <>
+            {aside}
+            {wall}
+          </>
+        ) : (
+          <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6">
+            {wall}
+            {aside}
+          </div>
+        )}
+        {below}
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col gap-8 pb-8 ${phone ? "p-4" : "p-6"}`}>
-      <section aria-labelledby="home-wall">
-        <h1 className="sr-only">Home</h1>
-        <SectionHeader
-          id="home-wall"
-          title="On now"
-          meta={
-            filling > 0
-              ? `${filling} of ${data.channels.length} channels are still filling up`
-              : `${data.channels.length} channels`
-          }
-        >
-          <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
-            Full guide
-          </Action>
-        </SectionHeader>
-        <div className={phone ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-4"}>
-          {data.channels.map((c) => (
-            <Tile key={c.id} channel={c} tint={tint} last={c.id === data.lastTuned?.id} compact={phone} />
-          ))}
+      <h1 className="sr-only">Home</h1>
+      {layout === "A" && (
+        <div className="flex flex-col gap-4">
+          <NeedsStrip items={needs} phone={phone} />
+          <WatchingRow viewers={viewers} channels={data.channels} tint={tint} />
         </div>
-      </section>
-      <TonightList highlights={data.highlights} phone={phone} />
-      <NewRow titles={data.titles} newChannel={data.newChannel} phone={phone} tint={tint} />
+      )}
+      {wall}
+      {below}
     </div>
   );
 };

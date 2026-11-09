@@ -18,11 +18,10 @@ import { BrandLockup } from "@/components/loomarr/shell/brand-lockup";
 interface NavEntry {
   label: string;
   icon: LucideIcon;
-  active?: boolean;
 }
 
 const RAIL: NavEntry[] = [
-  { label: "Home", icon: House, active: true },
+  { label: "Home", icon: House },
   { label: "Guide", icon: CalendarClock },
   { label: "Library", icon: Library },
   { label: "Requests", icon: Inbox },
@@ -31,7 +30,7 @@ const RAIL: NavEntry[] = [
 ];
 
 const BAR: NavEntry[] = [
-  { label: "Home", icon: House, active: true },
+  { label: "Home", icon: House },
   { label: "Guide", icon: CalendarClock },
   { label: "Library", icon: Library },
   { label: "Requests", icon: Inbox },
@@ -47,9 +46,20 @@ const useScrollParam = (ref: React.RefObject<HTMLDivElement | null>) => {
   }, [ref]);
 };
 
-const AppChrome = ({ device, children }: { device: string; children: ReactNode }) => {
+// `current` names the lit rail entry (Home unless a route says otherwise, e.g. /prototype/settings);
+// on the phone bar, an entry it does not carry lights More.
+const AppChrome = ({
+  device,
+  current = "Home",
+  children,
+}: {
+  device: string;
+  current?: string;
+  children: ReactNode;
+}) => {
   const pane = useRef<HTMLDivElement>(null);
   useScrollParam(pane);
+  const barCurrent = BAR.some((e) => e.label === current) ? current : "More";
 
   if (device === "phone") {
     return (
@@ -58,12 +68,12 @@ const AppChrome = ({ device, children }: { device: string; children: ReactNode }
           {children}
         </div>
         <nav aria-label="Main" className="border-border bg-background flex h-14 shrink-0 border-t pb-1">
-          {BAR.map(({ label, icon: Icon, active }) => (
+          {BAR.map(({ label, icon: Icon }) => (
             <Link
               key={label}
               to="/dashboard"
-              aria-current={active ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-xs ${active ? "text-foreground" : "text-static-400"}`}
+              aria-current={label === barCurrent ? "page" : undefined}
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-xs ${label === barCurrent ? "text-foreground" : "text-static-400"}`}
             >
               <Icon className="size-5" aria-hidden />
               {label}
@@ -81,12 +91,12 @@ const AppChrome = ({ device, children }: { device: string; children: ReactNode }
           <BrandLockup variant="compact" />
         </div>
         <ul className="m-0 mt-3 flex list-none flex-col gap-0.5 p-0">
-          {RAIL.map(({ label, icon: Icon, active }) => (
+          {RAIL.map(({ label, icon: Icon }) => (
             <li key={label}>
               <Link
                 to="/dashboard"
-                aria-current={active ? "page" : undefined}
-                className={`flex h-9 items-center gap-3 rounded-md px-2.5 text-sm ${active ? "bg-static-800 text-foreground font-medium" : "text-static-400"}`}
+                aria-current={label === current ? "page" : undefined}
+                className={`flex h-9 items-center gap-3 rounded-md px-2.5 text-sm ${label === current ? "bg-static-800 text-foreground font-medium" : "text-static-400"}`}
               >
                 <Icon className="size-4" aria-hidden />
                 {label}
