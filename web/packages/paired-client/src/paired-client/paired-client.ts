@@ -233,4 +233,26 @@ const usePairedClient = ({
   };
 };
 
-export { usePairedClient };
+/**
+ * How the phone runs the paired client: it opens on its Guide with no picture, so nothing tunes until
+ * the viewer picks a channel, and its Guide loads the next 2 hours, as the web phone does.
+ */
+const phoneClientOptions = { guideWindowMinutes: 120, initialTune: "none" } as const satisfies Pick<
+  PairedClientOptions,
+  "guideWindowMinutes" | "initialTune"
+>;
+
+/**
+ * The "Try again" of a playback failure: a catalog that never loaded loads again; any other failure
+ * re-tunes the channel.
+ */
+const retryPairedClient = ({
+  catalogState,
+  controller,
+  refresh,
+}: Pick<PairedClient, "catalogState" | "controller" | "refresh">) => {
+  if (catalogState.error) refresh();
+  else void controller.retry();
+};
+
+export { phoneClientOptions, retryPairedClient, usePairedClient };

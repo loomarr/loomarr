@@ -15,8 +15,6 @@ const WEB = fileURLToPath(new URL("..", import.meta.url));
 // Metro bundle, so no JS test runner here can load them yet; each converts once its logic moves
 // into a vitest-covered package or the workshop gets a resolvable test home.
 const sourceTextAllowlist = {
-  "apps/mobile/tests/config.test.mjs":
-    "TEMPORARY: matches the Expo app shell's source (app/index.tsx, app/_layout.tsx); move shell wiring into @loomarr/player and test it there",
   "apps/tv/tests/config.test.mjs":
     "TEMPORARY: matches the TV app root's source (src/app.tsx) and paired-client.ts; move shell wiring into @loomarr/player and test it there",
   "packages/design-system/tests/native-story-theme.test.ts":
