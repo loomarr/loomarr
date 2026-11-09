@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // countingSource records whether the syncer reached the filesystem at all.
@@ -25,12 +26,12 @@ func (c *countingSource) ListLocalClips(context.Context) ([]cliplibrary.RawClip,
 // recordingStore fails loudly if a disabled sync writes anything.
 type recordingStore struct{ upserts, prunes int }
 
-func (r *recordingStore) UpsertClip(context.Context, cliplibrary.StoreClip) error {
+func (r *recordingStore) UpsertClip(context.Context, clipstore.Clip) error {
 	r.upserts++
 	return nil
 }
-func (r *recordingStore) GetClip(context.Context, string) (cliplibrary.StoreClip, bool, error) {
-	return cliplibrary.StoreClip{}, false, nil
+func (r *recordingStore) GetClip(context.Context, string) (clipstore.Clip, bool, error) {
+	return clipstore.Clip{}, false, nil
 }
 func (r *recordingStore) LiveClipPaths(context.Context) (map[string]string, error) { return nil, nil }
 func (r *recordingStore) DeleteClipsNotIn(context.Context, []string) (int, error) {

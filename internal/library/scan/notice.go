@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The Needs you notice (#2151 decision 32): the operators hear, at most once a day, how many titles
@@ -21,7 +21,7 @@ const (
 
 // NeedsNoticeStore is what the notice reads and marks.
 type NeedsNoticeStore interface {
-	LibraryNeeds(ctx context.Context) ([]store.LibraryNeed, error)
+	LibraryNeeds(ctx context.Context) ([]librarystore.LibraryNeed, error)
 	UnnoticedLibraryNeeds(ctx context.Context) ([]string, error)
 	NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error
 }

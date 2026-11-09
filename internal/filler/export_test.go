@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // CertifiedShadowFixture exposes the certified two-segment proposal and its policies to the
@@ -67,7 +67,7 @@ func structureDecisionSHA256ForInterval(proposal SplitProposal, segment split.Se
 }
 
 // ground is groundFromSource for the clip's own file rather than a proposal's evidence derivative.
-func (s *SplitStage) ground(ctx context.Context, c cliplibrary.StoreClip, segs []split.Segment) groundPass {
+func (s *SplitStage) ground(ctx context.Context, c clipstore.Clip, segs []split.Segment) groundPass {
 	file := ""
 	if s.vision != nil {
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
@@ -78,9 +78,9 @@ func (s *SplitStage) ground(ctx context.Context, c cliplibrary.StoreClip, segs [
 // AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an
 // NVENC host that re-encodes it, for the library re-encode's pipeline tests. Each replacement's
 // defect check calls check; switches counts the commits.
-func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, cliplibrary.StoreClip, func() int) {
+func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, clipstore.Clip, func() int) {
 	t.Helper()
-	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c cliplibrary.StoreClip, staged string) (defects.Record, error) {
+	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c clipstore.Clip, staged string) (defects.Record, error) {
 		if err := check(ctx); err != nil {
 			return defects.Record{}, err
 		}

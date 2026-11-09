@@ -28,10 +28,16 @@ describe("defect report wording", () => {
       { check: "blur", outcome: "borderline", measured: 8.7123, bar: 8 },
       { check: "dropouts", outcome: "fail", measured: 0.00341, bar: 0.003 },
     ]);
-    expect(shown.map(defectFindingLine)).toEqual([
-      "Tape dropouts 0.00341, fail (bar 0.003)",
-      "Softness 8.712, borderline (bar 8)",
-    ]);
+    expect(shown.map(defectFindingLine)).toEqual(["Tape dropouts", "Slightly soft picture"]);
+  });
+
+  it("never shows a measurement, a bar or a model id", () => {
+    const lines = [
+      defectFindingLine({ check: "blur", outcome: "fail", measured: 8.387, bar: 8 }),
+      defectFindingLine({ check: "blocks", outcome: "pass", measured: 1.1, bar: 4 }),
+      defectJudgementLine({ ruling: "fail", model: "openai/flash-next", reason: "smeared" }),
+    ].join(" ");
+    expect(lines).not.toMatch(/\d|bar|openai|flash/);
   });
 
   it("says when there was too little picture", () => {
@@ -40,11 +46,13 @@ describe("defect report wording", () => {
     );
   });
 
-  it("names the judge and its reason, and a missing judge plainly", () => {
+  it("gives the vision model's ruling and reason without its id, and a missing judge plainly", () => {
     expect(defectJudgementLine({ ruling: "pass", model: "m1", reason: "soft VHS" })).toBe(
-      "Judge (m1): pass, “soft VHS”",
+      "A second look by a vision model: it passes, “soft VHS”",
     );
-    expect(defectJudgementLine({ ruling: "abstain" })).toBe("Judge: couldn't decide");
+    expect(defectJudgementLine({ ruling: "abstain" })).toBe(
+      "A second look by a vision model: couldn't decide",
+    );
     expect(defectJudgementLine({ ruling: "no_judge" })).toBe("No vision model was set up to rule on it");
   });
 

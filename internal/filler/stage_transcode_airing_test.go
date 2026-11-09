@@ -17,18 +17,19 @@ import (
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // airingStore records the switch ReplaceAiring commits.
 type airingStore struct {
 	calls   int
 	oldHash string
-	clip    cliplibrary.StoreClip
+	clip    clipstore.Clip
 	record  defects.Record
 	err     error
 }
 
-func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c cliplibrary.StoreClip, rec defects.Record) error {
+func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c clipstore.Clip, rec defects.Record) error {
 	s.calls++
 	if s.err != nil {
 		return s.err
@@ -67,12 +68,12 @@ var nvencHost = encode.HostProfile{Family: encode.FamilyNVENC, Encoder: encode.E
 
 // airingFixture is a clip on air whose playback was encoded from its retained master under the
 // software profile, and a stage on an NVENC host that re-encodes it, gated by check.
-func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStage, *airingStore, cliplibrary.StoreClip) {
+func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStage, *airingStore, clipstore.Clip) {
 	t.Helper()
 	dir := t.TempDir()
 	hash := writeContentAddressedClip(t, dir, []byte("the airing clip's source master"), ".mkv")
 	out, err := derivativeStage(t, dir, nil, "software derivative").Run(context.Background(),
-		cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mkv")), Name: "Advert", Role: clips.Commercial}})
+		clipstore.Clip{Clip: clips.Clip{Hash: hash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mkv")), Name: "Advert", Role: clips.Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStag
 }
 
 func passingCheck(staged *string) ReplacementCheck {
-	return func(_ context.Context, c cliplibrary.StoreClip, path string) (defects.Record, error) {
+	return func(_ context.Context, c clipstore.Clip, path string) (defects.Record, error) {
 		if staged != nil {
 			*staged = path
 		}
@@ -163,13 +164,13 @@ func TestReplaceAiring_ARefusedReplacementLeavesTheClipAiring(t *testing.T) {
 		check ReplacementCheck
 		want  error
 	}{
-		{"defect floor fails it", func(_ context.Context, c cliplibrary.StoreClip, _ string) (defects.Record, error) {
+		{"defect floor fails it", func(_ context.Context, c clipstore.Clip, _ string) (defects.Record, error) {
 			return defects.Record{ClipHash: c.Hash, Verdict: defects.VerdictFail, VerdictReason: "detectors"}, nil
 		}, ErrReplacementRefused},
-		{"judge has not ruled", func(_ context.Context, c cliplibrary.StoreClip, _ string) (defects.Record, error) {
+		{"judge has not ruled", func(_ context.Context, c clipstore.Clip, _ string) (defects.Record, error) {
 			return defects.Record{ClipHash: c.Hash, Verdict: defects.VerdictPending, VerdictReason: "waiting for the judge"}, nil
 		}, ErrReplacementRefused},
-		{"floor could not measure it", func(context.Context, cliplibrary.StoreClip, string) (defects.Record, error) {
+		{"floor could not measure it", func(context.Context, clipstore.Clip, string) (defects.Record, error) {
 			return defects.Record{}, errors.New("decoder rejected the stream")
 		}, nil},
 	} {
@@ -227,7 +228,7 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 	removed.RemovedAt = time.Now()
 	composite.IsComposite = true
 	child.ParentHash = strings.Repeat("b", 64)
-	for name, c := range map[string]cliplibrary.StoreClip{"held": held, "removed": removed, "composite": composite, "split child": child} {
+	for name, c := range map[string]clipstore.Clip{"held": held, "removed": removed, "composite": composite, "split child": child} {
 		if stage.NeedsReencode(c) {
 			t.Errorf("a %s clip is due a re-encode", name)
 		}

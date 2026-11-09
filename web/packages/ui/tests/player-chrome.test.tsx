@@ -11,7 +11,11 @@ import {
   type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
-  type PlayerTransportProps,
+  type PlayerKeysProps,
+  PlayerMore,
+  PlayerOptions,
+  PlayerSheet,
+  type PlayerTopRowProps,
 } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,120 +56,179 @@ const button = (host: Host, name: string) =>
     (el) => el.getAttribute("aria-label") === name || el.textContent === name,
   );
 
-// Whether the lower third sits under an aria-hidden ancestor (the hidden scrim).
+// Whether the band sits under an aria-hidden ancestor (the hidden scrim).
 const bandHidden = (host: Host) =>
   Array.from(host.querySelectorAll('[aria-hidden="true"]')).some((el) =>
-    el.textContent?.includes("CH 7 · Coast 90s"),
+    el.textContent?.includes("Coast 90s"),
   );
 
-const transport = (overrides: Partial<PlayerTransportProps> = {}): PlayerTransportProps => ({
+const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
   density: "pointer",
-  live: { lagSeconds: 0, mode: "live" },
+  moreOpen: false,
   muted: false,
-  onGoLive: vi.fn(),
-  onLeave: vi.fn(),
-  onSettings: vi.fn(),
+  onChannelDown: vi.fn(),
+  onChannelUp: vi.fn(),
+  onMore: vi.fn(),
   onToggleMute: vi.fn(),
   onTogglePlay: vi.fn(),
-  onVolume: vi.fn(),
   playing: true,
   pointer: true,
-  settingsOpen: false,
   volume: 1,
   ...overrides,
 });
 
+const top = (overrides: Partial<PlayerTopRowProps> = {}): PlayerTopRowProps => ({
+  density: "pointer",
+  onLeave: vi.fn(),
+  pointer: true,
+  ...overrides,
+});
+
+const band = {
+  channelName: "Coast 90s",
+  channelNumber: "7",
+  clockMs: 1,
+  line: "S2 E4 “Opening Night”",
+  next: { name: "A detective film", startMs: 4 },
+  progress: 0.4,
+  startMs: 0,
+  stopMs: 10,
+  title: "An ensemble comedy",
+};
+
 const chrome = (overrides: Partial<PlayerChromeProps> = {}) => (
   <PlayerChrome
-    band={{
-      channelName: "Coast 90s",
-      channelNumber: "7",
-      programmeLine: "A sitcom · S2 E4",
-      timeLabel: "9m in · 13m left",
-    }}
+    band={band}
     density="pointer"
-    formatTime={(ms) => String(ms)}
-    transport={transport()}
+    formatTime={(ms) => `t${ms}`}
+    keys={keys()}
+    live={{ lagSeconds: 0, mode: "live" }}
+    onGoLive={vi.fn()}
+    top={top()}
     visible
     {...overrides}
   />
 );
 
 describe("PlayerChrome", () => {
-  it("carries the lower third and the transport, each control named", () => {
+  it("names the channel once, and carries NOW, the progress clocks and NEXT", () => {
     const host = mount(chrome());
 
-    expect(host.textContent).toContain("CH 7 · Coast 90s");
-    expect(host.textContent).toContain("A sitcom · S2 E4");
-    expect(host.textContent).toContain("9m in · 13m left");
-    for (const name of ["Pause", "Mute", "Settings", "Leave Watch"])
-      expect(button(host, name), name).toBeDefined();
-    // Live: the state reads Live, with no Go live to offer.
+    // The band names the channel once; the block beside it carries only the number.
+    expect(host.textContent?.match(/Coast 90s/g)).toHaveLength(1);
+    for (const text of ["NOW", "An ensemble comedy", "S2 E4 “Opening Night”", "t0", "t10", "NEXT", "t4"])
+      expect(host.textContent, text).toContain(text);
+    expect(host.textContent).toContain("A detective film");
+    // Live reads Live with the clock; there is no Go live to offer.
     expect(host.textContent).toContain("Live");
+    expect(host.textContent).toContain("t1");
     expect(button(host, "Go live")).toBeUndefined();
   });
 
-  it("offers Go live when behind, reading how far", () => {
+  it("draws the keys and the top row, each named", () => {
+    const host = mount(chrome({ top: top({ fullscreen: false, onAudio: vi.fn(), onFullscreen: vi.fn() }) }));
+
+    for (const name of [
+      "Channel up",
+      "Channel down",
+      "Pause",
+      "Mute",
+      "More",
+      "Audio",
+      "Fullscreen",
+      "Leave",
+    ])
+      expect(button(host, name), name).toBeDefined();
+    // No channel to return to yet: Last is not drawn. Subtitles are not drawn until the player has any.
+    expect(host.textContent).not.toContain("Last");
+    expect(button(host, "Subtitles")).toBeUndefined();
+  });
+
+  it("offers Last with the channel's number once there is one to return to", () => {
+    const onPress = vi.fn();
+    const host = mount(chrome({ keys: keys({ last: { number: "3", onPress } }) }));
+    act(() => button(host, "Last channel, 3")?.click());
+    expect(onPress).toHaveBeenCalledOnce();
+  });
+
+  it("flips channels, plays and mutes from the keys", () => {
+    const k = keys();
+    const host = mount(chrome({ keys: k }));
+    act(() => button(host, "Channel up")?.click());
+    act(() => button(host, "Channel down")?.click());
+    act(() => button(host, "Pause")?.click());
+    act(() => button(host, "Mute")?.click());
+    expect(k.onChannelUp).toHaveBeenCalledOnce();
+    expect(k.onChannelDown).toHaveBeenCalledOnce();
+    expect(k.onTogglePlay).toHaveBeenCalledOnce();
+    expect(k.onToggleMute).toHaveBeenCalledOnce();
+  });
+
+  it("leaves out the rocker where the player cannot tune, and Volume on touch", () => {
+    const host = mount(
+      chrome({
+        density: "touch",
+        keys: keys({ density: "touch", onChannelDown: undefined, onChannelUp: undefined, pointer: false }),
+      }),
+    );
+    expect(button(host, "Channel up")).toBeUndefined();
+    expect(button(host, "Mute")).toBeUndefined();
+    expect(button(host, "Pause")).toBeDefined();
+  });
+
+  it("replaces Live with Go live when behind, which goes live", () => {
     const onGoLive = vi.fn();
     const host = mount(
-      chrome({ transport: transport({ live: { lagSeconds: 134, mode: "paused" }, onGoLive }) }),
+      chrome({
+        band: { ...band, behindLabel: "2m 14s behind", liveProgress: 0.9 },
+        live: { lagSeconds: 134, mode: "paused" },
+        onGoLive,
+      }),
     );
 
-    expect(host.textContent).toContain("Paused · 2m 14s behind");
+    expect(host.textContent).not.toContain("Live");
+    expect(host.textContent).toContain("2m 14s behind");
     act(() => button(host, "Go live")?.click());
     expect(onGoLive).toHaveBeenCalledOnce();
   });
 
-  it("steps through the window when the player can seek, with no forward from live", () => {
-    const onSeekBack = vi.fn();
-    const onSeekForward = vi.fn();
-    const onStartOver = vi.fn();
-    const atLive = mount(chrome({ transport: transport({ onSeekBack, onSeekForward, onStartOver }) }));
-    act(() => button(atLive, "Back 10 seconds")?.click());
-    act(() => button(atLive, "Forward 10 seconds")?.click());
-    act(() => button(atLive, "Start over")?.click());
-    expect(onSeekBack).toHaveBeenCalledOnce();
-    expect(onSeekForward).not.toHaveBeenCalled();
-    expect(button(atLive, "Forward 10 seconds")?.getAttribute("aria-disabled")).toBe("true");
-    expect(onStartOver).toHaveBeenCalledOnce();
-
-    const behind = mount(
-      chrome({
-        transport: transport({ live: { lagSeconds: 40, mode: "behind" }, onSeekBack, onSeekForward }),
-      }),
-    );
-    act(() => button(behind, "Forward 10 seconds")?.click());
-    expect(onSeekForward).toHaveBeenCalledOnce();
-    expect(button(behind, "Start over")).toBeUndefined();
+  it("sets the title as the logo's accessible name when there is a logo, and as text when there is none", () => {
+    const logo = { height: 100, src: "data:image/png;base64,AAAA", srcSetWebp: "", width: 600 };
+    const withLogo = mount(chrome({ band: { ...band, logo } }));
+    expect(withLogo.querySelector('[role="img"][aria-label="An ensemble comedy"]')).not.toBeNull();
+    expect(withLogo.textContent).not.toContain("An ensemble comedy");
+    const without = mount(chrome());
+    expect(without.querySelector('[role="img"]')).toBeNull();
+    expect(without.textContent).toContain("An ensemble comedy");
   });
 
-  it("draws only the tools the platform has", () => {
-    const bare = mount(chrome());
-    expect(button(bare, "Channels")).toBeUndefined();
-    expect(button(bare, "Fullscreen")).toBeUndefined();
-    expect(button(bare, "Back 10 seconds")).toBeUndefined();
-
-    const full = mount(
-      chrome({ transport: transport({ fullscreen: false, onChannels: vi.fn(), onFullscreen: vi.fn() }) }),
-    );
-    expect(button(full, "Channels")).toBeDefined();
-    expect(button(full, "Fullscreen")).toBeDefined();
+  it("reads a break as the programme's title with Back in n min, and no badge", () => {
+    const host = mount(chrome({ band: { ...band, breakMinutesLeft: 3, inBreak: true, line: undefined } }));
+    expect(host.textContent).toContain("An ensemble comedy");
+    expect(host.textContent).toContain("Back in 3 min");
+    expect(host.textContent).not.toContain("S2 E4");
+    expect(host.textContent).not.toContain("Ad break");
   });
 
   it("stands the band alone as the station-ID card, with the station's era and place", () => {
     const host = mount(
       chrome({
-        band: { channelName: "Coast 90s", channelNumber: "7", station: "1990s · Portland, ME" },
+        band: {
+          channelName: "Coast 90s",
+          channelNumber: "7",
+          station: "1990s · Portland, ME",
+          title: "A film",
+        },
         ident: true,
         visible: false,
       }),
     );
 
     expect(bandHidden(host)).toBe(false);
-    expect(host.textContent).toContain("CH 7 · Coast 90s · 1990s · Portland, ME");
+    expect(host.textContent).toContain("Coast 90s · 1990s · Portland, ME");
     expect(button(host, "Pause")).toBeUndefined();
 
-    // Shown controls take its place: the plain band and the transport.
+    // Shown controls take its place: the plain band and the keys.
     const shown = mount(
       chrome({ band: { channelName: "Coast 90s", channelNumber: "7", station: "1990s" }, ident: true }),
     );
@@ -184,18 +247,10 @@ describe("PlayerChrome", () => {
     const rgb = (hex: string) =>
       `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
 
-    const era = mount(chrome({ band: { channelName: "Coast 90s", channelNumber: "7", decade: 1990 } }));
+    const era = mount(chrome({ band: { ...band, decade: 1990 } }));
     expect(block(era)).toBe(rgb(semanticColors.decade["1990"]));
     const plain = mount(chrome());
     expect(block(plain)).toBe(rgb(playerChrome.signal));
-  });
-
-  it("offers Info when there is a programme to describe", () => {
-    const onInfo = vi.fn();
-    expect(button(mount(chrome()), "Info")).toBeUndefined();
-    const host = mount(chrome({ transport: transport({ onInfo }) }));
-    act(() => button(host, "Info")?.click());
-    expect(onInfo).toHaveBeenCalledOnce();
   });
 
   it("leaves the picture bare when hidden, out of reach of the pointer and assistive tech", () => {
@@ -203,11 +258,11 @@ describe("PlayerChrome", () => {
     expect(bandHidden(mount(chrome({ visible: false })))).toBe(true);
   });
 
-  it("puts an open sheet over a dimmed picture, standing the controls back", () => {
+  it("keeps the keys with a sheet open, over a dimmed picture", () => {
     const host = mount(
       chrome({
         sheet: (
-          <div aria-label="Settings" role="dialog">
+          <div aria-label="Audio" role="dialog">
             sheet
           </div>
         ),
@@ -215,7 +270,91 @@ describe("PlayerChrome", () => {
     );
 
     expect(host.querySelector('[role="dialog"]')?.textContent).toBe("sheet");
-    expect(bandHidden(host)).toBe(true);
+    expect(bandHidden(host)).toBe(false);
+    expect(button(host, "Pause")).toBeDefined();
+  });
+});
+
+describe("PlayerSheet", () => {
+  it("wears the band's identity: the channel's number and name over its title, with a close", () => {
+    const onClose = vi.fn();
+    const host = mount(
+      <PlayerSheet
+        channel={{ name: "Coast 90s", number: "7" }}
+        density="pointer"
+        onClose={onClose}
+        title="Audio"
+      >
+        body
+      </PlayerSheet>,
+    );
+
+    expect(host.textContent).toContain("CH7");
+    expect(host.textContent).toContain("Coast 90s");
+    expect(host.textContent).toContain("Audio");
+    act(() => button(host, "Close Audio")?.click());
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("PlayerOptions", () => {
+  it("marks the chosen option and reports a choice", () => {
+    const onSelect = vi.fn();
+    const host = mount(
+      <PlayerOptions
+        density="pointer"
+        label="Picture quality"
+        onSelect={onSelect}
+        options={[
+          { detail: "Best for your connection", label: "Auto · 1080p", selected: true, value: "auto" },
+          { label: "720p", selected: false, value: "720" },
+        ]}
+      />,
+    );
+
+    const radios = Array.from(host.querySelectorAll('[role="radio"]'));
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    expect(host.textContent).toContain("Best for your connection");
+    act(() => radios[1]?.click());
+    expect(onSelect).toHaveBeenCalledWith("720");
+  });
+
+  it("is a plain list when the viewer cannot choose", () => {
+    const host = mount(
+      <PlayerOptions
+        density="pointer"
+        label="Audio language"
+        options={[{ label: "English", selected: true, value: "eng" }]}
+      />,
+    );
+    expect(host.querySelector('[role="radio"]')).toBeNull();
+    expect(host.querySelector('[role="listitem"]')?.textContent).toBe("English");
+  });
+});
+
+describe("PlayerMore", () => {
+  it("lists only the rows it has somewhere to go", () => {
+    const onStartOver = vi.fn();
+    const bare = mount(<PlayerMore density="pointer" formatTime={String} />);
+    expect(button(bare, "Start over")).toBeUndefined();
+    expect(button(bare, "Channels")).toBeUndefined();
+
+    const host = mount(
+      <PlayerMore
+        channels={{ onPress: vi.fn() }}
+        density="pointer"
+        formatTime={String}
+        goLive={{ detail: "8:44 PM", onPress: vi.fn() }}
+        info={{ onPress: vi.fn() }}
+        last={{ number: "3", onPress: vi.fn() }}
+        picture={{ detail: "Auto · 1080p", onPress: vi.fn() }}
+        startOver={{ detail: "Opening Night", onPress: onStartOver }}
+      />,
+    );
+    for (const name of ["Start over", "Go live", "Last channel", "Picture", "Channels", "Info"])
+      expect(button(host, name), name).toBeDefined();
+    act(() => button(host, "Start over")?.click());
+    expect(onStartOver).toHaveBeenCalledOnce();
   });
 });
 

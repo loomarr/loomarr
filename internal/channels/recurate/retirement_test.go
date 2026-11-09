@@ -26,9 +26,10 @@ func lineupEntry(n int, title string) schedule.LineupEntry {
 // scheduled (ch.Desired) and the rest retirable.
 func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, airing []provision.Key) {
 	t.Helper()
+	seedOriginJob(t, st, jobID)
 	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
-	ch.IntentRef = jobID
+	ch.IntentRef, ch.FromRequest = jobID, jobID != ""
 	ch.Name = "Full " + id
 	ch.Number = 77
 	ch.Strategy = schedule.Sequential

@@ -82,8 +82,10 @@ describe("playbarFromTimeline", () => {
     expect(band).toMatchObject({
       channelName: "Coast 90s",
       channelNumber: "7",
-      programmeLine: "An ensemble comedy · Opening Night",
-      timeLabel: "9m in · 13m left",
+      line: "S02E04 “Opening Night”",
+      startMs: at(-9),
+      stopMs: at(13),
+      title: "An ensemble comedy",
     });
     expect(band.progress).toBeCloseTo(9 / 22);
   });
@@ -97,26 +99,95 @@ describe("playbarFromTimeline", () => {
       playheadMs: at(-10),
     });
 
-    expect(band.programmeLine).toBe("What aired then");
-    expect(band.timeLabel).toBe("20m in · 2m 14s behind");
+    expect(band.title).toBe("What aired then");
+    expect(band.behindLabel).toBe("2m 14s behind");
+    expect(band.clockMs).toBe(at(-10));
+    // Live is already in the next programme, so its tick rests at this one's end.
+    expect(band.liveProgress).toBe(1);
+    expect(band.next).toEqual({ name: "Programme now", startMs: at(-5) });
   });
 
-  it("names the spot on air in a break, walking the pod by duration", () => {
+  it("carries the title's logo and backdrop to the band, and a break's returning programme's", () => {
+    const image = (hash: string) => ({
+      animated: false,
+      dominantHex: "#333333",
+      hash,
+      height: 100,
+      placeholder: "",
+      role: "logo",
+      src: `/v1/images/${hash}`,
+      srcSetAvif: "",
+      srcSetWebp: "",
+      width: 600,
+    });
+    const art = { backdropImage: image("back"), logoImage: image("logo") };
+    const read = (airings: Airing[], playheadMs: number) =>
+      playbarFromTimeline({ airings, channel, live, nowMs: NOW, playheadMs }).band;
+
+    expect(read([programme("p", -9, 13, art)], NOW)).toMatchObject({
+      backdrop: { hash: "back" },
+      logo: { hash: "logo" },
+    });
+    expect(read([programme("p", -9, 13)], NOW)).not.toHaveProperty("logo");
+    const inBreak = read(
+      [breakAt("b", -2, [spot("station_id", "", 90)]), programme("back", 0, 22, art)],
+      at(-2) + 10_000,
+    );
+    expect(inBreak).toMatchObject({ inBreak: true, logo: { hash: "logo" } });
+  });
+
+  it("marks live on the progress line only while the playhead is behind it", () => {
+    const airings = [programme("p", -20, 20)];
+    const read = (playheadMs: number, state: Parameters<typeof playbarFromTimeline>[0]["live"]) =>
+      playbarFromTimeline({ airings, channel, live: state, nowMs: NOW, playheadMs }).band;
+
+    expect(read(NOW, live).liveProgress).toBeUndefined();
+    expect(read(at(-10), { lagSeconds: 600, mode: "behind" }).liveProgress).toBeCloseTo(0.5);
+  });
+
+  it("reads a break as the programme it leads back to, with the minutes left", () => {
     const airings = [
-      breakAt("b", -1, [
+      breakAt("b", -2, [
         spot("commercial", "Breakfast cereal", 30, "A cereal brand"),
         spot("commercial", "Family car", 30, "A car maker"),
         spot("station_id", "", 10),
       ]),
+      programme("back", 0, 22, {
+        series: "An ensemble comedy",
+        episode: 4,
+        season: 2,
+        title: "Opening Night",
+      }),
+      programme("after", 22, 50, { title: "A film" }),
     ];
-    const read = (seconds: number) =>
-      playbarFromTimeline({ airings, channel, live, nowMs: NOW, playheadMs: at(-1) + seconds * 1000 }).band;
+    const band = playbarFromTimeline({
+      airings,
+      channel,
+      live,
+      nowMs: NOW,
+      playheadMs: at(-2) + 10_000,
+    }).band;
 
-    expect(read(10)).toMatchObject({ inBreak: true, programmeLine: "Commercials · Breakfast cereal" });
-    expect(read(45).programmeLine).toBe("Commercials · Family car");
-    // A spot with no viewer name leaves the line at the break itself.
-    expect(read(65).programmeLine).toBe("Commercials");
-    expect(read(10).timeLabel).toBe("Break · 1 min");
+    expect(band).toMatchObject({
+      breakMinutesLeft: 1,
+      inBreak: true,
+      next: { name: "A film", startMs: at(22) },
+      startMs: at(0),
+      stopMs: at(22),
+      title: "An ensemble comedy",
+    });
+  });
+
+  it("falls back to the break's own name when no programme follows it", () => {
+    const band = playbarFromTimeline({
+      airings: [breakAt("b", -1, [spot("station_id", "", 90)])],
+      channel,
+      live,
+      nowMs: NOW,
+      playheadMs: NOW,
+    }).band;
+    expect(band).toMatchObject({ inBreak: true, title: "Commercials" });
+    expect(band.next).toBeUndefined();
   });
 
   it("lists every spot in a break, a commercial by brand and era and the rest by kind", () => {
@@ -164,7 +235,7 @@ describe("playbarFromTimeline", () => {
       nowMs: NOW,
       playheadMs: NOW,
     });
-    expect(band).toEqual({ channelName: "Coast 90s", channelNumber: "7" });
+    expect(band).toEqual({ channelName: "Coast 90s", channelNumber: "7", clockMs: NOW });
     expect(segments).toEqual([]);
   });
 

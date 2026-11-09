@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/identity"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -137,8 +138,8 @@ func buildFillerSubsystem(
 	artifactRecoveryCancel()
 
 	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
-	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
-	result.taxonomy = taxonomyEditor{store: st, wake: wake, holidaysChanged: holidaysChanged}
+	wake := operator.NewChannelWake(st, channelService, log)
+	result.taxonomy = operator.NewTaxonomyEditor(st, wake, holidaysChanged)
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
@@ -168,7 +169,7 @@ func buildFillerSubsystem(
 	}
 
 	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
-	result.preview = podPreviewAdapter{store: st, pods: pods}
+	result.preview = operator.NewPodPreview(st, pods)
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
 		playoutResolver.SetPods(result.preview)

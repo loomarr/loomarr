@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The PROBE stage (§10 V51b): measure the file, and refuse the ones that are not clips.
@@ -24,7 +25,7 @@ import (
 
 // ProbeClipStore is the slice of the store the probe stage writes through.
 type ProbeClipStore interface {
-	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
+	UpsertClip(ctx context.Context, c clipstore.Clip) error
 	// SetClipComposite marks a clip as a CONTAINER of adverts rather than one (§10 V45).
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 }
@@ -63,10 +64,10 @@ func (s *ProbeStage) Cost() StageCost           { return CostCheap }
 
 // Applies: always. Every clip is measured, including one that already has a duration — the file
 // may have been replaced under a stable path, and re-probing is one cheap exec.
-func (s *ProbeStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) { return true, "" }
+func (s *ProbeStage) Applies(context.Context, clipstore.Clip) (bool, string) { return true, "" }
 
 // Run measures the clip and either updates it or refuses it.
-func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
+func (s *ProbeStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, error) {
 	if c.Path == "" {
 		return StageResult{}, fmt.Errorf("clip %s has no location to probe", c.Hash)
 	}
@@ -140,7 +141,7 @@ func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 // the exact bug §10 V45 describes. At probe time the default-off `IncludeComposites` filter
 // excludes it immediately, so the worst case is a long recording sitting out of rotation until
 // its cuts are reviewed, rather than sixteen minutes of unrelated adverts airing as one break.
-func (s *ProbeStage) looksComposite(c cliplibrary.StoreClip) bool {
+func (s *ProbeStage) looksComposite(c clipstore.Clip) bool {
 	if c.IsComposite {
 		return true // already marked; nothing to re-measure
 	}

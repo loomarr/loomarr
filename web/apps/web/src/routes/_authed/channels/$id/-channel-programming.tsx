@@ -50,10 +50,10 @@ interface ChannelProgrammingProps {
   // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
   // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
   strategy?: string;
-  // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
-  // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
-  // control says so instead of offering a setting the job would skip.
-  intentRef?: string;
+  // Whether a member's request made the channel (`ChannelDTO.fromRequest`). Auto-curate re-runs
+  // that request (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate —
+  // the control says so instead of offering a setting the job would skip.
+  fromRequest?: boolean;
   onRefined: () => void;
 }
 
@@ -83,7 +83,7 @@ const ChannelProgramming = ({
   policy,
   onPolicyChange,
   strategy,
-  intentRef,
+  fromRequest,
   onRefined,
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
@@ -230,7 +230,7 @@ const ChannelProgramming = ({
             keeps both answers in one place instead of on a settings tab that never existed
             (§12). */}
         <div className="border-border/60 border-t pt-4">
-          <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(intentRef)} />
+          <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(fromRequest)} />
         </div>
       </Block>
 

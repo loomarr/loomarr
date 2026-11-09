@@ -1,11 +1,14 @@
 import Activity from "lucide-react-native/icons/activity";
 import Archive from "lucide-react-native/icons/archive";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
+import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import AudioLines from "lucide-react-native/icons/audio-lines";
 import Bell from "lucide-react-native/icons/bell";
 import BookOpen from "lucide-react-native/icons/book-open";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import Captions from "lucide-react-native/icons/captions";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -91,7 +94,11 @@ const icons = {
   alert: TriangleAlert,
   // A stored bundle of files (a filler source kept as an archive).
   archive: Archive,
+  // The player's Audio key (§9.3).
+  audio: AudioLines,
   back: ChevronLeft,
+  // The player's Subtitles key (§9.3).
+  captions: Captions,
   channelDown: ChevronDown,
   channelUp: ChevronUp,
   channels: Tv,
@@ -209,6 +216,8 @@ const icons = {
   startOver: StepBack,
   stop: Square,
   success: Check,
+  // The player's Last channel key: back and forth between two channels (§9.3).
+  swap: ArrowLeftRight,
   // Asking the model for something: the AI action, never a plain primary (§2.1).
   suggest: Sparkles,
   time: Clock3,

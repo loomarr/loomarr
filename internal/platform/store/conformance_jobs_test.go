@@ -33,7 +33,7 @@ func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 func approvalChannel(id, intentRef string, number int) Channel {
 	ch := Channel{}
 	ch.ID = id
-	ch.IntentRef = intentRef
+	ch.IntentRef, ch.FromRequest = intentRef, true
 	ch.Name = "Approved " + id
 	ch.Number = number
 	ch.Strategy = schedule.Sequential
@@ -1003,6 +1003,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
+	mustOriginJobs(t, s, "job-approval")
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1197,6 +1198,7 @@ func testProposalApprovalSameIntentConflict(t *testing.T, newStore NewStoreFunc)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	const jobID = "job-shared-intent"
+	mustOriginJobs(t, s, jobID)
 
 	seed := func(id string, createdAt time.Time) Proposal {
 		p := Proposal{ID: id, JobID: jobID, Status: "submitted",
@@ -1358,6 +1360,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		s := newStore(t)
 		ctx := context.Background()
 		now := time.Unix(1_800_000_000, 0).UTC()
+		mustOriginJobs(t, s, "job")
 		seed := Proposal{ID: "race-approve", JobID: "job", Status: "submitted", CreatedAt: now, UpdatedAt: now}
 		if err := s.CreateProposal(ctx, seed); err != nil {
 			t.Fatal(err)
@@ -1414,6 +1417,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		s := newStore(t)
 		ctx := context.Background()
 		now := time.Unix(1_800_000_000, 0).UTC()
+		mustOriginJobs(t, s, "job")
 		seed := Proposal{ID: "race-decision", JobID: "job", Status: "submitted", CreatedAt: now, UpdatedAt: now}
 		if err := s.CreateProposal(ctx, seed); err != nil {
 			t.Fatal(err)
@@ -1545,6 +1549,7 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 		ch.Status = schedule.StatusLive
 		return ch
 	}
+	mustOriginJobs(t, s, "job-a", "job-b", "job-c")
 	for _, ch := range []Channel{mk("c1", "job-a", 1), mk("c2", "job-b", 2), mk("c3", "", 3)} {
 		if _, err := s.SaveChannel(ctx, ch); err != nil {
 			t.Fatal(err)
