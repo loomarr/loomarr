@@ -66,6 +66,15 @@ describe("ChannelHero (#2753)", () => {
     expect(document.querySelector("img")).toBeNull();
   });
 
+  it("takes the backdrop's 16:9 shape up to 48rem, with no height cap to crop it", async () => {
+    show([airing({ backdropImage: image("/img/now-backdrop", "backdrop") })]);
+    await waitFor(() => expect(document.querySelector("img")).not.toBeNull());
+    const hero = document.querySelector("[data-channel-hero]") as HTMLElement;
+    expect(hero).toHaveStyle({ aspectRatio: `${16 / 9}`, maxWidth: "768px", width: "100%" });
+    expect(hero.style.maxHeight).toBe("");
+    expect(getComputedStyle(hero).maxHeight).not.toMatch(/px$/);
+  });
+
   it("is generated channel art while the schedule is empty", async () => {
     show([]);
     expect(await screen.findByText("FN")).toBeInTheDocument();
