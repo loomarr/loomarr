@@ -45,7 +45,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// handlers aren't invoked; only their schemas are read. Without it the exported
 	// spec would omit /v1/auth/*, /v1/setup/bootstrap, /v1/users/{import,sync} and
 	// orval couldn't type them (the FE↔BE seam that 13.0 closes).
-	srv := &Server{log: log, schemaOnly: true}
+	srv := &Server{log: log}
 	srv.registerMiddleware(humaAPI)
 	catalogapi.New(catalogapi.Deps{}).Register(humaAPI)
 	people.New(people.Deps{Log: log}, true).Register(humaAPI)

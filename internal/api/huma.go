@@ -27,7 +27,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
-	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
@@ -42,87 +41,15 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store   records.Store
-	auth    httpcore.Authorizer
-	log     *slog.Logger
-	metrics *metrics.Recorder
-	// The /v1/auth/*, user, invitation, password and SSO routes are served by people.Handlers,
-	// built from the same Options in Router.
-	//
-	// devices is the pairing handshake's manager (§11, Shield P1), also read by the request
-	// middleware. Nil until configured.
-	devices *auth.DeviceManager
-	origin  httpcore.Origin // COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11)
-	// channels/livetv wire /v1/channels* and /v1/setup/* (§7/§9); nil until
-	// Phase 10 is configured.
+	auth httpcore.Authorizer
+	log  *slog.Logger
+	// origin is COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11).
+	origin httpcore.Origin
+	// channels is the channel engine; the root reads it only for holidayCalendar.
 	channels guideapi.ChannelService
-	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
-	// Phase 11 is configured.
-	suggest SuggestService
-	// The jobs, database, encryption, backups, restart and help routes are served by
-	// system.Handlers, built from the same Options in Router. A generation's start time
-	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop
-	// (§9.2) proved a package-level start time survives the rebuild and lies about uptime.
-	//
-	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501. It is also read here.
-	systemLLM system.SystemLLMService
-	// now is an optional request-clock seam for projections whose membership is time-bounded.
-	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
-	now func() time.Time
 	// viewing is who is watching what, from the players' own playlist polls (#1662). Always set
 	// by Router; nil only on the schema-only exporter.
 	viewing *viewing.Tracker
-	// activity records Dashboard feed lines (§12, V32). Nil-safe on the Recorder itself, so
-	// a handler built without one (unit tests) records nothing rather than needing a guard
-	// at every write point.
-	activity *activity.Recorder
-	// liveSettings answers a setting's live resolved value (config-design §3 hot-apply).
-	// The composition root always-constructs the feature services and passes this so
-	// a route gates on the CURRENT config (a saved connection enables it with no
-	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
-	// check alone gates, preserving the old contract.
-	liveSettings settings.Reader
-	// playoutCapability supplies the retained encoder probe result without starting a probe.
-	// Unlike live session stats, it remains available while playout is idle.
-	playoutCapability func() playout.Capacity
-	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
-	// than the value so a REGENERATED token takes effect without a restart — rotation is
-	// an operator action the UI offers, and a cached value would keep authorizing the old
-	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
-	playoutSecret func() string
-	// playoutSecretCurrent is the durable Postgres-replica read. Production prefers it at
-	// request security boundaries so a rotation handled by another process invalidates the
-	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
-	playoutSecretCurrent func(context.Context) (string, error)
-	// playoutResolver describes channels for the formats, play-url and filler handlers. Nil ⇒ those
-	// report playout as not configured.
-	playoutResolver playoutapi.PlayoutResolver
-	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
-	playout playoutapi.Playout
-	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
-	playoutFont func() string
-	// playoutTonemap reports whether this ffmpeg build can tone-map HDR→SDR; nil ⇒ no, so an HDR
-	// source transcodes untone-mapped rather than emitting a filter the build would reject at
-	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
-	playoutTonemap    func() bool
-	playoutGPUTonemap func() encode.GPUFilters
-	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
-	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
-	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
-	// or none), and the ladder skips straight from hardware to the software fallback.
-	reclaimVRAM func(ctx context.Context)
-	// residentLLMVRAM reports the VRAM the LLM ACTUALLY holds right now + its model tag, from a live
-	// Ollama /api/ps probe (§9.1 V47 doctor). The doctor uses it for the true contention picture,
-	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
-	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
-	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
-	// emit every operation's SCHEMA into the spec even when its live service is nil,
-	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
-	// and orval can type the whole surface. Handlers are never invoked during export,
-	// so a nil service behind a registered op is harmless. Runtime nil-guarding is
-	// unchanged — at runtime schemaOnly is false and an absent service still 404s.
-	schemaOnly bool
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -299,23 +226,6 @@ type Options struct {
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
 	// Nil ⇒ the strip renders with no images (TMDB optional, and it never fails the timeline).
 	TimelineThumbs guideapi.TimelineThumbResolver
-	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
-	// (filesystem + ffmpeg build), so it is injected like PlayoutSecret rather than resolved
-	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
-	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
-	PlayoutFont func() string
-	// PlayoutTonemap reports whether this ffmpeg build carries the HDR→SDR filters (zscale +
-	// tonemap). A property of the BUILD, so it is injected here rather than probed in the handler,
-	// which keeps ProgramArgs a pure function. Nil ⇒ no CPU tone-mapping. See playout.TonemapperFor.
-	PlayoutTonemap func() bool
-	// PlayoutGPUTonemap reports which GPU tone-mappers the build carries (playout.GPUFiltersFor).
-	// Nil ⇒ none: HDR then tone-maps on the CPU after the GPU downscale.
-	PlayoutGPUTonemap func() encode.GPUFilters
-	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
-	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
-	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder
-	// calls it only after a hardware encode has already produced nothing.
-	ReclaimVRAM func(ctx context.Context)
 	// ResidentLLMVRAM reports the VRAM the LLM currently holds + its model tag, from a live Ollama
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.

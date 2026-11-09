@@ -177,11 +177,10 @@ func TestAddFillerSource_RefusesANearMissYouTubeHost(t *testing.T) {
 	}
 }
 
-// Folders and libraries are ADDABLE (§10 V38c). ⚠ This replaces
-// TestAddFillerSource_RefusesTheConfigBackedKinds, which pinned the opposite rule: both kinds
-// were singletons materialised from configuration and 409'd here. V38c allows many of each, and
-// the maintainer's 2026-08-02 decision returned `library` to being scanned for real — so the
-// dialog offering three kinds must not be refused by two of them.
+// Folders and libraries are ADDABLE (§10 V38c). ⚠ Refusing them as config-backed singletons
+// would be the opposite rule: V38c allows many of each, and the maintainer's 2026-08-02 decision
+// returned `library` to being scanned for real — so the dialog offering three kinds must not be
+// refused by two of them.
 func TestAddFillerSource_AcceptsFoldersAndLibraries(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 
