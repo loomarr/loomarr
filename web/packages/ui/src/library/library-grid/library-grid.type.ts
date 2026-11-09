@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 
 // The Library's poster grid as a scrolling list of rows, one implementation per platform:
-// react-virtual on web (library-grid.web.tsx), FlatList on phone and TV (library-grid.tsx).
+// react-virtual on web (library-grid.web.tsx), every row on phone and TV (library-grid.tsx).
 interface LibraryGridProps<Row> {
   /** The rows, each a full row of titles; the shelf splits the titles by its column count. */
   rows: Row[];

@@ -486,7 +486,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the screen are mounted (`@tanstack/react-virtual`, `LibraryGrid` in `@loomarr/ui`). Each row is
   measured once drawn, the poster's 2:3 box plus its caption, and the next page of 60 is asked
   for once the last rows are mounted. The row holding keyboard focus stays mounted while it
-  scrolls away. Phone and TV use a FlatList of the same rows. A title's page
+  scrolls away. No phone or TV screen shows the Library yet; there the grid draws every row. A
+  title's page
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's

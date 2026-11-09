@@ -3,9 +3,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { LibraryGridProps } from "./library-grid.type";
 
-// A household's library is thousands of titles: mounting a tile for each one loaded made the
-// Library slower with every page. Only the rows near the screen are mounted, and each row is
-// measured once drawn, so a row is as tall as its posters and captions really are.
+// A household's library is thousands of titles, and a tile per loaded title slows the page with
+// every page loaded: only the rows near the screen are mounted, and each row is measured once
+// drawn, so a row is as tall as its posters and captions really are.
 const OVERSCAN = 3;
 // The next page is asked for once a row this close to the end is mounted.
 const END_ROWS = 2;
@@ -20,8 +20,10 @@ type DomNode = {
   getBoundingClientRect(): { top: number };
   closest(selector: string): { getAttribute(name: string): string | null } | null;
 };
-const { getComputedStyle } = globalThis as unknown as {
+type Observer = { observe(target: unknown): void; disconnect(): void };
+const { getComputedStyle, ResizeObserver: Resize } = globalThis as unknown as {
   getComputedStyle(node: DomNode): { overflowY: string };
+  ResizeObserver?: new (callback: () => void) => Observer;
 };
 
 // The element the grid scrolls in: the nearest ancestor that scrolls (the app shell's main).
@@ -49,17 +51,33 @@ const LibraryGrid = <Row,>({
   const list = useRef<HTMLDivElement>(null);
   const [scroller, setScroller] = useState<DomNode | null>(null);
   const [margin, setMargin] = useState(0);
-  // The row holding keyboard focus stays mounted while it scrolls away, so focus isn't lost.
-  const [focusedRow, setFocusedRow] = useState<number>();
+  // The row holding keyboard focus, by key, stays mounted while it scrolls away, so focus isn't
+  // lost; a key still names it when new titles or a new column count reshape the rows.
+  const [focusedKey, setFocusedKey] = useState<string>();
+  // Bumped when what sits above the grid changes height on its own (Needs you opening or an
+  // answered row leaving), so the offset below is read again.
+  const [, setResized] = useState(0);
 
-  // Read after every render: what sits above the grid can change height (Needs you loading).
+  // Read after every render: the scroller, and how far down it the grid starts.
   useLayoutEffect(() => {
     const node = list.current as DomNode | null;
     const found = scrollerOf(node);
     if (found !== scroller) setScroller(found);
-    const offset = node && found ? offsetIn(node, found) : 0;
+    const offset = node && found ? Math.round(offsetIn(node, found)) : 0;
     if (offset !== margin) setMargin(offset);
   });
+
+  // The grid's parent holds what sits above it: any change in its height is re-read.
+  useEffect(() => {
+    const parent = (list.current as DomNode | null)?.parentElement;
+    if (!parent || !Resize) return;
+    const observer = new Resize(() => setResized((n) => n + 1));
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
+
+  const focusedRow =
+    focusedKey === undefined ? -1 : rows.findIndex((row, index) => rowKey(row, index) === focusedKey);
 
   const virtual = useVirtualizer({
     count: rows.length,
@@ -77,7 +95,7 @@ const LibraryGrid = <Row,>({
     overscan: OVERSCAN,
     rangeExtractor: (range) => {
       const indexes = defaultRangeExtractor(range);
-      return focusedRow === undefined || indexes.includes(focusedRow) || focusedRow >= rows.length
+      return focusedRow < 0 || indexes.includes(focusedRow)
         ? indexes
         : [...indexes, focusedRow].sort((a, b) => a - b);
     },
@@ -94,12 +112,10 @@ const LibraryGrid = <Row,>({
     // biome-ignore lint/a11y/useSemanticElements: a <ul> may hold only <li>; the measured row boxes between it and the titles (role="none") are divs.
     <div
       aria-label={label}
-      onBlur={() => setFocusedRow(undefined)}
+      onBlur={() => setFocusedKey(undefined)}
       onFocus={(event) => {
-        const index = (event.target as unknown as DomNode)
-          .closest("[data-index]")
-          ?.getAttribute("data-index");
-        setFocusedRow(index == null ? undefined : Number(index));
+        const key = (event.target as unknown as DomNode).closest("[data-key]")?.getAttribute("data-key");
+        setFocusedKey(key ?? undefined);
       }}
       ref={list}
       role="list"
@@ -110,6 +126,7 @@ const LibraryGrid = <Row,>({
         return row === undefined ? null : (
           <div
             data-index={item.index}
+            data-key={String(item.key)}
             key={item.key}
             ref={virtual.measureElement}
             role="none"
