@@ -59,7 +59,6 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)
 	srv.registerLibrary(humaAPI)
-	srv.registerFillerSources(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)

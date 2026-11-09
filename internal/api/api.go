@@ -63,9 +63,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods, taxonomy: opts.Taxonomy,
-		fillerLayout:     opts.FillerLayout,
-		sourceProviders:  opts.SourceProviders,
+		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
@@ -151,7 +149,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)
 	srv.registerLibrary(humaAPI)
-	srv.registerFillerSources(humaAPI)
 	fillerDeps := fillerapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings, Filler: opts.Filler,
 		FillerLayout: opts.FillerLayout, FillerResearch: opts.FillerResearch, FillerDefects: opts.FillerDefects,
@@ -160,6 +157,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	if opts.Images != nil {
 		fillerDeps.ImageRecords = srv.imageDTOsByHash
+	}
+	if opts.Settings != nil {
+		fillerDeps.PatchSettings = func(ctx context.Context, edits map[string]string, updatedBy string) []string {
+			results := opts.Settings.Patch(ctx, edits, updatedBy)
+			statuses := make([]string, len(results))
+			for i := range results {
+				statuses[i] = results[i].Status
+			}
+			return statuses
+		}
 	}
 	fillerapi.New(fillerDeps).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)

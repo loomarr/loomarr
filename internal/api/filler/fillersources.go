@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
@@ -234,7 +233,7 @@ const providerIDPrefix = "provider:"
 // isProviderID reports whether an id addresses a derived group node rather than a real source.
 func isProviderID(id string) bool { return strings.HasPrefix(id, providerIDPrefix) }
 
-func (s *Server) fillerFetchEvery() time.Duration {
+func (s *Handlers) fillerFetchEvery() time.Duration {
 	const fallback = 6 * time.Hour
 	if s.liveSettings == nil {
 		return fallback
@@ -246,7 +245,7 @@ func (s *Server) fillerFetchEvery() time.Duration {
 	return every
 }
 
-func (s *Server) fillerFetchMaxPerCheck() int {
+func (s *Handlers) fillerFetchMaxPerCheck() int {
 	if s.liveSettings == nil {
 		return 10
 	}
@@ -293,7 +292,7 @@ func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int)
 	return strings.ToUpper(policy[:1]) + policy[1:] + "."
 }
 
-func (s *Server) sourceAutomaticDownloads(src records.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
+func (s *Handlers) sourceAutomaticDownloads(src records.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
 	if !s.sourceProviders.Fetched(source.ID(src.Kind)) {
 		return nil
 	}
@@ -328,7 +327,7 @@ type providerGroup struct {
 // directories with no service in common, so a "Folders" container would be a row that dims and
 // changes nothing — §10's own forbidden shape. It also leaves the config-backed projection in
 // `listFillerSources` untouched.
-func (s *Server) providerGroups() []providerGroup {
+func (s *Handlers) providerGroups() []providerGroup {
 	var groups []providerGroup
 	for _, p := range s.sourceProviders.All() {
 		d := p.Describe()
@@ -420,7 +419,7 @@ type fillerProvidersOutput struct {
 	}
 }
 
-func (s *Server) listFillerProviders(context.Context, *struct{}) (*fillerProvidersOutput, error) {
+func (s *Handlers) listFillerProviders(context.Context, *struct{}) (*fillerProvidersOutput, error) {
 	out := &fillerProvidersOutput{}
 	out.Body.Providers = []FillerProviderDescriptionDTO{}
 	for _, p := range s.sourceProviders.All() {
@@ -487,7 +486,7 @@ type queueFillerSourceItemOutput struct {
 
 // registerFillerSources mounts the sources read-model. Admin-only: it names filesystem paths
 // and library targets, which is infrastructure detail a member has no business reading.
-func (s *Server) registerFillerSources(api huma.API) {
+func (s *Handlers) registerFillerSources(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-sources", Method: http.MethodGet, Path: "/v1/filler/sources",
 		Summary: "Where the clip catalog comes from",
@@ -581,7 +580,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 	}, httpcore.RoleAdmin), s.deleteFillerSource)
 }
 
-func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSuggestionsInput) (*fillerSourceSuggestionsOutput, error) {
+func (s *Handlers) suggestFillerSources(ctx context.Context, in *fillerSourceSuggestionsInput) (*fillerSourceSuggestionsOutput, error) {
 	if s.filler == nil || s.store == nil {
 		return nil, huma.Error501NotImplemented("filler source discovery is not available on this instance")
 	}
@@ -631,7 +630,7 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	return out, nil
 }
 
-func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourceInput) (*resolveFillerSourceOutput, error) {
+func (s *Handlers) resolveFillerSource(ctx context.Context, in *resolveFillerSourceInput) (*resolveFillerSourceOutput, error) {
 	if s.filler == nil || s.store == nil {
 		return nil, huma.Error501NotImplemented("filler source discovery is not available on this instance")
 	}
@@ -657,7 +656,7 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 
 // providerDescription is the registered provider's description; the zero value for a kind nothing
 // is registered under.
-func (s *Server) providerDescription(kind string) source.Description {
+func (s *Handlers) providerDescription(kind string) source.Description {
 	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok {
 		return p.Describe()
 	}
@@ -666,7 +665,7 @@ func (s *Server) providerDescription(kind string) source.Description {
 
 // discoverableLabels names the providers an operator can search or verify a source with, for
 // "Choose …" refusals.
-func (s *Server) discoverableLabels() string {
+func (s *Handlers) discoverableLabels() string {
 	var labels []string
 	for _, p := range s.sourceProviders.All() {
 		if _, ok := p.(source.Finder); ok {
@@ -676,7 +675,7 @@ func (s *Server) discoverableLabels() string {
 	return strings.Join(labels, " or ")
 }
 
-func (s *Server) requireFillerProviderEnabled(ctx context.Context, kind string) error {
+func (s *Handlers) requireFillerProviderEnabled(ctx context.Context, kind string) error {
 	providers, err := s.store.ListFillerProviders(ctx)
 	if err != nil {
 		return huma.Error500InternalServerError("read filler provider policy", err)
@@ -693,7 +692,7 @@ func (s *Server) requireFillerProviderEnabled(ctx context.Context, kind string) 
 	return httpcore.Unprocessable("Unknown filler source service", "Choose "+s.discoverableLabels()+".")
 }
 
-func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourceItemInput) (*queueFillerSourceItemOutput, error) {
+func (s *Handlers) queueFillerSourceItem(ctx context.Context, in *queueFillerSourceItemInput) (*queueFillerSourceItemOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler before adding clips from a source.")
 	}
@@ -727,7 +726,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
-	if errors.Is(err, fillerapi.ErrIngestUnavailable) {
+	if errors.Is(err, ErrIngestUnavailable) {
 		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
@@ -739,7 +738,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	return out, nil
 }
 
-func (s *Server) registeredFillerSourceTargets(ctx context.Context) (map[string]bool, error) {
+func (s *Handlers) registeredFillerSourceTargets(ctx context.Context) (map[string]bool, error) {
 	sources, err := s.store.ListFillerSources(ctx)
 	if err != nil {
 		return nil, err
@@ -751,7 +750,7 @@ func (s *Server) registeredFillerSourceTargets(ctx context.Context) (map[string]
 	return registered, nil
 }
 
-func (s *Server) sourceSuggestionDTO(source source.Suggestion, registered map[string]bool) FillerSourceSuggestionDTO {
+func (s *Handlers) sourceSuggestionDTO(source source.Suggestion, registered map[string]bool) FillerSourceSuggestionDTO {
 	provider := string(source.Provider)
 	previewItems := make([]FillerSourcePreviewItemDTO, 0, len(source.PreviewItems))
 	for _, item := range source.PreviewItems {
@@ -814,7 +813,7 @@ type addFillerSourceInput struct {
 // configuration (migration 00029) and refused here; V38c allows many of each, and the maintainer's
 // 2026-08-02 decision returned `library` to being scanned for real (§10). The singleton index is
 // gone (migration 00032), so the guard that used to 409 them is gone with it.
-func (s *Server) normalizeSourceURI(kind, raw string) string {
+func (s *Handlers) normalizeSourceURI(kind, raw string) string {
 	addresser, ok := s.sourceProviders.Addresser(source.ID(kind))
 	if !ok {
 		return ""
@@ -827,7 +826,7 @@ type addFillerSourceOutput struct {
 }
 
 // addFillerSource registers a remote collection. Downloading is a separate, gated act.
-func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) (*addFillerSourceOutput, error) {
+func (s *Handlers) addFillerSource(ctx context.Context, in *addFillerSourceInput) (*addFillerSourceOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -961,7 +960,7 @@ type setFillerProviderEnabledOutput struct {
 	}
 }
 
-func (s *Server) setFillerProviderEnabled(ctx context.Context, in *setFillerProviderEnabledInput) (*setFillerProviderEnabledOutput, error) {
+func (s *Handlers) setFillerProviderEnabled(ctx context.Context, in *setFillerProviderEnabledInput) (*setFillerProviderEnabledOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -982,7 +981,7 @@ func (s *Server) setFillerProviderEnabled(ctx context.Context, in *setFillerProv
 // here rather than in the client: `folder` is derived from configuration so its switch is a
 // SETTING, while a collection is a row so its switch is a COLUMN. A UI that had to know which
 // is which would encode a persistence decision in a button handler.
-func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSourceEnabledInput) (*setFillerSourceEnabledOutput, error) {
+func (s *Handlers) setFillerSourceEnabled(ctx context.Context, in *setFillerSourceEnabledInput) (*setFillerSourceEnabledOutput, error) {
 	// ⚠ A derived GROUP node carries no state, so there is nothing here to write (§10 V51c). One
 	// prefix test rather than a case per provider: the ids are namespaced precisely so a single
 	// guard covers every group that exists now and every one added later.
@@ -1031,22 +1030,22 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 
 	switch in.ID {
 	case string(source.FolderID):
-		if s.settings == nil {
+		if s.patchSettings == nil {
 			return nil, huma.Error501NotImplemented("settings are not available on this instance")
 		}
 		// Through Patch rather than a bespoke setter: it validates, hot-applies and records
 		// WHO changed it, so flipping this switch is audited exactly like editing the same key
 		// on the Settings page. A private write path would be the one setting with no history.
-		results := s.settings.Patch(ctx,
+		statuses := s.patchSettings(ctx,
 			map[string]string{settings.FillerSourceFolderEnabled.Key(): strconv.FormatBool(in.Body.Enabled)},
 			httpcore.AuditActor(ctx))
-		for _, r := range results {
-			if r.Status == "pinned" {
+		for _, status := range statuses {
+			if status == "pinned" {
 				return nil, httpcore.Conflict("That switch is set by the environment",
 					"FILLER_SOURCE_FOLDER_ENABLED is pinned in this deployment's configuration, so it can't be changed here.")
 			}
-			if r.Status != "saved" {
-				return nil, huma.Error500InternalServerError("save the drop-folder switch: "+r.Status, nil)
+			if status != "saved" {
+				return nil, huma.Error500InternalServerError("save the drop-folder switch: "+status, nil)
 			}
 		}
 		if in.Body.Geography != nil {
@@ -1109,7 +1108,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 
 // setSourceGeography writes a validated coverage and names an unknown source the way every
 // source route does.
-func (s *Server) setSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
+func (s *Handlers) setSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
 	if err := s.store.SetFillerSourceGeography(ctx, id, geography); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
@@ -1124,7 +1123,7 @@ type deleteFillerSourceInput struct {
 }
 
 // deleteFillerSource forgets a registered remote. Its clips stay.
-func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceInput) (*struct{}, error) {
+func (s *Handlers) deleteFillerSource(ctx context.Context, in *deleteFillerSourceInput) (*struct{}, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -1157,7 +1156,7 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 	return nil, nil
 }
 
-func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSourcesOutput, error) {
+func (s *Handlers) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSourcesOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -1224,7 +1223,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// own children in one pre-ordered pass.
 	var registered []FillerSourceDTO
 	byProvider := map[string][]FillerSourceDTO{}
-	home := fillerapi.HomeGeography(s.liveSettings).Normalize()
+	home := HomeGeography(s.liveSettings).Normalize()
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
@@ -1313,7 +1312,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			EffectiveEnabled: folderEnabled,
 			ProviderEnabled:  true,
 			Switchable:       true,
-			Target:           fillerapi.OrPlaceholder(dir, "not configured"),
+			Target:           OrPlaceholder(dir, "not configured"),
 			Detail:           "watched directly — new files appear on the next pass",
 			// filler-dir is what DirSource writes; the older tunarr-local value is counted
 			// here too because those clips also live in the folder — the provenance string
@@ -1371,7 +1370,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	return out, nil
 }
 
-func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home pod.Geography) {
+func (s *Handlers) projectSourceReadiness(row *FillerSourceDTO, home pod.Geography) {
 	fetched := s.sourceProviders.Fetched(source.ID(row.Kind))
 	row.Actions = []FillerSourceAction{}
 	if row.Group {
@@ -1455,7 +1454,7 @@ func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home pod.Geography
 }
 
 // providerFor maps a source kind to its group id, and reports whether that kind rolls up at all.
-func (s *Server) providerFor(kind string) (string, bool) {
+func (s *Handlers) providerFor(kind string) (string, bool) {
 	for _, g := range s.providerGroups() {
 		if g.kind == kind {
 			return g.id, true
@@ -1515,20 +1514,20 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 // across every readiness and policy state; the projected status and source workspace own whether
 // automatic downloads can currently run.
 // sourceSearchable reports whether a source of this kind can be searched in place.
-func (s *Server) sourceSearchable(kind string) bool {
+func (s *Handlers) sourceSearchable(kind string) bool {
 	_, ok := s.sourceProviders.Searcher(source.ID(kind))
 	return ok && s.filler != nil
 }
 
 // sourcePageURL is the source's page at its provider, or "" when the provider has none.
-func (s *Server) sourcePageURL(kind, uri string) string {
+func (s *Handlers) sourcePageURL(kind, uri string) string {
 	if linker, ok := s.sourceProviders.Linker(source.ID(kind)); ok {
 		return linker.SourceURL(uri)
 	}
 	return ""
 }
 
-func (s *Server) sourceDetail(kind, uri string) string {
+func (s *Handlers) sourceDetail(kind, uri string) string {
 	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok && p.Describe().SourceDetail != "" {
 		return p.Describe().SourceDetail
 	}
@@ -1555,7 +1554,7 @@ type fetchFillerSourceInput struct {
 	ID string `query:"id" minLength:"1" doc:"Registered source id to check"`
 }
 
-func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInput) (*fetchFillerSourceOutput, error) {
+func (s *Handlers) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInput) (*fetchFillerSourceOutput, error) {
 	if s.filler == nil {
 		return nil, huma.Error501NotImplemented("filler sync is not available on this instance")
 	}
@@ -1564,7 +1563,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {
-		if errors.Is(err, fillerapi.ErrIngestUnavailable) {
+		if errors.Is(err, ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}
@@ -1572,7 +1571,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 			return nil, httpcore.Conflict("Already looking for clips", "This source is already being checked.")
 		}
 		if errors.Is(err, cliplibrary.ErrSourceDisabled) {
-			return nil, fillerapi.SourceDisabledError()
+			return nil, SourceDisabledError()
 		}
 		if errors.Is(err, acquisition.ErrFetchSourceNotFound) {
 			return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
@@ -1583,7 +1582,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	// Same reason as the sync route: a source the operator switched off is an answer, not a
 	// gateway failure. This is the "Fetch now" on the very row carrying the switch.
 	if errors.Is(err, cliplibrary.ErrSourceDisabled) {
-		return nil, fillerapi.SourceDisabledError()
+		return nil, SourceDisabledError()
 	}
 	if err != nil {
 		return nil, huma.Error502BadGateway("sync filler catalog", err)

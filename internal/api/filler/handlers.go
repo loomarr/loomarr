@@ -98,6 +98,9 @@ type Deps struct {
 	IntakeLanguages func(context.Context) (string, error)
 	// SourceProviders names every provider a filler source can use.
 	SourceProviders *source.Registry
+	// PatchSettings saves settings through the audited Settings path and returns each edit's
+	// status ("saved", "pinned", ...); nil answers 501 where a route needs it.
+	PatchSettings func(ctx context.Context, edits map[string]string, updatedBy string) []string
 	// PlaysCounted is whether this install can observe a clip airing (internal playout).
 	PlaysCounted bool
 	// Now is the request clock; nil is time.Now.
@@ -119,6 +122,7 @@ type Handlers struct {
 	imageRecords    func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	intakeLanguages func(context.Context) (string, error)
 	sourceProviders *source.Registry
+	patchSettings   func(ctx context.Context, edits map[string]string, updatedBy string) []string
 	playsCountedOn  bool
 	now             func() time.Time
 
@@ -133,13 +137,14 @@ func New(d Deps) *Handlers {
 		log: d.Log, store: d.Store, liveSettings: d.LiveSettings, settings: d.Settings, filler: d.Filler,
 		fillerLayout: d.FillerLayout, fillerResearch: d.FillerResearch, fillerDefects: d.FillerDefects,
 		channels: d.Channels, pods: d.Pods, imageRecords: d.ImageRecords, intakeLanguages: d.IntakeLanguages,
-		sourceProviders: d.SourceProviders, playsCountedOn: d.PlaysCounted, now: d.Now,
+		sourceProviders: d.SourceProviders, patchSettings: d.PatchSettings, playsCountedOn: d.PlaysCounted, now: d.Now,
 	}
 }
 
 // Register mounts every route this package serves.
 func (s *Handlers) Register(api huma.API) {
 	s.registerFiller(api)
+	s.registerFillerSources(api)
 	s.registerFillerIncoming(api)
 	s.registerFillerBulk(api)
 	s.registerFillerPulls(api)
