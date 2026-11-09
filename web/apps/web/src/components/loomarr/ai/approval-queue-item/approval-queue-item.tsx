@@ -2,10 +2,11 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Action, Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Surface, Text } from "@loomarr/design-system";
 import { ChevronDown, ShieldAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
@@ -121,7 +122,11 @@ const ApprovalQueueItem = ({
   const denied = status === "denied";
   const [open, setOpen] = useState(false);
   const [denying, setDenying] = useState(false);
-  const [reason, setReason] = useState("");
+  // The reason is optional: blank denies without one.
+  const form = useAppForm({
+    defaultValues: { reason: "" },
+    onSubmit: ({ value }) => onDeny?.(value.reason.trim() || undefined),
+  });
   const reasonId = useId();
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
   const canRaise = raiseAudienceTo !== undefined && onEdit !== undefined;
@@ -176,37 +181,47 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <div className="border-border flex flex-col gap-2 border-t pt-2">
-          <Field
-            autoFocus
-            disabled={busy}
-            id={reasonId}
-            label="Why not? Optional: the requester sees this."
-            onChangeText={setReason}
-            placeholder="e.g. over the acquisition cap this week, ask again Monday"
-            value={reason}
-          />
+        <form
+          className="border-border flex flex-col gap-2 border-t pt-2"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <form.AppField name="reason">
+            {(field) => (
+              <field.TextField
+                autoFocus
+                className="gap-1.5"
+                disabled={busy}
+                id={reasonId}
+                label="Why not? Optional: the requester sees this."
+                placeholder="e.g. over the acquisition cap this week, ask again Monday"
+              />
+            )}
+          </form.AppField>
           <div className="flex justify-end gap-2">
             <Action
               disabled={busy}
               onPress={() => {
                 setDenying(false);
-                setReason("");
+                form.reset();
               }}
               variant="ghost"
             >
               Cancel
             </Action>
             <Action
-              disabled={busy}
+              // A real submit button under Action's look, so Enter in the reason still denies.
               icon="close"
-              onPress={() => onDeny?.(reason.trim() || undefined)}
+              render={<button disabled={busy} type="submit" />}
               variant="outline"
             >
               Deny
             </Action>
           </div>
-        </div>
+        </form>
       )}
 
       {/* ⚠ OUTSIDE the picks disclosure, and above it. What a reviewer is approving changed:
