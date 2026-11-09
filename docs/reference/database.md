@@ -42,6 +42,25 @@ clients show them beside the data.
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
 (each table's retention says when).
 
+## Which tables are growing
+
+Every night, after its clean-up, the housekeeping task records how many rows each table holds in
+`database_table_rows`, and keeps 400 days of counts. A table that keeps growing month after month
+is one nothing trims. This lists the ten that grew most over the last 30 days, on SQLite or
+Postgres:
+
+```sql
+SELECT latest.table_name, latest.row_count AS rows_now,
+       latest.row_count - COALESCE(earlier.row_count, 0) AS grew_by
+FROM database_table_rows latest
+LEFT JOIN database_table_rows earlier
+  ON earlier.table_name = latest.table_name
+ AND earlier.recorded_at = latest.recorded_at - 30 * 86400
+WHERE latest.recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)
+ORDER BY grew_by DESC
+LIMIT 10;
+```
+
 ## Reading the values
 
 - **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
@@ -64,7 +83,7 @@ Every layer is pruned: the nightly housekeeping deletes reports, files and libra
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
-- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports)
+- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
 
 ## People and sign-in
@@ -2080,6 +2099,18 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `stack` | The stack trace, or empty. | `TEXT` |
 | `breadcrumbs_json` | A JSON list of up to 50 things the app did just before the crash, each with a time, a category (navigation, http, lifecycle or log) and a short message. | `TEXT` |
 | `native_payload` | For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise. | `TEXT` |
+
+### database_table_rows
+
+How many rows each table held, counted once a day by the nightly housekeeping task after its clean-up. A table whose count only ever rises is one that nothing trims; "Which tables are growing" near the top of this page shows how to compare the latest count with a month ago.
+
+**Kept:** The nightly housekeeping task forgets counts older than 400 days.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `recorded_at` | The day counted, as the Unix time in seconds of that day's midnight (UTC). | `INTEGER` · key |
+| `table_name` | The table counted. Every table except goose_db_version and this one. | `TEXT` · key |
+| `row_count` | How many rows the table held after that night's clean-up. | `INTEGER` |
 
 ## Tables other libraries own
 
