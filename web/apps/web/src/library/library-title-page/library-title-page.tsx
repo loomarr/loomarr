@@ -88,6 +88,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         unplayable: item.unplayable,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
+        channels: body.channels,
         detailsFrom: {
           description: sourceName(body.detailsFrom.description),
           rating: sourceName(body.detailsFrom.rating),

@@ -12,12 +12,14 @@ import {
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, useState } from "react";
 
+import { LibraryPoster } from "../library-poster";
 import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
   LibraryHook,
   LibraryPathMapping,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
   LibraryWizardStepProps,
@@ -104,8 +106,38 @@ const CheckAgain = ({ checking, onPress }: { checking: boolean; onPress: () => v
   </Action>
 );
 
+// The latest few titles that became ready while the import runs (decision 29): a plain 2:3 tile
+// each, too narrow to set the name in, so it is the one-line caption under it.
+const READY_SO_FAR = 5;
+const ReadySoFar = ({ titles }: { titles: readonly LibraryReadyTitle[] }) => (
+  <Stack gap="inline">
+    <Text textRole="label" tone="secondary">
+      Ready so far
+    </Text>
+    <Line gap="control">
+      {titles.slice(0, READY_SO_FAR).map((t) => (
+        <Stack key={t.id} width={64}>
+          <LibraryPoster art={t.poster} name="" />
+          {/* A clipped, min-width-0 box is what lets the design system truncate. */}
+          <Stack marginTop={6} minWidth={0} overflow="hidden" width={64}>
+            <Text numberOfLines={1} textRole="label" tone="secondary">
+              {t.name}
+            </Text>
+          </Stack>
+        </Stack>
+      ))}
+    </Line>
+  </Stack>
+);
+
 // The one line at the top of the status while nothing needs the maintainer.
-const Headline = ({ scan }: { scan: LibraryScan }) => {
+const Headline = ({
+  scan,
+  readySoFar = [],
+}: {
+  scan: LibraryScan;
+  readySoFar?: readonly LibraryReadyTitle[];
+}) => {
   const { percent, reading, text: headline, tone } = scanHeadline(scan);
   return (
     <>
@@ -127,6 +159,7 @@ const Headline = ({ scan }: { scan: LibraryScan }) => {
               ? "Picks up again when everyone's done watching."
               : "Titles appear as they're ready."}
           </Text>
+          {!scan.paused && readySoFar.length > 0 ? <ReadySoFar titles={readySoFar} /> : null}
         </Stack>
       ) : null}
     </>
@@ -189,6 +222,7 @@ const LibraryStatus = ({
   health,
   folders,
   scan,
+  readySoFar,
   held,
   hooks,
   checking,
@@ -200,6 +234,7 @@ const LibraryStatus = ({
   | "health"
   | "folders"
   | "scan"
+  | "readySoFar"
   | "held"
   | "hooks"
   | "checking"
@@ -211,7 +246,7 @@ const LibraryStatus = ({
   const offline = inUse.filter((f) => !f.readable);
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
-      {health === "ok" && held.length === 0 ? <Headline scan={scan} /> : null}
+      {health === "ok" && held.length === 0 ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
       {held.map((removal) => (
         <Callout
           actions={
@@ -469,6 +504,7 @@ const LibrarySettings = ({
   folders,
   pathMap,
   scan,
+  readySoFar,
   held,
   hooks,
   checking,
@@ -491,6 +527,7 @@ const LibrarySettings = ({
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}
         onRescan={onRescan}
+        readySoFar={readySoFar}
         scan={scan}
       />
     </Section>
@@ -520,6 +557,7 @@ const LibraryWizardStep = ({
   folders,
   pathMap,
   scan,
+  readySoFar,
   checking,
   checkedJustNow,
   onCheckAgain,
@@ -562,7 +600,7 @@ const LibraryWizardStep = ({
         </Line>
         {folders.some((f) => f.inUse) ? (
           <>
-            <Headline scan={scan} />
+            <Headline readySoFar={readySoFar} scan={scan} />
             <Text textRole="body" tone="secondary">
               You can carry on — titles appear as they're ready.
             </Text>
