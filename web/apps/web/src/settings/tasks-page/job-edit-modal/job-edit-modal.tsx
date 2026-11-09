@@ -87,13 +87,7 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
               advanced && (
                 <div className="flex flex-col gap-1.5">
                   <form.AppField name="advancedCron">
-                    {(field) => (
-                      <field.TextField
-                        className="gap-1.5"
-                        label="Cron expression"
-                        placeholder="0 */5 * * * *"
-                      />
-                    )}
+                    {(field) => <field.TextField label="Cron expression" placeholder="0 */5 * * * *" />}
                   </form.AppField>
                   <p className="text-muted-foreground text-xs">
                     6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
@@ -109,10 +103,7 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
             <Action disabled={patch.isPending} onPress={() => onOpenChange(false)} variant="ghost">
               Cancel
             </Action>
-            <Action
-              // A real submit button under Action's look, so Enter in the cron field still submits.
-              render={<button disabled={patch.isPending} type="submit" />}
-            >
+            <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
               {patch.isPending ? "Saving…" : "Save"}
             </Action>
           </DialogFooter>

@@ -193,7 +193,6 @@ const ApprovalQueueItem = ({
             {(field) => (
               <field.TextField
                 autoFocus
-                className="gap-1.5"
                 disabled={busy}
                 id={reasonId}
                 label="Why not? Optional: the requester sees this."
@@ -212,12 +211,7 @@ const ApprovalQueueItem = ({
             >
               Cancel
             </Action>
-            <Action
-              // A real submit button under Action's look, so Enter in the reason still denies.
-              icon="close"
-              render={<button disabled={busy} type="submit" />}
-              variant="outline"
-            >
+            <Action disabled={busy} icon="close" onPress={() => void form.handleSubmit()} variant="outline">
               Deny
             </Action>
           </div>
