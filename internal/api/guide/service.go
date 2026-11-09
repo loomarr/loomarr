@@ -104,9 +104,8 @@ type ChannelService interface {
 	//
 	// ⚠ Both preview endpoints go through this ONE method — GET …/cycle passes nil drafts.
 	// `Engine.CyclePreview` still exists for the playout adapter (which wants only the slots
-	// and a cache around them), but the API does not declare it: it was the saved-preview path
-	// until #263, and routing that through here is what lets the SAVED preview report what the
-	// §4 filters refused, not just the mid-edit one.
+	// and a cache around them), but the API does not declare it: routing the saved preview
+	// through here is what lets it report what the §4 filters refused, not just the mid-edit one.
 	CyclePreviewDraft(ctx context.Context, channelID string, at time.Time,
 		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
 	// ScheduleDiffDraft forecasts [from, from+horizon) for the saved channel and for the same

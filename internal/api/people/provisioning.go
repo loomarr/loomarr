@@ -127,7 +127,7 @@ type SetupDemo struct {
 }
 
 // setupState answers the one question a first-run visitor's browser must be able to
-// ask before it holds any session (§7). No requireAdmin — that is the point: gating
+// ask before it holds any session (§7). RolePublic — that is the point: gating
 // it would reproduce the dead end it exists to remove.
 //
 // A nil provisioner reports bootstrapped=true. That reads backwards, but it is the
@@ -171,7 +171,7 @@ type bootstrapOutput struct {
 	}
 }
 
-// bootstrap creates the first local admin (§11). No requireAdmin: it is gated
+// bootstrap creates the first local admin (§11). RolePublic: it is gated
 // internally on "no admin exists yet" — a second call 409s.
 func (s *Handlers) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapOutput, error) {
 	u, err := s.provision.Bootstrap(ctx, in.Body.Username, in.Body.Password)

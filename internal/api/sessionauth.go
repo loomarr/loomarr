@@ -10,8 +10,8 @@ import (
 )
 
 // sessionAuthorizer resolves a request to a role via the session cookie first
-// (§11), falling back to the API_TOKEN Bearer (admin break-glass, §11). This is
-// the Phase-9 fill of the Phase-8 Authorizer seam.
+// (§11), falling back to the API_TOKEN Bearer (admin break-glass, §11). It is the
+// production implementation of httpcore.Authorizer.
 type sessionAuthorizer struct {
 	mgr             *auth.Manager
 	devices         *auth.DeviceManager
@@ -30,7 +30,7 @@ func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) httpcore.Authorize
 // closed and never interfere with a valid user session.
 //
 // devices may be nil, which disables the paired-device path entirely — the authorizer then behaves
-// exactly as it did before §11/Shield P1. It is a constructor parameter rather than a setter so a
+// with sessions and the API_TOKEN only. It is a constructor parameter rather than a setter so a
 // security-critical object cannot exist in a half-configured state, and so the one composition site
 // that enables device auth is greppable.
 func NewSessionAuthorizerCurrent(

@@ -112,11 +112,10 @@ type IconService interface {
 // IconSuggestion is one candidate channel icon: a lineup title's display name paired with the
 // poster's URL on THIS instance's image service.
 //
-// ⚠ **`url` stopped being a TMDB URL in V52 phase 7.** It used to point at TMDB's CDN, which meant
-// the icon picker — one of the three surfaces an operator looks at most — loaded a dozen
-// third-party images in their browser. The poster is now adopted, fetched server-side, and served
-// from our own disk (§22). The field keeps its name and its job: it is what the channel's `logo`
-// is set to when the operator picks this suggestion.
+// ⚠ **`url` is never a TMDB URL (V52).** Pointing at TMDB's CDN would make the icon picker — one
+// of the three surfaces an operator looks at most — load a dozen third-party images in their
+// browser. The poster is adopted, fetched server-side, and served from our own disk (§22). The
+// field is what the channel's `logo` is set to when the operator picks this suggestion.
 type IconSuggestion struct {
 	Title string `json:"title" example:"Star Trek: The Next Generation"`
 	URL   string `json:"url" example:"https://loomarr.example/v1/images/9f2b1c4e/w500.jpg" doc:"Image-service URL for the poster; becomes the channel's logo when picked"`

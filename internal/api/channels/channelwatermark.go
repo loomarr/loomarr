@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
-// Channel watermark UPLOAD (#1512 phase 1d): a custom bug, which wins over the automatic image
+// Channel watermark UPLOAD (#1512): a custom bug, which wins over the automatic image
 // (the network's TMDB logo, then the generated Plate). The bug's shape is its alpha, so only PNG
 // and WebP are accepted, sniffed from the bytes exactly as the icon upload does, and the image is
 // stored with images.RoleWatermark: the renderer reads the ORIGINAL, never a JPEG rung.

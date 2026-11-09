@@ -113,7 +113,7 @@ func (s *Handlers) writeProblem(w http.ResponseWriter, r *http.Request, status i
 // viewerOf is the person and device minting a play URL. A paired device is keyed by its revocation
 // id and named as it was paired; a browser is keyed and named by its browser family and system.
 // A break-glass API_TOKEN caller has no person, so it is never attributed. The viewer tag itself,
-// which signs this into a play URL, lives in httpcore (viewertag.go).
+// which signs this into a play URL, lives in httpcore (httpcore/viewertag.go).
 func (s *Handlers) viewerOf(ctx context.Context) (viewing.Viewer, bool) {
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {

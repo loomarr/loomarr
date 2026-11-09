@@ -69,7 +69,7 @@ type GuideAiring struct {
 	// when no image is available — the client renders a fallback. Both the Guide hover card (§12)
 	// and Watch timeline (§9.1 V47) populate it.
 	//
-	// ⚠ **It points at THIS instance's image service, not TMDB, since V52 phase 7.** The image
+	// ⚠ **It points at THIS instance's image service, not TMDB.** The image
 	// still originates on TMDB; it is adopted, fetched server-side and served from our own disk, so
 	// the Watch timeline stops loading third-party images in the operator's browser (§22).
 	ThumbURL string `json:"thumbUrl,omitempty" doc:"Same-origin image-service preview path; empty when unavailable"`

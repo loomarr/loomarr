@@ -12,23 +12,17 @@ import (
 // Operational endpoints (§7, §17, §18): liveness, readiness, Prometheus, the profiler, and the
 // offline API reference.
 //
-// ⚠ **Every route lives under /v1, and every one keeps its bare-path alias.** These are the
-// last routes that were not behind the versioned prefix, and moving them is the point of this
-// change — but their consumers are Docker HEALTHCHECK, orchestrators and Prometheus, which are
-// configured OUTSIDE this repo and cannot be migrated by editing it. So both paths are
-// registered against the same handler: the canonical `/v1/...` and the historical bare one.
+// ⚠ **Every route lives under /v1, and every one keeps its bare-path alias.** The consumers are
+// Docker HEALTHCHECK, orchestrators and Prometheus, which are configured OUTSIDE this repo and
+// cannot be migrated by editing it. So both paths are registered against the same handler: the
+// canonical `/v1/...` and the bare one.
 //
 // ⚠ **The aliases are Hidden, and the canonical routes are not.** The spec should list each
 // endpoint once; a visible alias would generate a duplicate orval hook for the same operation.
 //
-// ⚠ **This reverses a decision that was pinned on purpose, and the reasoning matters.**
-// PROGRESS.md recorded "deliberately did NOT move /healthz + /readyz into huma", and
-// help_test.go pinned it, because at the time registering them in huma meant putting them
-// inside the authenticated /v1 API — "an auth requirement in front of a container health
-// probe". That is no longer what registration implies: RolePublic marks a route reachable with
-// no credential at all, and the ops probes say so out loud. The objection was answered, not
-// overruled — and TestOpsProbesStayUnauthenticated still guards the property it cared about,
-// now across both paths.
+// ⚠ **The probes are huma routes yet stay unauthenticated.** RolePublic marks a route reachable
+// with no credential at all, so a container health probe never meets an auth requirement.
+// TestOpsProbesStayUnauthenticated guards that across both paths.
 
 // healthOutput is the liveness answer: the process is up enough to serve.
 type healthOutput struct {
@@ -40,15 +34,13 @@ type healthOutput struct {
 // readyOutput is the readiness answer.
 //
 // ⚠ **`Status` is a huma-recognised field that sets the RESPONSE CODE**, and it is here so the
-// 503 keeps carrying `{ready, detail}`. Returning an error instead would have been the idiomatic
-// huma move and would have replaced that body with an RFC 7807 problem — a wire change for every
-// orchestrator parsing this, to gain nothing. A probe's job is to explain itself in the shape
-// its consumer already reads.
+// 503 keeps carrying `{ready, detail}`. Returning an error instead would replace that body with
+// an RFC 7807 problem, a wire change for every orchestrator parsing it. A probe's job is to
+// explain itself in the shape its consumer already reads.
 //
-// Stated precisely, because "unchanged body" would be an overclaim: the `ready` and `detail`
-// fields and both status codes are exactly as before, and huma additionally emits its standard
-// `$schema` link property, as it does on every other typed response in this API. A consumer
-// reading named fields is unaffected; one comparing whole documents is not.
+// The body is `ready` and `detail`, plus huma's standard `$schema` link property, as on every
+// other typed response in this API. A consumer reading named fields is unaffected; one comparing
+// whole documents sees the extra property.
 type readyOutput struct {
 	Status int
 	Body   struct {

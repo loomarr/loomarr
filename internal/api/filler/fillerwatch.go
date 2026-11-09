@@ -14,8 +14,7 @@ import (
 // GET /v1/filler/watch — the Filler header's live status (§10 V38c).
 //
 // ⚠ **The health VERDICT is computed here, on the server, and that is the point of the route.**
-// The first implementation derived it in the browser from `/v1/filler/sources`, which was wrong
-// twice over:
+// Deriving it in the browser from `/v1/filler/sources` would be wrong twice over:
 //
 //  1. `/v1/filler/sources` is ADMIN-ONLY — it names filesystem paths and library targets. A
 //     member's pill would have sat permanently grey ("nothing set up") on a working install,
@@ -68,7 +67,8 @@ type fillerWatchOutput struct {
 		// when someone types in the search box.
 		//
 		// ⚠ HELD clips are excluded, because they are not in the catalog yet — they are waiting
-		// for a human in Incoming. `Held` below is what stops that reading as "nothing arrived".
+		// for a human in Incoming. `Preparing` and `NeedsYou` below are what stop that reading as
+		// "nothing arrived".
 		Clips int `json:"clips"`
 		// Preparing and NeedsYou are Incoming's own group totals, counted by the same store
 		// queries the Incoming page counts with (#2733), so the header, Manage and Incoming
@@ -76,11 +76,11 @@ type fillerWatchOutput struct {
 		//
 		// ⚠ **Reported SEPARATELY from clips, and the header says so.** Auto-fetch holds
 		// everything it downloads while it is prepared, so a fresh install that just fetched 12
-		// clips has a catalog of ZERO and 12 getting ready. Reporting only `clips` made the pill
-		// read "0 clips" on an install that had just worked perfectly.
+		// clips has a catalog of ZERO and 12 getting ready. Reporting only `clips` would make the
+		// pill read "0 clips" on an install that had just worked perfectly.
 		//
-		// ⚠ A held clip is NOT "need you". The header once counted every held clip that way while
-		// Incoming listed only the splits waiting for an answer; most held clips are machine work.
+		// ⚠ A held clip is NOT "need you": Incoming lists only the splits waiting for an answer,
+		// and most held clips are machine work.
 		Preparing int `json:"preparing" doc:"Clips Incoming lists as getting ready; NOT included in clips"`
 		NeedsYou  int `json:"needsYou" doc:"Choices Incoming lists as needing help"`
 		// LastScanAt is the most recent fetch across every source; absent when nothing has ever
@@ -135,8 +135,8 @@ func (s *Handlers) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOu
 	// the search box. ⚠ This EXCLUDES held clips by default (see ClipFilter), which is correct:
 	// a held clip is not in the catalog, it is waiting for a human.
 	//
-	// ⚠ Counted in SQL. Both of these loaded whole rows to call len() on the slice — this
-	// endpoint polls the Filler page header, so it paid for two full catalog reads on a timer.
+	// ⚠ Counted in SQL, never by loading rows to call len(): this endpoint polls the Filler page
+	// header, so a row read would be a full catalog read on a timer.
 	clipCount, err := s.store.CountClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count filler clips", err)
@@ -203,7 +203,7 @@ func (s *Handlers) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOu
 		out.Body.LastScanAt = newest.UTC().Format(time.RFC3339)
 	}
 	// ⚠ `time.Now()` here, but the RULE takes an explicit `now` so the staleness cases are
-	// testable without a clock seam on Server (which nothing else needs).
+	// testable without a clock seam on Handlers (which nothing else needs).
 	//
 	// ⚠ Clips AND held are both handed to the verdict: an install that has fetched a dozen clips
 	// and is holding them for review is WORKING, not broken. Passing only the catalog count made

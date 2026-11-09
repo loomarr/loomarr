@@ -18,37 +18,34 @@ import (
 
 // /v1/auth/sso/* — the OIDC credential path (§11 SSO, D-F, V8).
 //
-// ⚠ **Huma operations mounted via rawOp, not plain mux handlers.** Both routes are BROWSER
-// REDIRECTS: start sends the person to their provider, and callback sends them back carrying a
-// session cookie. A 302 with a Set-Cookie is not a typed JSON body — but that describes the
-// RESPONSE, and it never described where the route belongs. rawOp keeps the raw `(w, r)` these
-// handlers need while mounting them on the one Huma API, exactly as `/v1/backup` and the
-// playout streams now are.
+// ⚠ **Huma operations mounted via httpcore.RawOp, not plain mux handlers.** Both routes are
+// BROWSER REDIRECTS: start sends the person to their provider, and callback sends them back
+// carrying a session cookie. A 302 with a Set-Cookie is not a typed JSON body — but that
+// describes the RESPONSE, not where the route belongs. RawOp keeps the raw `(w, r)` these
+// handlers need while mounting them on the one Huma API, as `/v1/backup` and the playout
+// streams are.
 //
-// ⚠ They ARE in `api/openapi.yaml` now, declared as 302s with a Location header. The previous
-// text called their absence deliberate — "a redirect an operator's browser follows is not a
-// client contract" — which reads fine until you notice the same argument would justify leaving
-// any route out, and that the spec's job is to describe the served surface. The concern behind
-// it was that an orval hook would invite a `fetch` that cannot work; that is answered by the
-// declared 302 (there is no 2xx body to generate a useful call from) and by login.tsx driving
-// `sso-start` through `window.location.assign`, which is the only thing that can work.
+// ⚠ They ARE in `api/openapi.yaml`, declared as 302s with a Location header: the spec's job is
+// to describe the served surface, and "a redirect an operator's browser follows is not a client
+// contract" would justify leaving any route out. The worry that an orval hook would invite a
+// `fetch` that cannot work is answered by the declared 302 (there is no 2xx body to generate a
+// useful call from) and by login.tsx driving `sso-start` through `window.location.assign`,
+// which is the only thing that can work.
 //
 // ⚠ **Unauthenticated by necessity** — this is how you sign IN. Three things protect them:
 // the state COOKIE (below) binds the callback to the browser that started the login, the
 // state/nonce pair bounds it in time and to one use, and §11's allowlist decides access after
 // the token verifies. Neither route can create a user.
 //
-// ⚠ **The cookie is the CSRF protection, not the state map.** An earlier version of this
-// comment credited "the state/nonce pair", and that was wrong: `pending` lives in one process
-// and answers "did a login start here?", never "did THIS browser start it?".
+// ⚠ **The cookie is the CSRF protection, not the state map.** The state/nonce pair does not
+// bind a callback to a browser: `pending` lives in one process and answers "did a login start
+// here?", never "did THIS browser start it?".
 //
-// ⚠ **Nor does the `X-Loomarr-Csrf` header help, and the reason CHANGED — read it before
-// deleting the cookie check as redundant.** It used to be "these are plain-mux GETs registered
-// outside that middleware". They are Huma operations now, inside the middleware, so that
-// sentence would today read as "…therefore the header covers us". It does not: the header guard
-// applies only to MUTATING methods (`isMutating`, titles.go), and a login redirect is a GET. It
-// also could not apply — the callback arrives as a cross-site top-level navigation from the
-// provider, which carries no custom headers at all. The cookie remains the only thing that
+// ⚠ **Nor does the `X-Loomarr-Csrf` header help — read this before deleting the cookie check
+// as redundant.** These routes run inside the request middleware, but its header guard applies
+// only to MUTATING methods (`isMutating`, internal/api/middleware.go), and a login redirect is
+// a GET. It also could not apply — the callback arrives as a cross-site top-level navigation
+// from the provider, which carries no custom headers at all. The cookie is the only thing that
 // binds a callback to the browser that started the login.
 
 // SSOService is the credential path the routes drive. nil ⇒ the routes are not mounted at
@@ -66,18 +63,17 @@ type SSOService interface {
 
 // registerSSO mounts the two redirect routes when a provider is wired.
 //
-// ⚠ **rawOp, not the bare mux.** A 302 carrying Set-Cookie is not a typed JSON body, which is
-// why these lived on the mux — but that reasoning confused the RESPONSE shape with where a
-// route belongs. rawOp (rawop.go) keeps the raw `(w, r)` so the handlers still write their own
-// redirect and cookie, while mounting on the same Huma API as everything else. Concretely that
-// buys: `RolePublic` written down instead of inferred from an absence, coverage by the raw-mux
-// guard, an entry in api/openapi.yaml, and — the one that actually bit before —
-// TestRegisterListsMatchBetweenRouterAndExporter, which matches `srv.register*(humaAPI)` and
-// was structurally blind to `registerSSO(mux)`.
+// ⚠ **RawOp, not the bare mux.** A 302 carrying Set-Cookie is not a typed JSON body, but that
+// is the RESPONSE shape, not a reason to leave the mux. httpcore.RawOp (httpcore/rawop.go) keeps
+// the raw `(w, r)` so the handlers still write their own redirect and cookie, while mounting on
+// the same Huma API as everything else. Concretely that buys: `RolePublic` written down instead
+// of inferred from an absence, coverage by the raw-mux guard, an entry in api/openapi.yaml, and
+// visibility to TestRegisterListsMatchBetweenRouterAndExporter, which a route registered on the
+// bare mux would escape.
 //
 // ⚠ The nil guard admits schemaOnly so the routes still reach the spec when the exporter runs
 // without a provider wired. Dropping a route from openapi.yaml because a dependency happened to
-// be nil at export time has already happened in this package once (see export.go).
+// be nil at export time has already happened once (see internal/api/export.go).
 func (s *Handlers) registerSSO(api huma.API) {
 	if s.sso == nil && !s.schemaOnly {
 		return
@@ -274,8 +270,8 @@ func (s *Handlers) redirectToLogin(w http.ResponseWriter, r *http.Request, reaso
 
 // safeReturnPath keeps only a same-app path, so `next` can never become an open redirect.
 //
-// ⚠ **PARSED, not prefix-matched, and the backslash is why.** An earlier version checked
-// HasPrefix("/") + !HasPrefix("//") + !Contains("://"), which reads as thorough and let
+// ⚠ **PARSED, not prefix-matched, and the backslash is why.** A check of
+// HasPrefix("/") + !HasPrefix("//") + !Contains("://") reads as thorough and lets
 // `/\evil.test` straight through: browsers resolving a special-scheme URL treat `\` as `/`
 // (WHATWG URL), so that Location navigates to https://evil.test while looking like a path.
 // Go does not normalise it away either — `path.Clean` treats `\` as an ordinary character and

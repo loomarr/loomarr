@@ -75,8 +75,8 @@ func (s *Handlers) registerProposals(api huma.API) {
 // --- submit ---
 
 // submitInput takes the FULL typed proposals.Intent, for the same reason ProposalDTO
-// carries proposals.Proposal (§12, 1:1): the previous hand-mirrored body had already
-// drifted from the domain — it omitted RuntimeTgt, so `runtimeTargetMin` was
+// carries proposals.Proposal (§12, 1:1): a hand-mirrored body drifts from the domain —
+// the first one omitted RuntimeTgt, so `runtimeTargetMin` was
 // unreachable even though the suggester honors it (prompt + scoring) and §13 lists a
 // runtime target among the intent constraints a user may set. Typing from the domain
 // removes the whole drift class rather than patching one missing field.
@@ -138,10 +138,10 @@ type ProposalDTO struct {
 	CreatedByName  string `json:"createdByName,omitempty" doc:"Display name of the requester; empty if unknown"`
 	ApprovedByName string `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
 	DenyReason     string `json:"denyReason,omitempty"`
-	// ModSummary and Note are the approval provenance (§7, D-K). Both have been PERSISTED
-	// since V25 and neither left the server: the note an approver wrote to explain an edited
-	// request reached the database and nothing could display it — the same "stored but never
-	// rendered" shape the audit found `denyReason` in before V23 wired it up.
+	// ModSummary and Note are the approval provenance (§7, D-K). Both are PERSISTED (V25) and
+	// both must be served: a note an approver wrote to explain an edited request that reached
+	// the database but not the wire would be the "stored but never rendered" shape the audit
+	// found `denyReason` in before V23 wired it up.
 	//
 	// ModSummary is generated server-side ("dropped 2, added 1"); Note is the approver's own
 	// words. The distinction is deliberate and worth preserving in any UI: a summary the
@@ -303,12 +303,11 @@ func (s *Handlers) getProposal(ctx context.Context, in *proposalIDInput) (*propo
 // --- approve / deny (the approval gate — §8/§11) ---
 
 // The approve path reads the same typed ProposalPayload the list/get endpoints return
-// (defined above) — one mirror of the stored proposals.Proposal, no longer a second.
+// (defined above) — one mirror of the stored proposals.Proposal, not a second.
 
 // ApprovalEditDTO is the approver's modification, sent with POST …/approve (§7, D-K).
 //
-// Every field is OPTIONAL: an empty body approves the proposal exactly as generated, which is
-// what the endpoint did before edit-before-approve existed. Existing callers keep working.
+// Every field is OPTIONAL: an empty body approves the proposal exactly as generated.
 type ApprovalEditDTO struct {
 	// Drop lists provisioning keys ("movie:tmdb:603") the approver removed. Keys rather than
 	// indexes: an index means "the third one in the list I was looking at", which is wrong the
@@ -318,9 +317,9 @@ type ApprovalEditDTO struct {
 	// gate rechecks Library presence: owned titles join the Lineup and only missing titles
 	// become acquisitions.
 	//
-	// The DOMAIN type, not a hand-written mirror — the same call this file already makes for
-	// ProposalDTO.Proposal, and for the same reason recorded there: the previous mirror had
-	// already drifted from what it mirrored.
+	// The DOMAIN type, not a hand-written mirror — the same call this file makes for
+	// ProposalDTO.Proposal, and for the same reason recorded there: a mirror drifts from what it
+	// mirrors.
 	Add []proposals.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
@@ -329,9 +328,8 @@ type ApprovalEditDTO struct {
 type approveInput struct {
 	ID string `path:"id"`
 	// A POINTER, so the body is genuinely optional. With a value type huma requires one, and
-	// `POST …/approve` with no body starts 400ing — which broke every existing caller
-	// (the approve button, the e2e smoke, six handler tests) the moment this field was added.
-	// Edit-before-approve is additive: approving unmodified must keep working exactly as it did.
+	// `POST …/approve` with no body would 400 for every caller that approves unmodified (the
+	// approve button, the e2e smoke, the handler tests). Edit-before-approve is additive.
 	Body *ApprovalEditDTO
 }
 
@@ -436,9 +434,8 @@ func (s *Handlers) approveProposal(ctx context.Context, in *approveInput) (*appr
 type bulkApproveInput struct {
 	Body struct {
 		// IDs are approved one at a time, each through the SAME `approveProposal` handler. No
-		// batch store write and no second gate: the phase gate for this is literally "bulk
-		// approve goes through the same chokepoint", and a batch path would be the second
-		// acquisition path §7 forbids.
+		// batch store write and no second gate: bulk approve goes through the same
+		// chokepoint, and a batch path would be the second acquisition path §7 forbids.
 		//
 		// No edit field, deliberately. Edit-before-approve (V25b) is a per-proposal judgement —
 		// "drop these two titles" means nothing applied across a batch — so bulk is the

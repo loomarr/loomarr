@@ -38,7 +38,8 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
-// Server holds the API dependencies and builds the Huma API on a stdlib mux
+// Server is the root of the API wiring: it carries the dependencies the request middleware and
+// Router share across the subpackages' Handlers, and Router mounts the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
 	auth httpcore.Authorizer
@@ -91,8 +92,6 @@ type ProposalApprover interface {
 	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
 }
 
-// (BackupStreamer lives in internal/api/system.)
-
 // Options configures the API server.
 type Options struct {
 	Store                records.Store
@@ -102,10 +101,10 @@ type Options struct {
 	BackupSQLite         system.BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready                ReadyFunc
 	Now                  func() time.Time                   // optional deterministic request clock for tests
-	Login                people.LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Login                people.LoginService                // /v1/auth/login + user disable; nil ⇒ routes absent
 	Passwords            people.PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions             people.SessionManager              // /v1/auth/logout (Phase 9)
-	UserSync             people.UserSyncer                  // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Sessions             people.SessionManager              // /v1/auth/logout
+	UserSync             people.UserSyncer                  // POST /v1/users/sync; nil ⇒ route absent
 	Invitations          people.InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
 	InvitationRedemption people.InvitationRedemptionService // public preview and explicit activation (§11)
 	PasswordRecovery     people.PasswordRecoveryService     // public local-password recovery (§11)
@@ -125,15 +124,15 @@ type Options struct {
 	Pprof            bool                              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
 	MetricsToken     string                            // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
 	Demo             people.DemoAccount                // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
-	Channels         guideapi.ChannelService           // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV           setupapi.LiveTVService            // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	Channels         guideapi.ChannelService           // /v1/channels* reconcile; nil ⇒ reconcile route absent
+	LiveTV           setupapi.LiveTVService            // /v1/setup/*; nil ⇒ setup routes absent
 	TunerRescanner   channelsapi.TunerRescanner        // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
 	TunarrConnect    setupapi.TunarrConnector          // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
 	ArrDiscovery     setupapi.ArrDiscovery             // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
-	Suggest          SuggestService                    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	Suggest          SuggestService                    // /v1/proposals submit; nil ⇒ submit route 501
 	ProposalProgress proposalsapi.ProposalProgress     // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
 	ProposalWorkflow proposalsapi.ProposalWorkflow     // authoritative /v1/proposal-jobs Journey reads
-	Search           catalogapi.SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
+	Search           catalogapi.SearchService          // /v1/search; nil ⇒ search route 501
 	MovieCollections libraryapi.MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
 	Collections      libraryapi.CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
 	LibraryRoots     libraryapi.LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
@@ -144,9 +143,9 @@ type Options struct {
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
 	Images          imagesapi.ImageService
-	Events          opsapi.EventSource         // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Events          opsapi.EventSource         // /v1/events SSE; nil ⇒ route 501
 	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          fillerapi.Service          // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Filler          fillerapi.Service          // /v1/filler sync/tag; nil ⇒ those routes 501
 	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
 	FillerResearch  fillerapi.ResearchService  // optional structured-first web-search status and validation
 	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
@@ -282,7 +281,7 @@ func humaConfig() huma.Config {
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs
-	// path and mount our own at /v1/reference (ops.go).
+	// path and mount our own at /v1/reference (api/ops/ops.go).
 	cfg.DocsPath = ""
 	// ⚠ The spec and schema paths move under /v1 with everything else. Huma writes SchemasPath
 	// into every `$ref` in the document, so changing it rewrites references throughout — that is

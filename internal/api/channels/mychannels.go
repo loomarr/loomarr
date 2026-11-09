@@ -14,7 +14,7 @@ import (
 
 // Per-person Favourites and Recent channel lists (#1666): the guide's filters, the surf rail's
 // groups and the watch console's star. They're keyed by the signed-in person, and a paired TV
-// resolves to the person who paired it (sessionauth.go), so a channel starred on the TV shows on
+// resolves to the person who paired it (internal/api/sessionauth.go), so a channel starred on the TV shows on
 // that person's phone (#1659 N3). Server-side rather than client-local so the lists follow the
 // person across devices; the counts on the filter labels are the list lengths.
 //

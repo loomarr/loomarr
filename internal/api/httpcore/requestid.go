@@ -20,7 +20,7 @@ const requestIDHeader = "X-Request-Id"
 type ctxKeyRequestID struct{}
 
 // NewRequestID mints a short, log-greppable id ("req_" + 8 random bytes hex), matching
-// the house id style (see internal/app/ids.go, suggestions.go "ch_"). crypto/rand can't
+// the house id style (see internal/app/ids.go). crypto/rand can't
 // fail in practice here; on the vanishingly unlikely error we fall back to a fixed marker
 // rather than panic — a correlation id is a convenience, never a correctness dependency.
 func NewRequestID() string {

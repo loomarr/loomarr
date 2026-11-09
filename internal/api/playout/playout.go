@@ -50,10 +50,10 @@ var (
 // These stream bytes (some forever), which Huma's typed-JSON MODEL cannot express — but that does
 // not mean they live outside the framework. They register on the SAME Huma API as everything else
 // (V47) and stream through the raw response writer via humago.Unwrap; auth is a shared middleware
-// (playoutAuthMiddleware), not a hand-rolled inline check re-implemented per handler. This mounts
-// them in the one router the dev proxy and every other guarantee already cover, and it ends the
-// parallel plain-mux world that (a) duplicated auth and (b) put these routes outside the SPA's
-// origin, so the in-app player's same-origin URLs did not resolve in dev.
+// (playoutAuthMiddleware), not a hand-rolled inline check re-implemented per handler. That mounts
+// them in the one router the dev proxy and every other guarantee already cover; a parallel
+// plain-mux world would (a) duplicate auth and (b) put these routes outside the SPA's origin, so
+// the in-app player's same-origin URLs would not resolve in dev.
 //
 // The route family exists because a TELEVISION is the client. That single fact drives the
 // whole design:
@@ -69,8 +69,8 @@ var (
 // The route set mirrors what Tunarr already serves, because Emby/Jellyfin accept that shape
 // today (prior-art §1) and reproducing a working contract beats inventing one:
 //
-//	GET /playout/tuner.m3u          the channel list the media server registers
-//	GET /playout/stream/{id}        continuous MPEG-TS — what the TV actually plays
+//	GET /v1/playout/tuner.m3u       the channel list the media server registers
+//	GET /v1/playout/stream/{id}     continuous MPEG-TS — what the TV actually plays
 
 // playoutTokenParam is the query parameter carrying the device token.
 //
@@ -156,7 +156,7 @@ func (s *Handlers) authorizePlayout(w http.ResponseWriter, r *http.Request) bool
 
 // currentPlayoutToken is the request-boundary credential read. Postgres production
 // uses a durable resolver so every replica observes rotation before accepting either
-// the raw device token or an HMAC signed with it. The legacy local resolver keeps unit
+// the raw device token or an HMAC signed with it. The local (non-durable) resolver keeps unit
 // tests and single-process SQLite free from a database read per HLS request.
 func (s *Handlers) currentPlayoutToken(ctx context.Context) (string, error) {
 	if s.playoutSecretCurrent != nil {
@@ -472,8 +472,8 @@ func (s *Handlers) checkpoint(ctx context.Context) (httpcore.BackendCheckpoint, 
 // Watch, V46). Authorized by EITHER the device token OR a signed URL (authorizePlayout), so the
 // same route serves a browser (signed) that the tuner list points a media server at (token).
 //
-// It reads the playlist ffmpeg is writing to disk and returns it, holding a viewer refcount for
-// the duration of… no — the opposite. A playlist fetch is a SNAPSHOT: hls.js re-fetches the
+// It reads the playlist ffmpeg is writing to disk and returns it. A playlist fetch is a
+// SNAPSHOT: hls.js re-fetches the
 // playlist every few seconds to discover new segments, so holding the refcount for one fetch
 // would drop the remux between polls. The refcount must span the WHOLE viewing session, which no
 // single stateless request can bracket. So the playlist fetch itself keeps the remux alive for a
@@ -708,22 +708,19 @@ func (s *Handlers) stillHandler(w http.ResponseWriter, r *http.Request) {
 //
 // ⚠ These stream bytes, which Huma's typed-JSON model cannot express — but they mount on the SAME
 // Huma API as every other route, via huma.StreamResponse (the framework's streaming primitive) and
-// the raw response writer (humago.Unwrap). This replaced a parallel plain-mux registration that
-// duplicated auth per handler and, because it lived outside the app's router surface, put these
-// routes outside the SPA's origin — which is why the in-app player's same-origin URLs did not
-// resolve in dev. Auth is ONE shared middleware (playoutAuthMiddleware), not re-derived per handler.
+// the raw response writer (humago.Unwrap). A parallel plain-mux registration would duplicate auth
+// per handler and, living outside the app's router surface, put these routes outside the SPA's
+// origin, so the in-app player's same-origin URLs would not resolve in dev. Auth is ONE shared
+// middleware (playoutAuthMiddleware), not re-derived per handler.
 //
-// ⚠ **They are now IN the OpenAPI spec, and that is a documentation claim, not a stability
-// promise.** The previous text here said they were "deliberately NOT under /v1 and hidden",
-// which had gone stale twice over: the paths have been `/v1/playout/…` since V47, and hiding
-// them meant `api/openapi.yaml` silently under-reported the served surface — the same class of
-// gap that let `GET /v1/playout/sessions` run live and undocumented. Their shape is still
-// dictated by what media servers accept (prior-art §1), NOT by us, so appearing in the spec
-// describes what we serve without implying we are free to change it or that a generated client
-// should drive it. Read the response schemas as "these bytes, this media type" only.
+// ⚠ **They are IN the OpenAPI spec, and that is a documentation claim, not a stability
+// promise.** Hiding them would make `api/openapi.yaml` silently under-report the served surface.
+// Their shape is dictated by what media servers accept (prior-art §1), NOT by us, so appearing in
+// the spec describes what we serve without implying we are free to change it or that a generated
+// client should drive it. Read the response schemas as "these bytes, this media type" only.
 //
-// The handler BODIES (streamHandler, hlsPlaylistHandler, …) are unchanged — they still take (w, r)
-// and stream; this only changes how they are mounted, guarded and described.
+// The handler BODIES (streamHandler, hlsPlaylistHandler, …) take (w, r) and stream; the
+// registration only mounts, guards and describes them.
 func (s *Handlers) registerPlayout(api huma.API) {
 	// The tuner list + XMLTV the media server registers.
 	streamOp[struct{}](s, api, httpcore.BytesResponse(huma.Operation{
@@ -744,7 +741,7 @@ func (s *Handlers) registerPlayout(api huma.API) {
 	}, "A continuous transport stream of whatever the channel is playing now.",
 		"video/mp2t"), s.streamHandler)
 
-	// The latest still frame of a channel, for the switch overlay (still.go in playout). Authed like
+	// The latest still frame of a channel, for the switch overlay (internal/playout/still.go). Authed like
 	// the HLS routes, so the play-url's signature covers it.
 	streamOp[playoutChannelInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",
@@ -755,8 +752,8 @@ func (s *Handlers) registerPlayout(api huma.API) {
 		"image/jpeg"), s.stillHandler)
 
 	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by
-	// the signed URL (or the device token). Same-origin under the Huma API now, so the dev proxy and
-	// the SPA origin cover them — which fixed the in-app player. The signed URL is kept because the
+	// the signed URL (or the device token). Same-origin under the Huma API, so the dev proxy and
+	// the SPA origin cover them. The signed URL exists because the
 	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
 	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
 	// that works across every player + the browser.
@@ -784,7 +781,7 @@ func (s *Handlers) registerPlayout(api huma.API) {
 // Declared for the SPEC, not for the handlers — they still read r.PathValue("id"). Huma builds
 // the parameter list from this struct and never cross-checks it against the `{placeholders}` in
 // Path, so an op registered with struct{} emits a path template whose parameter is defined
-// nowhere. That was invisible while these routes were Hidden (see rawop.go).
+// nowhere (see httpcore/rawop.go).
 type playoutChannelInput struct {
 	ID string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
 }
@@ -804,13 +801,13 @@ type playoutHLSInput struct {
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout
 // auth middleware, and a StreamResponse body that hands the existing (w, r) handler control. `body`
-// is the current stdlib handler — reused verbatim.
+// is the stdlib handler.
 //
-// A thin specialisation of rawOp (rawop.go) pinning the two things every playout route shares.
+// A thin specialisation of httpcore.RawOp (httpcore/rawop.go) pinning the two things every playout route shares.
 // It is a package-level function rather than a method because it takes a type parameter for the
 // path params, and Go methods cannot.
 func streamOp[I any](s *Handlers, api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
-	// RolePublic tells the GLOBAL session-auth middleware (registerMiddleware) to skip these — they
+	// RolePublic tells the GLOBAL session-auth middleware (internal/api registerMiddleware) to skip these — they
 	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
 	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
 	// session layer, guarded by the playout layer — the correct two-layer split (§11).
@@ -818,8 +815,8 @@ func streamOp[I any](s *Handlers, api huma.API, op huma.Operation, body func(htt
 }
 
 // playoutAuthMiddleware is the ONE authorization point for playout streaming routes — the device
-// token OR a signed URL, exactly what authorizePlayout checked inline, now shared across every route
-// instead of re-derived per handler. On failure it writes the 404 (see authorizePlayout for why
+// token OR a signed URL (authorizePlayout), shared across every route instead of re-derived per
+// handler. On failure it writes the 404 (see authorizePlayout for why
 // 404) and does NOT call next, so the stream handler never runs.
 func (s *Handlers) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context)) {
 	r, w := humago.Unwrap(hctx)
@@ -831,7 +828,7 @@ func (s *Handlers) playoutAuthMiddleware(hctx huma.Context, next func(huma.Conte
 
 // PlayoutResolver is the playout adapter's view of a channel's schedule and the host, for the
 // handlers that describe a channel rather than stream it. Implemented over channels.Engine and
-// library.Client, so the api package imports neither.
+// library.Client, so internal/api imports neither.
 type PlayoutResolver interface {
 	// Profile is the encode profile at a quality-ladder rung (§9.1; 0 is the top), the rung the
 	// ResourceBudget's lease admitted.

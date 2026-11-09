@@ -18,7 +18,7 @@ func (JobView) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
 }
 
 // JobService backs the background-job scheduler routes (§18.1). Satisfied by an adapter over
-// *jobs.Scheduler in the composition root (the api package doesn't import jobs).
+// *jobs.Scheduler in the composition root (internal/api doesn't import jobs).
 type JobService interface {
 	// List returns the current status of every registered job, in a stable order.
 	List(ctx context.Context) ([]JobView, error)

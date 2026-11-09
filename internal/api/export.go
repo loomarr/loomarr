@@ -32,19 +32,20 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	return humaAPI.OpenAPI().YAML()
 }
 
-// schemaOnlyAPI registers every typed operation against a store-less Server and returns it.
+// schemaOnlyAPI registers every typed operation against store-less dependencies and returns the
+// root Server (for its middleware) with the Huma API.
 //
 // Shared by ExportOpenAPI and the authorization gate so the two cannot disagree about what
 // "every operation" means: a route added to one list and not the other is exactly the drift
-// this centralises away. Adding a register* call here reaches both.
+// this centralises away. Adding a subpackage's New(...).Register call here reaches both.
 func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, humaConfig())
-	// schemaOnly makes the nil-guarded register* funcs (auth, provisioning, users
-	// sync) emit their operation schemas into the spec despite the bare Server —
-	// handlers aren't invoked; only their schemas are read. Without it the exported
-	// spec would omit /v1/auth/*, /v1/setup/bootstrap, /v1/users/{import,sync} and
-	// orval couldn't type them (the FE↔BE seam that 13.0 closes).
+	// The `true` passed to people, system, playout and ops is their schemaOnly flag: it makes the
+	// nil-guarded registrars (auth, provisioning, users sync, events) emit their operation
+	// schemas into the spec despite the bare Deps — handlers aren't invoked; only their schemas
+	// are read. Without it the exported spec would omit /v1/auth/*, /v1/setup/bootstrap,
+	// /v1/users/{import,sync} and orval couldn't type them.
 	srv := &Server{log: log}
 	srv.registerMiddleware(humaAPI)
 	catalogapi.New(catalogapi.Deps{}).Register(humaAPI)

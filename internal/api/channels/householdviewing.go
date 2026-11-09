@@ -21,7 +21,7 @@ import (
 // channels only).
 //
 // The source is the in-app players' own playlist polls (internal/channels/viewing), attributed through the
-// viewer tag each play URL carries (viewingtag.go). Viewing through the media server's Live TV
+// viewer tag each play URL carries (httpcore/viewertag.go). Viewing through the media server's Live TV
 // (Tunarr, or the playout token) carries no person, so it isn't counted here.
 
 type viewingScope string
