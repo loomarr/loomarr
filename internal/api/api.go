@@ -16,6 +16,7 @@ import (
 
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -63,7 +64,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, pods: opts.Pods, taxonomy: opts.Taxonomy,
+		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, taxonomy: opts.Taxonomy,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
@@ -74,8 +75,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
-		webPushPublicKey: opts.WebPushPublicKey,
-		provision:        opts.Provision, guide: opts.Guide,
+		webPushPublicKey:  opts.WebPushPublicKey,
+		provision:         opts.Provision,
 		liveSettings:      opts.LiveSettings,
 		libraryConfigured: opts.LibraryConfigured,
 		ready:             ready,
@@ -83,9 +84,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
 		playout:         opts.Playout,
-		playoutGuide:    opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
-		playoutTonemap: opts.PlayoutTonemap, playoutGPUTonemap: opts.PlayoutGPUTonemap,
-		timelineThumbs:  opts.TimelineThumbs,
+		playoutFont:     opts.PlayoutFont,
+		playoutTonemap:  opts.PlayoutTonemap, playoutGPUTonemap: opts.PlayoutGPUTonemap,
 		reclaimVRAM:     opts.ReclaimVRAM,
 		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
@@ -124,7 +124,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channelDeps.ImageRecords = srv.imageDTOsByHash
 	}
 	channelsapi.New(channelDeps).Register(humaAPI)
-	srv.registerChannelViews(humaAPI)
 	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
 	playoutapi.New(playoutapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings,
@@ -134,9 +133,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		PlayoutSecret: opts.PlayoutSecret, PlayoutSecretCurrent: opts.PlayoutSecretCurrent,
 		Viewing: srv.viewing, Now: opts.Now, GPU: systemGPU(opts.SystemLLM), ResidentLLMVRAM: opts.ResidentLLMVRAM,
 	}, false).Register(humaAPI)
-	srv.registerGuide(humaAPI)
-	srv.registerProgramming(humaAPI)
-	srv.registerHolidays(humaAPI)
+	guideDeps := guideapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Now: opts.Now, Channels: opts.Channels,
+		Pods: opts.Pods, Guide: opts.Guide, PlayoutGuide: opts.PlayoutGuide, TimelineThumbs: opts.TimelineThumbs,
+	}
+	if opts.Images != nil {
+		guideDeps.Images = opts.Images
+		guideDeps.ImageRecords = srv.imageDTOsByHash
+		guideDeps.LibraryImage = srv.libraryImage
+	}
+	guideapi.New(guideDeps).Register(humaAPI)
 	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{
 		Store: opts.Store, Suggest: opts.Suggest, Approver: opts.Approver, ProposalOutlook: opts.ProposalOutlook,

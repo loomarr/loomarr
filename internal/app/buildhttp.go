@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -37,7 +38,7 @@ type httpBuild struct {
 	watermarks               *channelWatermarks
 	restart                  system.RestartService
 	bootConfig               *config.Config
-	guide                    api.GuideReader
+	guide                    guideapi.GuideReader
 	settings                 api.SettingsService
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string

@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -34,7 +35,7 @@ import (
 )
 
 type channelBuild struct {
-	channelService         api.ChannelService
+	channelService         guideapi.ChannelService
 	liveTV                 api.LiveTVService
 	tunerRescanner         channelsapi.TunerRescanner
 	tunarrConnector        api.TunarrConnector
@@ -68,7 +69,7 @@ func buildChannels(
 	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
 	// store, Tunarr, and the media-server library are configured.
-	var channelSvc api.ChannelService
+	var channelSvc guideapi.ChannelService
 	var liveTVSvc api.LiveTVService
 	var tunerRescanner channelsapi.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector

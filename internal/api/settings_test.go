@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -266,7 +267,7 @@ type settingsHarnessConfig struct {
 	LiveTV                   *fakeConnector
 	Source                   *fakeConnector
 	Config                   map[string]string
-	Channels                 api.ChannelService
+	Channels                 guideapi.ChannelService
 	BackendTransition        api.BackendTransitioner
 	WithoutBackendTransition bool
 }

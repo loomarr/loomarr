@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 // registerHolidays mounts the holiday definitions (#2030 decision 32). Read-only until the holidays
 // editor ships with its create, edit and retire endpoints.
-func (s *Server) registerHolidays(api huma.API) {
+func (s *Handlers) registerHolidays(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-holidays", Method: http.MethodGet, Path: "/v1/holidays",
 		Summary:     "The holiday definitions and this year's dates",
@@ -53,7 +53,7 @@ type HolidaySeasonDTO struct {
 	Day   string `json:"day" format:"date" doc:"The holiday's own date."`
 }
 
-func (s *Server) listHolidays(context.Context, *struct{}) (*holidaysOutput, error) {
+func (s *Handlers) listHolidays(context.Context, *struct{}) (*holidaysOutput, error) {
 	cal := s.holidayCalendar()
 	vocab := cal.Vocab()
 	now := s.clock()

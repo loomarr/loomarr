@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -100,7 +100,7 @@ type previewDraftPodsOutput struct {
 // Tunarr (§12). It runs the SAME assembler and the SAME seed as reconcile, so preview
 // and reality cannot disagree — a preview that could drift from what actually ships
 // would be worse than none.
-func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (*previewPodsOutput, error) {
+func (s *Handlers) previewChannelPods(ctx context.Context, in *previewPodsInput) (*previewPodsOutput, error) {
 	if s.pods == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
@@ -179,7 +179,7 @@ type channelCoverageOutput struct {
 // sounds the way it does, which is worse than no meter.
 //
 // Read-only, so any authenticated user may call it — same as the pod preview it describes.
-func (s *Server) channelFillerCoverage(ctx context.Context, in *previewPodsInput) (*channelCoverageOutput, error) {
+func (s *Handlers) channelFillerCoverage(ctx context.Context, in *previewPodsInput) (*channelCoverageOutput, error) {
 	if s.pods == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking a channel's coverage.")
 	}
@@ -368,7 +368,7 @@ const cyclePreviewSlotCap = 50
 // runs the SAME pure lineup builder as reconcile at the chosen wall-clock, so the preview and
 // the real guide cannot disagree — WITHOUT touching Tunarr or persisting anything. Read-only,
 // so any authenticated user may call it; the moment may be past or future.
-func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput) (*previewCycleOutput, error) {
+func (s *Handlers) previewChannelCycle(ctx context.Context, in *previewCycleInput) (*previewCycleOutput, error) {
 	if s.channels == nil {
 		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview a channel's cycle.")
 	}
@@ -503,7 +503,7 @@ type previewDraftPodsInput struct {
 // tool (applying the selection is a normal PATCH of policy.filler). Runs the SAME
 // assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what
 // will air once applied — only the (draft) selection differs.
-func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewDraftPodsOutput, error) {
+func (s *Handlers) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewDraftPodsOutput, error) {
 	if s.pods == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
