@@ -548,29 +548,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   - With an arr connected and no `server.public_url`, the step asks for Loomarr's address,
     which the arrs' webhooks need.
   - The arr probe treats a 200 that isn't JSON as a login page in front of the arr, not the arr.
-- **The parity gate** (step 14, decision 8). `make library-parity` (`eval library-parity`) reads
-  the scanner's files from a Loomarr database and every movie and episode file the media server
-  lists, both read-only, and pairs them by path through the path map. A pair agrees on identity
-  when the two share a TMDB, TVDB or IMDb id and contradict none; an episode agrees by its own
-  ids, or else by its show's ids and its numbering. Durations agree within a second. Expected
-  differences are explained and counted: a path the path map doesn't cover, a folder not in use,
-  a file the scanner skips, a title waiting in Needs you. The gate passes with no
-  unexplained presence or identity finding and at least 99.5% of durations agreeing; a live
-  channel check follows before the cutover.
-- **The id map** (step 15a). The cutover rewrites every stored media-server item id into a library
-  item id. Media-server origins in the inventory exist only for what playout has played, so the
-  ids are paired the same way the parity gate pairs files:
-  - A movie or episode maps to the library item its file was written as, matched by path.
-  - A series maps to the one show its paired episodes were written under.
-  - An id that doesn't pair keeps the reason: the path map doesn't cover it, the scanner hasn't
-    found the file, the scanner skips it, the file isn't a title yet, or versions or episodes
-    disagree.
+- **The cutover** (steps 14–15, decision 8; deleted in step 16). A parity gate paired the
+  scanner's files with every file the media server listed, by path through the path map, and
+  checked their identity and durations. An id map paired each media-server item id with the
+  library item its file was written as (a series through its episodes), and a rewrite then
+  pointed every stored id at its library item: titles, airings, channels' slots, scopes, rules and
+  lineup membership, and open proposals. An id that didn't pair kept its value. The media server's
+  hand-made collections became household collections (`library_collections.imported_id` names the
+  one each came from). All of it ran on the release before step 16 and was then deleted with
+  `library_id_map` (migration 205).
 
-  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
-  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
-  prints the map's coverage.
-
-  Readers learn library item ids before the rewrite turns stored ids into them. Playout reads first:
+  Readers learned library item ids before the rewrite turned stored ids into them. Playout read first:
   a programme keyed by a library item id plays that item's own playing file, with no media-server
   call (`LibraryPlayingFile`); any other id resolves through the media server as before. Item
   metadata follows: the guide's descriptions, a lineup's durations and a proposal's outlook read a
@@ -604,23 +592,6 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Channel ideas read the Library** (step 15e, Library-only since step 16). Home's channel ideas
   draw from the Library's movies and series with their year and genres (`LibraryTitles`,
   `LibraryItemFacts`).
-- **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
-  stored records name at library items: titles, airings, channels' slots, scopes, rules and
-  lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
-  are history and keep theirs). An id the map doesn't pair still maps when its record names a
-  title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
-  server that re-added its library left every old id dead, but not the titles. The pass runs in
-  one transaction.
-
-  There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
-  at once and the rest is logged and waits for a later pass. An airing names an episode with no
-  key, so one the map can't pair keeps its id and its spacing history lapses.
-
-  The media server's collections become household collections (`library_collections.imported_id`
-  names the one each came from): the hand-made ones once, behind the
-  `migration.library.collections_import.v1` marker so one the household deletes stays deleted, and
-  a TMDB-generated one only when a record names it, since the Library's ready-made sets already
-  hold those. Members come over through the id map.
 - **The filler library source reads a folder** (step 15d, decision 36). A `library` filler source
   names one of the household library's folders and is copied from, never drained: each clip file
   under it is copied into the filler watch folder for intake to hash and file, skipping a clip the
@@ -667,9 +638,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ids, so one frozen against the media server's ids drifts and must be frozen again.
 - **The media-server client keeps no catalog reads** (step 16). `library.Client` lost its search,
   presence lookup, bulk scan, episode and metadata reads; what it still asks the media server is
-  sign-in and users, folder discovery, filler, the live tuner, and — until prod has run them —
-  the cutover's id map (`ServerFiles`) and the collection import. The demo stand-in serves a
-  series' episodes to that id map. Tests drive the catalog through `catalogfixture.ScriptedLibrary`
+  sign-in and users, folder discovery, filler and the live tuner. The demo stand-in serves only
+  those. Tests drive the catalog through `catalogfixture.ScriptedLibrary`
   or the Library's own tables, and the media-server double no longer scripts titles.
 
 ## Search
