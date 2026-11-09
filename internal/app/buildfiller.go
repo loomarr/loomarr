@@ -48,8 +48,6 @@ import (
 // for runtime nils. A `buildX` FUNCTION takes only what it needs and RETURNS values, so nothing
 // widens and the compiler still catches use-before-assignment. §14.1 records the distinction.
 //
-// The measurement that makes this tractable: the 434-line filler section reads only
-// EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
 // offerCuratedSources offers this build's curated sources the install has not been offered, switched
@@ -88,20 +86,17 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 	src := cliplibrary.DirSource{
 		Layout: layout,
 		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
-		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
-		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
-		// points that setting at a custom build (the whole reason it exists — see the
-		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
-		// silently, and the setting appeared to do nothing here.
+		// ⚠ **Artwork must be given `playout.ffmpeg_path`**: its nil default shells out to whatever
+		// `ffmpeg` PATH resolves to, so an operator who points that setting at a custom build
+		// would get frames from a DIFFERENT binary than playout uses, silently.
 		Artwork: cliplibrary.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
 		Storage: governor,
 		// The quality gate's floor (§10 V40).
 		MinDuration: func() time.Duration { return settings.FillerMinDuration.Get(set) },
-		// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
-		// warning has never once been emitted. That count exists precisely because extraction is
-		// best-effort and failures are skipped — the shape that already produced one
-		// silently-empty catalog in this repo's history (see FFprobeNextTo). A generator that
-		// counts failures into a logger nobody wired is the same silence with extra steps.
+		// ⚠ **Log must be assigned**: the "some thumbnails could not be generated" warning exists
+		// because extraction is best-effort and failures are skipped (the shape that once produced
+		// a silently-empty catalog, see FFprobeNextTo). A generator that counts failures into a
+		// logger nobody wired is the same silence with extra steps.
 		Log: log.Warn,
 	}
 	// Keep the adapter present across the process lifetime, but resolve availability per
@@ -135,8 +130,8 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 // then failed at the point of use with "ingest tooling not present in this image". Two claims
 // that cannot both be true, which is the exact shape that started V38b.
 //
-// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
-// described these as defaulting to the vendored binaries, and only the Docker image set them, so
+// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15
+// describes these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
 func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
 	ytPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
@@ -249,17 +244,10 @@ func intakeLanguages(st interface {
 
 // buildPipeline constructs the ingest pipeline: one driver over ten rungs (§10 V51b/V61).
 //
-// ⚠ **This block was measured as an 11-input seam and skipped on that basis. The measurement
-// was wrong, and the way it was wrong is worth keeping.** The window had been drawn at the
-// `pipelineStages` slice, so `langDetect`, `fillerTools`, `fillerDrop`, `visionProvider` and
-// `clipDir` — all of them DEFINED in the preamble immediately above and referenced nowhere
-// else in the composition root — counted as inputs crossing the boundary. They are locals of this
-// unit, not couplings to the rest of the composition root. Widened to the whole unit, the
-// external inputs are the six parameters below, which is `buildSyncer`'s number.
-//
-// The lesson generalises past this function: a coupling count is a property of the BOUNDARY,
-// not of the code, and a boundary drawn mid-unit reports the unit's own locals as coupling.
-// Measure from the first line the unit owns, or the number means nothing.
+// The external inputs are the six parameters below: `langDetect`, `fillerTools`, `fillerDrop`,
+// `visionProvider` and `clipDir` are locals of this unit, not couplings to the rest of the
+// composition root. A coupling count is a property of the BOUNDARY, so measure from the first
+// line the unit owns.
 //
 // ⚠ Every rung is registered UNCONDITIONALLY, even when the thing it needs is absent — a stage
 // missing from the slice reports "not available on this install" on every clip's ladder, while
@@ -317,10 +305,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	// The provider is wired even while the capability is off; the enabled closure still prevents
 	// calls. That lets a later opt-in wake Ready clips without a restart, while the endpoint itself
 	// remains resolved per call by `hotVisionProvider`, so changing the provider, URL, key or model
-	// applies to the next clip. This used to
-	// build the provider here, from `llm.url` and `llm.api_key`, behind an unlogged
-	// `&& settings.LLMURL.Get(set) != ""` — so an install with vision enabled and no reachable endpoint
-	// was indistinguishable from one with vision switched off.
+	// applies to the next clip. Gating construction on a configured URL would make an install with
+	// vision enabled and no reachable endpoint indistinguishable from one with vision switched off.
 	h := &hotVisionProvider{set: set, log: log, metrics: recorder}
 	// Background vision (the vision rung and split-time grounding) yields each model call to an
 	// interactive suggestion in flight, so Add a channel gets the AI server's slots first (#1508).
@@ -336,15 +322,11 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
-	// One driver over ten rungs, replacing `filler-language`, `filler-split`,
-	// `filler-transcribe` and `filler-vision`.
+	// One driver over ten rungs.
 	//
-	// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
-	// A stage missing from this slice is reported as "not available on this install" on every
-	// clip's ladder, while one that is present says WHY it skipped in the operator's own terms
-	// ("vision tagging is off", "no language backend is configured"). Registering all of them
-	// and letting `Applies` answer is what makes the ladder explain an install rather than
-	// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
+	// Every rung is registered unconditionally (see buildPipeline): `Applies` answers WHY a rung
+	// skipped ("vision tagging is off", "no language backend is configured"), which is the same
+	// visible-but-idle contract the Tasks page rows use.
 	clipDir := layout.ClipDir()
 	screeningRuntime, screeningErr := buildQualificationSegmentScreeningRuntime(st, layout)
 	if screeningErr != nil {
@@ -451,7 +433,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 				return rt
 			},
 		}
-		// Build once at boot so a bad file is reported at startup, as before.
+		// Build once at boot so a bad file is reported at startup.
 		structureRuntime.Current()
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
@@ -541,18 +523,15 @@ func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTra
 // stay independent of.
 func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *pod.Adapter {
 	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
-	// This was a value built here at boot, so every reader took a snapshot: writing
-	// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
-	// `filler.max_clip_duration` changed the stored setting, the API read the new value
-	// back, and the assembler went on using the old one until the process restarted.
+	// A value built here at boot would be a snapshot: writing `filler.pod_max`,
+	// `filler.min_quality`, `filler.min_clip_duration` or `filler.max_clip_duration` would
+	// change the stored setting and the value the API reads back, while the assembler went on
+	// using the old one until the process restarted. Unit tests build a `pod.Policy` literal
+	// and call the domain directly, so the setting→policy edge is the one segment they cannot
+	// reach; only a live check of a setting change catches a regression here.
 	//
-	// Caught on the live stack, not by a test: `filler.max_clip_duration=45s` left
-	// `PoolReport.Eligible` at 20 with a 64s clip in the catalog; it dropped to 19 only
-	// after a re-exec. Every unit test builds a `pod.Policy` literal and calls the domain
-	// functions directly, so the setting→policy edge is the one segment they cannot reach.
-	//
-	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
-	// resolves per call and says so. This is that contract, honoured by the pod path too.
+	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` resolves per
+	// call too. This is that contract, honoured by the pod path.
 	// The radius is read per call like the rest of the policy; the resolver memoises per radius.
 	// A closure, not the method value: the store is read only when a place is set.
 	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
@@ -565,12 +544,11 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 			LocalStations:   local.Resolve,
 			PodMax:          settings.FillerPodMax.Get(set),
 			BreakDurationMs: settings.FillerBreakDuration.Get(set).Milliseconds(),
-			// V17c: 0 (the default) leaves selection exactly as it was before the floor
-			// existed — see the warning on Policy.MinQualityHeight.
+			// V17c: 0 (the default) means no quality floor — see the warning on
+			// Policy.MinQualityHeight.
 			MinQualityHeight: settings.FillerMinQuality.Get(set),
-			// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
-			// default to 0s = off, so `durationEligible` keeps returning true on an untouched
-			// install — the difference is that it CAN now return false, which is what lets
+			// V51f: the pod-eligibility duration bounds. Both default to 0s = off, so
+			// `durationEligible` returns true on an untouched install; setting one is what lets
 			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
 			MinClipMs: settings.FillerMinClipDuration.Get(set).Milliseconds(),
 			MaxClipMs: settings.FillerMaxClipDuration.Get(set).Milliseconds(),
@@ -587,18 +565,17 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 type visionWiring struct {
 	provider, identity, url, model, key string
 	// own reports that vision was pointed at its OWN service rather than inheriting the main
-	// LLM's. It is logged, because "which endpoint is vision actually using" was previously
-	// underivable from any output the process produced.
+	// LLM's. It is logged, so "which endpoint is vision actually using" is answerable from the
+	// process's output.
 	own bool
 }
 
 // visionEndpoint resolves where clip frames get read, and by what.
 //
-// ⚠ **`filler.vision.model` alone was a half-separation, and the missing half failed silently.**
-// The model knob let an operator name a vision model, but the provider was built from
-// `llm.provider`/`llm.url`/`llm.api_key` — so naming a LOCAL model while the main LLM was hosted
-// sent an Ollama tag to the hosted endpoint. Measured on the maintainer's stack: `llava:7b` →
-// `https://openrouter.ai/api/v1` → 401 on every segment. `ground` reports that as zero looks, the
+// ⚠ **`filler.vision.model` alone would be a half-separation, and the missing half fails silently.**
+// If the provider were built from `llm.provider`/`llm.url`/`llm.api_key`, naming a LOCAL model
+// while the main LLM was hosted would send an Ollama tag to the hosted endpoint (`llava:7b` →
+// `https://openrouter.ai/api/v1` → 401 on every segment). `ground` reports that as zero looks, the
 // gate refuses the reel with "a segment could not be classified", and nothing anywhere says why.
 // A model name is useless without the host that serves it.
 //
@@ -643,9 +620,9 @@ func visionEndpoint(set resolved) visionWiring {
 // `filler.vision.*` in Settings takes effect on the next clip rather than on the next restart
 // (config-design §8 hot-apply).
 //
-// ⚠ **The alternative was a provider captured at boot, which is what this replaces.** A settings
-// subsystem whose whole point is `env > database > default` resolved live, wired to a knob that
-// silently needs a restart, produces the worst kind of control: one that looks like it worked.
+// ⚠ **A provider captured at boot would be wrong here.** A settings subsystem whose whole point
+// is `env > database > default` resolved live, wired to a knob that silently needs a restart,
+// produces the worst kind of control: one that looks like it worked.
 // The operator saves "Ollama", the next reel still 401s against the hosted endpoint, and nothing
 // connects the two.
 //
@@ -673,8 +650,8 @@ func (h *hotVisionProvider) AskAboutImages(ctx context.Context, prompt string, j
 // resolve returns the provider for the CURRENT settings, rebuilding only when they have changed.
 //
 // ⚠ The errors are the point of this method existing separately. `ground` treats a provider
-// failure as "stop, try again next pass", and every one of these used to be an unlogged nil
-// provider instead — indistinguishable from vision being switched off.
+// failure as "stop, try again next pass"; returning a nil provider with no error would be
+// indistinguishable from vision being switched off.
 func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	v := visionEndpoint(h.set)
 	if v.url == "" {
@@ -697,8 +674,7 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
 	}
 	if h.log != nil && h.raw != raw {
-		// The line that answers "which endpoint is vision actually using" — underivable from any
-		// output this process produced before V54a.
+		// The line that answers "which endpoint is vision actually using" (V54a).
 		h.log.Info("filler vision endpoint resolved",
 			"provider", v.identity, "wire_provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
 	}

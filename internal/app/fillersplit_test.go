@@ -26,7 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// splitFakeTools implements filler.MediaTools with chapter-only behaviour — the
+// splitFakeTools implements tools.MediaTools with chapter-only behaviour — the
 // app-adapter tests exercise the WIRING (job id, SSE frames, store round-trip),
 // not detection, which internal/filler's own suite covers.
 type splitFakeTools struct {

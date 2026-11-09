@@ -88,7 +88,7 @@ type ChannelReader interface {
 
 // CodecWriter persists a channel's computed broadcast codec (§9.1 V50). Narrowed to the one
 // targeted column write — the resolver samples + probes the lineup, but has no other business
-// mutating a channel row (the binder owns the lineup, loomarr-one-lineup-writer).
+// mutating a channel row (the binder is the one lineup writer).
 type CodecWriter interface {
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 }
@@ -108,13 +108,12 @@ type Resolver struct {
 	clipPlays ClipPlayRecorder
 	// airings records that a PROGRAMME aired, feeding recency-aware placement
 	// (programming-design §3.1). Nil ⇒ no history, and placement degrades to the positional
-	// rotation it used before the signal existed.
+	// rotation.
 	airings AiringRecorder
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
-	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
-	// "the next program" is at most one program away — which makes hot-apply genuinely cheap
-	// here in a way it would not be for one long-lived encode.
+	// NEXT program rather than requiring a restart. Each programme item is its own encoder, so
+	// "the next program" is at most one program away — which makes hot-apply cheap.
 	tier    func() string
 	encoder func() string
 	// toneCurve is playout.tone_curve: the budget prices HDR by it and the probe measures it.
@@ -143,11 +142,11 @@ type Resolver struct {
 	// order, so an install without the wiring still detects an encoder, just without the native hint.
 	gpuName func() string
 	// audioLanguage is the operator's preferred audio track language (§9.1, `eng` by default),
-	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
-	// did before this existed — and is how a channel played a film in Russian.
+	// read live like every other setting. Empty ⇒ the file's first track, which is how a
+	// channel once played a film in Russian.
 	audioLanguage func() string
 	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
-	// break candidates) per source revision. Nil ⇒ playout probes as before and stores nothing.
+	// break candidates) per source revision. Nil ⇒ playout probes each time and stores nothing.
 	measurer sourceMeasurer
 	// analyses reads what the measurer stored: the keyframe index a still seeks with, the scene
 	// fades mid-roll placement uses (§10), and the active picture the channel watermark anchors to.
@@ -180,9 +179,8 @@ type Resolver struct {
 	processDiagnostics *diagnostics.ProcessManager
 	log                *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
-	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
-	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
-	// (merely slower) listings.
+	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, so tests and any
+	// install that skips the wiring still get correct (merely slower) listings.
 	channels ChannelReader
 	// codecs persists the computed broadcast codec after a bind samples the lineup (§9.1 V50).
 	// Nil ⇒ ComputeChannelCodec still returns the measured codec but skips the write — so a
@@ -841,7 +839,7 @@ func (r *Resolver) cycleAt(
 // window, so 8 covers the whole picker with a segment to spare. The cap is a backstop against a
 // pathological window (a channel configured to a one-minute horizon must not turn one guide
 // request into thousands of arrangements), not an expected limit: past it the tail of the span
-// keeps the last segment's cycle, which is exactly today's behaviour for the whole span.
+// keeps the last segment's cycle.
 const maxGuideSegments = 8
 
 // segmentedBroadcasts walks [from, to) one ROLLING WINDOW at a time, re-resolving the channel's
@@ -874,7 +872,7 @@ const maxGuideSegments = 8
 // the identical shared walk.
 //
 // A window of 0 (WindowFull / unbounded) means the deck never rotates, so one segment is the
-// whole answer — the pre-existing behaviour, unchanged.
+// whole answer.
 func (r *Resolver) segmentedBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
@@ -1231,17 +1229,10 @@ func (r *Resolver) airingFiller(
 	return gap, "", nil
 }
 
-// Profile is the encode profile for the next program, resolved against live load.
-//
-// Called once per program (each child is a fresh process), so the ladder adapts as channels come
-// and go: the first channel on an idle box gets the top rung, and a fifth channel starting up
-// steps everyone down as their next program begins. That is the "best picture the hardware
-// sustains, then adapt" policy §9.1 states, and it is only implementable because the child
-// processes are short-lived.
 // AudioTrackFor resolves which audio track a source should play (§9.1).
 //
 // Returns an index among AUDIO streams — the `N` in `-map 0:a:N`. Zero means "the file's first
-// track", which is both the historical behaviour and the safe answer for every failure below.
+// track", which is the safe answer for every failure below.
 //
 // ⚠ BEST-EFFORT, NEVER FATAL, and every branch here degrades the same way for the same reason:
 // a probe that fails must cost the viewer the language preference, never the programme. No
@@ -1250,7 +1241,7 @@ func (r *Resolver) airingFiller(
 // channel that goes dark because a metadata read timed out, which trades a small annoyance for a
 // total outage.
 //
-// One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
+// One probe per PROGRAMME, not per request: the channel packager asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
 func (r *Resolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
@@ -1339,7 +1330,7 @@ type LibraryVideoReader interface {
 
 // libraryFormat is a library item's video format as the scanner read its playing file's header
 // (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
-// other id, which the inventory answers as before.
+// other id, which the inventory answers.
 func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
 	if r.libraryVideo == nil {
 		return playout.MediaFormat{}, false
@@ -1654,6 +1645,9 @@ func (r *Resolver) probedFormat(ctx context.Context, input string) playout.Media
 	return f
 }
 
+// Profile is the encode profile at the ladder rung the ResourceBudget admitted a session at,
+// resolved against the measured encoder and the operator's quality tier (§9.1: "best picture the
+// hardware sustains, then adapt"). A new session takes the best rung that fits and keeps it.
 func (r *Resolver) Profile(ctx context.Context, rung int) playout.Profile {
 	enc := encode.Encoder(r.encoder())
 	if enc == "" {

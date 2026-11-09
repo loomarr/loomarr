@@ -15,7 +15,7 @@ import (
 )
 
 // remoteRuntimesFile is the runtime cache's file inside the filler folder. Dot-prefixed like the
-// artwork cache (filler.ThumbDirName) so scans and intake skip it, and kept beside the clips it
+// artwork cache (cliplibrary.ThumbDirName) so scans and intake skip it, and kept beside the clips it
 // is for: they share a lifecycle, and emptying the folder takes the cache with it.
 const remoteRuntimesFile = ".loomarr-remote-runtimes.json"
 
@@ -27,7 +27,7 @@ type remoteRuntime struct {
 
 // remoteRuntimeCache remembers remote items' runtimes, keyed by provider and item id (#1773).
 //
-// Reading an Archive.org runtime costs one throttled metadata call per item (clipfetch.Enrich:
+// Reading an Archive.org runtime costs one throttled metadata call per item (fetch.Enrich:
 // ~25 items in 15–25 s), and while compilation reels are held back every planned pull and
 // scheduled check needs them. A published item's runtime does not change, so each is read once
 // and kept on disk across plans and restarts. Only known runtimes are kept: an item Archive.org

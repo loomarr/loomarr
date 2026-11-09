@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-// PackagerSource is the channel packager's view of the schedule and the host (#1512 phase 2). It
+// PackagerSource is the channel packager's view of the schedule and the host (#1512). It
 // resolves an item (airing, stream URL, audio track, stream facts, and a programme's watermark)
 // straight from the playout resolver.
 type PackagerSource struct {

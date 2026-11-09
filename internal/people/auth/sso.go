@@ -44,8 +44,7 @@ var ErrSSONotConfigured = errors.New("sso is not configured")
 // Its own error because nothing was rejected on credentials: it is a stale bookmark, a
 // replayed callback, or a login this server never started.
 //
-// ⚠ **This alone is not CSRF protection, and an earlier version of this comment claimed it
-// was.** `pending` is a per-process map, so a hit proves only that SOME login started here
+// ⚠ **This alone is not CSRF protection.** `pending` is a per-process map, so a hit proves only that SOME login started here
 // within pendingTTL — not that the browser presenting the state is the one that started it.
 // The binding is the state COOKIE the API layer sets at /start and checks at /callback
 // (§11). Keep both: this covers expiry and single-use, the cookie covers origin.

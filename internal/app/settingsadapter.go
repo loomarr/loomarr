@@ -307,11 +307,9 @@ func connectionTests(
 			}
 			return true, ""
 		},
-		// requester (§6): Seerr is the implemented requester; the probe validates the
-		// URL + API key. Direct Sonarr/Radarr is a separate requester (not yet a Test
-		// target) — guide the user to Seerr when only that pair is set.
+		// requester (§6): branch on the selected provider: probe the direct arr(s) or Seerr
+		// (URL + API key).
 		"requester": func(ctx context.Context) (bool, string) {
-			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
 			if settings.RequesterProvider.Get(set) == "arr" {
 				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
 					return false, "connect Sonarr and/or Radarr (Where's your media? in setup, Settings → Library later)"

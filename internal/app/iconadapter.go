@@ -18,9 +18,8 @@ import (
 // not an exhaustive catalog, so we stop well short of the full lineup.
 const iconMaxSuggestions = 12
 
-// iconLogoWidth is the rung a suggestion's `url` points at. It matches the w500 these URLs used
-// to carry from TMDB directly, which is the size a channel tile wants and the size Tunarr gets
-// pushed — the difference is that the bytes are now ours and the other rungs exist alongside it.
+// iconLogoWidth is the rung a suggestion's `url` points at: the size a channel tile wants and the
+// size Tunarr gets pushed. The bytes are ours, with the other rungs alongside it.
 const iconLogoWidth = 500
 
 // iconFetchBudget bounds the synchronous warm-up below.

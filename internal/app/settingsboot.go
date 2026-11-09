@@ -24,7 +24,7 @@ import (
 var envLookup = config.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root
-// reads settings the way it used to read cfg.X. Reads resolve env > db > default
+// reads settings through typed getters. Reads resolve env > db > default
 // through the live snapshot unless freeze pins a generation-scoped key. Connection
 // getters are returned as closures so adapters read them per operation.
 type resolved struct {

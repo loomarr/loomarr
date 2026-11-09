@@ -634,8 +634,8 @@ func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error
 		// The `llm.provider` setting is the WIRE KIND (enum: ollama | openai), not the
 		// branded catalog key. Every hosted provider (openrouter, custom, …) is an
 		// OpenAI-compatible client (see buildProviderFor + hosted.go), so it persists as
-		// "openai". Persisting the branded key here 502'd on the enum ("openrouter is
-		// not one of [ollama openai]") — the bug that made the hosted picker unusable.
+		// "openai". Persisting the branded key here would 502 on the enum ("openrouter is
+		// not one of [ollama openai]").
 		// The branded key still lives on the in-memory Selection (for the openai/…
 		// model ids) and namespaces the stored API key; only the coarse setting is
 		// normalized to the wire kind.

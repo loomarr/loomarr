@@ -65,7 +65,7 @@ func buildChannels(
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
 ) (channelBuild, error) {
-	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
+	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
@@ -220,9 +220,8 @@ func buildChannels(
 		// disagree about which numbers exist. Both must read the same Tunarr.
 		chanNumbers = tunarrNumbers{pusher}
 		channelEngine = channels.New(st, pusher, avail, transportFreshness, channels.Config{
-			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
-			// alternative is future design work; backfill is stable today
-			// placement, handled inside the engine, not the placeholder kind.
+			// Pending-slot policy is pod-fill (§9); backfill placement is stable and is handled
+			// inside the engine, not by the placeholder kind.
 			Policy:               schedule.PodFill,
 			ReconcileTTL:         settings.ChannelReconcileEvery.Get(set),
 			BreaksPerHour:        settings.FillerBreaksPerHour.Get(set),
@@ -273,7 +272,7 @@ func buildChannels(
 		// handler: provisioning availability events (webhook + reconciler) fan to
 		// OnAvailability, so an acquisition that lands `available` reconciles the
 		// channels referencing it immediately — instead of waiting up to a full
-		// sweep interval. (#10: the emitter was nil before this wire.)
+		// sweep interval.
 		emitter.setEngine(channelEngine)
 
 		backendView = backendtransition.NewDurableView(st)
@@ -301,9 +300,9 @@ func buildChannels(
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := settings.ChannelReconcileEvery.Get(set)
-		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
-		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
-		// constructed here; it has no standalone loop.
+		// The channel sweep is a scheduler job (§18.1): the desired-vs-actual Sweep (with its own
+		// ClaimDueChannels lease), driven by River. The Runner's lease/batch are constructed
+		// here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
