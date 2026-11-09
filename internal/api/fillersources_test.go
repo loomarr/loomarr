@@ -68,12 +68,12 @@ func clip(path, source string) clipstore.Clip {
 }
 
 type sourcesBody struct {
-	Sources []api.FillerSourceDTO `json:"sources"`
-	Total   int                   `json:"total"`
+	Sources []fillerapi.FillerSourceDTO `json:"sources"`
+	Total   int                         `json:"total"`
 }
 
 type sourceSuggestionsBody struct {
-	Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+	Suggestions []fillerapi.FillerSourceSuggestionDTO `json:"suggestions"`
 }
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
@@ -126,7 +126,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST resolve → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
-	var got api.FillerSourceSuggestionDTO
+	var got fillerapi.FillerSourceSuggestionDTO
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 		t.Fatal(err)
 	}
 
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, source := range getSources(t, srv).Sources {
 		if source.ID == src.ID {
 			projected = source
@@ -268,7 +268,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 	if projected.ID == "" {
 		t.Fatal("registered source was not projected")
 	}
-	if projected.Readiness != api.FillerSourceNeedsLocation {
+	if projected.Readiness != fillerapi.FillerSourceNeedsLocation {
 		t.Fatalf("readiness = %q, want needs_location", projected.Readiness)
 	}
 	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.NextCheckAt != "" {
@@ -308,7 +308,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 		t.Fatal(err)
 	}
 
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, source := range getSources(t, srv).Sources {
 		if source.ID == src.ID {
 			projected = source
@@ -330,7 +330,7 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 	})
 	body := getSources(t, srv)
 
-	byKind := map[string]api.FillerSourceDTO{}
+	byKind := map[string]fillerapi.FillerSourceDTO{}
 	for _, s := range body.Sources {
 		byKind[s.Kind] = s
 	}
@@ -385,7 +385,7 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 	}
 
 	body := getSources(t, srv)
-	byID := make(map[string]api.FillerSourceDTO, len(body.Sources))
+	byID := make(map[string]fillerapi.FillerSourceDTO, len(body.Sources))
 	for _, source := range body.Sources {
 		byID[source.ID] = source
 	}
@@ -424,7 +424,7 @@ func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
 	srv := serverWithClips(t, map[string]string{}, nil) // no filler.dir
 	body := getSources(t, srv)
 
-	var folder *api.FillerSourceDTO
+	var folder *fillerapi.FillerSourceDTO
 	for i := range body.Sources {
 		if body.Sources[i].Kind == "folder" {
 			folder = &body.Sources[i]
@@ -548,7 +548,7 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 	}
 }
 
-func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceDTO {
+func sourceOfKind(t *testing.T, body sourcesBody, kind string) fillerapi.FillerSourceDTO {
 	t.Helper()
 	for _, s := range body.Sources {
 		if s.Kind == kind {
@@ -556,7 +556,7 @@ func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceD
 		}
 	}
 	t.Fatalf("no %q source in %+v", kind, body.Sources)
-	return api.FillerSourceDTO{}
+	return fillerapi.FillerSourceDTO{}
 }
 
 // Admin-only: the rows name filesystem paths and library targets, which is infrastructure
@@ -613,11 +613,11 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 		t.Fatalf("fetched source ids = %v, want only the selected row", ff.fetchedSourceIDs)
 	}
 	var body struct {
-		SourceID      string                           `json:"sourceId"`
-		SourcesPolled int                              `json:"sourcesPolled"`
-		Queued        int                              `json:"queued"`
-		MaxPerCheck   int                              `json:"maxPerCheck"`
-		Outcomes      *api.FillerSourceCheckSummaryDTO `json:"outcomes"`
+		SourceID      string                                 `json:"sourceId"`
+		SourcesPolled int                                    `json:"sourcesPolled"`
+		Queued        int                                    `json:"queued"`
+		MaxPerCheck   int                                    `json:"maxPerCheck"`
+		Outcomes      *fillerapi.FillerSourceCheckSummaryDTO `json:"outcomes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -725,13 +725,13 @@ func TestListFillerProviders_PublishesTheRegistry(t *testing.T) {
 		t.Fatalf("GET providers → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
 	var got struct {
-		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+		Providers []fillerapi.FillerProviderDescriptionDTO `json:"providers"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	ids := make([]string, len(got.Providers))
-	byID := map[string]api.FillerProviderDescriptionDTO{}
+	byID := map[string]fillerapi.FillerProviderDescriptionDTO{}
 	for i, p := range got.Providers {
 		ids[i] = p.ID
 		byID[p.ID] = p
@@ -764,12 +764,12 @@ func TestListFillerProviders_CarriesTheWordsTheSourcePageShows(t *testing.T) {
 	srv, _, _ := newFillerServer(t)
 	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
 	var got struct {
-		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+		Providers []fillerapi.FillerProviderDescriptionDTO `json:"providers"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	byID := map[string]api.FillerProviderDescriptionDTO{}
+	byID := map[string]fillerapi.FillerProviderDescriptionDTO{}
 	for _, p := range got.Providers {
 		byID[p.ID] = p
 	}
@@ -796,8 +796,8 @@ func TestFillerSourceSuggestions_CheckAnAddressInsteadOfSearchingForIt(t *testin
 		t.Fatalf("GET suggestions → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
 	var body struct {
-		Exact       bool                            `json:"exact"`
-		Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+		Exact       bool                                  `json:"exact"`
+		Suggestions []fillerapi.FillerSourceSuggestionDTO `json:"suggestions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

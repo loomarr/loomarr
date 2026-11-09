@@ -86,17 +86,10 @@ type Server struct {
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
 	images   ImageService
-	events   EventSource       // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown <-chan struct{}   // generation shutdown closes long-lived streams before HTTP drain
-	filler   fillerapi.Service // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	pods     PodPreviewer      // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy TaxonomyEditor    // taxonomy impact + graph convergence; nil keeps store-only test wiring
-	// fillerLayout is the immutable filesystem topology applied to this server generation.
-	// Operational routes keep interpreting catalog paths against this root until restart.
-	fillerLayout cliplibrary.Layout
-	// sourceProviders is every provider a filler source can name. It answers what each one is and
-	// can do; nil names none, so no source is fetched and none can be added.
-	sourceProviders *source.Registry
+	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy TaxonomyEditor  // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// The jobs, database, encryption, backups, restart and help routes are served by
 	// system.Handlers, built from the same Options in Router. A generation's start time
 	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop

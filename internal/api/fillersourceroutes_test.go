@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
@@ -354,7 +355,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if every, ok := got.FetchEvery(time.Hour); !ok || every != 15*time.Minute {
 		t.Errorf("FetchEvery = %v/%v, want 15m and pollable", every, ok)
 	}
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, row := range sourcesFrom(t, srv) {
 		if row.ID == "classic" {
 			projected = row

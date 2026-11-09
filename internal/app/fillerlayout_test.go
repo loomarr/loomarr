@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -183,7 +184,7 @@ func fillerFolderTarget(t *testing.T, h http.Handler, token string) string {
 		t.Fatalf("GET /v1/filler/sources = %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Sources []api.FillerSourceDTO `json:"sources"`
+		Sources []fillerapi.FillerSourceDTO `json:"sources"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
