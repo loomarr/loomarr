@@ -3,13 +3,11 @@
 // (the homelab default) and OpenAI-compatible. `NewProvider` builds one or the
 // other and nothing else.
 //
-// ⚠ **`llm.provider` names a WIRE KIND, not a brand**, and this doc said otherwise
-// until 2026-08-10: it claimed an "Anthropic (opt-in)" provider, which does not
-// exist — there is no anthropic.go, and no case for it. Claude is reached over the
-// OpenAI-compatible wire through OpenRouter, which `llm.hosted_provider` selects as
-// a BRAND on top of the same transport (see hosted.go). Conflating the two sends a
-// reader looking for an implementation that was never written, and an operator
-// looking for a provider value that nothing accepts.
+// ⚠ **`llm.provider` names a WIRE KIND, not a brand.** There is no separate Anthropic
+// provider: Claude is reached over the OpenAI-compatible wire through OpenRouter, which
+// `llm.hosted_provider` selects as a BRAND on top of the same transport (see hosted.go).
+// Conflating the two sends a reader looking for an implementation that does not exist, and
+// an operator looking for a provider value that nothing accepts.
 //
 // The provider only translates messages/tools to/from its wire format and
 // normalizes quirks (Ollama tool-call arguments arrive as a parsed object, the

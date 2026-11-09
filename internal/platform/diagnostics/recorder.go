@@ -33,9 +33,8 @@ type Options struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	WriteTimeout  time.Duration
-	// MinLevel defaults to info. A future bounded verbose-capture controller may construct a
-	// recorder at debug without changing every producer or making permanent debug retention the
-	// default.
+	// MinLevel defaults to info. Debug evidence is admitted only through the bounded
+	// StartVerboseCapture window, so permanent debug retention is never the default.
 	MinLevel  Level
 	Now       func() time.Time
 	OnFailure func(error, int)
