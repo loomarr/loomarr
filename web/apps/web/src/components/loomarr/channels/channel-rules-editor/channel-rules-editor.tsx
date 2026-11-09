@@ -16,11 +16,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, Tooltip } from "@loomarr/design-system";
-import { GripVertical, X } from "lucide-react";
+import { Action, CompactSelect, Tooltip } from "@loomarr/design-system";
+import { GripVertical } from "lucide-react";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
 import { computeLabel } from "./label";
@@ -54,6 +52,12 @@ import {
 // that doesn't depend on remembering each token's own "default priority" once the user
 // has taken over ordering by hand.
 const priorityFor = (index: number, total: number): number => (total - index) * 10;
+
+// A new rule's unchosen token is empty: the select rests on its prompt, which cannot be picked back.
+const withPrompt = (prompt: string, options: { label: string; value: string }[]) => [
+  { disabled: true, label: prompt, value: "" },
+  ...options,
+];
 
 // WINDOW_FULL_WIRE is the wire form of schedule.WindowFull (-1) — "the whole run, don't
 // truncate a binge" (§6.5). ChannelPolicy/SchedulingRule.window is a Go-duration STRING on
@@ -180,65 +184,47 @@ const RuleRow = ({
         </button>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
         <Tooltip content="Remove this rule">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
+          <Action
             disabled={disabled}
-            aria-label={`Remove ${label}`}
-            onClick={onRemove}
+            icon="close"
+            layout="icon"
+            onPress={onRemove}
+            style={{ flexShrink: 0 }}
+            variant="ghost"
           >
-            <X aria-hidden />
-          </Button>
+            {`Remove ${label}`}
+          </Action>
         </Tooltip>
       </div>
 
       <div className="grid grid-cols-1 gap-2 pl-9 sm:grid-cols-3">
-        <Select value={draft.whenToken} onValueChange={(v) => onChange({ ...draft, whenToken: v })}>
-          <SelectTrigger aria-label={`When for ${label}`} id={`${rowId}-when`}>
-            <SelectValue placeholder="When…" />
-          </SelectTrigger>
-          <SelectContent>
-            {whenOptions(vocab.when).map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          id={`${rowId}-when`}
+          label={`When for ${label}`}
+          onValueChange={(v) => onChange({ ...draft, whenToken: v })}
+          options={withPrompt("When…", whenOptions(vocab.when))}
+          value={draft.whenToken}
+        />
 
-        <Select
-          value={draft.whatToken}
+        <CompactSelect
+          id={`${rowId}-what`}
+          label={`What for ${label}`}
           onValueChange={(v) => {
             const seriesKey = v.startsWith("series:") ? v.slice("series:".length) : undefined;
             const whatDisplay = seriesKey ? lineupKeys.find((l) => l.key === seriesKey)?.title : undefined;
             onChange({ ...draft, whatToken: v, whatDisplay });
           }}
-        >
-          <SelectTrigger aria-label={`What for ${label}`} id={`${rowId}-what`}>
-            <SelectValue placeholder="What…" />
-          </SelectTrigger>
-          <SelectContent>
-            {whatOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={withPrompt("What…", whatOptions)}
+          value={draft.whatToken}
+        />
 
-        <Select value={draft.howToken} onValueChange={(v) => onChange({ ...draft, howToken: v })}>
-          <SelectTrigger aria-label={`How for ${label}`} id={`${rowId}-how`}>
-            <SelectValue placeholder="How…" />
-          </SelectTrigger>
-          <SelectContent>
-            {howOptions(vocab.how).map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          id={`${rowId}-how`}
+          label={`How for ${label}`}
+          onValueChange={(v) => onChange({ ...draft, howToken: v })}
+          options={withPrompt("How…", howOptions(vocab.how))}
+          value={draft.howToken}
+        />
       </div>
     </li>
   );

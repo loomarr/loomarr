@@ -341,8 +341,7 @@ describe("Guide", () => {
     expect(viewTrigger).toHaveAttribute("aria-expanded", "false");
     await user.click(viewTrigger);
 
-    await user.click(view.getByLabelText("Start hour"));
-    await user.click(await screen.findByRole("option", { name: "9 PM" }));
+    await user.selectOptions(view.getByRole("combobox", { name: "Start hour" }), "9 PM");
     expect(viewTrigger).toHaveAccessibleName("View options, custom");
 
     // Closing the row keeps its non-default state legible on the trigger.

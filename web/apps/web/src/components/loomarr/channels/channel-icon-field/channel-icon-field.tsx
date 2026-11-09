@@ -1,12 +1,10 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Field, Surface } from "@loomarr/design-system";
-import { ImageOff, Loader2, Upload } from "lucide-react";
+import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { ImageOff, Loader2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
@@ -159,17 +157,15 @@ const ChannelIconField = ({
           </p>
         </div>
         {isAdmin && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            aria-expanded={suggestionsOpen}
+          <Action
             aria-controls={pickerId}
-            onClick={() => setSuggestionsOpen((open) => !open)}
+            aria-expanded={suggestionsOpen}
+            onPress={() => setSuggestionsOpen((open) => !open)}
+            style={{ flexShrink: 0 }}
+            variant="outline"
           >
             Change…
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -179,17 +175,14 @@ const ChannelIconField = ({
         <div id={pickerId} className="border-border rounded-md border p-4">
           <div className="flex flex-col gap-4">
             {logo && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground self-start"
+              <Action
                 disabled={clearing}
-                onClick={() => void clear()}
+                onPress={() => void clear()}
+                style={{ alignSelf: "flex-start" }}
+                variant="ghost"
               >
-                {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-                Clear
-              </Button>
+                {clearing ? "Clearing…" : "Clear"}
+              </Action>
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
@@ -258,9 +251,9 @@ const ChannelIconField = ({
 
             {/* (b) Upload a file. */}
             <div>
-              <Label htmlFor={`${urlInputId}-file`} className="text-sm font-medium">
+              <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
                 Upload a file
-              </Label>
+              </Text>
               <div className="mt-2 flex items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -284,9 +277,9 @@ const ChannelIconField = ({
 
             {/* (c) Paste a direct image URL. */}
             <div>
-              <Label htmlFor={urlInputId} className="text-sm font-medium">
+              <Text as="label" htmlFor={urlInputId} textRole="label">
                 Paste an image URL
-              </Label>
+              </Text>
               <div className="mt-2 flex items-center gap-2">
                 <Surface
                   backgroundColor="transparent"
@@ -311,19 +304,9 @@ const ChannelIconField = ({
                     value={urlDraft}
                   />
                 </Surface>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={savingUrl || urlDraft.trim() === ""}
-                  onClick={() => void setUrl()}
-                >
-                  {savingUrl ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Upload className="size-4" aria-hidden />
-                  )}
-                  Set
-                </Button>
+                <Action disabled={savingUrl || urlDraft.trim() === ""} onPress={() => void setUrl()}>
+                  {savingUrl ? "Setting…" : "Set"}
+                </Action>
               </div>
               {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
             </div>

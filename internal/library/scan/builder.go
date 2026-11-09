@@ -40,9 +40,16 @@ type seriesSeen struct {
 
 	once       sync.Once
 	resolution resolution
-	// seasons are its season records the pass read, by catalog id.
+	// seasons are its season and episode-order records the pass read, by catalog id.
 	seasonsMu sync.Mutex
 	seasons   map[string]cachedSeason
+
+	// order is the household's answer for which order its files follow, read once a pass.
+	orderOnce sync.Once
+	order     store.LibraryEpisodeOrder
+	answered  bool
+	// ordersWanted is whether the pass has asked for its catalog's other orders yet.
+	ordersWanted bool
 }
 
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
@@ -288,6 +295,8 @@ type resolution struct {
 	set store.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
+	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
+	unnumbered bool
 }
 
 // resolve applies precedence. A movie or series the maintainer linked to a title (Needs you) has

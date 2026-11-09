@@ -224,7 +224,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
               type="submit"
             />
           }
-          variant={selected ? "suggest" : "outline"}
+          variant={selected ? undefined : "outline"}
         >
           {resolveSource.isPending
             ? "Checking…"

@@ -130,9 +130,37 @@ func ScannedTables(query string, plan []string, tables map[string]bool) []string
 	return out
 }
 
+// ReadsWholeMarker, as a statement's leading comment, says the statement reads tables whole on
+// purpose (a nightly count of every table), so CheckQueryPlans does not ask for an index. It is
+// spelled out in the production SQL, where a reviewer sees it beside the statement it excuses.
+const ReadsWholeMarker = "/* plan: reads whole */"
+
 // statementVerb is the statement's kind, or "" for one with no plan worth checking (PRAGMA, DDL,
-// transaction control, EXPLAIN).
+// transaction control, EXPLAIN, or a statement marked ReadsWholeMarker). Other leading comments
+// are skipped, so a comment cannot hide a statement from the check by accident.
 func statementVerb(query string) string {
+	query = strings.TrimSpace(query)
+	for {
+		switch {
+		case strings.HasPrefix(query, ReadsWholeMarker):
+			return ""
+		case strings.HasPrefix(query, "/*"):
+			end := strings.Index(query, "*/")
+			if end < 0 {
+				return ""
+			}
+			query = strings.TrimSpace(query[end+2:])
+			continue
+		case strings.HasPrefix(query, "--"):
+			end := strings.Index(query, "\n")
+			if end < 0 {
+				return ""
+			}
+			query = strings.TrimSpace(query[end+1:])
+			continue
+		}
+		break
+	}
 	fields := strings.Fields(strings.ToUpper(query))
 	if len(fields) == 0 {
 		return ""

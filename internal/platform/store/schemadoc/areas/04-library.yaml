@@ -139,6 +139,11 @@ tables:
       series_id: >
         An episode's show (a library_items id), filled once both the episode and the show are written;
         empty otherwise.
+      unnumbered: >
+        1 for an episode its show's catalog could not number, because the catalog numbers the show in
+        more than one order or its seasons end elsewhere than the disk's, and nobody has said which
+        order the show's files follow. It keeps its file's name and number, and its show is in Needs
+        you. 0 otherwise.
       name_from: The app that supplied the name (sonarr, radarr, nfo or tmdb); empty when unknown.
       year_from: The app that supplied the year; empty when unknown.
       overview_from: The app that supplied the description; empty when unknown.
@@ -169,7 +174,7 @@ tables:
         columns: [original_title, overview, premiere_date, rating, score, runtime_ms, tagline, trailer]
       - group: An episode's place
         why: An episode belongs to one show at one season and number; movies and shows leave these empty.
-        columns: [season, episode, episode_end, series_authority, series_key, series_id]
+        columns: [season, episode, episode_end, series_authority, series_key, series_id, unnumbered]
       - group: Which app supplied each detail
         why: One source per detail above, so the detail page can say where each one came from.
         columns: [name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from]
@@ -458,6 +463,21 @@ tables:
         Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when
         exactly one catalog result agreed on name, year and length. A person's answer replaces a search
         answer.
+
+  - name: library_episode_orders
+    about: >
+      Which order a show's episode files follow, as a person answered in Needs you, for a show whose
+      catalog numbers it in more than one order or whose seasons end elsewhere than the disk's. Kept
+      against the show's catalog row rather than in the catalog cache, which retention clears, so it
+      outlives the records.
+    retention: Kept until someone answers again for the show; one row per show.
+    columns:
+      series_catalog: The show's catalog row, as provider:series:id (library_items.catalog).
+      choice: >
+        One of catalog (the catalog's own seasons, as first aired), order (one of the catalog's other
+        orders, in order_id) or files (the name and number in each file).
+      order_id: The catalog's id for the order picked; empty unless choice is order.
+      answered_at_ms: When the answer was given, in Unix milliseconds.
 
   - name: library_collections
     about: >

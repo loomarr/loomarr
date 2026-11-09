@@ -6,11 +6,9 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Disclosure } from "@loomarr/design-system";
+import { Action, Badge, DateField, Disclosure } from "@loomarr/design-system";
 import { Clapperboard, Clock, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
@@ -365,18 +363,14 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="cycle-preview-at" className="text-muted-foreground text-xs">
-            At
-          </Label>
-          <Input
-            id="cycle-preview-at"
-            type="datetime-local"
-            className="w-56"
-            value={toDatetimeLocalValue(at)}
-            onChange={(e) => setAt(fromDatetimeLocalValue(e.target.value))}
-          />
-        </div>
+        <DateField
+          id="cycle-preview-at"
+          kind="datetime"
+          label="At"
+          onValueChange={(value) => setAt(fromDatetimeLocalValue(value))}
+          value={toDatetimeLocalValue(at)}
+          width={224}
+        />
         <div className="flex flex-wrap gap-1.5 pb-0.5">
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
