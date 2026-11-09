@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -48,17 +49,17 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	if err := st.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: "acq-1", Trigger: filler.AcquisitionSource, SourceID: "youtube:classic",
-		Status: filler.AcquisitionRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
+	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: "acq-1", Trigger: acquisition.TriggerSource, SourceID: "youtube:classic",
+		Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertAcquisitionArtifacts(t.Context(), []filler.AcquisitionArtifact{{
+	if err := st.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic", Provider: "youtube",
 		SourceURL: "https://youtube.example/watch?v=one", MediaPath: "published.mp4", SidecarPath: "published.info.json",
 		MediaSHA256: originalDigest, MediaBytes: originalSize, ClipHash: originalHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -133,19 +134,19 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	if err := st.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: "acq-failed-move", Trigger: filler.AcquisitionSource, SourceID: "youtube:classic",
-		Status: filler.AcquisitionRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
+	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: "acq-failed-move", Trigger: acquisition.TriggerSource, SourceID: "youtube:classic",
+		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	failedArtifact := filler.AcquisitionArtifact{
+	failedArtifact := acquisition.Artifact{
 		ID: "artifact-failed-move", AcquisitionID: "acq-failed-move", SourceID: "youtube:classic", Provider: "youtube",
 		SourceURL: "https://youtube.example/watch?v=failed-move", MediaPath: "claimed.mp4", SidecarPath: "claimed.info.json",
 		MediaSHA256: failedDigest, MediaBytes: failedSize, ClipHash: failedHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := st.UpsertAcquisitionArtifacts(t.Context(), []filler.AcquisitionArtifact{failedArtifact}); err != nil {
+	if err := st.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{failedArtifact}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -169,7 +170,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if boundArtifact.MediaPath != filepath.ToSlash(boundPath) || boundArtifact.SidecarPath != failedArtifact.SidecarPath || boundArtifact.State != filler.ArtifactPublished {
+	if boundArtifact.MediaPath != filepath.ToSlash(boundPath) || boundArtifact.SidecarPath != failedArtifact.SidecarPath || boundArtifact.State != acquisition.ArtifactPublished {
 		t.Fatalf("failed move did not preserve destination and original-name bindings: %+v", boundArtifact)
 	}
 
@@ -197,13 +198,13 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	validArtifact := filler.AcquisitionArtifact{
+	validArtifact := acquisition.Artifact{
 		ID: "artifact-valid", AcquisitionID: "acq-failed-move", SourceID: "youtube:classic", Provider: "youtube",
 		SourceURL: "https://youtube.example/watch?v=valid", MediaPath: "valid.mp4", SidecarPath: "valid.info.json",
 		MediaSHA256: validDigest, MediaBytes: validSize, ClipHash: validHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := st.UpsertAcquisitionArtifacts(t.Context(), []filler.AcquisitionArtifact{validArtifact}); err != nil {
+	if err := st.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{validArtifact}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -252,7 +253,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if repairedArtifact.MediaSHA256 != failedDigest || repairedArtifact.MediaBytes != failedSize || repairedArtifact.ClipHash != failedHash {
 		t.Fatalf("failed-move artifact lost its original content identity: %+v", repairedArtifact)
 	}
-	if repairedArtifact.State != filler.ArtifactRepair || repairedArtifact.RepairReason == "" {
+	if repairedArtifact.State != acquisition.ArtifactRepair || repairedArtifact.RepairReason == "" {
 		t.Fatalf("mismatched retry did not leave durable repair evidence: %+v", repairedArtifact)
 	}
 }
@@ -311,19 +312,19 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	if err := st.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: "acq-sparse-collision", Trigger: filler.AcquisitionSource, SourceID: "archive:classic",
-		Status: filler.AcquisitionRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
+	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: "acq-sparse-collision", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
+		Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	artifact := filler.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "artifact-sparse-collision", AcquisitionID: "acq-sparse-collision", SourceID: "archive:classic", Provider: "archive",
 		SourceURL: "https://archive.example/details/collision", MediaPath: "claimed-collision.mp4", SidecarPath: "claimed-collision.info.json",
 		MediaSHA256: digest, MediaBytes: size, ClipHash: clipHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := st.UpsertAcquisitionArtifacts(t.Context(), []filler.AcquisitionArtifact{artifact}); err != nil {
+	if err := st.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -354,12 +355,12 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 		t.Fatal(err)
 	}
 	repairedArtifact := acquisitionArtifactWithID(t, artifacts, artifact.ID)
-	if repairedArtifact.State != filler.ArtifactRepair || repairedArtifact.RepairReason == "" {
+	if repairedArtifact.State != acquisition.ArtifactRepair || repairedArtifact.RepairReason == "" {
 		t.Fatalf("sparse collision did not leave durable repair evidence: %+v", repairedArtifact)
 	}
 }
 
-func acquisitionArtifactWithID(t *testing.T, artifacts []filler.AcquisitionArtifact, id string) filler.AcquisitionArtifact {
+func acquisitionArtifactWithID(t *testing.T, artifacts []acquisition.Artifact, id string) acquisition.Artifact {
 	t.Helper()
 	for _, artifact := range artifacts {
 		if artifact.ID == id {
@@ -367,5 +368,5 @@ func acquisitionArtifactWithID(t *testing.T, artifacts []filler.AcquisitionArtif
 		}
 	}
 	t.Fatalf("acquisition artifact %q disappeared from durable recovery state", id)
-	return filler.AcquisitionArtifact{}
+	return acquisition.Artifact{}
 }

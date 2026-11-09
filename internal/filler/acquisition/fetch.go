@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -422,7 +423,7 @@ func (f *Fetcher) dueSources(srcs []FetchSource, sourceID string, scheduled bool
 		}
 		if !src.Enabled || src.URI == "" {
 			if sourceID != "" && !src.Enabled {
-				return nil, ErrSourceDisabled
+				return nil, cliplibrary.ErrSourceDisabled
 			}
 			continue
 		}
@@ -656,10 +657,10 @@ func (c *sourceCheck) identity(item source.Item) RemoteIdentity {
 }
 
 // candidates are the items the provider offered, as the selector takes them.
-func (c *sourceCheck) candidates(items []source.Item) []AcquisitionCandidate {
-	candidates := make([]AcquisitionCandidate, 0, len(items))
+func (c *sourceCheck) candidates(items []source.Item) []Candidate {
+	candidates := make([]Candidate, 0, len(items))
 	for _, item := range items {
-		candidates = append(candidates, AcquisitionCandidate{
+		candidates = append(candidates, Candidate{
 			Identity: c.identity(item),
 			URL:      item.URL, Title: item.Title, License: item.License,
 			ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
@@ -672,7 +673,7 @@ func (c *sourceCheck) candidates(items []source.Item) []AcquisitionCandidate {
 
 // queue hands the selection to ingest and, once it is queued, records it: in-pass state, the
 // pass's counts and the source's last-fetched stamp.
-func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision, b sourceBudget) error {
+func (c *sourceCheck) queue(ctx context.Context, selected []Decision, b sourceBudget) error {
 	p, f, src := c.pass, c.pass.f, c.src
 	urls := make([]string, 0, len(selected))
 	items := make([]source.Item, 0, len(selected))
@@ -809,7 +810,7 @@ func (f *Fetcher) openSearch(ctx context.Context, gaps CoverageGaps, inPass map[
 	start := int(f.now().Unix()/3600) % len(gaps.Stations)
 	seen := map[string]bool{}
 	refused := map[string]int{}
-	var candidates []AcquisitionCandidate
+	var candidates []Candidate
 	for i := range n {
 		if err := ctx.Err(); err != nil {
 			return 0, err
@@ -830,7 +831,7 @@ func (f *Fetcher) openSearch(ctx context.Context, gaps CoverageGaps, inPass map[
 				refused[why]++
 				continue
 			}
-			candidates = append(candidates, AcquisitionCandidate{
+			candidates = append(candidates, Candidate{
 				Identity: RemoteIdentity{Provider: string(f.open.Provider()), SourceID: OpenSearchSourceID, RemoteID: ref.ID},
 				URL:      ref.URL, Title: ref.Title, License: ref.License,
 				ObservedYear: ref.ObservedYear, PublishedAt: ref.PublishedAt,

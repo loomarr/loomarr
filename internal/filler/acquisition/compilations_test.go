@@ -1,15 +1,15 @@
-package filler_test
+package acquisition_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 func TestCompilationGate_Defers(t *testing.T) {
-	gate := func(take bool) filler.CompilationGate {
-		return filler.CompilationGate{
+	gate := func(take bool) acquisition.CompilationGate {
+		return acquisition.CompilationGate{
 			Take: func() bool { return take },
 			Over: func() time.Duration { return 2 * time.Minute },
 		}
@@ -17,7 +17,7 @@ func TestCompilationGate_Defers(t *testing.T) {
 	reel, spot := int64(30*60*1000), int64(45*1000)
 	for _, tc := range []struct {
 		name     string
-		gate     filler.CompilationGate
+		gate     acquisition.CompilationGate
 		kind     string
 		duration int64
 		want     bool
@@ -28,7 +28,7 @@ func TestCompilationGate_Defers(t *testing.T) {
 		{"exactly the ceiling is a single clip", gate(false), "archive", (2 * time.Minute).Milliseconds(), false},
 		{"unknown length can't be judged before download", gate(false), "youtube", 0, false},
 		{"the drop folder is the operator's own media", gate(false), "folder", reel, false},
-		{"the zero gate takes everything", filler.CompilationGate{}, "archive", reel, false},
+		{"the zero gate takes everything", acquisition.CompilationGate{}, "archive", reel, false},
 	} {
 		if got := tc.gate.Defers(tc.kind, tc.duration); got != tc.want {
 			t.Errorf("%s: Defers(%q, %d) = %v, want %v", tc.name, tc.kind, tc.duration, got, tc.want)

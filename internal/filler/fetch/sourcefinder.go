@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -86,7 +86,7 @@ func (text *archiveText) UnmarshalJSON(data []byte) error {
 func (f *ArchiveSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]source.Suggestion, error) {
 	query = strings.TrimSpace(query)
 	if len(query) < 2 || len(query) > 120 {
-		return nil, fmt.Errorf("%w: archive collection search must be between 2 and 120 characters", filler.ErrInvalidSourceReference)
+		return nil, fmt.Errorf("%w: archive collection search must be between 2 and 120 characters", acquisition.ErrInvalidSourceReference)
 	}
 	normalized := strings.Join(strings.Fields(query), " ")
 	return f.cached(ctx, "suggest:"+strings.ToLower(normalized)+":"+strconv.Itoa(limit), func() ([]source.Suggestion, error) {
@@ -104,7 +104,7 @@ func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string,
 	}
 	terms := archiveSearchTerms(query)
 	if terms == "" {
-		return nil, fmt.Errorf("%w: archive collection search contains no searchable text", filler.ErrInvalidSourceReference)
+		return nil, fmt.Errorf("%w: archive collection search contains no searchable text", acquisition.ErrInvalidSourceReference)
 	}
 	if limit <= 0 || limit > maxSourceSuggestions {
 		limit = maxSourceSuggestions
@@ -118,7 +118,7 @@ func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string,
 
 	var response collectionSearchResp
 	if err := f.client.getJSON(ctx, f.client.base+"/advancedsearch.php?"+values.Encode(), &response); err != nil {
-		return nil, fmt.Errorf("%w: archive collection search %q: %v", filler.ErrSourceProvider, query, err)
+		return nil, fmt.Errorf("%w: archive collection search %q: %v", acquisition.ErrSourceProvider, query, err)
 	}
 	results := make([]source.Suggestion, 0, len(response.Response.Docs))
 	for _, doc := range response.Response.Docs {
@@ -157,14 +157,14 @@ func (f *ArchiveSourceFinder) Resolve(ctx context.Context, input string) (source
 func (f *ArchiveSourceFinder) resolveUncached(ctx context.Context, input string) (source.Suggestion, error) {
 	id := archiveCollectionID(input)
 	if id == "" {
-		return source.Suggestion{}, fmt.Errorf("%w: enter an Archive.org identifier or details URL", filler.ErrInvalidSourceReference)
+		return source.Suggestion{}, fmt.Errorf("%w: enter an Archive.org identifier or details URL", acquisition.ErrInvalidSourceReference)
 	}
 	metadata, err := f.client.metadata(ctx, id)
 	if err != nil {
-		return source.Suggestion{}, fmt.Errorf("%w: %v", filler.ErrSourceProvider, err)
+		return source.Suggestion{}, fmt.Errorf("%w: %v", acquisition.ErrSourceProvider, err)
 	}
 	if metadata.Metadata.MediaType != "collection" {
-		return source.Suggestion{}, fmt.Errorf("%w: archive item %q is %q, not a collection", filler.ErrInvalidSourceReference, id, metadata.Metadata.MediaType)
+		return source.Suggestion{}, fmt.Errorf("%w: archive item %q is %q, not a collection", acquisition.ErrInvalidSourceReference, id, metadata.Metadata.MediaType)
 	}
 	title := strings.TrimSpace(metadata.Metadata.Title)
 	if title == "" {

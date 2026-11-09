@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -145,7 +145,7 @@ fi
 		t.Fatalf("blocked recovery = %+v, want provider archive replay failure", blocked)
 	}
 	artifact, found, lookupErr := reopened.AcquisitionArtifactForClip(t.Context(), "download.mp4", "")
-	if lookupErr != nil || !found || artifact.ProviderArchiveCommitted || artifact.ProviderArchiveEntry != "youtube owned-id" || artifact.State != filler.ArtifactRepair {
+	if lookupErr != nil || !found || artifact.ProviderArchiveCommitted || artifact.ProviderArchiveEntry != "youtube owned-id" || artifact.State != acquisition.ArtifactRepair {
 		t.Fatalf("blocked artifact = %+v, found=%v, err=%v", artifact, found, lookupErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(watch, filepath.FromSlash(artifact.StagingPath))); statErr != nil {
@@ -184,9 +184,9 @@ fi
 
 func seedArchiveRecoveryRun(t *testing.T, db records.Store, source fetch.Source) {
 	t.Helper()
-	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: source.AcquisitionID, SourceID: source.ID, Trigger: filler.AcquisitionPull,
-		Status: filler.AcquisitionRunning, Requested: 1,
+	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull,
+		Status: acquisition.RunRunning, Requested: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

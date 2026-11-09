@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
@@ -48,12 +49,12 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 		t.Fatal(err)
 	}
 	now = time.Unix(1_800_000_000, 0).UTC()
-	authority = &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority = &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",
 		SidecarPath: "download.info.json", MediaSHA256: digest, MediaBytes: size,
-		ClipHash: clipHash, State: filler.ArtifactRepair, RepairReason: reason,
+		ClipHash: clipHash, State: acquisition.ArtifactRepair, RepairReason: reason,
 		CompletedAt: now, UpdatedAt: now,
 	}}
 	source = &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0)}}
@@ -76,7 +77,7 @@ func TestSync_TransientMissingMediaRepairIsReverifiedAndConsumed(t *testing.T) {
 	if _, ok := st.clips[authority.artifact.ClipHash]; !ok {
 		t.Fatal("clip whose file is present and intact never entered the catalog")
 	}
-	if authority.artifact.State != filler.ArtifactConsumed || authority.artifact.RepairReason != "" {
+	if authority.artifact.State != acquisition.ArtifactConsumed || authority.artifact.RepairReason != "" {
 		t.Fatalf("artifact = %+v, want consumed with the stale repair reason cleared", authority.artifact)
 	}
 }

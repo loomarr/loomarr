@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"errors"
@@ -9,22 +9,22 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
-// AcquisitionArtifactState is the durable publication lifecycle of one exact downloaded file.
-// It is deliberately independent of AcquisitionStatus: a run may terminate with a repairable
+// ArtifactState is the durable publication lifecycle of one exact downloaded file.
+// It is deliberately independent of RunStatus: a run may terminate with a repairable
 // artifact still quarantined, and a published artifact remains authoritative after the run ends.
-type AcquisitionArtifactState string
+type ArtifactState string
 
 const (
-	ArtifactStaged    AcquisitionArtifactState = "staged"
-	ArtifactPublished AcquisitionArtifactState = "published"
-	ArtifactConsumed  AcquisitionArtifactState = "consumed"
-	ArtifactRepair    AcquisitionArtifactState = "repair"
+	ArtifactStaged    ArtifactState = "staged"
+	ArtifactPublished ArtifactState = "published"
+	ArtifactConsumed  ArtifactState = "consumed"
+	ArtifactRepair    ArtifactState = "repair"
 )
 
-// AcquisitionArtifact is the canonical manifest value connecting downloaded bytes to intake.
+// Artifact is the canonical manifest value connecting downloaded bytes to intake.
 // Paths are relative to the configured watch folder; absolute and escaping paths are invalid.
 // MediaSHA256 is a full-file digest, distinct from the sparse ClipHash used for catalog identity.
-type AcquisitionArtifact struct {
+type Artifact struct {
 	ID            string
 	AcquisitionID string
 	SourceID      string
@@ -44,22 +44,22 @@ type AcquisitionArtifact struct {
 	// Gap is the channel coverage gap this download was acquired for (EraGapKey), "" when it was
 	// not steered by one (#749). Recorded once at download and carried through recovery.
 	Gap          string
-	State        AcquisitionArtifactState
+	State        ArtifactState
 	RepairReason string
 	CompletedAt  time.Time
 	UpdatedAt    time.Time
 }
 
-// AcquisitionArtifactCursor is the stable ordering boundary for bounded recovery scans.
+// ArtifactCursor is the stable ordering boundary for bounded recovery scans.
 // It deliberately uses the immutable scan key captured before recovery mutates a manifest.
-type AcquisitionArtifactCursor struct {
+type ArtifactCursor struct {
 	UpdatedAt time.Time
 	ID        string
 }
 
 // Validate rejects manifests that could widen filesystem authority or fail to identify exact
 // bytes. State-specific filesystem checks remain at publication/intake, where the files exist.
-func (a AcquisitionArtifact) Validate() error {
+func (a Artifact) Validate() error {
 	if strings.TrimSpace(a.ID) == "" || strings.TrimSpace(a.AcquisitionID) == "" {
 		return errors.New("acquisition artifact requires id and acquisition id")
 	}
@@ -125,11 +125,11 @@ const (
 	// the file. It is deliberately not retryable.
 	ArtifactMediaGone = "manifested media is permanently missing: no file remains at its manifested or catalog location"
 
-	artifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
+	ArtifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
 )
 
 // retryableRepair reports whether a stored repair reason describes an observation the scan should
 // re-check against the file, rather than a settled verdict.
-func retryableRepair(reason string) bool {
-	return reason == artifactIdentityMismatch || reason == ArtifactMediaMissing
+func RetryableRepair(reason string) bool {
+	return reason == ArtifactIdentityMismatch || reason == ArtifactMediaMissing
 }

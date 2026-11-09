@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"crypto/sha256"
@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
@@ -18,8 +19,8 @@ const AcquisitionIntentVersion = "filler-acquisition-intent/v2"
 
 var (
 	ErrInvalidAcquisitionIntent = errors.New("invalid filler acquisition intent")
-	ErrNoAcquisitionSources     = errors.New("no eligible filler acquisition sources")
-	ErrNoAcquisitionCandidates  = errors.New("no filler acquisition candidates satisfy the intent")
+	ErrNoSources                = errors.New("no eligible filler acquisition sources")
+	ErrNoCandidates             = errors.New("no filler acquisition candidates satisfy the intent")
 	ErrProviderPaused           = errors.New("filler provider is paused")
 )
 
@@ -27,18 +28,18 @@ var (
 // Zero values mean the operator did not request that constraint; they never mean that missing
 // candidate metadata satisfies it.
 type AcquisitionIntent struct {
-	Version         string        `json:"version"`
-	Roles           []Role        `json:"roles,omitempty"`
-	EraStart        int           `json:"eraStart,omitempty"`
-	EraEnd          int           `json:"eraEnd,omitempty"`
-	Audiences       []Audience    `json:"audiences,omitempty"`
-	Geography       pod.Geography `json:"geography,omitempty"`
-	MaxDurationMS   int           `json:"maxDurationMs,omitempty"`
-	TaxonomyGaps    []string      `json:"taxonomyGaps,omitempty"`
-	SourceAllowlist []string      `json:"sourceAllowlist,omitempty"`
-	MinHeight       int           `json:"minHeight,omitempty"`
-	Count           int           `json:"count"`
-	CatalogReason   string        `json:"catalogReason"`
+	Version         string           `json:"version"`
+	Roles           []clips.Role     `json:"roles,omitempty"`
+	EraStart        int              `json:"eraStart,omitempty"`
+	EraEnd          int              `json:"eraEnd,omitempty"`
+	Audiences       []clips.Audience `json:"audiences,omitempty"`
+	Geography       pod.Geography    `json:"geography,omitempty"`
+	MaxDurationMS   int              `json:"maxDurationMs,omitempty"`
+	TaxonomyGaps    []string         `json:"taxonomyGaps,omitempty"`
+	SourceAllowlist []string         `json:"sourceAllowlist,omitempty"`
+	MinHeight       int              `json:"minHeight,omitempty"`
+	Count           int              `json:"count"`
+	CatalogReason   string           `json:"catalogReason"`
 }
 
 // Normalize supplies version/defaults and canonicalises set-like fields. It does not relax a
@@ -128,21 +129,21 @@ func (i RemoteIdentity) Validate() error {
 	return nil
 }
 
-// AcquisitionCandidate contains metadata-only observations. ObservedYear and PublishedAt are
+// Candidate contains metadata-only observations. ObservedYear and PublishedAt are
 // weak remote hints and must never be copied into an admitted clip as grounded era evidence.
-type AcquisitionCandidate struct {
-	Identity      RemoteIdentity `json:"identity"`
-	URL           string         `json:"url"`
-	Title         string         `json:"title,omitempty"`
-	License       string         `json:"license,omitempty"`
-	ObservedYear  int            `json:"observedYear,omitempty"`
-	PublishedAt   string         `json:"publishedAt,omitempty"`
-	DurationMS    int            `json:"durationMs,omitempty"`
-	Height        int            `json:"height,omitempty"`
-	Geography     pod.Geography  `json:"geography,omitempty"`
-	ObservedRoles []Role         `json:"observedRoles,omitempty"`
-	Audiences     []Audience     `json:"audiences,omitempty"`
-	Taxonomy      []string       `json:"taxonomy,omitempty"`
+type Candidate struct {
+	Identity      RemoteIdentity   `json:"identity"`
+	URL           string           `json:"url"`
+	Title         string           `json:"title,omitempty"`
+	License       string           `json:"license,omitempty"`
+	ObservedYear  int              `json:"observedYear,omitempty"`
+	PublishedAt   string           `json:"publishedAt,omitempty"`
+	DurationMS    int              `json:"durationMs,omitempty"`
+	Height        int              `json:"height,omitempty"`
+	Geography     pod.Geography    `json:"geography,omitempty"`
+	ObservedRoles []clips.Role     `json:"observedRoles,omitempty"`
+	Audiences     []clips.Audience `json:"audiences,omitempty"`
+	Taxonomy      []string         `json:"taxonomy,omitempty"`
 	// StationSearch is the call sign whose station search found this item (#2059 decision 9). The
 	// hit's title names the station, which proves nothing about its locality: that is still decided
 	// on arrival. It ranks the item as filling a station gap.
@@ -183,8 +184,8 @@ const (
 	RemoteDeclined   ExistingRemoteState = "declined"
 )
 
-type AcquisitionDecision struct {
-	Candidate   AcquisitionCandidate `json:"candidate"`
+type Decision struct {
+	Candidate   Candidate            `json:"candidate"`
 	Disposition CandidateDisposition `json:"disposition"`
 	Detail      string               `json:"detail"`
 	// Gap is the channel coverage gap this candidate was selected for (EraGapKey), "" when it was
@@ -192,42 +193,42 @@ type AcquisitionDecision struct {
 	Gap string `json:"gap,omitempty"`
 }
 
-type AcquisitionPlan struct {
+type Plan struct {
 	Intent   AcquisitionIntent           `json:"intent"`
-	Selected []AcquisitionDecision       `json:"selected"`
-	Rejected []AcquisitionDecision       `json:"rejected"`
+	Selected []Decision                  `json:"selected"`
+	Rejected []Decision                  `json:"rejected"`
 	Sources  []AcquisitionSourceDecision `json:"sources"`
 }
 
-// AcquisitionSourceDisposition explains whether and how one registered source participated in
+// SourceDisposition explains whether and how one registered source participated in
 // planning. Source decisions are separate from candidate decisions because a disabled or failed
 // source has no candidate that could honestly carry the explanation.
-type AcquisitionSourceDisposition string
+type SourceDisposition string
 
 const (
-	AcquisitionSourceEnumerated        AcquisitionSourceDisposition = "enumerated"
-	AcquisitionSourceDisabled          AcquisitionSourceDisposition = "disabled"
-	AcquisitionSourceNotFetchable      AcquisitionSourceDisposition = "not_fetchable"
-	AcquisitionSourceNotAllowed        AcquisitionSourceDisposition = "not_allowed"
-	AcquisitionSourceGeographyMismatch AcquisitionSourceDisposition = "geography_mismatch"
-	AcquisitionSourceLimitExceeded     AcquisitionSourceDisposition = "source_limit"
-	AcquisitionSourceEnumerationFailed AcquisitionSourceDisposition = "enumeration_failed"
+	SourceEnumerated        SourceDisposition = "enumerated"
+	SourceDisabled          SourceDisposition = "disabled"
+	SourceNotFetchable      SourceDisposition = "not_fetchable"
+	SourceNotAllowed        SourceDisposition = "not_allowed"
+	SourceGeographyMismatch SourceDisposition = "geography_mismatch"
+	SourceLimitExceeded     SourceDisposition = "source_limit"
+	SourceEnumerationFailed SourceDisposition = "enumeration_failed"
 )
 
 // AcquisitionSourceDecision is the durable, bounded source snapshot behind a pull proposal.
 type AcquisitionSourceDecision struct {
-	SourceID       string                       `json:"sourceId"`
-	Provider       string                       `json:"provider"`
-	Label          string                       `json:"label,omitempty"`
-	Geography      pod.Geography                `json:"geography,omitempty"`
-	Disposition    AcquisitionSourceDisposition `json:"disposition"`
-	CandidateCount int                          `json:"candidateCount"`
-	Detail         string                       `json:"detail"`
+	SourceID       string            `json:"sourceId"`
+	Provider       string            `json:"provider"`
+	Label          string            `json:"label,omitempty"`
+	Geography      pod.Geography     `json:"geography,omitempty"`
+	Disposition    SourceDisposition `json:"disposition"`
+	CandidateCount int               `json:"candidateCount"`
+	Detail         string            `json:"detail"`
 }
 
-func uniqueRoles(in []Role) []Role {
-	out := make([]Role, 0, len(in))
-	seen := map[Role]bool{}
+func uniqueRoles(in []clips.Role) []clips.Role {
+	out := make([]clips.Role, 0, len(in))
+	seen := map[clips.Role]bool{}
 	for _, value := range in {
 		if value != "" && !seen[value] {
 			seen[value] = true
@@ -238,9 +239,9 @@ func uniqueRoles(in []Role) []Role {
 	return out
 }
 
-func uniqueAudiences(in []Audience) []Audience {
-	out := make([]Audience, 0, len(in))
-	seen := map[Audience]bool{}
+func uniqueAudiences(in []clips.Audience) []clips.Audience {
+	out := make([]clips.Audience, 0, len(in))
+	seen := map[clips.Audience]bool{}
 	for _, value := range in {
 		if value != "" && !seen[value] {
 			seen[value] = true
@@ -251,9 +252,9 @@ func uniqueAudiences(in []Audience) []Audience {
 	return out
 }
 
-func validAudience(value Audience) bool {
+func validAudience(value clips.Audience) bool {
 	switch value {
-	case Kids, Family, General, LateNight:
+	case clips.Kids, clips.Family, clips.General, clips.LateNight:
 		return true
 	default:
 		return false

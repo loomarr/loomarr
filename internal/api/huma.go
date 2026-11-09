@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -387,14 +388,14 @@ type FillerService interface {
 	Readiness(ctx context.Context) (filler.Readiness, error)
 	// PreviewStorageCleanup and CleanupStorage expose only terminal private staging proven safe
 	// to remove. They never select catalog media or unresolved recovery evidence.
-	PreviewStorageCleanup(ctx context.Context) (filler.StorageCleanupPreview, error)
-	CleanupStorage(ctx context.Context) (filler.StorageCleanupResult, error)
+	PreviewStorageCleanup(ctx context.Context) (acquisition.StorageCleanupPreview, error)
+	CleanupStorage(ctx context.Context) (acquisition.StorageCleanupResult, error)
 	// Sync reconciles the clip catalog from the media server's filler library.
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
 	// Fetch runs one bounded acquisition pass over enabled remote sources. It is the same
 	// operation the scheduled filler-fetch job runs; the Sources page uses it to run that policy
 	// now rather than merely scanning local files and claiming a remote fetch succeeded.
-	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
+	Fetch(ctx context.Context, sourceID string) (acquisition.FetchResult, error)
 	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
 	SuggestSources(ctx context.Context, provider, query string, limit int) ([]source.Suggestion, error)
@@ -413,7 +414,7 @@ type FillerService interface {
 	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
-	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
+	IngestPull(ctx context.Context, pullID string, targets []acquisition.AcquisitionTarget, commit func(context.Context, acquisition.AcquisitionRun) error) (jobID string, err error)
 	// IngestAsked is Ingest plus "remember this source", for `POST /v1/filler/ingest` only.
 	//
 	// ⚠ The split is a correctness fix: registration used to live inside Ingest, and auto-fetch

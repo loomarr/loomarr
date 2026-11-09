@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -110,20 +110,20 @@ func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit i
 // Provider is the provider an open-search hit is acquired from.
 func (o openArchiveSearch) Provider() source.ID { return archiveprovider.ID }
 
-func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error) {
+func (o openArchiveSearch) Gate(ctx context.Context) (acquisition.ListingGate, error) {
 	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
 	directory, err := o.stations.Get(ctx)
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
 	languages, err := o.languages(ctx)
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
-	return filler.ListingGate{Languages: languages, Station: func(title string) (string, bool) {
+	return acquisition.ListingGate{Languages: languages, Station: func(title string) (string, bool) {
 		match, ok := directory.Identify(title, "", "", "")
 		if !ok || !near[match.Station.ID] {
 			return "", false

@@ -49,7 +49,7 @@ func TestSync_DisabledSourceDoesNoWork(t *testing.T) {
 
 	res, err := syncer.Sync(context.Background())
 
-	if !errors.Is(err, filler.ErrSourceDisabled) {
+	if !errors.Is(err, cliplibrary.ErrSourceDisabled) {
 		t.Fatalf("err = %v, want ErrSourceDisabled", err)
 	}
 	if res != (filler.SyncResult{}) {
@@ -74,7 +74,7 @@ func TestSync_EnabledSourceScansNormally(t *testing.T) {
 	syncer := filler.NewSyncer(src, &recordingStore{}, testLayout("/data/filler"), nil, discardLog()).
 		WithEnabled(func() bool { return on })
 
-	if _, err := syncer.Sync(context.Background()); !errors.Is(err, filler.ErrSourceDisabled) {
+	if _, err := syncer.Sync(context.Background()); !errors.Is(err, cliplibrary.ErrSourceDisabled) {
 		t.Fatalf("expected the disabled error first, got %v", err)
 	}
 
