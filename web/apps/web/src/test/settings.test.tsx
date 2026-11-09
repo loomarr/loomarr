@@ -208,20 +208,20 @@ describe("Settings", () => {
 
     await userEvent.type(finder, "{ArrowDown}");
     expect(match).toHaveFocus();
-  });
+    // The whole Settings home renders: ~1s locally, past 5s on a loaded CI shard (#3059).
+  }, 15_000);
 
   it("keeps task browsing available when a search has no matches", async () => {
     stubSettings();
     renderAt("/settings");
 
-    await userEvent.type(
-      await screen.findByRole("searchbox", { name: "Find a setting" }),
-      "not a real setting",
-    );
+    // Paste, not type, for the same reason as above: each keystroke re-filters the whole home.
+    await userEvent.click(await screen.findByRole("searchbox", { name: "Find a setting" }));
+    await userEvent.paste("not a real setting");
     expect(await screen.findByText("No settings found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Connections" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Server" })).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("uses a grouped server landing instead of a second tab matrix", async () => {
     stubSettings();
