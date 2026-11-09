@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/platform/llm"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -81,7 +81,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			defer cancel()
 			go svc.Run(ctx)
 
-			var job store.Job
+			var job proposalstore.Job
 			deadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(deadline) {
 				job, _ = st.GetJob(context.Background(), jobID)

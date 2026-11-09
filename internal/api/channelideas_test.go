@@ -18,9 +18,9 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -79,16 +79,16 @@ func (w ideasWire) ids() []string {
 // recordingNotifier counts the "a request is waiting" notices admins get.
 type recordingNotifier struct {
 	mu        sync.Mutex
-	submitted []store.Proposal
+	submitted []proposalstore.Proposal
 }
 
-func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p store.Proposal) {
+func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p proposalstore.Proposal) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.submitted = append(n.submitted, p)
 }
-func (n *recordingNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (n *recordingNotifier) ProposalDenied(context.Context, store.Proposal)           {}
+func (n *recordingNotifier) ProposalApproved(context.Context, proposalstore.Proposal, string) {}
+func (n *recordingNotifier) ProposalDenied(context.Context, proposalstore.Proposal)           {}
 
 func (n *recordingNotifier) count() int {
 	n.mu.Lock()

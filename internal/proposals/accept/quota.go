@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -33,7 +34,7 @@ func (u Usage) Exceeded(n int) bool {
 
 // QuotaStore is the slice of the store quota accounting needs.
 type QuotaStore interface {
-	ListProposalsByCreator(ctx context.Context, userID string) ([]store.Proposal, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]proposalstore.Proposal, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 

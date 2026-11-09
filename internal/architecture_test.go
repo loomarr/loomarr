@@ -296,6 +296,14 @@ func TestChannelStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channelstore")
 }
 
+// internal/platform/store/proposalstore is the suggester-work cluster (generation jobs, attempts and
+// proposals). It builds on the storedb kernel and the channelstore cluster, in the same direction as
+// the clusters above; store embeds it and re-exports its row types and errors. The approval
+// transaction reaches it through exported call-ins, so there is no import edge back.
+func TestProposalStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/proposalstore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

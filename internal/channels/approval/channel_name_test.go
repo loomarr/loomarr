@@ -3,7 +3,7 @@ package approval
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -12,8 +12,8 @@ import (
 // smoke: a raw prompt made a half-assed title.
 func TestChannelNameFromIntent(t *testing.T) {
 	t.Parallel()
-	mk := func(p proposals.Proposal) store.Proposal {
-		return store.Proposal{Body: p}
+	mk := func(p proposals.Proposal) proposalstore.Proposal {
+		return proposalstore.Proposal{Body: p}
 	}
 
 	cases := []struct {

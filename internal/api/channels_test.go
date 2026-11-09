@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -2065,7 +2066,7 @@ func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-running", Kind: "recurate", Status: "running", ChannelID: "c1",
 	}); err != nil {
 		t.Fatal(err)

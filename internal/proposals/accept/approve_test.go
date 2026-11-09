@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -36,7 +37,7 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 		{Item: missing, Owned: false},
 	}}
 	approver := accept.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
-	p := store.Proposal{
+	p := proposalstore.Proposal{
 		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000671, Name: "Existing", InLibrary: true, LibraryItemID: "library-90000671"},
@@ -70,13 +71,13 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 	for _, conflict := range []error{channelstore.ErrChannelConflict, channelstore.ErrChannelStale} {
 		t.Run(conflict.Error(), func(t *testing.T) {
 			st := &testkit.ApprovalStore{CommitErrors: []error{conflict, nil}}
-			channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) channelstore.Channel {
+			channels := &testkit.ApprovalChannels{PlanFunc: func(p proposalstore.Proposal, attempt int) channelstore.Channel {
 				ch := testkit.ApprovedChannel(p, attempt)
 				ch.ID = "ch-approved"
 				return ch
 			}}
 			approver := accept.NewApprover(st, channels, time.Now)
-			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
+			p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 			result, err := approver.Approve(context.Background(), p, nil, "admin")
 			if err != nil {
@@ -96,16 +97,16 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 }
 
 func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
-	p := store.Proposal{
+	p := proposalstore.Proposal{
 		ID: "older", JobID: "job1", Status: "submitted", Body: validApprovalBody(),
 		CreatedAt: time.Unix(100, 0),
 	}
-	newer := store.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
+	newer := proposalstore.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
 	st := &testkit.ApprovalStore{
 		CommitErrors: []error{channelstore.ErrChannelStale},
-		LatestFunc: func(call int) (store.Proposal, error) {
+		LatestFunc: func(call int) (proposalstore.Proposal, error) {
 			if call == 1 {
-				return store.Proposal{}, store.ErrNotFound
+				return proposalstore.Proposal{}, store.ErrNotFound
 			}
 			return newer, nil
 		},
@@ -127,7 +128,7 @@ func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 
 func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	st := &testkit.ApprovalStore{Enqueued: 1}
-	channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, _ int) channelstore.Channel {
+	channels := &testkit.ApprovalChannels{PlanFunc: func(p proposalstore.Proposal, _ int) channelstore.Channel {
 		ch := testkit.ApprovedChannel(p, 1)
 		ch.ID = "ch-approved"
 		return ch
@@ -137,7 +138,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
 	approver := accept.NewApprover(st, channels, func() time.Time { return decisionAt }).
 		WithDecisionQuality(decisionQuality)
-	p := store.Proposal{
+	p := proposalstore.Proposal{
 		ID: "p1", JobID: "job1", Status: "submitted",
 		Body: validApprovalBody(),
 	}
@@ -172,7 +173,7 @@ func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{PlanError: errors.New("cannot plan")}
 	approver := accept.NewApprover(st, channels, time.Now)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
+	p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite channel-plan failure")
@@ -188,7 +189,7 @@ func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	qualitySink := &testkit.QualityRecorder{}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
 	approver := accept.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
+	p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite local transaction failure")

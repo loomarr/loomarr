@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -70,7 +70,7 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 	coordinator := &productNotificationCoordinator{
 		publisher: notifications.NewProductPublisher(service), source: source,
 	}
-	proposal := store.Proposal{
+	proposal := proposalstore.Proposal{
 		ID: "proposal-1", CreatedBy: "requester-1",
 		Body: proposals.Proposal{ChannelName: "Saturday Cartoons"},
 	}
@@ -179,7 +179,7 @@ func TestLibraryNotificationsReachOperators(t *testing.T) {
 }
 
 func TestProposalSubjectTruncatesLongUnicodeWithoutBreakingUTF8(t *testing.T) {
-	row := store.Proposal{Body: proposals.Proposal{Intent: proposals.Intent{Description: strings.Repeat("é", 150)}}}
+	row := proposalstore.Proposal{Body: proposals.Proposal{Intent: proposals.Intent{Description: strings.Repeat("é", 150)}}}
 	subject := proposalSubject(row)
 	if len(subject) > 200 || subject == "Channel proposal" {
 		t.Fatalf("unicode subject = %q (%d bytes)", subject, len(subject))

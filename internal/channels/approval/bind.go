@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -21,7 +21,7 @@ import (
 // store, clock, network or logger: the same input always gives the same Binding.
 type BindInput struct {
 	// Proposal is the exact candidate being bound: its job, requester, approver and body.
-	Proposal store.Proposal
+	Proposal proposalstore.Proposal
 	// Existing is the channel the proposal's job changes. The zero value means the job has no
 	// channel yet, so Bind creates one.
 	Existing channelstore.Channel
@@ -155,7 +155,7 @@ func Bind(in BindInput) (Binding, error) {
 // (§8.2), as opposed to a human or a per-user auto-approve grant. The audit field is the
 // discriminator, so the binder applies additive (non-destructive) lineup semantics only for
 // the unattended path — every human-in-the-loop approval keeps full-replace (a person decided).
-func isAutoCurate(p store.Proposal) bool {
+func isAutoCurate(p proposalstore.Proposal) bool {
 	return p.ApprovedBy == accept.AutoCuratedBy
 }
 
@@ -192,7 +192,7 @@ func retiredKeys(body proposals.Proposal) map[provision.Key]struct{} {
 // prefers the LLM's proposed channelName (a real network-style name — "Springfield
 // Classics" — §8), falling back to a truncated intent description, then a generic label.
 // A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
-func channelNameFromIntent(p store.Proposal) string {
+func channelNameFromIntent(p proposalstore.Proposal) string {
 	if n := strings.TrimSpace(p.Body.ChannelName); n != "" {
 		return truncateLabel(n, 60)
 	}

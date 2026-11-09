@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/events"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -53,19 +53,19 @@ func (e *eventEmitter) setNotifications(coordinator *productNotificationCoordina
 	e.notifications.Store(coordinator)
 }
 
-func (e *eventEmitter) ProposalSubmitted(ctx context.Context, proposal store.Proposal) {
+func (e *eventEmitter) ProposalSubmitted(ctx context.Context, proposal proposalstore.Proposal) {
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalSubmitted(ctx, proposal)
 	}
 }
 
-func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal store.Proposal, channelID string) {
+func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal proposalstore.Proposal, channelID string) {
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalApproved(ctx, proposal, channelID)
 	}
 }
 
-func (e *eventEmitter) ProposalDenied(ctx context.Context, proposal store.Proposal) {
+func (e *eventEmitter) ProposalDenied(ctx context.Context, proposal proposalstore.Proposal) {
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalDenied(ctx, proposal)
 	}

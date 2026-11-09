@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -25,7 +25,7 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body}
+	p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body}
 	edit := &accept.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: proposals.EditorialCore},
 	}, Note: "More variety"}
@@ -58,7 +58,7 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 			{MediaType: provision.Movie, TMDBID: 90000003, Name: "Keep backup"},
 		},
 	}
-	p := store.Proposal{ID: "p-backup", Status: "submitted", Body: body}
+	p := proposalstore.Proposal{ID: "p-backup", Status: "submitted", Body: body}
 	prepared, err := accept.PrepareApproval(p, &accept.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000002"},
 	}, holidayvocab.Default())
@@ -75,7 +75,7 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 	body := proposals.Proposal{Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"},
 	}}
-	p := store.Proposal{ID: "p-owned-add", Status: "submitted", Body: body}
+	p := proposalstore.Proposal{ID: "p-owned-add", Status: "submitted", Body: body}
 	edit := &accept.ApprovalEdit{Add: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true, LibraryItemID: "library-2"},
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged-library-id"},
@@ -114,7 +114,7 @@ func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
 	body := proposals.Proposal{Acquisitions: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Only title"},
 	}}
-	p := store.Proposal{ID: "p-empty", Status: "submitted", Body: body}
+	p := proposalstore.Proposal{ID: "p-empty", Status: "submitted", Body: body}
 	_, err := accept.PrepareApproval(p, &accept.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000001"},
 	}, holidayvocab.Default())
