@@ -16,8 +16,7 @@ import (
 // media library.
 //
 // A library source names one of the Library's scan roots, a local folder, and reads it where it
-// is. It used to name a media-server library and ask the media server for its files; Loomarr's
-// own scanner owns those folders now, so the media server is out of the filler path again.
+// is. Loomarr's own scanner owns those folders, so the media server is out of the filler path.
 //
 // ⚠ It differs from a watched folder in one way that matters: a watched folder is DRAINED (its
 // files move into the catalog), while a library folder is the household's own media and is only

@@ -28,10 +28,8 @@ func (artworkCapacityMeter) ManagedBytes(context.Context, string, storagegoverno
 
 // Clip artwork (V28 still + V39 animation), rendered by ONE ffmpeg pass.
 //
-// These were two test files until V39 merged the two generators into a single exec. Every
-// assertion from `thumbnail_test.go` survives here — the still's contract did not change when it
-// gained a travelling companion, and losing those tests to a refactor would have been the real
-// cost of merging.
+// The still's contract did not change when the animation joined it in the single exec, so the
+// still's assertions live here alongside the animation's.
 
 // writeAt creates a file with content, making parents as needed. (scan_test.go has a writeFile
 // with a different signature; this one takes a full path.)

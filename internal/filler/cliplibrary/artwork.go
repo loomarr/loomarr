@@ -32,8 +32,8 @@ import (
 // one-pass path with a bounded animated-GIF fallback; see FFmpegArtwork.
 //
 // The consequence of sharing an invocation is that they must share a SEEK — see previewStartFor.
-// That was the deliberate tradeoff: the still is now the animation's opening frame, so the two
-// always show the same moment. Before this they could disagree, which was never a feature.
+// That is the deliberate tradeoff: the still is the animation's opening frame, so the two always
+// show the same moment.
 
 // ThumbDirName is the artwork cache directory, created inside FILLER_DIR.
 //
@@ -91,10 +91,9 @@ const thumbAtSeconds = 3
 // end card, and on a 10-second bumper there is no 6-second window at 3s at all — ffmpeg writes a
 // truncated file or nothing.
 //
-// ⚠ This is now the STILL's seek too, which is the price of the single-pass build. The still used
-// to take a flat 3s; it now takes the animation's first frame. On a 15s spot that moves it from
-// 3.0s to 2.25s — marginally closer to a fade-in — and in exchange the card's still and its hover
-// can never show different moments.
+// ⚠ This is the STILL's seek too, which is the price of the single-pass build: the still takes the
+// animation's first frame rather than a flat 3s. On a 15s spot that is 2.25s — marginally closer
+// to a fade-in — and in exchange the card's still and its hover can never show different moments.
 func previewStartFor(durationMs int64) float64 {
 	if durationMs <= 0 {
 		// Unprobed — a real state, for a clip ffprobe could not read. Guessing a proportion of an

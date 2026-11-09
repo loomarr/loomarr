@@ -2,11 +2,10 @@ package pipelinestate
 
 // Rejection, as a first-class vocabulary (§10 V51b).
 //
-// ⚠ **The three-way is the whole point.** Before this, rejection was binary (`removed_at`) and
-// holding was binary (`held`), decided in different files by different jobs with no shared
-// language: `LanguageJob` tombstoned, `Tagger` published, `ScanDir` silently skipped. Adding a
-// criterion meant editing three jobs and hoping they agreed. One enumeration every rule answers
-// makes a new criterion a new rule, and makes "what happened to my clip?" answerable in one place.
+// ⚠ **The three-way is the whole point.** Rejection (`removed_at`) and holding (`held`) are each
+// binary, and decided by different rungs; with no shared language, adding a criterion would mean
+// editing every rung and hoping they agreed. One enumeration every rule answers makes a new
+// criterion a new rule, and makes "what happened to my clip?" answerable in one place.
 //
 // ⚠ **Not to be confused with `AutoSplitReject` (autosplit.go), and the two stay separate.** That
 // one says why a split PROPOSAL was not auto-confirmed and is operator-facing PROSE; this one says

@@ -321,8 +321,7 @@ func (c Clip) ID() string { return c.Hash }
 // bumper/flex fill, never as a matched commercial.
 //
 // ⚠ `Category` here is the DERIVED product-leaf shadow of the taxonomy tags (§10 V45a), so
-// `Category != ""` means "has at least one product tag" — the same completeness the flat category
-// string used to assert, now sourced from the graph. A clip tagged only on non-product axes
+// `Category != ""` means "has at least one product tag". A clip tagged only on non-product axes
 // (`psa`, `christmas`) is correctly NOT "tagged" for matched-commercial purposes.
 func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""

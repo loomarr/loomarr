@@ -71,7 +71,7 @@ type RawClip struct {
 	License string
 	// Thumbnail is the extracted frame's path relative to the thumbnail cache dir; "" when
 	// extraction failed or has not run. Filled by a SEPARATE pass (GenerateThumbnails), not
-	// by the probe — see thumbnail.go for why it cannot ride along with ffprobe.
+	// by the probe — see artwork.go for why it cannot ride along with ffprobe.
 	Thumbnail string
 	// Preview is the animated hover preview's path relative to the preview cache dir; "" when
 	// the render failed or has not run (V39). A third pass again (GeneratePreviews) for the same
@@ -82,14 +82,11 @@ type RawClip struct {
 
 // FillerSource discovers the clips in FILLER_DIR.
 //
-// Implemented by DirSource (the local scan, §9.1) and satisfied in tests by a double. It was
-// previously implemented by the Tunarr client — EnsureLocalSource registered the drop-folder
-// as a Tunarr `local` media source and ListLocalClips read back what Tunarr had scanned.
+// Implemented by DirSource (the local scan, §9.1) and satisfied in tests by a double.
 //
-// EnsureLocalSource is retained because Tunarr-backed channels still need that registration
-// (their filler-lists reference Tunarr program ids). It is now BEST-EFFORT: an install with no
-// Tunarr fails it harmlessly and still gets a full catalog from the local scan, which is the
-// whole point of the change.
+// EnsureLocalSource registers the drop-folder as a Tunarr `local` media source, because
+// Tunarr-backed channels' filler-lists reference Tunarr program ids. It is BEST-EFFORT: an install
+// with no Tunarr fails it harmlessly and still gets a full catalog from the local scan.
 type FillerSource interface {
 	EnsureLocalSource(ctx context.Context, dir string) error
 	ListLocalClips(ctx context.Context) ([]RawClip, error)

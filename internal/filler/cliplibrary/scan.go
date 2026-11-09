@@ -264,7 +264,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minM
 			Quality: QualityFromHeight(pr.Height),
 			// The licence the source declared, from the info-JSON beside the file (V33).
 			//
-			// ⚠ Read by EXACT PATH here, unlike the tagger's `sidecarText`, which walks the
+			// ⚠ Read by EXACT PATH here, unlike the tagger's `asset.SidecarText`, which walks the
 			// drop-folder matching normalized basenames. That indirection exists because
 			// Tunarr supplies a display NAME that may not match the file; the scan is
 			// walking the filesystem itself and already holds the real path, so guessing
@@ -502,9 +502,8 @@ func ClipRelPath(clipID, ext string) string {
 // the pod assembler and the API both accept ids from callers — so a crafted id containing `../`
 // would otherwise make playout read (and stream) an arbitrary file outside the clip folder.
 //
-// ⚠ **Under hash identity the guard gets STRONGER, not weaker** (V38c). It used to sanitise an
-// operator-shaped relative path and verify containment after cleaning. An id is now a 64-character
-// hex hash, so the check is an ALLOW-LIST on the alphabet: nothing containing a separator, a dot
+// ⚠ **Under hash identity the guard is an ALLOW-LIST, not a sanitiser** (V38c). An id is a
+// 64-character hex hash, so the check is on the alphabet: nothing containing a separator, a dot
 // or an encoding trick can match `^[0-9a-f]{64}$` in the first place. Validating what an id may
 // BE beats reasoning about what a path might become.
 //
@@ -542,8 +541,7 @@ func validShardPath(p string) bool { return shardPath.MatchString(p) }
 //
 // It optionally consults Tunarr to learn each clip's program uuid, so Tunarr-backed channels
 // can still build filler-lists. THE SCAN IS THE SOURCE OF TRUTH for what exists — Tunarr only
-// annotates. That ordering is the fix: previously Tunarr's knowledge determined the catalog, so
-// no Tunarr meant no clips at all.
+// annotates, so an install with no Tunarr still has a full catalog.
 type DirSource struct {
 	// Layout is the immutable clip/watch topology for this application generation. Scan excludes
 	// the applied watch subtree, so a delayed arrival is never catalogued before intake files it.
