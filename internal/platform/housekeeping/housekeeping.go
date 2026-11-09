@@ -43,7 +43,6 @@ type Store interface {
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 	PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error)
-	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
 	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error)
@@ -203,10 +202,6 @@ func (s *Service) PurgeDiagnostics(ctx context.Context) (diagnostics.PurgeResult
 // for a page to pick up again. A fixed product policy, like notifications: nothing reads it after.
 const FinishedOperationRetention = 7 * 24 * time.Hour
 
-// RecipientGrace is how long a requester row may point at a title that isn't written yet:
-// approval records who asked before provisioning writes the title.
-const RecipientGrace = 30 * 24 * time.Hour
-
 // UnusedTitleRetention is how long a settled title no channel or open request names is kept. It
 // outlasts a channel being rebuilt or a request being refined, either of which may name it again.
 const UnusedTitleRetention = 180 * 24 * time.Hour
@@ -229,9 +224,6 @@ func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 			return s.store.PurgeFinishedInteractiveOperations(ctx, now.Add(-FinishedOperationRetention))
 		}},
 		{"superseded discovery feedback", func() (int, error) { return s.store.PurgeSupersededDiscoveryFeedback(ctx) }},
-		{"orphan notification recipients", func() (int, error) {
-			return s.store.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-RecipientGrace))
-		}},
 		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
 		{"unused titles", func() (int, error) { return s.store.PurgeUnusedTitles(ctx, now.Add(-UnusedTitleRetention)) }},
 		// After the titles: a title purged tonight releases its episode list and paths.
