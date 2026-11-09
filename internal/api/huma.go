@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -160,7 +161,7 @@ type Server struct {
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
 	backendTransition BackendTransitioner
-	backendCheckpoint func(context.Context) (BackendCheckpoint, error)
+	backendCheckpoint func(context.Context) (httpcore.BackendCheckpoint, error)
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
@@ -190,7 +191,7 @@ type Server struct {
 	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
-	playoutObserver PlayoutObserver
+	playoutObserver playoutapi.PlayoutObserver
 	// playoutCapability supplies the retained encoder probe result without starting a probe.
 	// Unlike live session stats, it remains available while playout is idle.
 	playoutCapability func() playout.Capacity
@@ -207,12 +208,12 @@ type Server struct {
 	playoutSecretCurrent func(context.Context) (string, error)
 	// playoutResolver describes channels for the formats, play-url and filler handlers. Nil ⇒ those
 	// report playout as not configured.
-	playoutResolver PlayoutResolver
+	playoutResolver playoutapi.PlayoutResolver
 	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
-	playout Playout
+	playout playoutapi.Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
-	playoutGuide PlayoutGuide
+	playoutGuide playoutapi.PlayoutGuide
 	// timelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
 	// nil ⇒ the strip renders with no images (TMDB optional); it never fails the timeline.
 	timelineThumbs TimelineThumbResolver
@@ -1037,21 +1038,21 @@ type Options struct {
 	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
 	// (config-design §3).
 	RestartDrift             func() []string
-	Jobs                     system.JobService                                // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings                 SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
-	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)
-	ProposalNotifications    suggest.ProposalNotifier                         // best-effort product lifecycle publication (§11)
-	DecisionQuality          ProposalDecisionQuality                          // committed Proposal denial quality outcome (§17)
-	BackendTransition        BackendTransitioner                              // durable backend prepare/publish/retire coordinator
-	BackendCheckpoint        func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
-	Guide                    GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision                Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Jobs                     system.JobService                                         // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings                 SettingsService                                           // /v1/settings* (config-design §8); nil ⇒ routes 501
+	NotificationDestinations NotificationDestinationService                            // redacted product-delivery routing (§11)
+	WebPushPublicKey         string                                                    // public half of the generated VAPID identity (§11)
+	ProposalNotifications    suggest.ProposalNotifier                                  // best-effort product lifecycle publication (§11)
+	DecisionQuality          ProposalDecisionQuality                                   // committed Proposal denial quality outcome (§17)
+	BackendTransition        BackendTransitioner                                       // durable backend prepare/publish/retire coordinator
+	BackendCheckpoint        func(context.Context) (httpcore.BackendCheckpoint, error) // durable checkpoint, once per operation
+	Guide                    GuideReader                                               // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision                Provisioner                                               // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	ProposalOutlook          ProposalOutlook
 	Approver                 ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
 	Binder                   ChannelBinder    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
-	PlayoutObserver PlayoutObserver
+	PlayoutObserver playoutapi.PlayoutObserver
 	// PlayoutCapability returns the already-published host encoder capability. It must not
 	// perform or await a probe on this observational request path.
 	PlayoutCapability func() playout.Capacity
@@ -1064,11 +1065,11 @@ type Options struct {
 	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
 	PlayoutSecretCurrent func(context.Context) (string, error)
 	// PlayoutResolver describes channels for the formats, play-url and filler handlers.
-	PlayoutResolver PlayoutResolver
+	PlayoutResolver playoutapi.PlayoutResolver
 	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
-	Playout Playout
+	Playout playoutapi.Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
-	PlayoutGuide PlayoutGuide
+	PlayoutGuide playoutapi.PlayoutGuide
 	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
 	// Nil ⇒ the strip renders with no images (TMDB optional, and it never fails the timeline).
 	TimelineThumbs TimelineThumbResolver

@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func TestAuthorizePlayoutUsesCurrentReplicaTokenForRawAndSignedCredentials(t *te
 // authorizeWith runs authorizePlayout against a synthetic request carrying `query` and a path
 // value of `id`, returning whether it authorized. Exercises the real branch the HLS routes use
 // without standing up a full router.
-func authorizeWith(s *Server, id, query string) bool {
+func authorizeWith(s *Handlers, id, query string) bool {
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/"+id+"/master.m3u8"+query, nil)
 	req.SetPathValue("id", id)
 	rec := httptest.NewRecorder()
@@ -37,8 +37,8 @@ func authorizeWith(s *Server, id, query string) bool {
 
 // serverWithToken builds a bare Server whose only wired dependency is the playout token — enough
 // to exercise the pure sign/verify path without a store or a router.
-func serverWithToken(token string) *Server {
-	return &Server{playoutSecret: func() string { return token }}
+func serverWithToken(token string) *Handlers {
+	return &Handlers{playoutSecret: func() string { return token }}
 }
 
 const testPlayoutTok = "sign-test-token-abcdefghijklmnop"
@@ -157,7 +157,7 @@ func TestAuthorizePlayout_AcceptsDeviceToken(t *testing.T) {
 }
 
 func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
-	s := &Server{
+	s := &Handlers{
 		playoutSecret: func() string { return testPlayoutTok },
 		liveSettings:  mapSettings{"server.public_url": "http://loomarr.local:8080"},
 	}
@@ -177,7 +177,7 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 	// No public URL ⇒ no ABSOLUTE URL, matching the other playout builders' "not configured"
 	// signal. But the RELATIVE URL must still be built — the web player uses it and does not need
 	// public_url — which is the whole point of returning both.
-	noBase := &Server{playoutSecret: func() string { return testPlayoutTok }, liveSettings: mapSettings{}}
+	noBase := &Handlers{playoutSecret: func() string { return testPlayoutTok }, liveSettings: mapSettings{}}
 	if noBase.playoutHLSURL("ch_abc", "", time.Now().Add(time.Hour)) != "" {
 		t.Fatal("built an ABSOLUTE HLS URL with no public_url")
 	}

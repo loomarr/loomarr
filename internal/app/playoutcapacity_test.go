@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -61,7 +61,7 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/playout/status = %d: %s", rec.Code, rec.Body.String())
 	}
-	var status api.PlayoutStatus
+	var status playoutapi.PlayoutStatus
 	if err := json.NewDecoder(rec.Body).Decode(&status); err != nil {
 		t.Fatal(err)
 	}

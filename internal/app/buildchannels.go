@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -41,12 +42,12 @@ type channelBuild struct {
 	desiredBackend         func(context.Context) (string, error)
 	appliedBackend         func(context.Context) (string, error)
 	checkpoint             func(context.Context) (backendtransition.Snapshot, error)
-	playoutObserver        api.PlayoutObserver
+	playoutObserver        playoutapi.PlayoutObserver
 	playoutCapability      func() playout.Capacity
-	playout                api.Playout
-	playoutResolverService api.PlayoutResolver
+	playout                playoutapi.Playout
+	playoutResolverService playoutapi.PlayoutResolver
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
-	playoutGuide           api.PlayoutGuide
+	playoutGuide           playoutapi.PlayoutGuide
 	playoutResolver        *playoutresolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
 	channelNumbers         approval.NumberSource
@@ -122,19 +123,19 @@ func buildChannels(
 	}
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
-	var playoutObserver api.PlayoutObserver
+	var playoutObserver playoutapi.PlayoutObserver
 	var playoutCapability func() playout.Capacity
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
-	var playoutSvc api.Playout
-	var playoutResolverSvc api.PlayoutResolver
+	var playoutSvc playoutapi.Playout
+	var playoutResolverSvc playoutapi.PlayoutResolver
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
-	var playoutGuideSvc api.PlayoutGuide
+	var playoutGuideSvc playoutapi.PlayoutGuide
 	// Declared out here so the pod assembler can be attached further down: the resolver is
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.

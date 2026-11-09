@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -46,11 +47,11 @@ func (f *fakeTimelineThumbs) askedCount() int {
 	return len(f.asked)
 }
 
-func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, records.Store) {
+func newTimelineServer(t *testing.T, g playoutapi.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, records.Store) {
 	return newTimelineServerWithImages(t, g, thumbs, nil)
 }
 
-func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, records.Store) {
+func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs api.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/timeline.db")
 	t.Cleanup(func() { _ = st.Close() })

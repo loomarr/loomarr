@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"context"
@@ -110,7 +110,7 @@ type playoutStatusOutput struct {
 }
 
 // registerPlayoutStatus mounts GET /v1/playout/status (§9.1 V47).
-func (s *Server) registerPlayoutStatus(api huma.API) {
+func (s *Handlers) registerPlayoutStatus(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-playout-status", Method: http.MethodGet, Path: "/v1/playout/status",
 		Summary: "Playout status — why a channel is (or isn't) playing (admin)",
@@ -121,14 +121,14 @@ func (s *Server) registerPlayoutStatus(api huma.API) {
 	}, httpcore.RoleAdmin), s.getPlayoutStatus)
 }
 
-func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutStatusOutput, error) {
+func (s *Handlers) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutStatusOutput, error) {
 	return &playoutStatusOutput{Body: s.playoutStatus(ctx, time.Now())}, nil
 }
 
 // playoutStatus builds the health picture from live state. Best-effort on the GPU/LLM header — a
 // probe that fails degrades to an empty header, never a failed request, because the channel health
 // (the load-bearing part) does not depend on it.
-func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
+func (s *Handlers) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
 	status := PlayoutStatus{
 		Channels: []ChannelHealth{},
 		Budget:   playout.BudgetSnapshot{Classes: map[playout.StreamClass]playout.ClassBudget{}},
@@ -187,7 +187,7 @@ type channelIdentity struct {
 // channelIdentities maps channel id → number + name from the store, so a playout row can show
 // "#3 · 1980s Action Heroes" instead of the raw id (which the UI keeps behind a detail affordance).
 // Best-effort: a nil store or a read error returns an empty map, and rows fall back to the id.
-func (s *Server) channelIdentities(ctx context.Context) map[string]channelIdentity {
+func (s *Handlers) channelIdentities(ctx context.Context) map[string]channelIdentity {
 	out := map[string]channelIdentity{}
 	if s.store == nil {
 		return out
@@ -251,18 +251,18 @@ func verdict(copying bool, speed float64, hardware bool) (PlayoutHealth, string)
 
 // statusGPU reads the GPU + resident-LLM header from the SystemLLM status (which already probes
 // nvidia-smi + Ollama /api/ps for the model picker, §8.1). Best-effort: any failure → empty header.
-func (s *Server) statusGPU(ctx context.Context) PlayoutGPU {
-	if s.systemLLM == nil {
+func (s *Handlers) statusGPU(ctx context.Context) PlayoutGPU {
+	if s.gpu == nil {
 		return PlayoutGPU{}
 	}
-	status, err := s.systemLLM.Status(ctx)
+	name, vramGiB, err := s.gpu(ctx)
 	if err != nil {
 		if s.log != nil {
 			s.log.Debug("playout status: LLM/GPU status unavailable", "err", err)
 		}
 		return PlayoutGPU{}
 	}
-	g := PlayoutGPU{Name: status.GPUName, VRAMGiB: status.VRAMGiB}
+	g := PlayoutGPU{Name: name, VRAMGiB: vramGiB}
 
 	// ⚠ **LIVE residency, from Ollama /api/ps — not the on-disk-size estimate this used to report.**
 	// The old path looked up the active model tag in the catalog and reported its on-DISK size as

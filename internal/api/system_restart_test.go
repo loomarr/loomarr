@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -20,7 +21,7 @@ func (f *fakeRestart) Restart() { f.calls.Add(1) }
 
 type systemRestartHarnessConfig struct {
 	Restart         system.RestartService
-	PlayoutObserver api.PlayoutObserver
+	PlayoutObserver playoutapi.PlayoutObserver
 	RestartDrift    func() []string
 }
 

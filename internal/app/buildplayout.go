@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
@@ -32,11 +33,11 @@ import (
 const playoutGPUIdentityTimeout = 250 * time.Millisecond
 
 type playoutBuild struct {
-	observer          api.PlayoutObserver
+	observer          playoutapi.PlayoutObserver
 	capability        func() playout.Capacity
-	service           api.Playout
-	resolverService   api.PlayoutResolver
-	guide             api.PlayoutGuide
+	service           playoutapi.Playout
+	resolverService   playoutapi.PlayoutResolver
+	guide             playoutapi.PlayoutGuide
 	resolver          *playoutresolve.Resolver
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
@@ -81,10 +82,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	eventBus, fillerLayout := deps.events, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
-	var playoutObserver api.PlayoutObserver
-	var playoutSvc api.Playout
-	var playoutResolverSvc api.PlayoutResolver
-	var playoutGuideSvc api.PlayoutGuide
+	var playoutObserver playoutapi.PlayoutObserver
+	var playoutSvc playoutapi.Playout
+	var playoutResolverSvc playoutapi.PlayoutResolver
+	var playoutGuideSvc playoutapi.PlayoutGuide
 	var playoutRes *playoutresolve.Resolver
 	var backendController *backendtransition.Controller
 	var residentVRAM func(context.Context) (float64, string)
