@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
@@ -16,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -189,6 +191,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
+		Viewing:           startWatchHistory(rootCtx, st, guideSvc, log),
 		PlayoutCapability: playoutCapability,
 		WatermarkPreview:  deps.watermarks,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
@@ -203,6 +206,31 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
 	})
+}
+
+// startWatchHistory makes the household-viewing tracker the API's playlist polls feed and starts
+// the recorder that writes it to the watch history (#3010) until ctx ends. Each row's programme is
+// the title the guide says is airing; a gap between programmes has none.
+func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
+	tracker := viewing.New()
+	var programmes viewing.Programmes
+	if guide != nil {
+		programmes = func(ctx context.Context, at time.Time) (map[string]string, error) {
+			byChannel, err := guide.NowNext(ctx, at)
+			if err != nil {
+				return nil, err
+			}
+			titles := make(map[string]string, len(byChannel))
+			for id, nn := range byChannel {
+				if nn.Now != nil && !nn.Now.Gap {
+					titles[id] = nn.Now.Title
+				}
+			}
+			return titles, nil
+		}
+	}
+	go viewing.NewRecorder(tracker, st, programmes, log).Run(ctx)
+	return tracker
 }
 
 // clientCrashService keeps a store-less build's nil module from becoming a non-nil interface,

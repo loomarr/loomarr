@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 28 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
+- **platform** · 30 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
 - **library** · 9 imports — the titles a channel plays: `provision` keys and states, `inventory` break analysis, and `catalog` candidates for re-curation
 - **proposals** · 5 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
 - **filler** · 3 imports — asking the filler engine for the pod that fills a break
@@ -30,5 +30,5 @@ One area of the [package map](../package-map.md#start-here).
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 - **`channels/schedule`** · 32 importers · → `inventory`, `platform/holidayvocab`, `platform/langcode`, `platform/rating`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
-- **`channels/viewing`** · 4 importers
+- **`channels/viewing`** · 5 importers · → `platform/store`, `platform/store/channelstore`
   Tracks who is watching which channel right now, from the players' own playlist polls (#1662).

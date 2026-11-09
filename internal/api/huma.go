@@ -205,6 +205,9 @@ type Options struct {
 	Binder                   channelsapi.Binder // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver playoutapi.PlayoutObserver
+	// Viewing is the household-viewing tracker the playlist polls feed (#1662). The composition
+	// root shares it with the watch-history recorder (#3010); nil ⇒ Router makes its own.
+	Viewing *viewing.Tracker
 	// PlayoutCapability returns the already-published host encoder capability. It must not
 	// perform or await a probe on this observational request path.
 	PlayoutCapability func() playout.Capacity

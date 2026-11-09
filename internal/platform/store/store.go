@@ -720,6 +720,7 @@ type Store interface {
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
+	ViewingStore
 	DiscoveryQualityStore
 	InventoryStore
 	LibraryRootStore
