@@ -10,8 +10,8 @@ import (
 )
 
 // LibraryTitle is a movie or series the Library holds with a file to play (#2151 step 15), by the
-// external ids its record knows it by: what availability, presence and ratings asked the media
-// server until the cutover.
+// external ids its record knows it by: what availability, presence and ratings read; the media
+// server is never asked.
 type LibraryTitle struct {
 	ID string
 	// Kind is movie or series.
@@ -158,7 +158,7 @@ func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace
 }
 
 // LibraryTitleSearcher finds the Library's titles by name: the library half of title search
-// (#2151 step 15e), what the media server's search answered until the cutover.
+// (#2151 step 15e); the media server's search is not asked.
 type LibraryTitleSearcher interface {
 	// SearchLibraryTitles is up to limit movies and series with a present file whose name holds
 	// term (case-insensitive, LIKE's wildcards taken literally): an exact name first, then one
