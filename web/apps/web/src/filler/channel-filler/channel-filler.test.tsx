@@ -207,11 +207,11 @@ describe("ChannelFiller", () => {
     expect(screen.getByText("Products & topics")).toBeInTheDocument();
     expect(screen.getByText("Clip kinds")).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: "Break frequency" })).toHaveTextContent(
+      expect(screen.getByRole("combobox", { name: "Break frequency" })).toHaveDisplayValue(
         "Follow default (4 per hour)",
       ),
     );
-    expect(screen.getByRole("combobox", { name: "Break length" })).toHaveTextContent(
+    expect(screen.getByRole("combobox", { name: "Break length" })).toHaveDisplayValue(
       "Follow default (5 min)",
     );
     // The mount preview assembles the (saved) selection and renders the pod timeline.
@@ -251,8 +251,7 @@ describe("ChannelFiller", () => {
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
-    await user.click(screen.getByRole("combobox", { name: "Break length" }));
-    await user.click(await screen.findByRole("option", { name: "Custom length" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Break length" }), "Custom length");
     const input = await screen.findByLabelText("Custom break length in minutes");
     await user.clear(input);
     await user.type(input, "1.5");
@@ -269,9 +268,8 @@ describe("ChannelFiller", () => {
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     const spacing = await screen.findByRole("combobox", { name: "Repeat spacing · same commercial" });
-    await waitFor(() => expect(spacing).toHaveTextContent("Follow default (4 hours)"));
-    await user.click(spacing);
-    await user.click(await screen.findByRole("option", { name: "Custom spacing" }));
+    await waitFor(() => expect(spacing).toHaveDisplayValue("Follow default (4 hours)"));
+    await user.selectOptions(spacing, "Custom spacing");
     const input = await screen.findByLabelText("Custom commercial repeat spacing in hours");
     expect(input).toHaveValue("4");
     await user.clear(input);
@@ -300,8 +298,10 @@ describe("ChannelFiller", () => {
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
-    await user.click(screen.getByRole("combobox", { name: "Break frequency" }));
-    await user.click(await screen.findByRole("option", { name: "No commercial breaks" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Break frequency" }),
+      "No commercial breaks",
+    );
 
     expect(await screen.findByRole("button", { name: /apply filler/i })).toBeInTheDocument();
     expect(previews).toHaveLength(1);

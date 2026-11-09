@@ -26,7 +26,7 @@ describe("ChannelAdvanced — playout backend", () => {
     const onPolicyChange = vi.fn();
     render(<ChannelAdvanced channel={CHANNEL} onPolicyChange={onPolicyChange} />);
 
-    await userEvent.selectOptions(screen.getByLabelText("Streamed by"), "Loomarr");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Streamed by" }), "Loomarr");
 
     expect(onPolicyChange).toHaveBeenCalledWith(
       expect.objectContaining({ playout: { backend: "internal" } }),
@@ -36,7 +36,7 @@ describe("ChannelAdvanced — playout backend", () => {
   });
 
   // "" is the inherit sentinel (a nil *PlayoutPolicy and an empty Backend mean the same thing
-  // in Go). Radix forbids an empty-string item value, so "inherit" is the UI sentinel that must
+  // in Go). The select's options carry "inherit" rather than "" for it, and that sentinel must
   // lower back to "" — otherwise the channel would pin itself to whatever the default happened
   // to be at that moment. Lowering it back to "" keeps the channel following later changes to
   // the fleet-wide default.
@@ -49,7 +49,10 @@ describe("ChannelAdvanced — playout backend", () => {
       />,
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Streamed by"), "Follow the default");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Streamed by" }),
+      "Follow the default",
+    );
 
     expect(onPolicyChange).toHaveBeenCalledWith(expect.objectContaining({ playout: { backend: "" } }));
   });
@@ -61,11 +64,11 @@ describe("ChannelAdvanced — playout backend", () => {
         onPolicyChange={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("Streamed by")).toHaveDisplayValue("Tunarr");
+    expect(screen.getByLabelText("Streamed by")).toHaveTextContent("Tunarr");
     unmount();
 
     render(<ChannelAdvanced channel={CHANNEL} onPolicyChange={vi.fn()} />);
-    expect(screen.getByLabelText("Streamed by")).toHaveDisplayValue("Follow the default");
+    expect(screen.getByLabelText("Streamed by")).toHaveTextContent("Follow the default");
   });
 
   // The disclosure is otherwise read-only STATUS shown to admins; without a save handler there

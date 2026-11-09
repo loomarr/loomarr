@@ -413,8 +413,7 @@ describe("wizard", () => {
     await screen.findByRole("heading", { name: /connect your services/i });
     const rail = within(screen.getByRole("complementary"));
     await userEvent.click(rail.getByRole("button", { name: "Media server" }));
-    await userEvent.click(await screen.findByRole("combobox", { name: /library flavor/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "emby" }));
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: /library flavor/i }), "emby");
 
     // The media-server block is the one open, so its Test button is the first.
     const [testButton] = screen.getAllByRole("button", { name: /test connection/i });

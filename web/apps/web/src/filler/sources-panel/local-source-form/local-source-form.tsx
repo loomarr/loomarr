@@ -4,11 +4,11 @@ import { Action, Field, Surface, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
 // ⚠ No `Card` and no `Label`. The local add flow lives directly inside Your files, and its fields
 // are labelled by the provider's own address label plus `aria-label` — a static visible label above
 // an input whose meaning changes with the kind would contradict it.
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BrowserSelectControl } from "@/client-adapters";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useFillerProviders } from "../../use-filler-providers";
 
 // "Add a source" (V37), for the providers whose sources are typed addresses — a folder, a media
@@ -58,18 +58,16 @@ const LocalSourceForm = () => {
       >
         <form.Field name="kind">
           {(field) => (
-            <Select value={provider.id} onValueChange={(kind) => field.handleChange(kind)}>
-              <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {typed.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="w-45">
+              <BrowserSelectControl
+                appearance="field"
+                label="Kind of source to add"
+                labelHidden
+                onValueChange={(kind) => field.handleChange(kind)}
+                options={typed.map((candidate) => ({ label: candidate.label, value: candidate.id }))}
+                value={provider.id}
+              />
+            </div>
           )}
         </form.Field>
         <form.Field name="uri">
