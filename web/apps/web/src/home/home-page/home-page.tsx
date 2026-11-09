@@ -12,14 +12,16 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelIdeas } from "../channel-ideas";
 import { ChannelWall } from "../channel-wall";
 import { HomeStrip } from "../home-strip";
+import { useNeedsYou } from "../needs-you";
 import { NewThisWeek, newSince } from "../new-this-week";
 import { OnTheWay, YourRequests } from "../on-the-way";
 import { Tonight } from "../tonight";
 import { WatchingNow } from "../watching-now";
 
 // HomePage — the landing page for both roles (#2764): it opens on the channel wall, every channel as
-// a live tile with the last-tuned one first and marked, then Watching now, Tonight, New this week,
-// role-specific requests/ideas and the admin footer. Machine state (encoders, services, activity)
+// a live tile with the last-tuned one first and marked (an admin's "Needs you" line above the tiles),
+// then Watching now, Tonight, New this week, role-specific requests/ideas and the admin footer.
+// Machine state (encoders, services, activity)
 // lives in Settings → This server (Q-H7), which the admin footer points to.
 //
 // Loading, zero-channels and initial-error are whole-page states (the record's state contract):
@@ -57,6 +59,7 @@ const HomePage = () => {
   const since = newSince(nowMs);
   const arrivals = titlesApi.useListTitles({ since }, { query: { enabled: hasLife } });
   const allChannels = channelsApi.useListChannels({ query: { enabled: hasLife } });
+  const needs = useNeedsYou(isAdmin && hasLife);
 
   return (
     <div className="flex h-full flex-col">
@@ -70,6 +73,7 @@ const HomePage = () => {
             <ChannelWall
               lastChannelId={viewingBody?.continueWatching?.channelId}
               layout={layout}
+              needs={needs}
               nowMs={nowMs}
             />
           )}
