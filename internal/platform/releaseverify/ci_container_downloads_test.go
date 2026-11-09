@@ -106,7 +106,7 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 		},
 		"Postgres tests drop their explicit package timeout": {
 			path:     storePath,
-			contents: strings.Replace(store, " -timeout=20m", "", 1),
+			contents: strings.Replace(store, " -timeout=40m", "", 1),
 		},
 		"Postgres Make module duplicates image authority": {
 			path: storePath,
