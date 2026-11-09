@@ -114,7 +114,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
 		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
-		ORDER BY LOWER(c.name), c.id, m.position`), args...)
+		ORDER BY `+s.lower("c.name")+`, c.id, m.position`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list library collections: %w", err)
 	}

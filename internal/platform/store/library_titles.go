@@ -172,9 +172,10 @@ func (s *sqlStore) SearchLibraryTitles(ctx context.Context, term string, limit i
 		return nil, nil
 	}
 	escaped := likeEscape(term)
+	name := s.lower("i.name")
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
-		WHERE i.kind IN ('movie', 'series') AND LOWER(i.name) LIKE ? ESCAPE '\' AND `+itemListed+`
-		ORDER BY CASE WHEN LOWER(i.name) = ? THEN 0 WHEN LOWER(i.name) LIKE ? ESCAPE '\' THEN 1 ELSE 2 END,
+		WHERE i.kind IN ('movie', 'series') AND `+name+` LIKE ? ESCAPE '\' AND `+itemListed+`
+		ORDER BY CASE WHEN `+name+` = ? THEN 0 WHEN `+name+` LIKE ? ESCAPE '\' THEN 1 ELSE 2 END,
 			i.sort_name, i.id
 		LIMIT ?`), "%"+escaped+"%", term, escaped+"%", limit)
 	if err != nil {
