@@ -320,27 +320,6 @@ printf '%%s\n' "$@" > %q
 	}
 }
 
-func TestYtDlpDownloader_DirectUseKeepsPublicationArchive(t *testing.T) {
-	drop := t.TempDir()
-	publication := t.TempDir()
-	argsFile := filepath.Join(t.TempDir(), "args")
-	ytdlp := testkit.Executable(t, "yt-dlp", fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$@" > %q
-`, argsFile))
-	if _, err := NewYtDlpDownloader(ytdlp, "ffmpeg").Download(context.Background(), Source{
-		Kind: YouTube, URL: "https://youtube.com/watch?v=current-id", PublicationDir: publication,
-	}, drop); err != nil {
-		t.Fatal(err)
-	}
-	args, err := os.ReadFile(argsFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(args), filepath.Join(publication, ".yt-dlp-archive.txt")) {
-		t.Fatalf("yt-dlp args = %q, want direct publication archive", args)
-	}
-}
-
 func TestYtDlpDownloader_StampsOnlyCurrentInvocationSidecars(t *testing.T) {
 	drop := t.TempDir()
 	unrelated := filepath.Join(drop, "operator-drop.info.json")

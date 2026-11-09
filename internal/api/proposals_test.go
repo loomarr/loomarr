@@ -91,7 +91,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	}}}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
-		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
+		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash)
 		return api.Router(defaults.Log, api.Options{
 			Store:            defaults.Store,
 			Auth:             defaults.Auth,

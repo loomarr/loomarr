@@ -580,7 +580,7 @@ func TestCertificationCountsOnlyEncounteredRepairRecoveryOpportunities(t *testin
 }
 
 func TestCertificationAbstentionPassCarriesNoFailureStage(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{err: suggest.ErrNoGroundedTitles}, RunnerConfig{}).WithObserver(&scriptedObserver{
+	runner := NewRunner(scriptedGenerator{err: proposals.ErrNoGroundedTitles}, RunnerConfig{}).WithObserver(&scriptedObserver{
 		value: Observation{ToolCalls: 1, KeywordCalls: 1, GroundingStage: "selection_empty"},
 	})
 	card := runner.Run(context.Background(), []Case{{Name: "empty", NoFabrication: true}})

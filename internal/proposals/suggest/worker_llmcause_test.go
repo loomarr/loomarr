@@ -71,7 +71,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			lib := catalogfixture.NewScriptedLibrary()
 			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), catalog.New(lib, tm), tm, 10)
-			svc := suggest.NewService(st, workflow.New(st, func() string { return "wf-1" }, time.Now), sug,
+			svc := suggest.NewService(st, workflow.New(st, func() string { return "wf-1" }, time.Now, suggest.IntentHash), sug,
 				suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour}, time.Now, testkit.Logger())
 			jobID, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 			if err != nil {

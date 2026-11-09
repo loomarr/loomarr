@@ -51,7 +51,7 @@ func newProvisioningHarness(t *testing.T, configs ...provisioningHarnessConfig) 
 
 		return api.Router(defaults.Log, api.Options{
 			Store:        defaults.Store,
-			Auth:         api.NewSessionAuthorizer(mgr, adminToken),
+			Auth:         sessionAuth(mgr, adminToken),
 			Log:          defaults.Log,
 			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
 			Sessions:     mgr,

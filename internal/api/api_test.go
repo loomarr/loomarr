@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -37,18 +38,23 @@ const adminToken = "test-admin-token"
 // grows a path that only tests use.
 const memberToken = "test-member-token"
 
+// sessionAuth is the production session authorizer over a fixed API_TOKEN and no paired devices.
+func sessionAuth(mgr *auth.Manager, apiToken string) httpcore.Authorizer {
+	return api.NewSessionAuthorizerCurrent(mgr, nil, func(context.Context) (string, error) { return apiToken, nil })
+}
+
 // testAuthorizer resolves two fixed bearer tokens to two roles. It exists so a test can say
 // "member" and mean it.
 type testAuthorizer struct{}
 
-func (testAuthorizer) Authorize(r *http.Request) httpcore.Role {
+func (testAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	switch strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") {
 	case adminToken:
-		return httpcore.RoleAdmin
+		return httpcore.Identity{Role: httpcore.RoleAdmin}
 	case memberToken:
-		return httpcore.RoleMember
+		return httpcore.Identity{Role: httpcore.RoleMember}
 	default:
-		return httpcore.RoleAnonymous
+		return httpcore.Identity{Role: httpcore.RoleAnonymous}
 	}
 }
 
