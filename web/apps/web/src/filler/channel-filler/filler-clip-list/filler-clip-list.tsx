@@ -2,12 +2,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Tooltip } from "@loomarr/design-system";
-import { Plus, X } from "lucide-react";
+import { Action, Tooltip } from "@loomarr/design-system";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 // FillerClipList — one explicit channel override list (prefer or exclude).
 // Add a clip via the filler search (SearchCommand's `clips` scope, fed by useListFiller),
@@ -131,20 +128,17 @@ const FillerClipList = ({
                   )}
                 </div>
                 <Tooltip content="Remove">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0"
+                  <Action
                     disabled={disabled}
-                    aria-label={
-                      gone
-                        ? "Remove this clip, which is no longer in your catalog"
-                        : `Remove ${clip?.name ?? id}`
-                    }
-                    onClick={() => remove(id)}
+                    icon="close"
+                    layout="icon"
+                    onPress={() => remove(id)}
+                    variant="ghost"
                   >
-                    <X aria-hidden />
-                  </Button>
+                    {gone
+                      ? "Remove this clip, which is no longer in your catalog"
+                      : `Remove ${clip?.name ?? id}`}
+                  </Action>
                 </Tooltip>
               </li>
             );
@@ -176,29 +170,27 @@ const FillerClipList = ({
               }))}
             onSelect={(r) => add(r.id)}
           />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            onClick={() => {
+          <Action
+            onPress={() => {
               setAdding(false);
               setQuery("");
             }}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
             Cancel
-          </Button>
+          </Action>
         </div>
       ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn("self-start", disabled && "pointer-events-none opacity-50")}
+        <Action
           disabled={disabled}
-          onClick={() => setAdding(true)}
+          icon="plus"
+          onPress={() => setAdding(true)}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
         >
-          <Plus aria-hidden />
           Add a clip…
-        </Button>
+        </Action>
       )}
     </div>
   );
