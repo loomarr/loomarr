@@ -3,11 +3,10 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, PressableRow } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { SourceContentPreview } from "../source-content-preview";
 
 interface ProviderSourceFinderProps {
@@ -254,20 +253,15 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
               <p className="text-muted-foreground px-3 py-2 text-sm">{provider.findNoMatches}</p>
             )}
           {suggestions.map((suggestion, index) => (
-            <button
+            <PressableRow
+              accessibilityRole="option"
               id={`${listID}-${index}`}
               key={`${suggestion.provider}:${suggestion.canonicalId}`}
-              type="button"
-              role="option"
-              aria-selected={active === index}
-              className={cn(
-                "flex w-full items-start justify-between gap-4 rounded-md px-3 py-2 text-left",
-                active === index ? "bg-accent" : "hover:bg-accent/60",
-              )}
-              onMouseEnter={() => setActive(index)}
-              onClick={() => choose(suggestion)}
+              onHoverIn={() => setActive(index)}
+              onPress={() => choose(suggestion)}
+              selected={active === index}
             >
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-sm font-medium">{suggestion.title}</span>
                 <span className="text-muted-foreground block truncate text-xs">
                   {suggestion.description || suggestion.canonicalId}
@@ -276,7 +270,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
               <span className="text-muted-foreground shrink-0 text-xs">
                 {suggestion.alreadyAdded ? "Added" : targetLabel(suggestion)}
               </span>
-            </button>
+            </PressableRow>
           ))}
         </div>
       )}

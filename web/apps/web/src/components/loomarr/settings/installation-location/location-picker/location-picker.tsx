@@ -1,7 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Field, Icon, icons, LoadingStrip, PressableRow } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -198,21 +198,16 @@ const LocationPicker = ({
                   className={cn("max-h-64 overflow-auto p-1", !choicesReady && "opacity-50")}
                 >
                   {locations.map((candidate, index) => (
-                    <button
-                      type="button"
+                    <PressableRow
+                      accessibilityLabel={candidate.label}
+                      accessibilityRole="option"
+                      disabled={!choicesReady}
                       id={`${listID}-${index}`}
                       key={candidate.id}
-                      role="option"
-                      aria-label={candidate.label}
-                      tabIndex={-1}
-                      aria-selected={index === active}
-                      disabled={!choicesReady}
-                      className={cn(
-                        "flex w-full cursor-pointer items-center justify-between rounded-sm px-3 py-2 text-left text-sm disabled:cursor-default",
-                        index === active ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
-                      )}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => choose(candidate)}
+                      onPress={() => choose(candidate)}
+                      selected={index === active}
+                      tabIndex={-1}
                     >
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{candidate.city || candidate.label}</span>
@@ -227,7 +222,7 @@ const LocationPicker = ({
                           <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
                         </span>
                       )}
-                    </button>
+                    </PressableRow>
                   ))}
                 </div>
               )}
