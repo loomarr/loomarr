@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -249,7 +250,7 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 		if err != nil {
 			continue
 		}
-		tags, ok := filler.ReadSidecarTags(full)
+		tags, ok := asset.ReadSidecarTags(full)
 		if !ok || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 			d.released[c.Hash] = true
 			continue
@@ -267,7 +268,7 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 		}
 		evidence := tags.MediaAssets.Evidence.Asset.Path // non-nil: checked above
 		tags.MediaAssets.Evidence = nil
-		if err := filler.WriteSidecarTags(full, tags, false); err != nil {
+		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 			d.warn("defects: an admitted clip's evidence copy could not be released", "clip", c.Hash, "err", err)
 			continue
 		}
@@ -348,7 +349,7 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 			return false, err
 		}
 	}
-	tags, _ := filler.ReadSidecarTags(full)
+	tags, _ := asset.ReadSidecarTags(full)
 	if err := d.store.RetireDefectiveCopy(ctx, c.Hash, d.now().UTC()); errors.Is(err, ErrCopyGone) {
 		return false, nil // merged into a better copy, its files with it
 	} else if err != nil {

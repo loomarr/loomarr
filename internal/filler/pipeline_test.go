@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -1085,7 +1086,7 @@ func TestPipeline_EnrolmentCarriesAcquisitionFromSidecar(t *testing.T) {
 	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{AcquisitionID: "acq-17"}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{AcquisitionID: "acq-17"}, false); err != nil {
 		t.Fatal(err)
 	}
 	st := newPipeMemStore()

@@ -1,4 +1,4 @@
-package filler_test
+package asset_test
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 func sidecarOf(t *testing.T, media string) map[string]any {
@@ -22,7 +22,7 @@ func sidecarOf(t *testing.T, media string) map[string]any {
 	return doc
 }
 
-// ⚠ THE property that makes writing into someone else's file safe. `sidecarInfo` is a PARTIAL
+// ⚠ THE property that makes writing into someone else's file safe. `SidecarInfo` is a PARTIAL
 // view — it declares only the fields we read — so a naive unmarshal/re-marshal would silently
 // delete everything yt-dlp wrote that we do not name: formats, thumbnails, chapters, view counts.
 // The operator would never see it happen.
@@ -43,7 +43,7 @@ func TestWriteSidecarTags_PreservesFieldsWeDoNotUnderstand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{Era: 1985, Audience: "kids"}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{Era: 1985, Audience: "kids"}, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,11 +67,11 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids"}
-	if err := filler.WriteSidecarTags(media, want, false); err != nil {
+	want := asset.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids"}
+	if err := asset.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := filler.ReadSidecarTags(media)
+	got, ok := asset.ReadSidecarTags(media)
 	if !ok {
 		t.Fatal("tags did not read back")
 	}
@@ -86,7 +86,7 @@ func TestReadSourceMetadataFS_SeparatesUploadDateFromBroadcastSignals(t *testing
 	if err := os.WriteFile(filepath.Join(dir, "brambly.info.json"), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := filler.ReadSourceMetadataFS(os.DirFS(dir), "brambly.mp4")
+	got, ok := asset.ReadSourceMetadataFS(os.DirFS(dir), "brambly.mp4")
 	if !ok || got.Title != "Brambly Sauce Advert" || got.UploadDate != "20250107" ||
 		got.ItemID != "brambly-ad" || got.WebpageURL != "https://archive.org/details/brambly-ad" ||
 		got.OriginalName != "brambly-sauce.mp4" || got.SourceID != "classic" {
@@ -95,14 +95,14 @@ func TestReadSourceMetadataFS_SeparatesUploadDateFromBroadcastSignals(t *testing
 }
 
 func TestSidecarFetchedMarkFor_CarriesRegisteredSource(t *testing.T) {
-	mark := filler.SidecarFetchedMarkFor("archive:classic")
+	mark := asset.SidecarFetchedMarkForAcquisition("archive:classic", "")
 	if mark["fetchedBy"] != "loomarr" || mark["sourceId"] != "archive:classic" {
 		t.Fatalf("mark = %#v, want acquisition marker plus exact source id", mark)
 	}
 }
 
 func TestSidecarFetchedMarkForAcquisition_CarriesRunAndSource(t *testing.T) {
-	mark := filler.SidecarFetchedMarkForAcquisition("archive:classic", "acq-17")
+	mark := asset.SidecarFetchedMarkForAcquisition("archive:classic", "acq-17")
 	if mark["fetchedBy"] != "loomarr" || mark["sourceId"] != "archive:classic" || mark["acquisitionId"] != "acq-17" {
 		t.Fatalf("mark = %#v, want fetched, source, and acquisition attribution", mark)
 	}
@@ -118,7 +118,7 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filler.SidecarTags{
+	want := asset.SidecarTags{
 		Kind:            "commercial",
 		Era:             1985,
 		Audience:        "general",
@@ -127,10 +127,10 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 		GeographicScope: "local", Country: "US", Network: "Kestrel One",
 		Station: "fcc:900001", AirDate: "1985-05-06", GeoEvidence: "operator",
 	}
-	if err := filler.WriteSidecarTags(media, want, false); err != nil {
+	if err := asset.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := filler.ReadSidecarTags(media)
+	got, ok := asset.ReadSidecarTags(media)
 	if !ok {
 		t.Fatal("tags did not read back")
 	}
@@ -152,18 +152,18 @@ func TestSidecarFetchedByUs_ReadsTheFieldNotTheFilesExistence(t *testing.T) {
 	}
 
 	// A hand-dropped clip that Loomarr merely TAGGED: sidecar exists, but it was not fetched.
-	if err := filler.WriteSidecarTags(tagged, filler.SidecarTags{Era: 1990}, false); err != nil {
+	if err := asset.WriteSidecarTags(tagged, asset.SidecarTags{Era: 1990}, false); err != nil {
 		t.Fatal(err)
 	}
-	if filler.SidecarFetchedByUs(tagged) {
+	if asset.SidecarFetchedByUs(tagged) {
 		t.Error("a hand-dropped clip reads as FETCHED — the fork is still keying on the file existing, " +
 			"so every tagged clip would be held")
 	}
 
-	if err := filler.WriteSidecarTags(fetched, filler.SidecarTags{}, true); err != nil {
+	if err := asset.WriteSidecarTags(fetched, asset.SidecarTags{}, true); err != nil {
 		t.Fatal(err)
 	}
-	if !filler.SidecarFetchedByUs(fetched) {
+	if !asset.SidecarFetchedByUs(fetched) {
 		t.Error("a downloaded clip does not read as fetched")
 	}
 }
@@ -177,14 +177,14 @@ func TestWriteSidecarTags_TaggingDoesNotClearFetchedBy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{}, true); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{}, true); err != nil {
 		t.Fatal(err)
 	}
 	// The tagger runs later and knows nothing about how the clip arrived.
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{Era: 1985}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{Era: 1985}, false); err != nil {
 		t.Fatal(err)
 	}
-	if !filler.SidecarFetchedByUs(media) {
+	if !asset.SidecarFetchedByUs(media) {
 		t.Error("a tagging pass cleared fetchedBy — the clip would file itself on the next scan")
 	}
 }
@@ -202,7 +202,7 @@ func TestWriteSidecarTags_RefusesToOverwriteUnreadableJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{Era: 1985}, false); err == nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{Era: 1985}, false); err == nil {
 		t.Error("overwrote an unparseable sidecar instead of refusing")
 	}
 	raw, _ := os.ReadFile(broken)

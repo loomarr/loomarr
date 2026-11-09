@@ -580,10 +580,10 @@ func stampFetched(root *os.Root, sidecar fetchedSidecar, sourceID, acquisitionID
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return fmt.Errorf("yt-dlp sidecar is not readable JSON: %w", err)
 	}
-	if _, done := doc[filler.SidecarLoomarrKey()]; done {
+	if _, done := doc[asset.SidecarLoomarrKey()]; done {
 		return nil
 	}
-	doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
+	doc[asset.SidecarLoomarrKey()] = asset.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode yt-dlp provenance: %w", err)

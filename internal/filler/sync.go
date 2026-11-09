@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -595,7 +596,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		if found {
 			// A filename with no explicit role token cannot erase a concrete kind from an already
 			// Ready row. Existing descriptive metadata remains the stronger fact.
-			if rc.Role == Unclassified && !existing.Held && validConcreteRole(existing.Role) {
+			if rc.Role == Unclassified && !existing.Held && existing.Role.ValidConcrete() {
 				merged.Role = existing.Role
 			}
 			// PRESERVE loomarr-owned match tags across syncs (§10) — never clobber a
@@ -849,8 +850,8 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return fail(ArtifactMediaMissing)
 	}
-	tags, state := ReadSidecarTagsState(path)
-	if state == SidecarInvalid {
+	tags, state := asset.ReadSidecarTagsState(path)
+	if state == asset.SidecarInvalid {
 		return fail("manifested media has malformed portable provenance")
 	}
 	normalizeConsumedManifest := false
@@ -872,23 +873,23 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 			filepath.Clean(filepath.FromSlash(playback.Path)) != filepath.Clean(filepath.FromSlash(rc.Path)) {
 			return fail(artifactIdentityMismatch)
 		}
-		if err := validateMediaAssetFile(ctx, s.dir, playback, MediaAssetPlayback, ""); err != nil {
+		if err := asset.ValidateFile(ctx, s.dir, playback, asset.RolePlayback, ""); err != nil {
 			return fail("manifested playback derivative does not match the portable media manifest")
 		}
 		// Verify the retained source on first normalization and while repairing the historical
 		// false-positive. Once media_path names the immutable master, ordinary scans keep their
 		// former one-full-file-hash cost; any later stage that reuses the master re-verifies it.
 		if artifact.State == ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
-			if err := validateMediaAssetFile(ctx, s.dir, assets.SourceMaster, MediaAssetSourceMaster, mediaMasterDirName); err != nil {
+			if err := asset.ValidateFile(ctx, s.dir, assets.SourceMaster, asset.RoleSourceMaster, asset.MasterDirName); err != nil {
 				return fail("manifested source master does not match the portable media manifest")
 			}
 		}
 		normalizeConsumedManifest = artifact.State != ArtifactConsumed ||
 			artifact.MediaPath != assets.SourceMaster.Path ||
-			artifact.SidecarPath != sidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
+			artifact.SidecarPath != tools.SidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
 		artifact.State = ArtifactConsumed
 		artifact.MediaPath = assets.SourceMaster.Path
-		artifact.SidecarPath = sidecarPathFor(assets.SourceMaster.Path)
+		artifact.SidecarPath = tools.SidecarPathFor(assets.SourceMaster.Path)
 		artifact.RepairReason = ""
 	} else {
 		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
@@ -902,8 +903,8 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 			return fail(artifactIdentityMismatch)
 		}
 	}
-	if state == SidecarAbsent || tags.SourceID != artifact.SourceID || tags.AcquisitionID != artifact.AcquisitionID || !SidecarFetchedByUs(path) {
-		if err := WriteSidecarTags(path, SidecarTags{
+	if state == asset.SidecarAbsent || tags.SourceID != artifact.SourceID || tags.AcquisitionID != artifact.AcquisitionID || !asset.SidecarFetchedByUs(path) {
+		if err := asset.WriteSidecarTags(path, asset.SidecarTags{
 			SourceID: artifact.SourceID, AcquisitionID: artifact.AcquisitionID,
 		}, true); err != nil {
 			return fail("manifested media portable provenance cannot be repaired: " + err.Error())
@@ -934,7 +935,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 		return rc, true, nil
 	}
 	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
-	tags, _ := ReadSidecarTags(full)
+	tags, _ := asset.ReadSidecarTags(full)
 	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 		tags.OriginalName = rc.Name
 		carryNameProvenance(&tags, rc.Name, rc.NameSource)
@@ -945,7 +946,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
 		}
-		if err := WriteSidecarTags(full, tags, false); err != nil {
+		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 			return rc, false, err
 		}
 	}
@@ -982,7 +983,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		}
 	}
 	if repairName != "" {
-		tags, _ := ReadSidecarTags(oldFull)
+		tags, _ := asset.ReadSidecarTags(oldFull)
 		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 			tags.OriginalName = repairName
 			carryNameProvenance(&tags, repairName, repairSource)
@@ -991,7 +992,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 			tags.Audience = string(existing.Audience)
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
-			if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+			if err := asset.WriteSidecarTags(oldFull, tags, false); err != nil {
 				return rc, false, err
 			}
 			rc.Name, rc.NameSource = repairName, repairSource
@@ -1012,7 +1013,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		return rc, false, err
 	}
 
-	oldSidecar, newSidecar := sidecarPathFor(oldFull), sidecarPathFor(newFull)
+	oldSidecar, newSidecar := tools.SidecarPathFor(oldFull), tools.SidecarPathFor(newFull)
 	if _, err := os.Stat(oldSidecar); err == nil {
 		if _, targetErr := os.Stat(newSidecar); os.IsNotExist(targetErr) {
 			if err := os.Link(oldSidecar, newSidecar); err != nil {
@@ -1021,8 +1022,8 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		} else if targetErr == nil {
 			// A prior interrupted repair may already have the canonical media/sidecar. Merge our
 			// namespaced facts rather than choosing one file and silently losing the other.
-			if oldTags, ok := ReadSidecarTags(oldFull); ok {
-				if err := WriteSidecarTags(newFull, oldTags, false); err != nil {
+			if oldTags, ok := asset.ReadSidecarTags(oldFull); ok {
+				if err := asset.WriteSidecarTags(newFull, oldTags, false); err != nil {
 					return rc, false, err
 				}
 			}
@@ -1069,11 +1070,11 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 		return rc, false, nil
 	}
 	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
-	if SidecarTitle(full) != "" {
+	if asset.SidecarTitle(full) != "" {
 		return rc, false, nil
 	}
-	tags, state := ReadSidecarTagsState(full)
-	if state == SidecarInvalid {
+	tags, state := asset.ReadSidecarTagsState(full)
+	if state == asset.SidecarInvalid {
 		return rc, false, nil
 	}
 	// A segment's chapter title or operator edit is not Loomarr's to improve, and neither is the
@@ -1093,7 +1094,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 		return rc, false, nil
 	}
 	tags.DisplayName, tags.NameSource = name, string(source)
-	if err := WriteSidecarTags(full, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		return rc, false, err
 	}
 	rc.Name, rc.NameSource = name, clips.NameFromGrounded

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -145,7 +144,7 @@ type searchDoc struct {
 	// Year is Archive's own metadata, and it is a WEAK era hint at best: it is when the item
 	// was catalogued as being from, which for a compilation upload is often the upload year
 	// rather than the broadcast year. Carried so a human can read it; never used to set Era,
-	// for the same reason `upload_date` is not (see filler/sidecar.go).
+	// for the same reason `upload_date` is not (see filler/asset/sidecar.go).
 	//
 	// ⚠ An INTEGER on the wire, not a string — I typed it `string` from memory and the pinned
 	// fixture rejected it ("cannot unmarshal number into … .year of type string"). Absent
@@ -339,7 +338,7 @@ func (c *archiveClient) downloadItem(ctx context.Context, acquisition archiveAcq
 	}
 	// Mark it as ours and bind the exact source/acquisition for provenance and recovery. This does
 	// not decide airability; every new clip starts held.
-	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(
+	fields[asset.SidecarLoomarrKey()] = asset.SidecarFetchedMarkForAcquisition(
 		acquisition.sourceID, acquisition.acquisitionID,
 	)
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")

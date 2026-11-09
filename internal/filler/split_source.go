@@ -14,7 +14,7 @@ import (
 func resolveSplitSource(ctx context.Context, clipDir string, clip StoreClip, bound split.SourceAsset) (split.SourceAsset, string, error) {
 	if bound == (split.SourceAsset{}) {
 		playable := filepath.Join(clipDir, filepath.FromSlash(clip.Path))
-		if tags, ok := ReadSidecarTags(playable); ok && tags.MediaAssets != nil && tags.MediaAssets.Evidence != nil {
+		if tags, ok := asset.ReadSidecarTags(playable); ok && tags.MediaAssets != nil && tags.MediaAssets.Evidence != nil {
 			evidence := tags.MediaAssets.Evidence
 			bound = split.SourceAsset{
 				Role: split.SourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,

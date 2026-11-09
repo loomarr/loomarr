@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
@@ -194,7 +195,7 @@ func TestScanDir_KeepsACuratedRename(t *testing.T) {
 	if found[0].Era != 1991 {
 		t.Errorf("era = %d, want 1991 still grounded from the arrival filename", found[0].Era)
 	}
-	if filler.SidecarTitle(filepath.Join(dir, "ab/cd/hash.mp4")) != "fizzbolt_upload_v2" {
+	if asset.SidecarTitle(filepath.Join(dir, "ab/cd/hash.mp4")) != "fizzbolt_upload_v2" {
 		t.Error("the rename dropped the source's info-JSON title")
 	}
 }
@@ -401,7 +402,7 @@ func TestScanDir_RestoresCatalogKindFromPortableSidecar(t *testing.T) {
 	if err := os.WriteFile(media, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{OriginalName: "untitled clip.mp4", Kind: string(filler.PSA)}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{OriginalName: "untitled clip.mp4", Kind: string(filler.PSA)}, false); err != nil {
 		t.Fatal(err)
 	}
 

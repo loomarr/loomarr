@@ -88,6 +88,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ApprovalSupersessionIsPerChannel", func(t *testing.T) { testApprovalSupersessionIsPerChannel(t, newStore) })
 		t.Run("PurgeKeepsJobsAwaitingADecision", func(t *testing.T) { testPurgeKeepsJobsAwaitingADecision(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
+		t.Run("ChannelLineupRows", func(t *testing.T) { testChannelLineupRows(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
 		t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })

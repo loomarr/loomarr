@@ -1924,7 +1924,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if len(seg.AssertedTags) != 1 || seg.AssertedTags[0] != seg.Category {
 			t.Errorf("confirmed segment %q taxonomy = category %q / asserted %v", seg.Name, seg.Category, seg.AssertedTags)
 		}
-		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, seg.Path))
+		tags, ok := asset.ReadSidecarTags(filepath.Join(drop, seg.Path))
 		// #1988: a chapter title is the source's and the operator's edit is curated, in the catalog
 		// row and beside the bytes, so a rebuild restores both.
 		wantSource := map[string]clips.NameSource{
@@ -2247,7 +2247,7 @@ func TestConfirm_ExistingChildReuseRejectsBytesThatDoNotMatchTheirAddress(t *tes
 	if err := os.WriteFile(childFull, []byte("corrupt bytes under the staged hash"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 0, IntendedEndMs: 30_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -2303,7 +2303,7 @@ func TestConfirm_ExistingChildRequiresExactStagedBytesBeyondClipID(t *testing.T)
 	if err := os.WriteFile(childFull, existingBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 0, IntendedEndMs: 30_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -2632,8 +2632,8 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 	if _, err := sp.Confirm(ctx, proposal.ID, proposal.Segments); err == nil {
 		t.Fatal("Confirm succeeded despite generation failure")
 	}
-	tags, state := filler.ReadSidecarTagsState(childFull)
-	if state != filler.SidecarValid || tags.ConditioningLineage == nil || tags.SplitPublicationToken != "delete-owner" {
+	tags, state := asset.ReadSidecarTagsState(childFull)
+	if state != asset.SidecarValid || tags.ConditioningLineage == nil || tags.SplitPublicationToken != "delete-owner" {
 		t.Fatalf("delete-denied rollback lost quarantine evidence: state=%v tags=%+v", state, tags)
 	}
 
@@ -3029,7 +3029,7 @@ func TestConfirm_StaleRollbackCannotDeleteRecoveredWinnersMedia(t *testing.T) {
 	if _, err := os.Stat(final); err != nil {
 		t.Fatalf("stale rollback removed recovered winner media: %v", err)
 	}
-	if tags, ok := filler.ReadSidecarTags(final); !ok || tags.ConditioningLineage == nil || tags.ConditioningLineage.ChildHash != winner[0] {
+	if tags, ok := asset.ReadSidecarTags(final); !ok || tags.ConditioningLineage == nil || tags.ConditioningLineage.ChildHash != winner[0] {
 		t.Fatalf("winner sidecar was removed or changed: %+v, ok=%v", tags, ok)
 	}
 }

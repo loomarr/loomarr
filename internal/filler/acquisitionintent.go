@@ -79,7 +79,7 @@ func (i AcquisitionIntent) Validate() error {
 		return fmt.Errorf("acquisition geography: %w", err)
 	}
 	for _, role := range i.Roles {
-		if !validConcreteRole(role) {
+		if !role.ValidConcrete() {
 			return fmt.Errorf("unknown content role %q", role)
 		}
 	}
@@ -249,19 +249,6 @@ func uniqueAudiences(in []Audience) []Audience {
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a] < out[b] })
 	return out
-}
-
-func validRole(value Role) bool {
-	switch value {
-	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial, Political, News:
-		return true
-	default:
-		return false
-	}
-}
-
-func validConcreteRole(value Role) bool {
-	return value != Unclassified && validRole(value)
 }
 
 func validAudience(value Audience) bool {

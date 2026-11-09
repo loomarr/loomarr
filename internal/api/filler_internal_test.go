@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -32,9 +33,9 @@ func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 }
 
 func TestClipMediaDTOProjectsPreparedPlaybackFacts(t *testing.T) {
-	tags := filler.SidecarTags{MediaAssets: &filler.MediaAssetManifest{
-		Playback: &filler.MediaDerivativeLineage{
-			Asset: filler.MediaAssetIdentity{Bytes: 9_361_105},
+	tags := asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Playback: &asset.DerivativeLineage{
+			Asset: asset.Identity{Bytes: 9_361_105},
 			Recipe: tools.DerivativeRecipe{
 				Container: "mp4", VideoCodec: "h264", AudioCodec: "aac",
 				AudioChannels: 2, AudioRateHz: 48_000,
@@ -53,7 +54,7 @@ func TestClipMediaDTOProjectsPreparedPlaybackFacts(t *testing.T) {
 }
 
 func TestClipMediaDTOKeepsMissingPlaybackQuiet(t *testing.T) {
-	if got := clipMediaDTO(filler.SidecarTags{}); got != nil {
+	if got := clipMediaDTO(asset.SidecarTags{}); got != nil {
 		t.Fatalf("clipMediaDTO() = %+v, want nil", got)
 	}
 }

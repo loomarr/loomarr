@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -26,48 +26,48 @@ func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScr
 	return profile
 }
 
-func screeningSubjectFixture(t *testing.T) filler.SegmentScreeningSubject {
+func screeningSubjectFixture(t *testing.T) asset.SegmentScreeningSubject {
 	t.Helper()
 	manifest := screeningSubjectManifest(t)
-	subject, err := filler.NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, filler.SidecarTags{MediaAssets: &manifest})
+	subject, err := asset.NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, asset.SidecarTags{MediaAssets: &manifest})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return subject
 }
 
-func screeningChildSubjectFixture(t *testing.T) filler.SegmentScreeningSubject {
+func screeningChildSubjectFixture(t *testing.T) asset.SegmentScreeningSubject {
 	t.Helper()
 	tags := screeningChildTagsFixture(t)
-	subject, err := filler.NewSegmentScreeningSubject(tags.MediaAssets.Playback.Asset.ClipHash, tags)
+	subject, err := asset.NewSegmentScreeningSubject(tags.MediaAssets.Playback.Asset.ClipHash, tags)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return subject
 }
 
-func screeningChildTagsFixture(t *testing.T) filler.SidecarTags {
+func screeningChildTagsFixture(t *testing.T) asset.SidecarTags {
 	t.Helper()
 	manifest := screeningSubjectManifest(t)
-	lineage := filler.ConditioningLineage{
+	lineage := asset.ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: strings.Repeat("7", 64),
 		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
 		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: split.RoleCommercial,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)
-	conditioning := filler.ConditioningEvidence{
+	conditioning := asset.ConditioningEvidence{
 		BeforeRewriteHash: lineage.ChildHash, AfterRewriteHash: manifest.Playback.Asset.ClipHash,
 		BeforeRewrite: measurement, AfterRewrite: measurement,
 		DerivedParentEdgesAfterRewrite: measurement.Cuts[0],
 	}
-	return filler.SidecarTags{
+	return asset.SidecarTags{
 		SourceID: "archive:commercials", AcquisitionID: "acq-17", MediaAssets: &manifest,
 		ConditioningLineage: &lineage, Conditioning: &conditioning,
 	}
 }
 
-func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) []RecordedSegmentScreeningAxisEvidence {
+func passingAxisEvidence(t *testing.T, subject asset.SegmentScreeningSubject) []RecordedSegmentScreeningAxisEvidence {
 	t.Helper()
 	records := make([]RecordedSegmentScreeningAxisEvidence, 0, len(segmentScreeningAxisOrder))
 	for index, axis := range segmentScreeningAxisOrder {
@@ -90,7 +90,7 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	return records
 }
 
-func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *AirworthinessAxisEvidence {
+func screeningSuitabilityForOutcome(subject asset.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *AirworthinessAxisEvidence {
 	axisProfile, err := segmentAirworthinessProfile(profile)
 	if err != nil {
 		return nil
@@ -104,7 +104,7 @@ func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, prof
 	}
 	return &AirworthinessAxisEvidence{
 		SubjectSHA256: subject.SHA256, Profile: axisProfile, Coverage: coverage,
-		EvidenceSHA256: filler.ScreeningBytesSHA256(raw), Observations: []AirworthinessObservation{},
+		EvidenceSHA256: asset.ScreeningBytesSHA256(raw), Observations: []AirworthinessObservation{},
 	}
 }
 
@@ -117,7 +117,7 @@ func screeningAirworthinessEvaluator(t *testing.T, profiles []SegmentScreeningAx
 	return evaluator
 }
 
-func screeningAirworthinessDecision(t *testing.T, subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) AirworthinessDecision {
+func screeningAirworthinessDecision(t *testing.T, subject asset.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) AirworthinessDecision {
 	t.Helper()
 	profiles := make([]SegmentScreeningAxisProfile, 0, len(records))
 	for _, record := range records {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
@@ -47,11 +48,11 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 	}
 
 	playbackPath := filepath.Join(s.clipDir, filepath.FromSlash(clip.Path))
-	tags, state := filler.ReadSidecarTagsState(playbackPath)
-	if state != filler.SidecarValid {
+	tags, state := asset.ReadSidecarTagsState(playbackPath)
+	if state != asset.SidecarValid {
 		return segmentScreeningReview(clip, "rendered-child sidecar is missing or invalid"), nil
 	}
-	subject, err := filler.NewSegmentScreeningSubject(clip.Hash, tags)
+	subject, err := asset.NewSegmentScreeningSubject(clip.Hash, tags)
 	if err != nil || subject.Lineage == nil || subject.Lineage.ParentHash != clip.ParentHash {
 		return segmentScreeningReview(clip, "rendered-child media lineage is incomplete or drifted"), nil
 	}
@@ -74,7 +75,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 		return segmentScreeningReview(clip, "rendered-child screening evidence is invalid"), nil
 	}
 	tags.SegmentScreening = &reference
-	if err := filler.WriteSidecarTags(playbackPath, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(playbackPath, tags, false); err != nil {
 		return segmentScreeningReview(clip, "rendered-child screening evidence could not be attached"), nil
 	}
 	filler.ReportProgress(ctx, pipelinestate.StageScreen, 100)

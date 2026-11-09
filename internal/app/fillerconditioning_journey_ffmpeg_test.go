@@ -57,7 +57,7 @@ type conditionedJourney struct {
 	fixtures    testkit.FillerConditioningFixtures
 	conditioned clipstore.Clip
 	mezzanine   string
-	tags        filler.SidecarTags
+	tags        asset.SidecarTags
 }
 
 // conditionReviewedCompilationChild splits the compilation's first segment at reviewedEnd, runs the
@@ -177,7 +177,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		t.Fatalf("real conditioned transcode = %+v", conditioned)
 	}
 	mezzanine := filepath.Join(dir, filepath.FromSlash(conditioned.Path))
-	tags, ok := filler.ReadSidecarTags(mezzanine)
+	tags, ok := asset.ReadSidecarTags(mezzanine)
 	if !ok || tags.Conditioning == nil || tags.MediaQuality == nil ||
 		tags.ConditioningLineage == nil || tags.ConditioningLineage.ParentHash != parentHash ||
 		tags.ConditioningLineage.ChildHash != childHash || tags.ConditioningLineage.IntendedStartMs != reviewedStart ||

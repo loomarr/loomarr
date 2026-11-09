@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
@@ -114,7 +114,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 
 // screeningCertificationFixture also returns the repository root, which the tampering subtests use
 // to reach the stored blobs.
-func screeningCertificationFixture(t *testing.T, subject filler.SegmentScreeningSubject, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence, string) {
+func screeningCertificationFixture(t *testing.T, subject asset.SegmentScreeningSubject, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "evidence")
 	repository, err := NewFileSegmentScreeningEvidenceRepository(root)

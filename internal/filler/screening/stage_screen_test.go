@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -35,8 +36,8 @@ func TestSegmentScreeningStageHoldsChildWhenRuntimeOrReleaseIsUnavailable(t *tes
 	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
 		t.Fatalf("missing release did not hold passing child: out=%+v err=%v", out, err)
 	}
-	tags, state := filler.ReadSidecarTagsState(filepath.Join(root, filepath.FromSlash(clip.Path)))
-	if state != filler.SidecarValid || tags.SegmentScreening == nil {
+	tags, state := asset.ReadSidecarTagsState(filepath.Join(root, filepath.FromSlash(clip.Path)))
+	if state != asset.SidecarValid || tags.SegmentScreening == nil {
 		t.Fatalf("durable screening reference missing before release hold: state=%v tags=%+v", state, tags)
 	}
 }
@@ -80,7 +81,7 @@ func TestSegmentScreeningStageTurnsOperationalFailureIntoReview(t *testing.T) {
 	}
 }
 
-func renderedChildStageFixture(t *testing.T) (filler.StoreClip, filler.SidecarTags, string) {
+func renderedChildStageFixture(t *testing.T) (filler.StoreClip, asset.SidecarTags, string) {
 	t.Helper()
 	root := t.TempDir()
 	tags := screeningChildTagsFixture(t)
@@ -91,7 +92,7 @@ func renderedChildStageFixture(t *testing.T) (filler.StoreClip, filler.SidecarTa
 	if err := os.WriteFile(path, []byte("rendered child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(path, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(path, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	clip := filler.StoreClip{Clip: filler.Clip{
