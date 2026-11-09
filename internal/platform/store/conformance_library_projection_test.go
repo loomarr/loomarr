@@ -123,7 +123,7 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	}
 	row := func(id inventory.ItemID) (seriesID, rating, from string) {
 		t.Helper()
-		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT series_id, rating, rating_from FROM library_items
+		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COALESCE(series_id, ''), rating, rating_from FROM library_items
 			WHERE id = ?`), string(id)).Scan(&seriesID, &rating, &from); err != nil {
 			t.Fatal(err)
 		}

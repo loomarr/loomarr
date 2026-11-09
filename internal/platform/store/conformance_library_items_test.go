@@ -19,6 +19,8 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		{ID: "m2", Kind: "movie", Name: "Another Film", Year: 2004},
 		{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001},
 		{ID: "gone", Kind: "movie", Name: "Gone Film"},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -153,6 +155,10 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		{ID: "fine", Kind: "movie", Name: "Fine Film"},
 		{ID: "show", Kind: "series", Name: "A Show"},
 		{ID: "shows", Kind: "series", Name: "Fine Show"},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
+		{ID: "f1", Kind: "episode", Name: "Fine Pilot"},
+		{ID: "f2", Kind: "episode", Name: "Fine Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
