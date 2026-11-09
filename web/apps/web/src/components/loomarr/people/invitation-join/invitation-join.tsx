@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, StatusLabel } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -71,13 +71,9 @@ const InvitationJoin = ({
             <p className="text-muted-foreground text-xs">Invited identity</p>
             <p className="font-medium break-words">{identity}</p>
           </div>
-          <Badge
-            shape="square"
-            tone={preview.role === "admin" ? "onair" : "neutral"}
-            tintOpacity={preview.role === "admin" ? 0.12 : undefined}
-          >
-            {preview.role}
-          </Badge>
+          <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
+            {preview.role === "admin" ? "Admin" : "Member"}
+          </StatusLabel>
         </div>
         {preview.role === "admin" ? (
           <p className="text-onair-300 flex gap-2 text-sm">

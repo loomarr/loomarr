@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Card, Text } from "@loomarr/design-system";
+import { Action, Card, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -128,11 +128,11 @@ const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undef
 // label). The tones are NOT the mock's: it painted the worst rung green and the best amber, and
 // the redesign map (#1659) corrects that so green means good and red means nothing to play.
 // Keyed by the generated union, so a new rung is a compile error here.
-const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: BadgeTone }> = {
-  exact: { label: "Good match", tone: "lock" },
-  widened: { label: "Years loosened", tone: "caution" },
-  audience: { label: "Audience only", tone: "caution" },
-  bumper_card: { label: "Bumpers only", tone: "onair" },
+const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: StatusTone }> = {
+  exact: { label: "Good match", tone: "ok" },
+  widened: { label: "Years loosened", tone: "warn" },
+  audience: { label: "Audience only", tone: "warn" },
+  bumper_card: { label: "Bumpers only", tone: "error" },
 };
 
 // The numbers a coverage card shows. Channels whose numbers all match share one pool.
@@ -161,9 +161,7 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
               : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
           </p>
         </div>
-        <Badge shape="square" tone={badge.tone} flexShrink={0} className="whitespace-nowrap">
-          {badge.label}
-        </Badge>
+        <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
       </div>
       <p className="text-muted-foreground mt-3 text-xs">
         {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
@@ -202,9 +200,7 @@ const FillerOverview = () => {
         <Card className="border-caution/40! bg-caution/5!" padding={20}>
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
-              <Badge shape="square" tone="caution">
-                Action recommended
-              </Badge>
+              <StatusLabel tone="warn">Action recommended</StatusLabel>
               <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
               <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
               {/* Every destination behind the button is admin-only, so a member got a button

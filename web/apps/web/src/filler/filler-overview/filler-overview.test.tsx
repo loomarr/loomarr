@@ -1,5 +1,6 @@
 import type { FillerReadinessDTO } from "@loomarr/api";
 import { getFillerReadinessMockHandler, getMeMockHandler } from "@loomarr/api/msw";
+import { StatusLabel } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -191,14 +192,14 @@ describe("FillerOverview", () => {
 
   // The mock painted the worst rung green and the best amber. Green has to mean "good" and red
   // "nothing to play", so the tone is pinned per rung, with the mock's words. Asserted by the
-  // rendered colour (Badge's public output), not a Tailwind class: Badge sources colour from
-  // @loomarr/design-system's semanticColors via inline style, not a class name (#970 PR C).
+  // rendered colour of the status dot (StatusLabel's public output, #2784), compared with a
+  // reference dot of the intended tone rather than a hard-coded hex.
   it.each([
-    ["exact", "Good match", "#3DD68C"],
-    ["widened", "Years loosened", "#F5D90A"],
-    ["audience", "Audience only", "#F5D90A"],
-    ["bumper_card", "Bumpers only", "#E85A5F"],
-  ] as const)("badges a %s channel %s in %s", async (level, label, color) => {
+    ["exact", "Good match", "ok"],
+    ["widened", "Years loosened", "warn"],
+    ["audience", "Audience only", "warn"],
+    ["bumper_card", "Bumpers only", "error"],
+  ] as const)("badges a %s channel %s in the %s tone", async (level, label, tone) => {
     show(
       readiness({
         pool: {
@@ -221,7 +222,12 @@ describe("FillerOverview", () => {
         },
       }),
     );
-    expect(await screen.findByText(label)).toHaveStyle({ color });
+    const word = await screen.findByText(label);
+    const dot = word.previousElementSibling as HTMLElement;
+    const reference = render(<StatusLabel tone={tone}>reference</StatusLabel>).getByText("reference")
+      .previousElementSibling as HTMLElement;
+    expect(dot.style.backgroundColor).not.toBe("");
+    expect(dot.style.backgroundColor).toBe(reference.style.backgroundColor);
   });
 
   // #2733: channels drawing the same pool showed identical cards side by side. One card says it.

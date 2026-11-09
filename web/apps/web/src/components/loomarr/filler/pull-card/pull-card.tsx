@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, Card, Field, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, StatusLabel, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { cn } from "@/lib/utils";
@@ -65,17 +65,11 @@ const PullCard = ({
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge shape="square" tone="lock">
-              Filler pull
-            </Badge>
+            <StatusLabel tone="ok">Filler pull</StatusLabel>
             <span id={titleId} className="text-sm font-semibold">
               {pull.title}
             </span>
-            {edited && (
-              <Badge shape="square" tone="suggest">
-                Edited
-              </Badge>
-            )}
+            {edited && <StatusLabel tone="attention">Edited</StatusLabel>}
           </div>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and

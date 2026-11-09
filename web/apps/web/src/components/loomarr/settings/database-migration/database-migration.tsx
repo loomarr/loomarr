@@ -1,5 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Badge, Field, FieldHint, Icon, icons } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, StatusLabel } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -64,7 +64,7 @@ const DatabaseMigration = ({
         <div className="flex flex-wrap items-center gap-2">
           <Icon decorative glyph={icons.database} size="compact" tone="info" />
           <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
-          <Badge shape="square">{status.backend}</Badge>
+          <StatusLabel tone="ok">{status.backend}</StatusLabel>
         </div>
         <p className="text-muted-foreground mt-1.5 text-sm">
           {step === null

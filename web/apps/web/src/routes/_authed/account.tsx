@@ -4,7 +4,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, FieldHint } from "@loomarr/design-system";
+import { Action, Card, FieldHint, StatusLabel } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -99,12 +99,10 @@ const AccountScreen = () => {
           <div className="min-w-0">
             <p className="font-medium">{user?.name}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-              <Badge shape="square" tone={isLocal ? "tune" : "neutral"}>
-                {isLocal ? "Local account" : "Media-server account"}
-              </Badge>
-              <Badge shape="square" tone={user?.role === "admin" ? "lock" : "neutral"}>
-                {user?.role}
-              </Badge>
+              <StatusLabel tone="off">{isLocal ? "Local account" : "Media-server account"}</StatusLabel>
+              <StatusLabel tone={user?.role === "admin" ? "notice" : "off"}>
+                {user?.role === "admin" ? "Admin" : "Member"}
+              </StatusLabel>
             </div>
           </div>
         </Card>
@@ -196,11 +194,7 @@ const AccountScreen = () => {
                         </p>
                       )}
                     </div>
-                    {s.current && (
-                      <Badge shape="square" tone="lock">
-                        This device
-                      </Badge>
-                    )}
+                    {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
                     {/* No Sign out on your own session: the shell's Sign out is for that. */}
                     {!s.current && (
                       <Action

@@ -1,6 +1,5 @@
 import {
   Action,
-  Badge,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -9,6 +8,7 @@ import {
   DialogTitle,
   Icon,
   icons,
+  StatusLabel,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -208,21 +208,11 @@ const ImportDialog = ({
                             >
                               <span className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">{candidate.name}</span>
-                                {candidate.imported && (
-                                  <Badge shape="square" tone="lock">
-                                    Already imported
-                                  </Badge>
-                                )}
+                                {candidate.imported && <StatusLabel tone="ok">Already imported</StatusLabel>}
                                 {candidate.disabled && (
-                                  <Badge shape="square" tone="onair">
-                                    Disabled on server
-                                  </Badge>
+                                  <StatusLabel tone="error">Disabled on server</StatusLabel>
                                 )}
-                                {candidate.isAdmin && (
-                                  <Badge shape="square" tone="tune">
-                                    Server admin
-                                  </Badge>
-                                )}
+                                {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
                               </span>
                               <span className="text-static-400 mt-1 block text-xs">
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}

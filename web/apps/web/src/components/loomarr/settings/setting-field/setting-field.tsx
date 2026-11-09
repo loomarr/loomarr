@@ -7,12 +7,12 @@ import { SettingUnit } from "@loomarr/api/models/settingUnit";
 import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
 import {
   Action,
-  Badge,
   CompactSelect,
   Field,
   FieldHint,
   Icon,
   icons,
+  StatusLabel,
   Surface,
   Text,
   Toggle,
@@ -369,8 +369,8 @@ const SettingField = ({
             environment", and the thing to click is somewhere else. Clicking the lock opens
             it; clicking the open lock hands the key back.
 
-            Still a plain Badge when no handler is supplied: a read-only surface keeps the
-            pre-3.1 chip exactly, rather than rendering a button that does nothing. */}
+            Still a plain label when no handler is supplied: a read-only surface keeps the
+            pre-3.1 state exactly, rather than rendering a button that does nothing. */}
         {pinned &&
           (canUnlock ? (
             <button
@@ -409,34 +409,24 @@ const SettingField = ({
                   200ms is the house duration for this kind of moment (frontend-design §7's
                   "lock in"). No reduced-motion guard needed — styles.css already zeroes every
                   transition under `prefers-reduced-motion`, globally. */}
-              {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the chip's
+              {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the label's
                   text — a swap that changes width would make the label twitch on hover. The
-                  hover/focus classes carry `!` because Tamagui's unlayered atomic CSS sets the
-                  badge's background and colour and would otherwise beat these utilities. */}
-              <Badge
-                shape="square"
-                icon={
-                  <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-                    <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
-                      <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
-                    </span>
-                    <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
-                      <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
-                    </span>
+                  padlock is the control and keeps its open-on-hover tell; the state itself is
+                  the quiet dot and word, not a filled chip (#2784). */}
+              <span className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal flex items-center gap-1.5">
+                <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
+                  <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
+                    <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
                   </span>
-                }
-                className="group-hover/unlock:bg-signal-tint-15! group-hover/unlock:text-signal! group-focus-visible/unlock:bg-signal-tint-15! group-focus-visible/unlock:text-signal! transition-colors duration-200"
-              >
-                set via environment
-              </Badge>
+                  <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
+                    <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
+                  </span>
+                </span>
+                <StatusLabel tone="off">Set via environment</StatusLabel>
+              </span>
             </button>
           ) : (
-            <Badge
-              shape="square"
-              icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
-            >
-              set via environment
-            </Badge>
+            <StatusLabel tone="off">Set via environment</StatusLabel>
           ))}
         {/* Overriding is a DIFFERENT state from both locked and ordinary-db, and it names the
             variable: "set via environment" on an editable field would contradict itself, and a
@@ -449,27 +439,13 @@ const SettingField = ({
               aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
-              <Badge
-                shape="square"
-                tone="caution"
-                icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
-              >
-                overriding {entry.envVar ?? "the environment"}
-              </Badge>
+              <StatusLabel tone="warn">Overriding {entry.envVar ?? "the environment"}</StatusLabel>
             </button>
           ) : (
-            <Badge
-              shape="square"
-              tone="caution"
-              icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
-            >
-              overriding {entry.envVar ?? "the environment"}
-            </Badge>
+            <StatusLabel tone="warn">Overriding {entry.envVar ?? "the environment"}</StatusLabel>
           ))}
         {result?.status === SettingResultStatus.pinned && !pinned && (
-          <Badge shape="square" tone="caution">
-            not saved: pinned
-          </Badge>
+          <StatusLabel tone="warn">Not saved: pinned</StatusLabel>
         )}
       </div>
 
