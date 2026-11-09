@@ -87,8 +87,11 @@ func bindClusters(s *sqlStore) *sqlStore {
 // style (storedb.Placeholder).
 type placeholder = storedb.Placeholder
 
+// GetTitle reads a title's record. A pending row (storedb.PendingTitle) is no record: nothing has
+// asked for that title yet, so it answers ErrNotFound.
 func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key))
+	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ? AND state <> ?`),
+		string(key), storedb.PendingTitle)
 	return scanTitle(row)
 }
 
@@ -150,8 +153,8 @@ type TitleProgress struct {
 func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, p TitleProgress) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE titles SET progress = ?, eta_text = ?, download_status = ?, episodes_have = ?, episodes_wanted = ?
-		 WHERE key = ?`),
-		p.Progress, p.ETAText, p.Status, p.EpisodesHave, p.EpisodesWanted, string(key))
+		 WHERE key = ? AND state <> ?`),
+		p.Progress, p.ETAText, p.Status, p.EpisodesHave, p.EpisodesWanted, string(key), storedb.PendingTitle)
 	if err != nil {
 		return fmt.Errorf("update title progress %s: %w", key, err)
 	}

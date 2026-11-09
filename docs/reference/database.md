@@ -319,7 +319,7 @@ A channel's approved lineup, one row per title in order: what should play on it.
 | --- | --- | --- |
 | `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
 | `position` | Where the title sits in the lineup, from 0. | `INTEGER` · key |
-| `title_key` | The title, by its key (such as `movie:tmdb:603`). A title added by hand may have no titles row yet, until something asks for it. | `TEXT` |
+| `title_key` | The title (a titles key, such as `movie:tmdb:603`). A title added by hand that nothing has asked for yet has a pending titles row. | `TEXT` · → `titles.key` |
 | `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
 
 ### airings
@@ -977,15 +977,15 @@ The titles in a collection, in order. A member whose title has left the library 
 
 ### titles
 
-One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on).
+One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on). A title added to a lineup by hand that nothing has asked for yet has a pending row, so every lineup entry names a row here.
 
-**Kept:** A title in the library or given up on that no channel's lineup and no open request names is deleted by the nightly housekeeping 180 days after it last changed; picked again, it is requested afresh. A title still on its way is kept.
+**Kept:** A title in the library or given up on that no channel's lineup and no open request names is deleted by the nightly housekeeping 180 days after it last changed; picked again, it is requested afresh. A title still on its way is kept. A pending row goes as soon as no lineup names it.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `key` | Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or series:tmdb:id. | `TEXT` · key |
 | `title_json` | The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for a show, the seasons wanted (none listed means all). | `TEXT` |
-| `state` | Where it is. One of wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release), downloading (a release was grabbed), available (in the library), or unavailable (given up on). | `TEXT` |
+| `state` | Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record), wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release), downloading (a release was grabbed), available (in the library), or unavailable (given up on). | `TEXT` |
 | `library_id` | The media server's id for the title once it is in the library; empty before. | `TEXT` |
 | `requested_at` | When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet. | `BIGINT` |
 | `deadline` | When a requested or downloading title is given up on, in Unix seconds; it is also pushed forward briefly while a check is working on the title. 0 for none. | `BIGINT` |

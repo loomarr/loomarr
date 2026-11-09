@@ -1026,6 +1026,15 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 		Key: "movie:tmdb:90000003", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000003, Name: "Wanted"},
 		State: provision.Wanted, Deadline: now,
 	}
+	// A hand-made channel already names the wanted title, so it has a pending row (#2793). The
+	// approval must still write it as wanted and count it as enqueued: pending is no record.
+	handMade := sampleChannel("ch-hand", 102, time.Time{})
+	handMade.IntentRef = ""
+	handMade.Lineup = []schedule.LineupEntry{{Key: wanted.Key, Title: "Wanted"}}
+	mustSaveChannel(t, s, handMade)
+	if _, err := s.GetTitle(ctx, wanted.Key); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a title only a lineup names read as %v, want ErrNotFound", err)
+	}
 	proposal.Status = "approved"
 	proposal.ApprovedBy = "admin"
 	proposal.ApprovedAt = now

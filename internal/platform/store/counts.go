@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -18,7 +19,8 @@ import (
 // States with no rows are absent from the map; the collector zero-fills the
 // known set so a state that empties out reports 0 rather than vanishing.
 func (s *sqlStore) CountTitlesByState(ctx context.Context) (map[provision.State]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT state, COUNT(*) FROM titles GROUP BY state`)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT state, COUNT(*) FROM titles WHERE state <> ? GROUP BY state`),
+		storedb.PendingTitle)
 	if err != nil {
 		return nil, fmt.Errorf("count titles by state: %w", err)
 	}
