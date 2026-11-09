@@ -32,6 +32,17 @@ describe("PressableRow", () => {
     );
   });
 
+  it("announces selected for an option but not for a plain button", () => {
+    expect(
+      markupOf(
+        <PressableRow accessibilityRole="option" selected>
+          A
+        </PressableRow>,
+      ),
+    ).toContain('aria-selected="true"');
+    expect(markupOf(<PressableRow selected>A</PressableRow>)).not.toContain("aria-selected");
+  });
+
   it("draws a hairline only when divided", () => {
     expect(markupOf(<PressableRow divided>A</PressableRow>)).not.toEqual(
       markupOf(<PressableRow>A</PressableRow>),

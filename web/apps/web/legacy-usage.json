@@ -279,8 +279,7 @@
       "tailwindClasses": 27
     },
     "src/components/loomarr/shell/search-command/search-command.tsx": {
-      "tailwindClasses": 66,
-      "rawButton": 1
+      "tailwindClasses": 56
     },
     "src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "tailwindClasses": 46
@@ -301,8 +300,7 @@
       "tailwindClasses": 108
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 225,
-      "rawButton": 1
+      "tailwindClasses": 220
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 37,
@@ -315,8 +313,7 @@
       "tailwindClasses": 37
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 176,
-      "rawButton": 1
+      "tailwindClasses": 168
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 5
@@ -341,8 +338,7 @@
       "rawButton": 4
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 85,
-      "rawButton": 1
+      "tailwindClasses": 68
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 138
@@ -393,8 +389,7 @@
       "tailwindClasses": 55
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 112,
-      "rawButton": 1
+      "tailwindClasses": 96
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 38
