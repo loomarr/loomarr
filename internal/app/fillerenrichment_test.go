@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -282,7 +283,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 
 	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: &stationDirectory{list: st.ListBroadcastStations}}.Load,
+		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: station.NewLazy(st.ListBroadcastStations)}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {

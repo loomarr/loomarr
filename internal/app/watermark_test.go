@@ -69,7 +69,7 @@ func sameBug(t *testing.T, path, callsign string, style watermark.Style, opacity
 // unless the channel overrides it, and a change applies to the next bug asked for.
 func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
 	name, number := "Retro Cartoons", 7
-	call := deriveCallsign(name, number)
+	call := watermark.DeriveCallsign(name, number)
 	set := visionSet(t, nil)
 	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: name, Number: number}}, true)
 	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
@@ -232,32 +232,6 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	if e.Level != diagnostics.LevelWarn || e.Name != "watermark.disabled" || !strings.Contains(detail, "no such encoder") ||
 		!strings.Contains(e.Message, detail) || e.Attributes["encoder"] != string(encode.EncoderVAAPI) {
 		t.Errorf("the event does not say why the watermark is off: %+v", e)
-	}
-}
-
-// The Plate's callsign is broadcast-short, deterministic from the channel name (the issue's LLM
-// pick is off): an acronym the name already has, else a decade or number, else the initials of
-// its significant words, else its one word.
-func TestDeriveCallsign(t *testing.T) {
-	for name, want := range map[string]string{
-		"Saturday Cartoons":                  "SC",
-		"Retro Cartoons":                     "RC",
-		"QFUN Sitcoms":                       "QFUN",
-		"80s Horror":                         "80s",
-		"The Sci-Fi Vault":                   "SV",
-		"A Midnight Movies":                  "MM",
-		"Movies & More":                      "MM",
-		"Friday Night Horror Movie Marathon": "FNHM",
-		"Ciné Club":                          "CC",
-		"RETRO CARTOONS":                     "RC",
-		"Westerns":                           "WESTERNS",
-		"Supercalifragilistic":               "SUPERCAL",
-		"The":                                "THE",
-		"!":                                  "CH4",
-	} {
-		if got := deriveCallsign(name, 4); got != want {
-			t.Errorf("%q: %q, want %q", name, got, want)
-		}
 	}
 }
 

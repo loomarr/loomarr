@@ -554,13 +554,13 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	// The radius is read per call like the rest of the policy; the resolver memoises per radius.
 	// A closure, not the method value: the store is read only when a place is set.
 	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
-	local := &localStations{stations: &stationDirectory{list: list},
-		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
+	local := &station.LocalResolver{Stations: station.NewLazy(list),
+		RadiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, Log: log}
 	podAdapter := pod.NewAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() pod.Policy {
 		return pod.Policy{
 			Geography:       set.homeGeography(),
 			Language:        settings.FillerLanguage.Get(set),
-			LocalStations:   local.resolve,
+			LocalStations:   local.Resolve,
 			PodMax:          settings.FillerPodMax.Get(set),
 			BreakDurationMs: settings.FillerBreakDuration.Get(set).Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor
