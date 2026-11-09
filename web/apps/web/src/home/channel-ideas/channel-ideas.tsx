@@ -4,7 +4,7 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, SectionHeader, StatusDot, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, SectionHeader, StatusDot, Surface, Tooltip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -90,7 +90,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
 // through the rest, Hide keeps an Undo in the header, and Request puts the idea in the approval
 // queue. "Edit first" and "Describe your own channel" (#1817, #1872) both open the Guide's
 // manual builder — the former preloaded with this idea's own lineup, the latter blank.
-const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
+const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
   const queryClient = useQueryClient();
   const list = discoveryApi.useListChannelIdeas();
   const [page, setPage] = useState(0);
@@ -132,7 +132,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
   const start = ideas.length > 0 ? (page * PAGE) % ideas.length : 0;
   const shown = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, PAGE);
 
-  return (
+  const section = (
     <section aria-labelledby="home-ideas">
       <SectionHeader
         id="home-ideas"
@@ -208,6 +208,15 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         </Action>
       </div>
     </section>
+  );
+  // On a page of its own the section brings its page inset; the inset is part of what renders, so
+  // a page with no idea has no empty gap.
+  return inset ? (
+    <Surface backgroundColor="transparent" borderWidth={0} padding="section">
+      {section}
+    </Surface>
+  ) : (
+    section
   );
 };
 

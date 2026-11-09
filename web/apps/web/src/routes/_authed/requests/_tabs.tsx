@@ -32,7 +32,7 @@ const RequestsLayout = () => {
   const [nowMs] = useState(() => Date.now());
   // Channel ideas sit above the list (#2763); they render nothing while there is no idea. As on
   // Home, a member's section: an admin builds channels directly.
-  const ideas = isAdmin ? null : <ChannelIdeas empty={false} nowMs={nowMs} />;
+  const ideas = isAdmin ? null : <ChannelIdeas empty={false} inset nowMs={nowMs} />;
 
   const activeId = TAB_IDS.find((id) => pathname.endsWith(`/${id}`)) ?? "in-progress";
   const nothingRequested = !isLoading && error == null && entries.length === 0 && pendingApprovals === 0;
@@ -45,7 +45,7 @@ const RequestsLayout = () => {
           <ErrorState error={error} onRetry={refetch} />
         </div>
       ) : nothingRequested ? (
-        <div className="flex flex-col gap-6 p-6">
+        <div className="p-6">
           {ideas}
           <EmptyState
             title="You haven't requested a channel yet"
@@ -58,7 +58,7 @@ const RequestsLayout = () => {
         </div>
       ) : (
         <>
-          {ideas && <div className="px-6 pt-6 empty:hidden">{ideas}</div>}
+          {ideas}
           <div className="px-6">
             <NavTabs
               label="Requests sections"
