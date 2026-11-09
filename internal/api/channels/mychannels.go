@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 // the channel warmer mints URLs for the neighbouring channels too: every surf would otherwise
 // "visit" the channels either side.
 
-func (s *Server) registerMyChannels(api huma.API) {
+func (s *Handlers) registerMyChannels(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "my-channels", Method: http.MethodGet, Path: "/v1/me/channels",
 		Summary:     "Your favourite and recent channels",
@@ -73,7 +73,7 @@ type myChannelsOutput struct {
 
 // channelListsUser is the person whose lists a request reads or writes. A break-glass API_TOKEN
 // caller has no user, so it has no lists.
-func (s *Server) channelListsUser(ctx context.Context) (string, error) {
+func (s *Handlers) channelListsUser(ctx context.Context) (string, error) {
 	if s.store == nil {
 		return "", httpcore.FeatureNotConfigured("Channel lists unavailable", "The persistence service is not configured.")
 	}
@@ -84,7 +84,7 @@ func (s *Server) channelListsUser(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
-func (s *Server) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOutput, error) {
+func (s *Handlers) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOutput, error) {
 	userID, err := s.channelListsUser(ctx)
 	if err != nil {
 		return nil, err
@@ -92,25 +92,25 @@ func (s *Server) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOutput
 	return s.readMyChannels(ctx, userID)
 }
 
-func (s *Server) addFavouriteChannel(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
+func (s *Handlers) addFavouriteChannel(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
 	return s.writeMyChannels(ctx, func(userID string) error {
 		return s.store.AddFavouriteChannel(ctx, userID, in.ChannelID, time.Now().UTC())
 	})
 }
 
-func (s *Server) removeFavouriteChannel(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
+func (s *Handlers) removeFavouriteChannel(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
 	return s.writeMyChannels(ctx, func(userID string) error {
 		return s.store.RemoveFavouriteChannel(ctx, userID, in.ChannelID)
 	})
 }
 
-func (s *Server) recordChannelTune(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
+func (s *Handlers) recordChannelTune(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
 	return s.writeMyChannels(ctx, func(userID string) error {
 		return s.store.RecordChannelTune(ctx, userID, in.ChannelID, time.Now().UTC())
 	})
 }
 
-func (s *Server) writeMyChannels(ctx context.Context, write func(userID string) error) (*myChannelsOutput, error) {
+func (s *Handlers) writeMyChannels(ctx context.Context, write func(userID string) error) (*myChannelsOutput, error) {
 	userID, err := s.channelListsUser(ctx)
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (s *Server) writeMyChannels(ctx context.Context, write func(userID string) 
 	return s.readMyChannels(ctx, userID)
 }
 
-func (s *Server) readMyChannels(ctx context.Context, userID string) (*myChannelsOutput, error) {
+func (s *Handlers) readMyChannels(ctx context.Context, userID string) (*myChannelsOutput, error) {
 	lists, err := s.store.UserChannelLists(ctx, userID)
 	if err != nil {
 		return nil, err

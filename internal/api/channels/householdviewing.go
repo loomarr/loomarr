@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -33,7 +33,7 @@ const (
 	viewingScopeSelf viewingScope = "self"
 )
 
-func (s *Server) registerHouseholdViewing(api huma.API) {
+func (s *Handlers) registerHouseholdViewing(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "household-viewing", Method: http.MethodGet, Path: "/v1/household/viewing",
 		Summary: "Who is watching what right now",
@@ -75,14 +75,7 @@ type householdViewingOutput struct {
 	}
 }
 
-func (s *Server) clock() time.Time {
-	if s.now != nil {
-		return s.now()
-	}
-	return time.Now()
-}
-
-func (s *Server) householdViewing(ctx context.Context, _ *struct{}) (*householdViewingOutput, error) {
+func (s *Handlers) householdViewing(ctx context.Context, _ *struct{}) (*householdViewingOutput, error) {
 	out := &householdViewingOutput{}
 	var watches []viewing.Watch
 	if s.viewing != nil {

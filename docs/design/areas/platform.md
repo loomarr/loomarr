@@ -59,7 +59,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 9 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
-- **`platform/store/channeldatastore`** · 5 importers · → `platform/store/storedb`, `provision`
+- **`platform/store/channeldatastore`** · 6 importers · → `platform/store/storedb`, `provision`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/channelstore`** · 17 importers · → `channels/schedule`, `platform/store/storedb`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
@@ -69,11 +69,11 @@ One area of the [package map](../package-map.md#start-here).
   Persists the crash reports paired apps send (#1816).
 - **`platform/store/diagnosticsstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
   Persists the diagnostic event log, the process runs behind it, and the running byte totals that bound them (the diagnostic_events, diagnostic_process_runs and diagnostic_retained_bytes tables).
-- **`platform/store/identitystore`** · 7 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
+- **`platform/store/identitystore`** · 8 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`platform/store/jobstore`** · 2 importers · → `platform/store/storedb`
   Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
-- **`platform/store/proposalstore`** · 12 importers · → `platform/store/channelstore`, `platform/store/storedb`, `proposals`
+- **`platform/store/proposalstore`** · 13 importers · → `platform/store/channelstore`, `platform/store/storedb`, `proposals`
   Persists the suggester's work: generation jobs and their attempts, the proposals they produce, and the transactions that commit a result (the proposal_jobs, proposal_job_attempts and proposals tables).
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).

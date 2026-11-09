@@ -1,5 +1,6 @@
-// Package channels serves the channel resource: list, get, create, edit, refine, reconcile and
-// delete under /v1/channels, and the icon suggestions that pick a channel's logo.
+// Package channels serves the channel resource under /v1/channels: list, get, create, edit, refine,
+// reconcile and delete, its icon, logo and watermark art, and the viewer-facing channel routes
+// (Home's channel ideas, favourite and recent channels, and household viewing).
 package channels
 
 import (
@@ -12,10 +13,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -29,6 +35,18 @@ type Store interface {
 	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+	// The per-person lists: favourites and recents, and hidden channel ideas.
+	UserChannelLists(ctx context.Context, userID string) (channeldatastore.UserChannelLists, error)
+	AddFavouriteChannel(ctx context.Context, userID, channelID string, at time.Time) error
+	RemoveFavouriteChannel(ctx context.Context, userID, channelID string) error
+	RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error
+	HiddenIdeas(ctx context.Context, userID string) (map[string]bool, error)
+	HideIdea(ctx context.Context, userID, ideaID string, at time.Time) error
+	UnhideIdea(ctx context.Context, userID, ideaID string) error
+	// Channel ideas read the open proposals to mark an idea already requested; household viewing
+	// names the people watching.
+	ListProposalsByStatus(ctx context.Context, status string) ([]proposalstore.Proposal, error)
+	ListUsers(ctx context.Context) ([]identitystore.User, error)
 }
 
 // ChannelService is the part of the channel-management surface these routes use (§9).
@@ -41,12 +59,25 @@ type ChannelService interface {
 	Purge(ctx context.Context, channelID string) error
 }
 
-// Refiner submits a refine job for a channel (§7 POST /v1/channels/{id}/refine).
-type Refiner interface {
+// Suggester submits the jobs a channel starts: a refine of an existing channel (§7 POST
+// /v1/channels/{id}/refine) and a built proposal that needed no generation (idea requests and
+// hand-built channels).
+type Suggester interface {
 	// Refine submits a new job for the channel with a refine-flavored intent, so its proposal binds
 	// back to the same channel and is listed as the refining admin's own request. Returns the job
 	// id to poll.
 	Refine(ctx context.Context, channelID string, intent proposals.Intent, requestedBy string) (string, error)
+	// SubmitBuilt queues a proposal that needed no generation as the requester's own request, and
+	// returns its job id. The model never runs.
+	SubmitBuilt(ctx context.Context, intent proposals.Intent, proposal proposals.Proposal, createdBy string) (jobID string, err error)
+}
+
+// ManualLineupResolver re-grounds a hand-picked lineup against current Library presence, splitting
+// it into owned titles and titles to acquire. It shares the one approval-addition resolver with the
+// approval gate, so a manually submitted proposal gets the same "client presence is not authority"
+// guarantee.
+type ManualLineupResolver interface {
+	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
 }
 
 // Binder shares channel-number occupancy with manually typed channel numbers.
@@ -110,7 +141,7 @@ type Deps struct {
 	BackendCheckpoint func(context.Context) (httpcore.BackendCheckpoint, error)
 	// Settings gates refine on the suggestions feature; nil reads as ready.
 	Settings       httpcore.FeatureGate
-	Suggest        Refiner
+	Suggest        Suggester
 	Channels       ChannelService
 	Binder         Binder
 	TunerRescanner TunerRescanner
@@ -125,8 +156,17 @@ type Deps struct {
 	Images ImageStore
 	// WatermarkPreview draws the on-screen logo preview and its options; nil answers 501.
 	WatermarkPreview WatermarkPreviewer
-	// Now is the clock the watermark options read; nil is time.Now.
+	// Now is the request clock (the watermark options, idea windows, viewing); nil is time.Now.
 	Now func() time.Time
+	// IdeaLibrary lists the library's movies and series for channel ideas; nil answers 501.
+	IdeaLibrary IdeaLibrary
+	// Approver re-grounds a hand-built lineup; nil answers 503 on that route.
+	Approver ManualLineupResolver
+	// Calendar is the engine's holiday calendar, so ideas agree with what airs; nil reads as the
+	// default calendar.
+	Calendar func() schedule.Calendar
+	// Viewing is who is watching what, from the players' own playlist polls; nil reads as nobody.
+	Viewing *viewing.Tracker
 }
 
 // Handlers serves the channel routes.
@@ -136,7 +176,7 @@ type Handlers struct {
 	liveSettings   settings.Reader
 	backend        httpcore.Backend
 	settings       httpcore.FeatureGate
-	suggest        Refiner
+	suggest        Suggester
 	channels       ChannelService
 	binder         Binder
 	tunerRescanner TunerRescanner
@@ -147,6 +187,10 @@ type Handlers struct {
 	images         ImageStore
 	watermark      WatermarkPreviewer
 	now            func() time.Time
+	ideaLibrary    IdeaLibrary
+	approver       ManualLineupResolver
+	calendar       func() schedule.Calendar
+	viewing        *viewing.Tracker
 }
 
 // New returns the channel handlers over d.
@@ -157,6 +201,7 @@ func New(d Deps) *Handlers {
 		settings: d.Settings, suggest: d.Suggest, channels: d.Channels, binder: d.Binder,
 		tunerRescanner: d.TunerRescanner, icons: d.Icons, playout: d.Playout, activity: d.Activity,
 		imageRecords: d.ImageRecords, images: d.Images, watermark: d.WatermarkPreview, now: d.Now,
+		ideaLibrary: d.IdeaLibrary, approver: d.Approver, calendar: d.Calendar, viewing: d.Viewing,
 	}
 }
 
@@ -165,6 +210,17 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerChannels(api)
 	s.registerWatermarkPreview(api)
 	s.registerWatermarkOptions(api)
+	s.registerChannelIdeas(api)
+	s.registerMyChannels(api)
+	s.registerHouseholdViewing(api)
+}
+
+// holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
+func (s *Handlers) holidayCalendar() schedule.Calendar {
+	if s.calendar == nil {
+		return schedule.Calendar{}
+	}
+	return s.calendar()
 }
 
 // ImageStore is the image service the icon and watermark uploads write through (§22).

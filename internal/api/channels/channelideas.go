@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -31,7 +31,7 @@ type IdeaLibrary interface {
 // a channel before the window opens.
 const ideaHolidayHorizon = 6 * 7 * 24 * time.Hour
 
-func (s *Server) registerChannelIdeas(api huma.API) {
+func (s *Handlers) registerChannelIdeas(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-channel-ideas", Method: http.MethodGet, Path: "/v1/discovery/ideas",
 		Summary: "Channel ideas from your library",
@@ -120,7 +120,7 @@ type channelIdeaInput struct {
 
 // ideasUser is the person whose hides a request reads or writes; ideas are personal because
 // hides are, so a break-glass API token (no person) gets none.
-func (s *Server) ideasUser(ctx context.Context) (string, error) {
+func (s *Handlers) ideasUser(ctx context.Context) (string, error) {
 	if s.store == nil {
 		return "", httpcore.FeatureNotConfigured("Channel ideas unavailable", "The persistence service is not configured.")
 	}
@@ -131,7 +131,7 @@ func (s *Server) ideasUser(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
-func (s *Server) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChannelIdeasOutput, error) {
+func (s *Handlers) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChannelIdeasOutput, error) {
 	userID, err := s.ideasUser(ctx)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (s *Server) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChanne
 
 // buildChannelIdeas builds the caller's ideas (their hides left out) and returns the seasonal
 // calendar's display labels by holiday id, which names and pitches read.
-func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.Idea, map[string]string, error) {
+func (s *Handlers) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.Idea, map[string]string, error) {
 	if s.ideaLibrary == nil {
 		return nil, nil, httpcore.NotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
@@ -192,7 +192,7 @@ func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.
 // requestedIdeas maps each idea the caller has requested, and that still waits for approval, to
 // that request's job. Once an admin decides it, the idea is requestable again: approved, its
 // titles are on a channel; denied, the person may ask again.
-func (s *Server) requestedIdeas(ctx context.Context, userID string) (map[string]string, error) {
+func (s *Handlers) requestedIdeas(ctx context.Context, userID string) (map[string]string, error) {
 	waiting, err := s.store.ListProposalsByStatus(ctx, "submitted")
 	if err != nil {
 		return nil, err
@@ -215,7 +215,7 @@ type requestChannelIdeaOutput struct {
 	}
 }
 
-func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (*requestChannelIdeaOutput, error) {
+func (s *Handlers) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (*requestChannelIdeaOutput, error) {
 	userID, err := s.ideasUser(ctx)
 	if err != nil {
 		return nil, err
@@ -276,7 +276,7 @@ type submitManualChannelInput struct {
 // lineup, re-grounded, through the SAME submit->approve gate as every other proposal. It
 // never creates a channel by itself — SubmitBuilt below records it "submitted" and runs the
 // identical auto-approval consideration idea-requests already use.
-func (s *Server) submitManualChannel(ctx context.Context, in *submitManualChannelInput) (*requestChannelIdeaOutput, error) {
+func (s *Handlers) submitManualChannel(ctx context.Context, in *submitManualChannelInput) (*requestChannelIdeaOutput, error) {
 	userID, err := s.ideasUser(ctx)
 	if err != nil {
 		return nil, err
@@ -340,7 +340,7 @@ func ideaLineup(titles []ideas.Item) []proposals.ProposalItem {
 
 // keysOnChannels is every key on a channel that is, or will be, airing. A detached channel's
 // lineup no longer plays, so its titles count as unaired again.
-func (s *Server) keysOnChannels(ctx context.Context) (map[provision.Key]bool, error) {
+func (s *Handlers) keysOnChannels(ctx context.Context) (map[provision.Key]bool, error) {
 	channels, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
@@ -374,7 +374,7 @@ func channelIdeaToDTO(idea ideas.Idea, holidayLabels map[string]string) channelI
 	}
 }
 
-func (s *Server) hideChannelIdea(ctx context.Context, in *channelIdeaInput) (*struct{}, error) {
+func (s *Handlers) hideChannelIdea(ctx context.Context, in *channelIdeaInput) (*struct{}, error) {
 	userID, err := s.ideasUser(ctx)
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func (s *Server) hideChannelIdea(ctx context.Context, in *channelIdeaInput) (*st
 	return nil, s.store.HideIdea(ctx, userID, in.IdeaID, s.clock().UTC())
 }
 
-func (s *Server) unhideChannelIdea(ctx context.Context, in *channelIdeaInput) (*struct{}, error) {
+func (s *Handlers) unhideChannelIdea(ctx context.Context, in *channelIdeaInput) (*struct{}, error) {
 	userID, err := s.ideasUser(ctx)
 	if err != nil {
 		return nil, err
