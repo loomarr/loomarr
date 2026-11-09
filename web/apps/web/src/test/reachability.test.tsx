@@ -349,6 +349,7 @@ const stubReachable = () => {
           searched: true,
         },
       ],
+      orders: [],
       problems: [],
     }),
     getGetLibraryItemMockHandler({

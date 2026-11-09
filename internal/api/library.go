@@ -44,6 +44,9 @@ type LibraryRootService interface {
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
+	// Episode orders (#2151 decision 53).
+	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
+	ChooseOrder(ctx context.Context, seriesID string, choice store.LibraryOrderChoice, orderID string) error
 	// Collections (#2151 step 12, decision 28).
 	Collections(ctx context.Context) ([]scan.Collection, error)
 	Collection(ctx context.Context, id string) (scan.Collection, error)

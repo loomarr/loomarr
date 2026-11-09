@@ -40,6 +40,14 @@ type LibraryOrderNeed struct {
 	// Last is the highest episode on disk in each season, over all its present episodes: what an
 	// order's season sizes are compared with.
 	Last map[int]int
+	// Waiting are the present files of its unnumbered episodes, in path order.
+	Waiting []LibraryWaitingFile
+}
+
+// LibraryWaitingFile is a present file of an episode that keeps its file's name and number.
+type LibraryWaitingFile struct {
+	Path            string
+	Season, Episode int
 }
 
 // LibraryEpisodeOrderStore keeps which order each show's episode files follow.
@@ -134,7 +142,34 @@ func (s *sqlStore) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, e
 		if err != nil {
 			return nil, err
 		}
-		out[i].Last = last
+		waiting, err := s.waitingFiles(ctx, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Last, out[i].Waiting = last, waiting
+	}
+	return out, nil
+}
+
+// waitingFiles is the present files of a series' unnumbered episodes, in path order.
+func (s *sqlStore) waitingFiles(ctx context.Context, seriesID string) ([]LibraryWaitingFile, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT f.path, e.season, e.episode FROM library_items e
+		JOIN library_files f ON f.inventory_item_id = e.id AND `+presentFile+`
+		WHERE e.series_id = ? AND e.kind = 'episode' AND e.unnumbered ORDER BY f.path`), seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("library waiting files: %w", err)
+	}
+	out := []LibraryWaitingFile{}
+	for rows.Next() {
+		var f LibraryWaitingFile
+		if err := rows.Scan(&f.Path, &f.Season, &f.Episode); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("library waiting files: %w", err)
+		}
+		out = append(out, f)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, fmt.Errorf("library waiting files: %w", err)
 	}
 	return out, nil
 }
