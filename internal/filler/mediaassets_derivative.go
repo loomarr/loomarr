@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -47,7 +48,7 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source M
 		Recipe: tools.EvidenceDerivativeRecipe(enc.profile), Host: enc.host, Tool: tool,
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
 		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
-		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*40/100) },
+		OnProgress: func(percent int) { reportProgress(ctx, pipelinestate.StageTranscode, percent*40/100) },
 		Storage:    storage,
 	})
 	if err != nil {

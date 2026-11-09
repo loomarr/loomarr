@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The PROBE stage (§10 V51b): measure the file, and refuse the ones that are not clips.
@@ -53,8 +55,8 @@ func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurati
 	}
 }
 
-func (s *ProbeStage) ID() StageID     { return StageProbe }
-func (s *ProbeStage) Cost() StageCost { return CostCheap }
+func (s *ProbeStage) ID() pipelinestate.StageID { return pipelinestate.StageProbe }
+func (s *ProbeStage) Cost() StageCost           { return CostCheap }
 
 // Applies: always. Every clip is measured, including one that already has a duration — the file
 // may have been replaced under a stable path, and re-probing is one cheap exec.
@@ -75,18 +77,18 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if err != nil {
 		return StageResult{}, fmt.Errorf("probe %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, StageProbe, 100)
+	reportProgress(ctx, pipelinestate.StageProbe, 100)
 
-	if v, reason, detail := s.verdict(pr); v == VerdictReject {
-		return StageResult{Verdict: VerdictReject, Reason: reason, Detail: detail}, nil
+	if v, reason, detail := s.verdict(pr); v == pipelinestate.VerdictReject {
+		return StageResult{Verdict: pipelinestate.VerdictReject, Reason: reason, Detail: detail}, nil
 	}
 	// A catalog rebuild loses pipeline state but not sidecar evidence. Re-apply a prior content
 	// quality decision here so a near-total-black clip cannot become airable merely because the
 	// database was recreated; first-time clips have no report yet and continue to transcode.
 	if tags, ok := ReadSidecarTags(file); ok && tags.MediaQuality != nil {
-		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != VerdictContinue {
+		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != pipelinestate.VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
-			if v == VerdictReview {
+			if v == pipelinestate.VerdictReview {
 				out.Note, out.Detail = detail, ""
 			}
 			return out, nil
@@ -115,10 +117,10 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 			}
 		}
 		updated.IsComposite = true
-		return StageResult{Clip: updated, Verdict: VerdictContinue,
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue,
 			Note: "this is a recording of several adverts, not one"}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, nil
 }
 
 // looksComposite decides whether a clip is a CONTAINER of adverts (§10 V45).
@@ -154,22 +156,22 @@ func (s *ProbeStage) looksComposite(c StoreClip) bool {
 // video-only file plays as dead air mid-break (which reads as the stream dropping), and a file
 // with no video stream is not something a channel can show. Offering a human a button here would
 // be offering a control that cannot work.
-func (s *ProbeStage) verdict(pr Probed) (Verdict, RejectReason, string) {
+func (s *ProbeStage) verdict(pr Probed) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
 	floor := int64(0)
 	if s.minDurationMs != nil {
 		floor = s.minDurationMs()
 	}
 	switch {
 	case pr.DurationMs <= 0:
-		return VerdictReject, ReasonUnprobeable, "ffprobe reported no usable duration"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonUnprobeable, "ffprobe reported no usable duration"
 	case floor > 0 && pr.DurationMs < floor:
-		return VerdictReject, ReasonTooShort,
+		return pipelinestate.VerdictReject, pipelinestate.ReasonTooShort,
 			fmt.Sprintf("%.1fs; the floor is %.1fs", float64(pr.DurationMs)/1000, float64(floor)/1000)
 	case pr.Silent:
-		return VerdictReject, ReasonNoAudio, "the file carries no audio stream at all"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonNoAudio, "the file carries no audio stream at all"
 	case pr.NoVideo:
-		return VerdictReject, ReasonNoVideo, "the file carries no video stream"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonNoVideo, "the file carries no video stream"
 	default:
-		return VerdictContinue, "", ""
+		return pipelinestate.VerdictContinue, "", ""
 	}
 }

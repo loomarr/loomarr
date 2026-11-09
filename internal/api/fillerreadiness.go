@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -215,7 +216,7 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 	}
 }
 
-func pipelineOverviewDTO(overview filler.PipelineOverview) PipelineOverviewDTO {
+func pipelineOverviewDTO(overview pipelinestate.PipelineOverview) PipelineOverviewDTO {
 	return PipelineOverviewDTO{
 		Runnable: overview.Runnable, InProgress: overview.InProgress, Scheduled: overview.Scheduled,
 		NeedsDecision: overview.NeedsDecision, Ready: overview.Ready, Complete: overview.Complete,

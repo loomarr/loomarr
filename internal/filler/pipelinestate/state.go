@@ -1,7 +1,10 @@
-package filler
+// Package pipelinestate is the vocabulary and persisted state machine of the per-clip ingest
+// pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why
+// it was refused, and the lifecycle classification clients read. It holds no execution; the
+// filler root's Pipeline and its stages drive these types.
+package pipelinestate
 
 import (
-	"context"
 	"slices"
 	"time"
 )
@@ -96,7 +99,7 @@ const (
 	// decided per reason by `Soft()`. A dismissal has no code — the reason is "a person said so" —
 	// no measurement, and is always reversible. Folding it into `rejected` would need a reason
 	// meaning "no reason" and a `Soft()` case that is unconditionally true: two exceptions so one
-	// enumeration could carry two subjects. `reject.go` makes the same argument for keeping
+	// enumeration could carry two subjects. `reject.go` (this package) makes the same argument for keeping
 	// `RejectReason` and `AutoSplitReject` apart.
 	//
 	// ⚠ It is deliberately absent from the refusals list ("Loomarr didn't use N clips"), which is
@@ -195,14 +198,14 @@ func (p *ClipPipeline) SettleByOperator(to Disposition, at time.Time, from ...Di
 		return false
 	}
 	p.Disposition = to
-	p.unscheduleIfTerminal()
+	p.UnscheduleIfTerminal()
 	p.UpdatedAt = at
 	return true
 }
 
-// unscheduleIfTerminal zeroes a terminal row's schedule so the work list cannot re-pick it on a
+// UnscheduleIfTerminal zeroes a terminal row's schedule so the work list cannot re-pick it on a
 // clock skew. Every writer that settles a row applies it: the pipeline's own save and an operator's.
-func (p *ClipPipeline) unscheduleIfTerminal() {
+func (p *ClipPipeline) UnscheduleIfTerminal() {
 	if p.Disposition.Terminal() {
 		p.NextRun = time.Time{}
 	}
@@ -252,27 +255,4 @@ type PipelineFilter struct {
 	BeforeClipHash   string
 	// Limit caps the rows returned; 0 means unbounded.
 	Limit int
-}
-
-// PipelineStore is the slice of the store the pipeline needs (the sync.go/splitjob.go pattern —
-// declared here so `filler` does not import `store`; `app` bridges them).
-//
-// ⚠ PipelineStore is the ONLY writer of this table, which is what keeps the state machine
-// in one module. Every other filler column keeps its existing owner (SetClipLanguage,
-// SetClipTranscript, ApplyClipVision, HoldClips, …) — this phase adds no second writer to any
-// of them, which is why the 1600-line store conformance suite needs no rework to accept it.
-type PipelineStore interface {
-	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first.
-	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]ClipPipeline, error)
-	// PipelineOverview returns one lifecycle-classified snapshot for API and run telemetry.
-	PipelineOverview(ctx context.Context, at time.Time) (PipelineOverview, error)
-	// ListClipsWithoutPipeline returns catalogued clips that have no pipeline row yet — the
-	// lazy enrolment the pipeline self-heals with, instead of a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]StoreClip, error)
-	GetClipPipeline(ctx context.Context, hash string) (ClipPipeline, bool, error)
-	ListClipPipelines(ctx context.Context, f PipelineFilter) ([]ClipPipeline, error)
-	UpsertClipPipeline(ctx context.Context, p ClipPipeline) error
-	// RetryClipPipeline atomically returns a failed row to the conveyor. When restore is true it
-	// also clears the rejection tombstone while holding the clip.
-	RetryClipPipeline(ctx context.Context, failed, retry ClipPipeline, restore bool) error
 }

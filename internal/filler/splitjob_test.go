@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -201,7 +202,7 @@ type splitMemStore struct {
 	fingerprintWriteCtxErr error
 	fingerprintReadErr     error
 	fingerprintWriteErr    error
-	pipelines              map[string]filler.ClipPipeline
+	pipelines              map[string]pipelinestate.ClipPipeline
 	observedEras           map[string]int // clip hash → recorded uncited era guess
 	observedSources        []research.ObservationSource
 }
@@ -300,7 +301,7 @@ func (s *failingSplitStore) SetClipTags(ctx context.Context, hash string, leaves
 	return s.splitMemStore.SetClipTags(ctx, hash, leaves)
 }
 
-func (s *failingSplitStore) UpsertClipPipeline(ctx context.Context, row filler.ClipPipeline) error {
+func (s *failingSplitStore) UpsertClipPipeline(ctx context.Context, row pipelinestate.ClipPipeline) error {
 	if err := s.fail("enrollment"); err != nil {
 		return err
 	}
@@ -370,7 +371,7 @@ func (s *failingSplitStore) CompleteSplitConfirmation(ctx context.Context, compl
 func newSplitMemStore() *splitMemStore {
 	return &splitMemStore{
 		clips: map[string]filler.StoreClip{}, proposals: map[string]filler.SplitProposal{},
-		claims: map[string]string{}, fingerprints: map[string]creative.Fingerprint{}, pipelines: map[string]filler.ClipPipeline{},
+		claims: map[string]string{}, fingerprints: map[string]creative.Fingerprint{}, pipelines: map[string]pipelinestate.ClipPipeline{},
 	}
 }
 
@@ -465,7 +466,7 @@ func (m *splitMemStore) SetClipTags(_ context.Context, hash string, leaves []str
 	m.clips[hash] = c
 	return nil
 }
-func (m *splitMemStore) UpsertClipPipeline(_ context.Context, row filler.ClipPipeline) error {
+func (m *splitMemStore) UpsertClipPipeline(_ context.Context, row pipelinestate.ClipPipeline) error {
 	m.pipelines[row.ClipHash] = row
 	return nil
 }
@@ -516,24 +517,24 @@ func (m *splitMemStore) CompleteSplitConfirmation(ctx context.Context, completio
 		return 0, errors.New("proposal not found")
 	}
 	parentPipeline, ok := m.pipelines[completion.ParentHash]
-	if !ok || parentPipeline.Disposition != filler.DispositionReview {
+	if !ok || parentPipeline.Disposition != pipelinestate.DispositionReview {
 		return 0, errors.New("parent pipeline is not awaiting review")
 	}
 	for _, hash := range completion.ActivateHashes {
 		pipeline, ok := m.pipelines[hash]
-		if !ok || pipeline.Disposition != filler.DispositionReview {
+		if !ok || pipeline.Disposition != pipelinestate.DispositionReview {
 			return 0, fmt.Errorf("child %s is not staged for review", hash)
 		}
 	}
 	parent.IsComposite = true
 	parent.Held = false
 	m.clips[completion.ParentHash] = parent
-	parentPipeline.Disposition = filler.DispositionComplete
+	parentPipeline.Disposition = pipelinestate.DispositionComplete
 	parentPipeline.UpdatedAt = completion.At
 	m.pipelines[completion.ParentHash] = parentPipeline
 	for _, hash := range completion.ActivateHashes {
 		pipeline := m.pipelines[hash]
-		pipeline.Disposition = filler.DispositionRunning
+		pipeline.Disposition = pipelinestate.DispositionRunning
 		pipeline.UpdatedAt = completion.At
 		m.pipelines[hash] = pipeline
 	}
@@ -583,7 +584,7 @@ func (m *splitMemStore) MarkPipelineComplete(_ context.Context, hash string, at 
 	if !ok {
 		return nil
 	}
-	row.Disposition = filler.DispositionComplete
+	row.Disposition = pipelinestate.DispositionComplete
 	row.UpdatedAt = at
 	m.pipelines[hash] = row
 	return nil
@@ -695,13 +696,13 @@ func (m *splitMemStore) CompletePartialSplitConfirmation(_ context.Context, comp
 	}
 	for _, hash := range completion.ActivateHashes {
 		pipeline, ok := m.pipelines[hash]
-		if !ok || pipeline.Disposition != filler.DispositionReview {
+		if !ok || pipeline.Disposition != pipelinestate.DispositionReview {
 			return fmt.Errorf("child %s is not staged for review", hash)
 		}
 	}
 	for _, hash := range completion.ActivateHashes {
 		pipeline := m.pipelines[hash]
-		pipeline.Disposition = filler.DispositionRunning
+		pipeline.Disposition = pipelinestate.DispositionRunning
 		pipeline.UpdatedAt = completion.At
 		m.pipelines[hash] = pipeline
 	}
@@ -759,9 +760,9 @@ func stageParentForSplitReview(st *splitMemStore, hash string) {
 	parent := st.clips[hash]
 	parent.Held = true
 	st.clips[hash] = parent
-	st.pipelines[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: time.Now(), UpdatedAt: time.Now(),
+	st.pipelines[hash] = pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }
 
@@ -881,7 +882,7 @@ func TestSplitStage_LongBoundaryScanResumesFromDurableChunkAfterRestartAndTimeou
 		}
 	}
 	out, err := newStage().Run(context.Background(), clip)
-	if err != nil || out.Verdict != filler.VerdictReview {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("final pass = (%+v, %v), want completed proposal awaiting policy", out, err)
 	}
 
@@ -931,7 +932,7 @@ func TestSplitStage_BoundaryConfidenceSurvivesDetectionCheckpoint(t *testing.T) 
 		t.Fatalf("checkpoint pass = %v, want deliberate deferral", err)
 	}
 	out, err := newStage().Run(context.Background(), clip)
-	if err != nil || out.Verdict != filler.VerdictReview {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("resume pass = (%+v, %v), want completed proposal awaiting policy", out, err)
 	}
 	props, err := st.ListSplitProposals(context.Background())
@@ -1270,7 +1271,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Verdict != filler.VerdictReview {
+		if result.Verdict != pipelinestate.VerdictReview {
 			t.Fatalf("final result = %+v, want review", result)
 		}
 		proposals, listErr := st.ListSplitProposals(context.Background())
@@ -1320,7 +1321,7 @@ func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForRevie
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Verdict != filler.VerdictContinue || result.Note != "left out 2 clips spoken in another language" {
+	if result.Verdict != pipelinestate.VerdictContinue || result.Note != "left out 2 clips spoken in another language" {
 		t.Fatalf("result = %+v, want a quiet language resolution", result)
 	}
 	proposals, err := st.ListSplitProposals(context.Background())
@@ -1693,7 +1694,7 @@ func TestSplitStage_HoldsCandidatesWithoutCertifiedAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictReview || len(out.Spawned) != 0 || len(tools.cutCalls) != 0 {
+	if out.Verdict != pipelinestate.VerdictReview || len(out.Spawned) != 0 || len(tools.cutCalls) != 0 {
 		t.Fatalf("result = %+v, cuts = %v; uncertified candidates materialized", out, tools.cutCalls)
 	}
 	persisted, err := st.GetSplitProposal(context.Background(), p.ID)
@@ -1727,7 +1728,7 @@ func TestSplitStage_AllDiscardedFinishesWithoutAnEmptyReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue || len(out.Spawned) != 0 {
+	if out.Verdict != pipelinestate.VerdictContinue || len(out.Spawned) != 0 {
 		t.Fatalf("result = %+v", out)
 	}
 	if !st.clips[hash].IsComposite {
@@ -1767,7 +1768,7 @@ func TestSplitStage_PersistsWhyEverySegmentNeedsReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictReview {
+	if out.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("verdict = %v, want review", out.Verdict)
 	}
 	persisted, err := st.GetSplitProposal(context.Background(), p.ID)
@@ -2436,7 +2437,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 			}
 			if operation == "partial proposal" {
 				for hash, pipeline := range base.pipelines {
-					if hash != parentHash && pipeline.Disposition == filler.DispositionRunning {
+					if hash != parentHash && pipeline.Disposition == pipelinestate.DispositionRunning {
 						t.Fatalf("failed partial confirmation left child %s runnable: %+v", hash, pipeline)
 					}
 				}
@@ -2715,7 +2716,7 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	}
 	for _, hash := range first {
 		pipeline, found := st.pipelines[hash]
-		if !found || pipeline.Disposition != filler.DispositionRunning {
+		if !found || pipeline.Disposition != pipelinestate.DispositionRunning {
 			t.Fatalf("committed partial child pipeline %s = %+v, found=%v; want running", hash, pipeline, found)
 		}
 	}
@@ -2821,9 +2822,9 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 			parent := base.clips[parentHash]
 			parent.Held = true
 			base.clips[parentHash] = parent
-			parentPipeline := filler.ClipPipeline{
-				ClipHash: parentHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-				Disposition: filler.DispositionReview, NextRun: time.Now().Add(time.Hour),
+			parentPipeline := pipelinestate.ClipPipeline{
+				ClipHash: parentHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+				Disposition: pipelinestate.DispositionReview, NextRun: time.Now().Add(time.Hour),
 				EnrolledAt: time.Now().Add(-time.Hour), UpdatedAt: time.Now().Add(-time.Minute),
 			}
 			base.pipelines[parentHash] = parentPipeline
@@ -2880,7 +2881,7 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 				if child, found := base.clips[hash]; found && child.RemovedAt.IsZero() {
 					t.Errorf("replacement child %s became selected: %+v", hash, child)
 				}
-				if pipeline, found := base.pipelines[hash]; found && pipeline.Disposition == filler.DispositionRunning {
+				if pipeline, found := base.pipelines[hash]; found && pipeline.Disposition == pipelinestate.DispositionRunning {
 					t.Errorf("replacement child %s retained runnable pipeline after rollback: %+v", hash, pipeline)
 				}
 			}

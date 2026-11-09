@@ -1,6 +1,9 @@
 package filler
 
-import "github.com/loomarr/loomarr/internal/filler/pod"
+import (
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+)
 
 // ReadinessAction is the highest-impact operator action for the filler system. The server owns
 // this ordering so every client presents the same diagnosis instead of reverse-engineering it
@@ -43,7 +46,7 @@ type StorageStatus struct {
 type ReadinessInput struct {
 	Fetch    FetchStatus
 	Storage  StorageStatus
-	Pipeline PipelineOverview
+	Pipeline pipelinestate.PipelineOverview
 	Pool     pod.PoolReport
 	Runs     []AcquisitionRun
 	Repairs  AcquisitionRepairSummary
@@ -63,7 +66,7 @@ type Readiness struct {
 
 	Fetch    FetchStatus
 	Storage  StorageStatus
-	Pipeline PipelineOverview
+	Pipeline pipelinestate.PipelineOverview
 	Pool     pod.PoolReport
 	Runs     []AcquisitionRun
 	Repairs  AcquisitionRepairSummary

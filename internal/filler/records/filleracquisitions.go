@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -153,7 +154,7 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 	}
 	placeholders := make([]string, len(runs))
 	args := make([]any, len(runs))
-	byID := make(map[string][]filler.ClipPipeline, len(runs))
+	byID := make(map[string][]pipelinestate.ClipPipeline, len(runs))
 	for i := range runs {
 		placeholders[i] = "?"
 		args[i] = runs[i].ID

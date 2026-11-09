@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -45,9 +46,9 @@ type StageResult struct {
 	// Clip is the (possibly updated) clip — the transcode stage changes Path/Quality/DurationMs.
 	Clip StoreClip
 	// Verdict decides whether the clip continues, stops for a human, or is refused.
-	Verdict Verdict
+	Verdict pipelinestate.Verdict
 	// Reason + Detail are set when Verdict is VerdictReject: a stable code and the measured fact.
-	Reason RejectReason
+	Reason pipelinestate.RejectReason
 	Detail string
 	// Spawned carries hashes this stage CREATED (split segments), enrolled at StageProbe so they
 	// run the whole ladder themselves.
@@ -58,7 +59,7 @@ type StageResult struct {
 
 // Stage is one rung.
 type Stage interface {
-	ID() StageID
+	ID() pipelinestate.StageID
 	// Applies answers "is there work here, for THIS clip, in THIS install?" — WITHOUT executing
 	// anything. Returning (false, note) records `skipped` with the note.
 	//
@@ -175,9 +176,32 @@ const storageHoldWait = 15 * time.Minute
 // cannot be played — those are facts about the file. Everything else is a fact about a BACKEND
 // (whisper missing, the LLM down, a vision call refused), which says nothing about the clip, so
 // those stages skip and the clip advances. A missing transcript must never strand a commercial.
-var fatalStages = map[StageID]RejectReason{
-	StageProbe:     ReasonUnprobeable,
-	StageTranscode: ReasonUnplayable,
+var fatalStages = map[pipelinestate.StageID]pipelinestate.RejectReason{
+	pipelinestate.StageProbe:     pipelinestate.ReasonUnprobeable,
+	pipelinestate.StageTranscode: pipelinestate.ReasonUnplayable,
+}
+
+// PipelineStore is the slice of the store the pipeline needs (the sync.go/splitjob.go pattern —
+// declared here so `filler` does not import `store`; `app` bridges them).
+//
+// ⚠ PipelineStore is the ONLY writer of this table, which is what keeps the state machine
+// in one module. Every other filler column keeps its existing owner (SetClipLanguage,
+// SetClipTranscript, ApplyClipVision, HoldClips, …) — this phase adds no second writer to any
+// of them, which is why the 1600-line store conformance suite needs no rework to accept it.
+type PipelineStore interface {
+	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first.
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)
+	// PipelineOverview returns one lifecycle-classified snapshot for API and run telemetry.
+	PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error)
+	// ListClipsWithoutPipeline returns catalogued clips that have no pipeline row yet — the
+	// lazy enrolment the pipeline self-heals with, instead of a data migration.
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]StoreClip, error)
+	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
+	ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error)
+	UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error
+	// RetryClipPipeline atomically returns a failed row to the conveyor. When restore is true it
+	// also clears the rejection tombstone while holding the clip.
+	RetryClipPipeline(ctx context.Context, failed, retry pipelinestate.ClipPipeline, restore bool) error
 }
 
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
@@ -194,7 +218,7 @@ type ClipStore interface {
 
 // Notifier receives every state change so it can be published (SSE) — best-effort, never
 // load-bearing. The persisted row is the truth; this is the latency optimisation (§8).
-type Notifier func(p ClipPipeline, c StoreClip)
+type Notifier func(p pipelinestate.ClipPipeline, c StoreClip)
 
 // Pipeline runs clips through the stages.
 type Pipeline struct {
@@ -205,7 +229,7 @@ type Pipeline struct {
 	// a stage does not need them, and `Rewind` refuses rather than half-working without them.
 	rewind  RewindStore
 	clipDir string
-	stages  map[StageID]Stage
+	stages  map[pipelinestate.StageID]Stage
 	budget  Budget
 	notify  Notifier
 	now     func() time.Time
@@ -232,7 +256,7 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 	if now == nil {
 		now = time.Now
 	}
-	byID := make(map[StageID]Stage, len(stages))
+	byID := make(map[pipelinestate.StageID]Stage, len(stages))
 	for _, s := range stages {
 		byID[s.ID()] = s
 	}
@@ -278,7 +302,7 @@ type PipelineResult struct {
 	Deferred int
 	// Reencoded counts airing clips switched to a re-encode onto the current profile (#2121).
 	Reencoded int
-	Overview  PipelineOverview
+	Overview  pipelinestate.PipelineOverview
 	// NoAdvanceReason is empty after productive work and otherwise explains who owns the ending
 	// backlog or which clock it is waiting on.
 	NoAdvanceReason string
@@ -362,9 +386,9 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		}
 		res.Advanced++
 		switch outcome {
-		case DispositionRejected:
+		case pipelinestate.DispositionRejected:
 			res.Rejected++
-		case DispositionReady, DispositionComplete, DispositionReview:
+		case pipelinestate.DispositionReady, pipelinestate.DispositionComplete, pipelinestate.DispositionReview:
 			res.Completed++
 		}
 	}
@@ -406,7 +430,7 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 // version-selected: once curated/classified, those markers disappear or become checked, so a restart
 // does not loop a genuinely ambiguous proposal back through the machine.
 func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error) {
-	stage, ok := p.stages[StageSplit].(*SplitStage)
+	stage, ok := p.stages[pipelinestate.StageSplit].(*SplitStage)
 	if !ok || stage == nil {
 		return 0, nil
 	}
@@ -414,24 +438,24 @@ func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error
 	if err != nil || len(hashes) == 0 {
 		return 0, err
 	}
-	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	rows, err := p.store.ListClipPipelines(ctx, pipelinestate.PipelineFilter{})
 	if err != nil {
 		return 0, err
 	}
 	n := 0
 	for _, row := range rows {
-		if _, ok := hashes[row.ClipHash]; !ok || row.Disposition != DispositionReview || row.Stage != StageSplit {
+		if _, ok := hashes[row.ClipHash]; !ok || row.Disposition != pipelinestate.DispositionReview || row.Stage != pipelinestate.StageSplit {
 			continue
 		}
 		kept := row.Stages[:0:0]
 		for _, rec := range row.Stages {
-			if rec.Stage != StageSplit {
+			if rec.Stage != pipelinestate.StageSplit {
 				kept = append(kept, rec)
 			}
 		}
 		row.Stages = kept
-		row.Status, row.Attempts, row.Progress = StatusQueued, 0, 0
-		row.Disposition = DispositionRunning
+		row.Status, row.Attempts, row.Progress = pipelinestate.StatusQueued, 0, 0
+		row.Disposition = pipelinestate.DispositionRunning
 		row.RejectReason, row.RejectDetail = "", ""
 		row.NextRun = time.Time{}
 		row.UpdatedAt = p.now().UTC()
@@ -467,11 +491,11 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 		if c.Hash == "" {
 			continue // not addressable; the scan will re-file it
 		}
-		row := ClipPipeline{
-			ClipHash: c.Hash, Stage: StageProbe, Status: StatusQueued,
-			Disposition: DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+		row := pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 			PreparationAttempt: 1, PreparationStartedAt: now,
-			PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+			PreparationStartReason: pipelinestate.PreparationStartedByEnrollment, PreparationProgress: 0,
 			StageQueuedAt: now,
 		}
 		if p.clipDir != "" && c.Path != "" {
@@ -503,7 +527,7 @@ func (p *Pipeline) Advance(ctx context.Context, hash string) error {
 }
 
 // advance walks the stages for one clip until it blocks, defers, or reaches a terminal state.
-func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Disposition, error) {
+func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, s *spend) (pipelinestate.Disposition, error) {
 	clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
 	if err != nil {
 		return row.Disposition, err
@@ -511,8 +535,8 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	if !found {
 		// The clip is gone (pruned, or its file removed). Retire the row rather than retrying a
 		// lookup that will never succeed.
-		row.Disposition = DispositionRejected
-		row.RejectReason = ReasonUnprobeable
+		row.Disposition = pipelinestate.DispositionRejected
+		row.RejectReason = pipelinestate.ReasonUnprobeable
 		row.RejectDetail = "the clip is no longer in the catalog"
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
@@ -523,7 +547,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	// on every pass.
 	// Only a row already parked on the final rung is rewound here; a row still climbing reaches
 	// the check before publication below.
-	if row.Stage == StageOrder[len(StageOrder)-1] {
+	if row.Stage == pipelinestate.StageOrder[len(pipelinestate.StageOrder)-1] {
 		p.repairLadderGaps(&row)
 	}
 
@@ -539,18 +563,18 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			}
 			return row.Disposition, ErrDeferred
 		}
-		idx := StageIndex(row.Stage)
+		idx := pipelinestate.StageIndex(row.Stage)
 		if idx < 0 {
 			// An unknown stage (a rename, a downgrade). Restart from the beginning rather than
 			// guessing a position — the alternative is silently skipping rungs.
-			row.Stage, row.Status, row.Attempts = StageProbe, StatusQueued, 0
+			row.Stage, row.Status, row.Attempts = pipelinestate.StageProbe, pipelinestate.StatusQueued, 0
 			continue
 		}
 
 		stage, known := p.stages[row.Stage]
 		if !known {
 			// Not wired in this build/install: skip and move on, recorded so the ladder says so.
-			row.Record(row.Stage, StatusSkipped, "not available on this install", row.Attempts, p.now().UTC())
+			row.Record(row.Stage, pipelinestate.StatusSkipped, "not available on this install", row.Attempts, p.now().UTC())
 			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
@@ -560,7 +584,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		if p.budget.exhausted(*s, stage.Cost()) {
 			// Out of budget for THIS kind of work. Leave the clip queued — it resumes next pass
 			// exactly here, which is what makes a large import drain over cycles.
-			row.Status = StatusQueued
+			row.Status = pipelinestate.StatusQueued
 			return row.Disposition, p.persist(ctx, row, clip)
 		}
 
@@ -572,8 +596,8 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		//
 		// Six copies of that check is six chances for a new rung to forget it, and forgetting it
 		// is silent. One rule, stated once, and a new rung inherits it by existing.
-		if clip.IsComposite && row.Stage != StageProbe && row.Stage != StageSplit {
-			row.Record(row.Stage, StatusSkipped, "a compilation is completed after its segments are prepared", row.Attempts, p.now().UTC())
+		if clip.IsComposite && row.Stage != pipelinestate.StageProbe && row.Stage != pipelinestate.StageSplit {
+			row.Record(row.Stage, pipelinestate.StatusSkipped, "a compilation is completed after its segments are prepared", row.Attempts, p.now().UTC())
 			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
@@ -584,7 +608,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// bypasses only the ordinary applicability shortcut; structural protections above (for
 		// example, never classifying a compilation container) still win.
 		if applies, note := stage.Applies(ctx, clip); !applies && !row.ForceRun {
-			row.Record(row.Stage, StatusSkipped, note, row.Attempts, p.now().UTC())
+			row.Record(row.Stage, pipelinestate.StatusSkipped, note, row.Attempts, p.now().UTC())
 			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
@@ -594,11 +618,11 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// Media-heavy rungs yield to live playback (#1512 G5): wait a bounded while, then leave
 		// the clip queued at this rung — no attempt spent, exactly as for an exhausted budget.
 		if !p.waitForHeadroom(ctx, s, row.Stage, stage.Cost()) {
-			row.Status = StatusQueued
+			row.Status = pipelinestate.StatusQueued
 			return row.Disposition, p.persist(ctx, row, clip)
 		}
 
-		row.Status, row.Attempts = StatusRunning, row.Attempts+1
+		row.Status, row.Attempts = pipelinestate.StatusRunning, row.Attempts+1
 		row.StageStartedAt = p.now().UTC()
 		row.Progress = 0
 		if err := p.save(ctx, row, clip); err != nil {
@@ -626,7 +650,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			// sixty segments, checkpoint them, and let the queue take a turn without pretending the
 			// sixty-first segment failed. Both paths share the same no-attempt, due-next-pass state.
 			if ctx.Err() != nil || errors.Is(runErr, ErrDeferred) {
-				row.Status = StatusQueued
+				row.Status = pipelinestate.StatusQueued
 				if row.Attempts > 0 {
 					row.Attempts--
 				}
@@ -655,7 +679,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 				if row.Attempts > 0 {
 					row.Attempts--
 				}
-				row.Record(row.Stage, StatusQueued, "waiting for filler storage: "+runErr.Error(), row.Attempts, p.now().UTC())
+				row.Record(row.Stage, pipelinestate.StatusQueued, "waiting for filler storage: "+runErr.Error(), row.Attempts, p.now().UTC())
 				row.NextRun = p.now().UTC().Add(storageHoldWait)
 				if err := p.persist(ctx, row, clip); err != nil {
 					return row.Disposition, err
@@ -692,23 +716,23 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		switch out.Verdict {
-		case VerdictReject:
-			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
+		case pipelinestate.VerdictReject:
+			row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.ForceRun = false
-			row.Disposition = DispositionRejected
+			row.Disposition = pipelinestate.DispositionRejected
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
 			return row.Disposition, p.persist(ctx, row, clip)
-		case VerdictReview:
-			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
+		case pipelinestate.VerdictReview:
+			row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.ForceRun = false
-			row.Disposition = DispositionReview
+			row.Disposition = pipelinestate.DispositionReview
 			return row.Disposition, p.persist(ctx, row, clip)
-		case VerdictDefer:
+		case pipelinestate.VerdictDefer:
 			// ⚠ `StatusQueued`, not `StatusDone` — the rung is coming back to this clip. Recording
 			// the note is the one thing the DEADLINE deferral above does not do, and it is what
 			// makes the ladder say "looked at 60 of 142 cuts" instead of going quiet for the
 			// several passes a large reel needs.
-			row.Record(row.Stage, StatusQueued, out.Note, row.Attempts, p.now().UTC())
+			row.Record(row.Stage, pipelinestate.StatusQueued, out.Note, row.Attempts, p.now().UTC())
 			// No attempt is spent: progress is not failure, and a reel needing six passes must not
 			// exhaust its retries on the way to succeeding.
 			row.NextRun = p.now().UTC().Add(deferYield)
@@ -720,18 +744,18 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			return row.Disposition, ErrDeferred
 		}
 
-		row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
+		row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
 		if done := p.step(&row, p.now().UTC()); done {
 			break
 		}
 	}
 
-	if row.Disposition != DispositionRunning {
+	if row.Disposition != pipelinestate.DispositionRunning {
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
 	if clip.IsComposite {
 		// A completed container leaves the conveyor but never becomes Ready or playable.
-		row.Disposition = DispositionComplete
+		row.Disposition = pipelinestate.DispositionComplete
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
 	// The terminal write is detached like ordinary persistence: finishing the ladder before the
@@ -749,7 +773,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	defer cancel()
 	settled, err := p.ready.Commit(readyCtx, clip, row)
 	if err != nil {
-		return DispositionRunning, p.onReadyFailure(ctx, row, clip, err)
+		return pipelinestate.DispositionRunning, p.onReadyFailure(ctx, row, clip, err)
 	}
 	p.publish(settled, clip)
 	return settled.Disposition, nil
@@ -760,15 +784,15 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 // a held clip, so such a row failed every attempt and only ever backed off. The clip is already
 // playable, so nothing is republished and Kind/placement stay as they are; only the row settles,
 // with a note saying why. Any other identity mismatch is left for Commit to refuse as stale.
-func settleReleased(row ClipPipeline, clip StoreClip, at time.Time) (ClipPipeline, bool) {
+func settleReleased(row pipelinestate.ClipPipeline, clip StoreClip, at time.Time) (pipelinestate.ClipPipeline, bool) {
 	if clip.Hash == "" || clip.Path == "" || row.ClipHash != clip.Hash || clip.Held ||
-		!clip.RemovedAt.IsZero() || clip.IsComposite || row.Disposition != DispositionRunning ||
+		!clip.RemovedAt.IsZero() || clip.IsComposite || row.Disposition != pipelinestate.DispositionRunning ||
 		validateCompletedReadyLadder(row) != nil {
 		return row, false
 	}
-	row.Record(StageFinish, StatusDone, "clip was already released to the catalog; settled without republishing", row.Attempts, at)
-	row.Disposition = DispositionReady
-	row.Status = StatusDone
+	row.Record(pipelinestate.StageFinish, pipelinestate.StatusDone, "clip was already released to the catalog; settled without republishing", row.Attempts, at)
+	row.Disposition = pipelinestate.DispositionReady
+	row.Status = pipelinestate.StatusDone
 	row.Progress = 100
 	row.PreparationProgress = 100
 	row.NextRun = time.Time{}
@@ -781,18 +805,18 @@ func settleReleased(row ClipPipeline, clip StoreClip, at time.Time) (ClipPipelin
 // itself skipped, as screening does for a non-segment) through the normal loop, and its attempt
 // counter starts fresh instead of inheriting the livelocked row's.
 // It reports whether it rewound the row.
-func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
-	current := StageIndex(row.Stage)
-	if row.Disposition != DispositionRunning || current < 0 {
+func (p *Pipeline) repairLadderGaps(row *pipelinestate.ClipPipeline) bool {
+	current := pipelinestate.StageIndex(row.Stage)
+	if row.Disposition != pipelinestate.DispositionRunning || current < 0 {
 		return false
 	}
-	recorded := make(map[StageID]bool, len(row.Stages))
+	recorded := make(map[pipelinestate.StageID]bool, len(row.Stages))
 	for _, record := range row.Stages {
 		recorded[record.Stage] = true
 	}
 	gap := -1
 	for i := 0; i < current; i++ {
-		if !recorded[StageOrder[i]] {
+		if !recorded[pipelinestate.StageOrder[i]] {
 			gap = i
 			break
 		}
@@ -800,8 +824,8 @@ func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
 	if gap < 0 {
 		return false
 	}
-	kept := make([]StageRecord, 0, gap)
-	for _, stage := range StageOrder[:gap] {
+	kept := make([]pipelinestate.StageRecord, 0, gap)
+	for _, stage := range pipelinestate.StageOrder[:gap] {
 		for _, record := range row.Stages {
 			if record.Stage == stage {
 				kept = append(kept, record)
@@ -810,7 +834,7 @@ func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
 		}
 	}
 	row.Stages = kept
-	row.Stage, row.Status, row.Attempts, row.Progress = StageOrder[gap], StatusQueued, 0, 0
+	row.Stage, row.Status, row.Attempts, row.Progress = pipelinestate.StageOrder[gap], pipelinestate.StatusQueued, 0, 0
 	row.StageQueuedAt, row.StageStartedAt = p.now().UTC(), time.Time{}
 	row.NextRun = time.Time{}
 	return true
@@ -822,12 +846,12 @@ func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
 // took a work slot on every pass (#1392). The row is never skipped past the finish rung, since
 // readiness requires it to have completed, so at MaxAttempts it keeps retrying at the longest
 // backoff — the same fail-closed shape screening uses.
-func (p *Pipeline) onReadyFailure(ctx context.Context, row ClipPipeline, clip StoreClip, cause error) error {
+func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPipeline, clip StoreClip, cause error) error {
 	now := p.now().UTC()
 	if row.Attempts > MaxAttempts {
 		row.Attempts = MaxAttempts
 	}
-	row.Record(row.Stage, StatusFailed, "publishing failed: "+cause.Error(), row.Attempts, now)
+	row.Record(row.Stage, pipelinestate.StatusFailed, "publishing failed: "+cause.Error(), row.Attempts, now)
 	row.NextRun = now.Add(backoff(row.Attempts))
 	if err := p.persist(ctx, row, clip); err != nil {
 		return errors.Join(cause, err)
@@ -854,15 +878,15 @@ func (p *Pipeline) runStage(ctx context.Context, stage Stage, clip StoreClip) (o
 }
 
 // step advances to the next stage, returning true when the ladder is finished.
-func (p *Pipeline) step(row *ClipPipeline, at time.Time) bool {
+func (p *Pipeline) step(row *pipelinestate.ClipPipeline, at time.Time) bool {
 	row.ForceRun = false
-	idx := StageIndex(row.Stage)
-	if idx < 0 || idx+1 >= len(StageOrder) {
-		row.Status = StatusDone
+	idx := pipelinestate.StageIndex(row.Stage)
+	if idx < 0 || idx+1 >= len(pipelinestate.StageOrder) {
+		row.Status = pipelinestate.StatusDone
 		return true
 	}
-	row.Stage = StageOrder[idx+1]
-	row.Status = StatusQueued
+	row.Stage = pipelinestate.StageOrder[idx+1]
+	row.Status = pipelinestate.StatusQueued
 	row.Attempts = 0
 	row.Progress = 0
 	row.StageQueuedAt = at
@@ -885,7 +909,7 @@ func (p *Pipeline) step(row *ClipPipeline, at time.Time) bool {
 //
 // The timeout is short and fixed: this is one row write, and if the store cannot take it in five
 // seconds the next pass re-derives the same state anyway.
-func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip) error {
+func (p *Pipeline) persist(ctx context.Context, row pipelinestate.ClipPipeline, clip StoreClip) error {
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	return p.save(saveCtx, row, clip)
@@ -893,13 +917,13 @@ func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip
 
 // onFailure records a stage failure and decides whether the clip can move on. Returns true when
 // the stage has RESOLVED (exhausted its retries and been skipped) so the caller advances.
-func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
+func (p *Pipeline) onFailure(row *pipelinestate.ClipPipeline, err error) bool {
 	now := p.now().UTC()
 	// Screening persistence is fail-closed when it produces a configured effective result.
-	if row.Stage == StageScreen && row.Attempts >= MaxAttempts {
+	if row.Stage == pipelinestate.StageScreen && row.Attempts >= MaxAttempts {
 		row.Attempts = MaxAttempts
 		row.NextRun = now.Add(backoff(MaxAttempts))
-		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
+		row.Record(row.Stage, pipelinestate.StatusFailed, err.Error(), row.Attempts, now)
 		return false
 	}
 	if row.Attempts < MaxAttempts {
@@ -907,19 +931,19 @@ func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 		// assignment was correct but it was ALSO the reason the same omission on the verdict paths
 		// read as deliberate — two writers, one of which was easy to forget.
 		row.NextRun = now.Add(backoff(row.Attempts))
-		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
+		row.Record(row.Stage, pipelinestate.StatusFailed, err.Error(), row.Attempts, now)
 		return false
 	}
 	if reason, fatal := fatalStages[row.Stage]; fatal {
-		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
+		row.Record(row.Stage, pipelinestate.StatusFailed, err.Error(), row.Attempts, now)
 		row.ForceRun = false
-		row.Disposition = DispositionRejected
+		row.Disposition = pipelinestate.DispositionRejected
 		row.RejectReason = reason
 		row.RejectDetail = err.Error()
 		return false
 	}
 	// Non-fatal: the backend failed, which says nothing about the clip. Skip and carry on.
-	row.Record(row.Stage, StatusSkipped, "gave up after "+fmt.Sprint(row.Attempts)+" attempts: "+err.Error(), row.Attempts, now)
+	row.Record(row.Stage, pipelinestate.StatusSkipped, "gave up after "+fmt.Sprint(row.Attempts)+" attempts: "+err.Error(), row.Attempts, now)
 	return true
 }
 
@@ -963,10 +987,10 @@ const (
 )
 
 // stageProgress builds the ProgressFunc for one stage run, owning that run's throttle state.
-func (p *Pipeline) stageProgress(ctx context.Context, row *ClipPipeline, clip StoreClip) ProgressFunc {
+func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip StoreClip) ProgressFunc {
 	// Seeded from the write the runner just made when it set the stage RUNNING at 0.
 	t := &progressThrottle{lastWritten: 0, lastWriteAt: p.now()}
-	return func(id StageID, percent int) {
+	return func(id pipelinestate.StageID, percent int) {
 		p.onProgress(ctx, row, clip, t, id, percent)
 	}
 }
@@ -977,7 +1001,7 @@ func (p *Pipeline) stageProgress(ctx context.Context, row *ClipPipeline, clip St
 // to survive a reload is which stage a clip is at and whether it is running; the percentage is
 // decoration. Putting a synchronous SQLite write on ffmpeg's progress path — which emits about
 // once a second, per clip — to persist decoration is the wrong trade.
-func (p *Pipeline) onProgress(ctx context.Context, row *ClipPipeline, clip StoreClip, t *progressThrottle, id StageID, percent int) {
+func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip StoreClip, t *progressThrottle, id pipelinestate.StageID, percent int) {
 	if id != row.Stage {
 		return
 	}
@@ -1010,7 +1034,7 @@ func (p *Pipeline) onProgress(ctx context.Context, row *ClipPipeline, clip Store
 }
 
 // writeProgress persists the row and moves the throttle baseline, keeping the two in step.
-func (p *Pipeline) writeProgress(ctx context.Context, row *ClipPipeline, clip StoreClip, t *progressThrottle, percent int) {
+func (p *Pipeline) writeProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip StoreClip, t *progressThrottle, percent int) {
 	if err := p.save(ctx, *row, clip); err != nil {
 		// ⚠ The baseline stays put on a failed write, so the next sample retries rather than
 		// waiting another 10 points for a write that never landed.
@@ -1032,11 +1056,11 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 		return nil
 	}
 	now := p.now().UTC()
-	return p.store.UpsertClipPipeline(ctx, ClipPipeline{
-		ClipHash: hash, Stage: StageProbe, Status: StatusQueued,
-		Disposition: DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	return p.store.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 		PreparationAttempt: 1, PreparationStartedAt: now,
-		PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+		PreparationStartReason: pipelinestate.PreparationStartedByEnrollment, PreparationProgress: 0,
 		StageQueuedAt: now,
 	})
 }
@@ -1044,11 +1068,11 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 // save applies an airability gate, writes the row, tombstones a refused clip, and publishes the
 // result. A review is not terminal until its clip is held: otherwise a transient store failure
 // could leave content the operator was explicitly asked to inspect eligible for a pod forever.
-func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) error {
+func (p *Pipeline) save(ctx context.Context, row pipelinestate.ClipPipeline, clip StoreClip) error {
 	row.UpdatedAt = p.now().UTC()
 	applyPreparationProgress(&row)
-	row.unscheduleIfTerminal()
-	if row.Disposition == DispositionReview && clip.Path != "" {
+	row.UnscheduleIfTerminal()
+	if row.Disposition == pipelinestate.DispositionReview && clip.Path != "" {
 		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return fmt.Errorf("hold clip for review: %w", err)
 		}
@@ -1056,7 +1080,7 @@ func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) e
 	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
 		return err
 	}
-	if row.Disposition == DispositionRejected {
+	if row.Disposition == pipelinestate.DispositionRejected {
 		p.tombstone(ctx, clip)
 	}
 	p.publish(row, clip)
@@ -1087,7 +1111,7 @@ func (p *Pipeline) tombstone(ctx context.Context, clip StoreClip) {
 	}
 }
 
-func (p *Pipeline) publish(row ClipPipeline, clip StoreClip) {
+func (p *Pipeline) publish(row pipelinestate.ClipPipeline, clip StoreClip) {
 	if p.notify != nil {
 		p.notify(row, clip)
 	}

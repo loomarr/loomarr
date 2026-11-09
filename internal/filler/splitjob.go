@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -71,7 +72,7 @@ type SplitStore interface {
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	// UpsertClipPipeline durably enrolls a reviewed child before its media name is published.
-	UpsertClipPipeline(ctx context.Context, row ClipPipeline) error
+	UpsertClipPipeline(ctx context.Context, row pipelinestate.ClipPipeline) error
 	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
 	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
 	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
@@ -1242,11 +1243,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				return nil, err
 			}
 		}
-		if err := sp.store.UpsertClipPipeline(ctx, ClipPipeline{
-			ClipHash: c.hash, Stage: StageProbe, Status: StatusQueued,
-			Disposition: DispositionReview, EnrolledAt: now, UpdatedAt: now,
+		if err := sp.store.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 			PreparationAttempt: 1, PreparationStartedAt: now,
-			PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+			PreparationStartReason: pipelinestate.PreparationStartedByEnrollment, PreparationProgress: 0,
 			StageQueuedAt: now,
 		}); err != nil {
 			return nil, err

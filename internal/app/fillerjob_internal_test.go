@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 )
 
@@ -77,7 +78,7 @@ func TestFillerPipelineDriverDefersDetailsWhilePreparationCanAdvance(t *testing.
 	detailsRan := false
 	driver := fillerPipelineDriver{
 		prepare: func(context.Context) (filler.PipelineResult, error) {
-			return filler.PipelineResult{Advanced: 1, Overview: filler.PipelineOverview{Runnable: 4}}, nil
+			return filler.PipelineResult{Advanced: 1, Overview: pipelinestate.PipelineOverview{Runnable: 4}}, nil
 		},
 		details: func(context.Context) error {
 			detailsRan = true
@@ -109,7 +110,7 @@ func TestFillerPipelineDriverRunsDetailsWhenPreparationMakesNoProgress(t *testin
 	detailsRan := false
 	driver := fillerPipelineDriver{
 		prepare: func(context.Context) (filler.PipelineResult, error) {
-			return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 100, InProgress: 3}}, nil
+			return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 100, InProgress: 3}}, nil
 		},
 		details: func(context.Context) error { detailsRan = true; return nil },
 	}
@@ -125,7 +126,7 @@ func TestFillerPipelineDriverBoundsDetailDeferralWhilePreparationAdvances(t *tes
 	ran := 0
 	driver := &fillerPipelineDriver{
 		prepare: func(context.Context) (filler.PipelineResult, error) {
-			return filler.PipelineResult{Advanced: 1, Overview: filler.PipelineOverview{Runnable: 100}}, nil
+			return filler.PipelineResult{Advanced: 1, Overview: pipelinestate.PipelineOverview{Runnable: 100}}, nil
 		},
 		details: func(context.Context) error { ran++; return nil },
 	}

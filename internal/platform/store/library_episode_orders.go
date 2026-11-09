@@ -58,6 +58,9 @@ type LibraryEpisodeOrderStore interface {
 	SaveLibraryEpisodeOrder(ctx context.Context, answer LibraryEpisodeOrder) error
 	// LibraryOrderNeeds lists the shows with an unnumbered present episode, by sort name.
 	LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, error)
+	// LibraryOrderNeedCount is how many shows LibraryOrderNeeds lists, without listing them: what
+	// the Needs you badge counts.
+	LibraryOrderNeedCount(ctx context.Context) (int, error)
 }
 
 // ErrBadEpisodeOrder is an answer whose choice and order id disagree.
@@ -107,16 +110,28 @@ func (s *sqlStore) SaveLibraryEpisodeOrder(ctx context.Context, a LibraryEpisode
 	return nil
 }
 
-// presentEpisode is a series i's episode e with a present file.
-const presentEpisode = `e.series_id = i.id AND e.kind = 'episode'
+// presentEpisodeFile is episode e having a present file.
+const presentEpisodeFile = `e.kind = 'episode'
 	AND EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = e.id AND ` + presentFile + `)`
 
+// waitingShows is each series with an unnumbered present episode, and how many it has. It is
+// driven by the partial index on unnumbered episodes, so a library where nothing waits reads none.
+const waitingShows = `SELECT e.series_id AS id, COUNT(*) AS n FROM library_items e
+	WHERE e.unnumbered AND e.series_id <> '' AND ` + presentEpisodeFile + ` GROUP BY e.series_id`
+
+func (s *sqlStore) LibraryOrderNeedCount(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_items i
+		JOIN (`+waitingShows+`) w ON w.id = i.id WHERE i.kind = 'series' AND `+itemListed)).Scan(&n); err != nil {
+		return 0, fmt.Errorf("library order need count: %w", err)
+	}
+	return n, nil
+}
+
 func (s *sqlStore) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`,
-		(SELECT COUNT(*) FROM library_items e WHERE `+presentEpisode+` AND e.unnumbered)
-		FROM library_items i WHERE i.kind = 'series' AND `+itemListed+`
-		AND EXISTS (SELECT 1 FROM library_items e WHERE `+presentEpisode+` AND e.unnumbered)
-		ORDER BY i.sort_name, i.id`))
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, w.n
+		FROM library_items i JOIN (`+waitingShows+`) w ON w.id = i.id
+		WHERE i.kind = 'series' AND `+itemListed+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library order needs: %w", err)
 	}
@@ -137,63 +152,73 @@ func (s *sqlStore) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, e
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, fmt.Errorf("library order needs: %w", err)
 	}
+	if len(out) == 0 {
+		return out, nil
+	}
+	byID := make(map[string]*LibraryOrderNeed, len(out))
 	for i := range out {
-		last, err := s.lastEpisodes(ctx, out[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		waiting, err := s.waitingFiles(ctx, out[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		out[i].Last, out[i].Waiting = last, waiting
+		out[i].Last, out[i].Waiting = map[int]int{}, []LibraryWaitingFile{}
+		byID[out[i].ID] = &out[i]
+	}
+	if err := s.lastEpisodes(ctx, byID); err != nil {
+		return nil, err
+	}
+	if err := s.waitingFiles(ctx, byID); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
 
-// waitingFiles is the present files of a series' unnumbered episodes, in path order.
-func (s *sqlStore) waitingFiles(ctx context.Context, seriesID string) ([]LibraryWaitingFile, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT f.path, e.season, e.episode FROM library_items e
+// waitingFiles fills each waiting show's present files of its unnumbered episodes, in path order:
+// one read for every show.
+func (s *sqlStore) waitingFiles(ctx context.Context, needs map[string]*LibraryOrderNeed) error {
+	// Driven from the waiting shows, which read the partial index, then each one's episodes.
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT e.series_id, f.path, e.season, e.episode
+		FROM (`+waitingShows+`) w JOIN library_items e ON e.series_id = w.id
 		JOIN library_files f ON f.inventory_item_id = e.id AND `+presentFile+`
-		WHERE e.series_id = ? AND e.kind = 'episode' AND e.unnumbered ORDER BY f.path`), seriesID)
+		WHERE e.unnumbered AND e.kind = 'episode' ORDER BY e.series_id, f.path`))
 	if err != nil {
-		return nil, fmt.Errorf("library waiting files: %w", err)
+		return fmt.Errorf("library waiting files: %w", err)
 	}
-	out := []LibraryWaitingFile{}
 	for rows.Next() {
+		var series string
 		var f LibraryWaitingFile
-		if err := rows.Scan(&f.Path, &f.Season, &f.Episode); err != nil {
+		if err := rows.Scan(&series, &f.Path, &f.Season, &f.Episode); err != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("library waiting files: %w", err)
+			return fmt.Errorf("library waiting files: %w", err)
 		}
-		out = append(out, f)
+		if n := needs[series]; n != nil {
+			n.Waiting = append(n.Waiting, f)
+		}
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, fmt.Errorf("library waiting files: %w", err)
+		return fmt.Errorf("library waiting files: %w", err)
 	}
-	return out, nil
+	return nil
 }
 
-// lastEpisodes is the highest episode on disk in each of a series' seasons, a multi-episode file
-// counted through its last episode.
-func (s *sqlStore) lastEpisodes(ctx context.Context, seriesID string) (map[int]int, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT e.season, MAX(e.episode), MAX(e.episode_end)
-		FROM library_items i JOIN library_items e ON `+presentEpisode+`
-		WHERE i.id = ? AND e.episode > 0 GROUP BY e.season`), seriesID)
+// lastEpisodes fills, for each waiting show, the highest episode on disk in each of its seasons, a
+// multi-episode file counted through its last episode: one read for every show.
+func (s *sqlStore) lastEpisodes(ctx context.Context, needs map[string]*LibraryOrderNeed) error {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT e.series_id, e.season, MAX(e.episode), MAX(e.episode_end)
+		FROM (`+waitingShows+`) w JOIN library_items e ON e.series_id = w.id
+		WHERE e.episode > 0 AND `+presentEpisodeFile+` GROUP BY e.series_id, e.season`))
 	if err != nil {
-		return nil, fmt.Errorf("library last episodes: %w", err)
+		return fmt.Errorf("library last episodes: %w", err)
 	}
-	out := map[int]int{}
 	for rows.Next() {
+		var series string
 		var season, episode, end int
-		if err := rows.Scan(&season, &episode, &end); err != nil {
+		if err := rows.Scan(&series, &season, &episode, &end); err != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("library last episodes: %w", err)
+			return fmt.Errorf("library last episodes: %w", err)
 		}
-		out[season] = max(episode, end)
+		if n := needs[series]; n != nil {
+			n.Last[season] = max(episode, end)
+		}
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, fmt.Errorf("library last episodes: %w", err)
+		return fmt.Errorf("library last episodes: %w", err)
 	}
-	return out, nil
+	return nil
 }

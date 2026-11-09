@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -527,7 +528,7 @@ type TaxonomyChannelImpact struct {
 // FillerService so a runtime without a pipeline reports 501 and lightweight callers need not fake
 // a recovery operation they cannot perform.
 type FillerRewinder interface {
-	Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error
+	Rewind(ctx context.Context, hash string, from pipelinestate.StageID, force bool) error
 	RetryFailure(ctx context.Context, hash string) error
 }
 

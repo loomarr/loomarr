@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -231,7 +232,7 @@ func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput
 	} else if err != nil {
 		return nil, err
 	}
-	err := rewinder.Rewind(ctx, in.Body.Hash, filler.StageID(in.Body.From), in.Body.Force)
+	err := rewinder.Rewind(ctx, in.Body.Hash, pipelinestate.StageID(in.Body.From), in.Body.Force)
 	switch {
 	case errors.Is(err, filler.ErrUnknownStage):
 		return nil, httpcore.Unprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")

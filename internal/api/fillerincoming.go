@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -157,8 +158,8 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 
 // incomingPreparingFilter is the one predicate for "getting ready": Incoming's Preparing group and
 // the watch header's preparing count both read it (#2733).
-func incomingPreparingFilter() filler.PipelineFilter {
-	return filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}}
+func incomingPreparingFilter() pipelinestate.PipelineFilter {
+	return pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}}
 }
 
 func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
@@ -169,7 +170,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyW
 	filter := incomingPreparingFilter()
 	filter.BeforeUpdatedAt, filter.BeforeClipHash, filter.Limit = beforeAt, beforeID, incomingPageLimit+1
 	if ready {
-		filter.Dispositions = []filler.Disposition{filler.DispositionReady}
+		filter.Dispositions = []pipelinestate.Disposition{pipelinestate.DispositionReady}
 		filter.UpdatedAtOrAfter = at.Add(-readyWindow)
 	}
 	rows, err := s.store.ListClipPipelines(ctx, filter)
@@ -249,7 +250,7 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 	return group, nil
 }
 
-func incomingStatusDTO(clip clipstore.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
+func incomingStatusDTO(clip clipstore.Clip, row pipelinestate.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
 	var thumb *ImageDTO
 	if image != nil {
 		thumb = image(clip.Hash)
@@ -262,7 +263,7 @@ func incomingStatusDTO(clip clipstore.Clip, row filler.ClipPipeline, label strin
 	}
 }
 
-func incomingPreparationDTO(row filler.ClipPipeline, at time.Time, estimate filler.ReadyEstimate) IncomingPreparationDTO {
+func incomingPreparationDTO(row pipelinestate.ClipPipeline, at time.Time, estimate filler.ReadyEstimate) IncomingPreparationDTO {
 	out := IncomingPreparationDTO{Attempt: row.PreparationAttempt, State: "unavailable"}
 	if row.PreparationAttempt <= 0 || row.PreparationProgress < 0 {
 		return out
@@ -272,14 +273,14 @@ func incomingPreparationDTO(row filler.ClipPipeline, at time.Time, estimate fill
 	}
 	out.StartReason = string(row.PreparationStartReason)
 	percent := row.PreparationProgress
-	if row.Disposition == filler.DispositionReady {
+	if row.Disposition == pipelinestate.DispositionReady {
 		percent = 100
 		out.State = "ready"
-	} else if row.Disposition == filler.DispositionReview {
+	} else if row.Disposition == pipelinestate.DispositionReview {
 		out.State = "waiting"
-	} else if row.Status == filler.StatusFailed && row.NextRun.After(at) {
+	} else if row.Status == pipelinestate.StatusFailed && row.NextRun.After(at) {
 		out.State = "retrying"
-	} else if row.PreparationStartReason == filler.PreparationStartedByRestart && percent == 0 {
+	} else if row.PreparationStartReason == pipelinestate.PreparationStartedByRestart && percent == 0 {
 		out.State = "restarted"
 	} else {
 		out.State = "estimating"
@@ -295,15 +296,15 @@ func incomingPreparationDTO(row filler.ClipPipeline, at time.Time, estimate fill
 const maximumPreparationEvidenceRows = 200
 
 func (s *Server) incomingPreparationEstimates(ctx context.Context, at time.Time) (map[string]filler.ReadyEstimate, error) {
-	history, err := s.store.ListPreparationWork(ctx, filler.PipelineFilter{
-		Dispositions:     []filler.Disposition{filler.DispositionReady},
+	history, err := s.store.ListPreparationWork(ctx, pipelinestate.PipelineFilter{
+		Dispositions:     []pipelinestate.Disposition{pipelinestate.DispositionReady},
 		UpdatedAtOrAfter: at.Add(-filler.PreparationEvidenceWindow), Limit: maximumPreparationEvidenceRows,
 	})
 	if err != nil {
 		return nil, err
 	}
-	queue, err := s.store.ListPreparationWork(ctx, filler.PipelineFilter{
-		Dispositions: []filler.Disposition{filler.DispositionRunning}, Limit: maximumPreparationEvidenceRows + 1,
+	queue, err := s.store.ListPreparationWork(ctx, pipelinestate.PipelineFilter{
+		Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}, Limit: maximumPreparationEvidenceRows + 1,
 	})
 	if err != nil {
 		return nil, err
@@ -329,16 +330,16 @@ func (s *Server) incomingPreparationEstimates(ctx context.Context, at time.Time)
 	return result, nil
 }
 
-func pipelineScheduledBefore(left, right filler.ClipPipeline) bool {
+func pipelineScheduledBefore(left, right pipelinestate.ClipPipeline) bool {
 	if left.NextRun.Equal(right.NextRun) {
 		return left.ClipHash < right.ClipHash
 	}
 	return left.NextRun.Before(right.NextRun)
 }
 
-func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProcessingDTO {
+func incomingProcessingDTO(row pipelinestate.ClipPipeline, at time.Time) IncomingProcessingDTO {
 	detail := IncomingProcessingDTO{Attempts: row.Attempts, Stages: make([]IncomingProcessingStageDTO, 0, len(row.Stages)+1)}
-	if row.Disposition == filler.DispositionRunning && row.Status == filler.StatusFailed && row.NextRun.After(at) {
+	if row.Disposition == pipelinestate.DispositionRunning && row.Status == pipelinestate.StatusFailed && row.NextRun.After(at) {
 		detail.NextTryAt = row.NextRun.UTC().Format(time.RFC3339)
 	}
 	currentRecorded := false
@@ -354,7 +355,7 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 	// same state.
 	if !currentRecorded {
 		var progress *int
-		if row.Status == filler.StatusRunning && row.Progress >= 0 {
+		if row.Status == pipelinestate.StatusRunning && row.Progress >= 0 {
 			measured := row.Progress
 			progress = &measured
 		}
@@ -363,7 +364,7 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 	return detail
 }
 
-func incomingProcessingStage(stage filler.StageID, status filler.StageStatus, at time.Time, progress *int) IncomingProcessingStageDTO {
+func incomingProcessingStage(stage pipelinestate.StageID, status pipelinestate.StageStatus, at time.Time, progress *int) IncomingProcessingStageDTO {
 	outcome, label, note := friendlyIncomingStageOutcome(status)
 	return IncomingProcessingStageDTO{
 		Label: friendlyIncomingProcessingStage(stage), Outcome: outcome, OutcomeLabel: label,
@@ -371,57 +372,57 @@ func incomingProcessingStage(stage filler.StageID, status filler.StageStatus, at
 	}
 }
 
-func friendlyIncomingProcessingStage(stage filler.StageID) string {
+func friendlyIncomingProcessingStage(stage pipelinestate.StageID) string {
 	switch stage {
-	case filler.StageProbe:
+	case pipelinestate.StageProbe:
 		return "Inspecting the file"
-	case filler.StageTranscode:
+	case pipelinestate.StageTranscode:
 		return "Preparing playback"
-	case filler.StageScreen:
+	case pipelinestate.StageScreen:
 		return "Checking video safety"
-	case filler.StageSplit:
+	case pipelinestate.StageSplit:
 		return "Checking for separate clips"
-	case filler.StageDefects:
+	case pipelinestate.StageDefects:
 		return "Checking picture and sound quality"
-	case filler.StageLanguage:
+	case pipelinestate.StageLanguage:
 		return "Detecting the language"
-	case filler.StageTranscribe:
+	case pipelinestate.StageTranscribe:
 		return "Listening for speech"
-	case filler.StageVision:
+	case pipelinestate.StageVision:
 		return "Checking the picture"
-	case filler.StageFinish:
+	case pipelinestate.StageFinish:
 		return "Finishing"
 	default:
 		return "Getting ready"
 	}
 }
 
-func friendlyIncomingStage(stage filler.StageID) string {
+func friendlyIncomingStage(stage pipelinestate.StageID) string {
 	switch stage {
-	case filler.StageProbe, filler.StageTranscode, filler.StageScreen, filler.StageDefects:
+	case pipelinestate.StageProbe, pipelinestate.StageTranscode, pipelinestate.StageScreen, pipelinestate.StageDefects:
 		return "Checking video"
-	case filler.StageSplit:
+	case pipelinestate.StageSplit:
 		return "Checking for separate clips"
-	case filler.StageLanguage, filler.StageTranscribe, filler.StageVision:
+	case pipelinestate.StageLanguage, pipelinestate.StageTranscribe, pipelinestate.StageVision:
 		return "Adding details"
-	case filler.StageFinish:
+	case pipelinestate.StageFinish:
 		return "Finishing"
 	default:
 		return "Getting ready"
 	}
 }
 
-func friendlyIncomingStageOutcome(status filler.StageStatus) (string, string, string) {
+func friendlyIncomingStageOutcome(status pipelinestate.StageStatus) (string, string, string) {
 	switch status {
-	case filler.StatusQueued:
+	case pipelinestate.StatusQueued:
 		return "waiting", "Waiting", "Loomarr saved its place and will continue automatically."
-	case filler.StatusRunning:
+	case pipelinestate.StatusRunning:
 		return "in_progress", "In progress", "Loomarr is working on this step now."
-	case filler.StatusDone:
+	case pipelinestate.StatusDone:
 		return "finished", "Finished", "This step finished successfully."
-	case filler.StatusFailed:
+	case pipelinestate.StatusFailed:
 		return "retrying", "Trying again", "This step did not finish. Loomarr will try again automatically."
-	case filler.StatusSkipped:
+	case pipelinestate.StatusSkipped:
 		return "not_needed", "Not needed", "This step was not needed for this clip."
 	default:
 		return "recorded", "Recorded", "Loomarr recorded this step."
