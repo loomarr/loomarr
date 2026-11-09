@@ -77,6 +77,34 @@ describe("SupportBundle", () => {
     await waitFor(() => expect(downloaded).toBe(true));
   });
 
+  it("measures the time window when each request is made", async () => {
+    const sent: { to: number }[] = [];
+    server.use(
+      http.post("/v1/diagnostics/support-bundle/preview", async ({ request }) => {
+        sent.push((await request.json()) as { to: number });
+        return HttpResponse.json(preview);
+      }),
+      http.post("/v1/diagnostics/support-bundle", async ({ request }) => {
+        sent.push((await request.json()) as { to: number });
+        return new HttpResponse(new Blob(["zip"]));
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:report");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    let clock = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      clock += 60_000;
+      return clock;
+    });
+    render(<SupportBundle />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Download troubleshooting report" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Download report" }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]?.to).toBeGreaterThan(sent[0]?.to ?? Infinity);
+  });
+
   it("reviews again after the selection changes", async () => {
     server.use(http.post("/v1/diagnostics/support-bundle/preview", () => HttpResponse.json(preview)));
     render(<SupportBundle />);
