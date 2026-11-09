@@ -1,7 +1,7 @@
 // Package requester is the Requester port (design §2, §6): it asks a downstream
 // service to acquire a title. The default adapter is Seerr; a direct
 // Sonarr/Radarr adapter is the alternative (§6, §15 footnote). Writes never
-// client-retry (§6) — recovery is the reconciler's job (Phase 7).
+// client-retry (§6) — recovery is the reconciler's job.
 package requester
 
 import (

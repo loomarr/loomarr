@@ -10,9 +10,9 @@ import (
 // Each service declares its OWN scheduler job (§18.1).
 //
 // ⚠ **The cron default, the settings key and the body belong next to the code they
-// schedule.** They used to live in the composition root, which meant every job's schedule
-// was stated in a file that knows nothing about what the job does — and changing a cadence
-// meant editing `app.go` rather than the package that owns the work.
+// schedule.** Stating a schedule in the composition root would put it in a file that knows
+// nothing about what the job does, and changing a cadence would mean editing `app.go` rather
+// than the package that owns the work.
 //
 // The root still decides WHICH sets apply to this build (there is no store ⇒ no jobs at
 // all; arr XOR seerr for the queue poll). That is genuinely its decision, and it stays there.

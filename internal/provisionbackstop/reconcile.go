@@ -4,13 +4,10 @@
 // unavailable + downstream Cancel). This is why writes never client-retry (§6) —
 // recovery lives here.
 //
-// ⚠ Two corrections, both made 2026-08-10 after this doc had outlived its facts.
-// The library re-check is not a safety net for a missed inbound hook: the inbound
-// arr hook was deleted and polling is now the ONLY way acquisition state arrives,
-// so this loop is the mechanism, not the backstop for one. And retention no longer
-// rides this ticker — the janitor was removed and became internal/platform/housekeeping, a
-// recurring job (§18.1). There is no janitor.go here; there has not been for some
-// time, and a reader who went looking for one found nothing.
+// ⚠ The library re-check is not a safety net for a missed inbound hook: there is no inbound
+// arr hook and polling is the ONLY way acquisition state arrives, so this loop is the
+// mechanism, not the backstop for one. Retention does not ride this ticker either; it is
+// internal/platform/housekeeping, a recurring job (§18.1).
 package provisionbackstop
 
 import (
@@ -25,7 +22,7 @@ import (
 )
 
 // Emitter receives domain events for terminal transitions (§4 inv. 2); the
-// scheduler consumes these (Phase 10). Nil is allowed (events just get logged).
+// scheduler consumes these. Nil is allowed (events just get logged).
 type Emitter interface {
 	Emit(ctx context.Context, ev provision.DomainEvent)
 }

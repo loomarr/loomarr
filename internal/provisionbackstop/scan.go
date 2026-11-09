@@ -18,8 +18,8 @@ import (
 // don't wait on a webhook). Where the reconciler's giveUp does a per-title Lookup only for
 // deadline-due records, the scan lists what the media server recently added in ONE call and
 // confirms every in-flight title now present. Same LibraryConfirmed → available transition,
-// but continuous and not deadline-gated, so availability lands promptly without the inbound
-// webhook (which is retired once this is proven).
+// but continuous and not deadline-gated, so availability lands promptly without waiting on an
+// inbound webhook.
 type LibraryScan struct {
 	store   store.TitleStore
 	scanner library.LibraryScanner
