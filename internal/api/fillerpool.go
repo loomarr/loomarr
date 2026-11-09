@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 // Catalog-wide filler health — the Filler page's pool strip (§10 V35).
@@ -66,7 +66,7 @@ func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput
 	return &fillerPoolOutput{Body: poolDTO(report)}, nil
 }
 
-func poolDTO(report filler.PoolReport) PoolDTO {
+func poolDTO(report pod.PoolReport) PoolDTO {
 	chans := make([]PoolChannelDTO, 0, len(report.Channels))
 	for _, c := range report.Channels {
 		chans = append(chans, PoolChannelDTO{

@@ -10,7 +10,7 @@ import (
 )
 
 // LocalResolver resolves a picked place to the broadcast stations within the household's local
-// radius (#2059 decisions 2 and 7), for filler.Policy.LocalStations. A place the index does not
+// radius (#2059 decisions 2 and 7), for pod.Policy.LocalStations. A place the index does not
 // know, a place outside the asked country, or an unreadable directory resolves to no stations, so
 // local clips fail closed rather than airing in the wrong city.
 type LocalResolver struct {
@@ -22,7 +22,7 @@ type LocalResolver struct {
 	memo map[string]map[string]bool
 }
 
-// Resolve is the filler.LocalStations function: the stations near place within the radius.
+// Resolve is the pod.LocalStations function: the stations near place within the radius.
 func (l *LocalResolver) Resolve(country, place string) map[string]bool {
 	radius := l.RadiusKM()
 	key := country + "\x00" + place + "\x00" + strconv.Itoa(radius)

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 type coverageBody struct {
@@ -46,13 +46,13 @@ func getCoverage(t *testing.T, url, token string) (*http.Response, coverageBody)
 // resolve at.
 func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.coverage = filler.CoverageReport{
-		Rungs: []filler.RungCoverage{
-			{Level: filler.MatchExact, Clips: 4},
-			{Level: filler.MatchWidened, Clips: 5},
-			{Level: filler.MatchAudience, Clips: 9},
+	fp.coverage = pod.CoverageReport{
+		Rungs: []pod.RungCoverage{
+			{Level: pod.MatchExact, Clips: 4},
+			{Level: pod.MatchWidened, Clips: 5},
+			{Level: pod.MatchAudience, Clips: 9},
 		},
-		Level: filler.MatchExact,
+		Level: pod.MatchExact,
 		Total: 9,
 	}
 
@@ -101,7 +101,7 @@ func TestChannelFillerCoverage_AsksAboutTheRequestedChannel(t *testing.T) {
 // one.
 func TestChannelFillerCoverage_EmptyRungsAreAnArrayNotNull(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.coverage = filler.CoverageReport{Level: filler.MatchBumperCard}
+	fp.coverage = pod.CoverageReport{Level: pod.MatchBumperCard}
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/ch-1/filler/coverage", nil)
 	if err != nil {

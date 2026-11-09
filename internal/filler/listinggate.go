@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -57,7 +58,7 @@ const (
 //   - no language named, nor a script written, that no channel airs;
 //   - a year, and every year it gives inside one of the eras;
 //   - a nearby station's call sign, held in that year.
-func (g ListingGate) Admit(ref source.Item, eras []EraRange) (callSign, refused string) {
+func (g ListingGate) Admit(ref source.Item, eras []pod.EraRange) (callSign, refused string) {
 	title := strings.TrimSpace(ref.Title)
 	if unsafeListing(title) {
 		return "", ListingUnsafe
@@ -71,7 +72,7 @@ func (g ListingGate) Admit(ref source.Item, eras []EraRange) (callSign, refused 
 	}
 	for _, y := range years {
 		year, _ := strconv.Atoi(y)
-		if !slices.ContainsFunc(eras, func(r EraRange) bool {
+		if !slices.ContainsFunc(eras, func(r pod.EraRange) bool {
 			return (r.From == 0 || year >= r.From) && (r.To == 0 || year <= r.To)
 		}) {
 			return "", ListingOffEra

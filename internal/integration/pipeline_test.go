@@ -32,6 +32,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -46,7 +47,7 @@ import (
 
 const adminToken = "admin-integration-token"
 
-// clipCatalog adapts the store to filler.CatalogReader (mirrors main.go's
+// clipCatalog adapts the store to pod.CatalogReader (mirrors main.go's
 // clipCatalogAdapter — the pod assembler's catalog source).
 type clipCatalog struct{ st store.Store }
 
@@ -115,7 +116,7 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	engine := channels.New(st, tun, avail, nil, channels.Config{
 		Policy: schedule.PodFill, ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 	}, clock, testkit.Logger())
-	engine.WithPods(filler.NewPodAdapter(clipCatalog{st}, nil, nil, testkit.Logger()))
+	engine.WithPods(pod.NewAdapter(clipCatalog{st}, nil, nil, testkit.Logger()))
 
 	// Run the worker pool for the life of the test (real async path).
 	ctx, cancel := context.WithCancel(context.Background())

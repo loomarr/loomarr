@@ -48,6 +48,7 @@ describe("useLibraryNeeds", () => {
           need("90000011", [candidate("90000101", "Alpha", true), candidate("90000102", "Alpha II", false)]),
           need("90000012", [candidate("90000103", "Bravo", false)]),
         ],
+        orders: [],
         problems: [],
       }),
     );
@@ -66,6 +67,7 @@ describe("useLibraryNeeds", () => {
     server.use(
       getListLibraryNeedsMockHandler({
         needs: [],
+        orders: [],
         problems: [
           {
             item: { ...need("90000013", []).item, name: "Charlie", files: 2, extraCopies: 1 },
@@ -92,7 +94,7 @@ describe("useLibraryNeeds", () => {
     server.use(
       http.get("*/v1/library/needs", () => {
         lists += 1;
-        return HttpResponse.json({ needs: [need("90000011", [])], problems: [] });
+        return HttpResponse.json({ needs: [need("90000011", [])], orders: [], problems: [] });
       }),
       http.post("*/v1/library/items/:id/link", async ({ request }) => {
         linked = await request.json();

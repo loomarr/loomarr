@@ -204,10 +204,13 @@ type Library struct {
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
 	NeedStore store.LibraryNeedsStore
 	Search    Searcher
-	// CollectionStore keeps the household's collections; SetRecords reads the ready-made sets' own
-	// records (nil: none are listed), whose movies Keys places by their catalog rows.
+	// Orders keeps which order each show's episode files follow (nil: no show is asked about).
+	Orders store.LibraryEpisodeOrderStore
+	// CollectionStore keeps the household's collections; Records reads cached catalog records: the
+	// ready-made sets' own (nil: none are listed), whose movies Keys places by their catalog rows,
+	// and a show's episode orders.
 	CollectionStore store.LibraryCollectionStore
-	SetRecords      SetRecords
+	Records         RecordReader
 	Keys            CatalogKeys
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
 	Enricher *Enricher

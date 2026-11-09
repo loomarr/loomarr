@@ -1,5 +1,5 @@
 // Package filler is the commercials & filler domain (design §10): the clip
-// catalog model and pod assembly. Filler is a PARALLEL universe to provisioning
+// catalog model; pod assembly lives in filler/pod. Filler is a PARALLEL universe to provisioning
 // (§3–§7) — clips are not titles (not in TMDB, no acquisition loop). Their
 // identity is the clip's sparse content HASH (§10 V38c; see Clip.Hash) and their
 // duration comes from Loomarr's own ffprobe scan.
@@ -13,13 +13,8 @@
 // filler path" until 2026-08-10, which had not been true since sources became
 // pluggable.
 //
-// Pod assembly is pure and
-// SEEDED-DETERMINISTIC (seed = channel + window start) so tests reproduce
-// exactly and the same break rebuilds identically across reconciles (§10/§19) —
-// which is also what lets the guide promise the clips that will really air.
-// Tunarr-backed channels still get pods via flex + filler lists; internal
-// playout resolves each break itself. This package only decides *what plays in
-// the breaks*.
+// Pod assembly (filler/pod) is pure and SEEDED-DETERMINISTIC; see that package.
+// This domain only decides *what plays in the breaks*.
 package filler
 
 import (

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -68,7 +69,7 @@ type RawClip struct {
 	DurationMs      int64
 	Role            Role
 	Era             int // initial era from filename; 0 if none
-	GeographicScope GeographicScope
+	GeographicScope pod.GeographicScope
 	Country         string
 	Network         string
 	Station         string

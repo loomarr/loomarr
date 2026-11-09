@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 // PlanAcquisitionFor applies hard constraints first, then selects a diverse stable prefix,
@@ -81,7 +83,7 @@ func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandid
 }
 
 // DefaultAcquisitionIntent derives its rationale from the same pool projection the UI reads.
-func DefaultAcquisitionIntent(pool PoolReport, geography Geography) AcquisitionIntent {
+func DefaultAcquisitionIntent(pool pod.PoolReport, geography pod.Geography) AcquisitionIntent {
 	reason := "Increase the eligible filler catalog."
 	if weakest := pool.Weakest(); weakest != nil {
 		reason = fmt.Sprintf("Improve filler coverage for %s; its current match level is %s.", weakest.Name, weakest.Report.Level)
@@ -96,7 +98,7 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 	if len(intent.SourceAllowlist) > 0 && !containsFold(intent.SourceAllowlist, c.Identity.SourceID) {
 		return CandidateSourceNotAllowed, "registered source is outside the intent allow-list"
 	}
-	if intent.Geography.Country != "" && !SourceGeographicallyEligible(c.Geography, intent.Geography) {
+	if intent.Geography.Country != "" && !pod.SourceGeographicallyEligible(c.Geography, intent.Geography) {
 		return CandidateGeographyMismatch, "candidate geography does not cover the target"
 	}
 	if intent.EraStart > 0 || intent.EraEnd > 0 {
@@ -177,7 +179,7 @@ func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, use
 // report the pool strip and readiness show.
 type CoverageGaps struct {
 	// Eras are the era windows of channels whose breaks cannot fill from their own era.
-	Eras []EraRange
+	Eras []pod.EraRange
 	// Roles are break roles the catalog lacks entirely: bookends (bumpers and station IDs) when
 	// no live channel's pod can open or close on one.
 	Roles []Role
@@ -238,7 +240,7 @@ func StationGapKey(callSign string) string { return "station:" + callSign }
 // EraGapKey is the stable record of an era gap an acquisition was for (#749): "era:1990-1999",
 // "era:2005-" or "era:-1979"; "" for any era, which is never a gap. The "era:" prefix leaves room
 // for the other gap kinds a download can be for, without a schema change.
-func EraGapKey(r EraRange) string {
+func EraGapKey(r pod.EraRange) string {
 	if r.Any() {
 		return ""
 	}
@@ -263,13 +265,13 @@ func EraGapKey(r EraRange) string {
 // live channels and not one bumper or station ID in the catalog. Audience is deliberately not a gap
 // kind: no provider observes a remote item's audience before download, so steering by it would
 // be a guess.
-func CoverageGapsFrom(pool PoolReport, targets PoolTargets, thisYear int) CoverageGaps {
-	var eras []EraRange
+func CoverageGapsFrom(pool pod.PoolReport, targets pod.PoolTargets, thisYear int) CoverageGaps {
+	var eras []pod.EraRange
 	short := 0
 	for _, ch := range pool.Channels {
-		deficit := targets.For(ch.Report.EraWindows, thisYear) - ch.Report.exactClips()
+		deficit := targets.For(ch.Report.EraWindows, thisYear) - ch.Report.ExactClips()
 		short = max(short, deficit)
-		if ch.Report.Level == MatchExact && deficit <= 0 {
+		if ch.Report.Level == pod.MatchExact && deficit <= 0 {
 			continue
 		}
 		for _, r := range ch.Report.EraWindows {
@@ -278,7 +280,7 @@ func CoverageGapsFrom(pool PoolReport, targets PoolTargets, thisYear int) Covera
 			}
 		}
 	}
-	gaps := CoverageGaps{Eras: NormalizeEraWindows(eras), Short: short}
+	gaps := CoverageGaps{Eras: pod.NormalizeEraWindows(eras), Short: short}
 	if len(pool.Channels) > 0 && pool.Bookends == 0 {
 		gaps.Roles = []Role{Bumper, StationID}
 	}
@@ -286,7 +288,7 @@ func CoverageGapsFrom(pool PoolReport, targets PoolTargets, thisYear int) Covera
 }
 
 // formatEraWindows renders gap windows for a reason line: "1990-1999, 2005 onwards".
-func formatEraWindows(windows []EraRange) string {
+func formatEraWindows(windows []pod.EraRange) string {
 	parts := make([]string, 0, len(windows))
 	for _, r := range windows {
 		switch {

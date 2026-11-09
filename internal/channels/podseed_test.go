@@ -8,7 +8,7 @@ import (
 
 // THE POINT OF THE PER-BREAK SEED: consecutive breaks must not replay the same adverts. The
 // channel-only seed produced one pod for the whole channel, so every break on a channel aired
-// an identical sequence — which real television does not do, and which `filler.Window` has
+// an identical sequence — which real television does not do, and which `pod.Window` has
 // always documented against ("the seed derives from channel + window start").
 func TestPodSeedAt_DiffersPerBreak(t *testing.T) {
 	const ch = "ch_puddleford"

@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -296,14 +296,14 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			// hover detail rather than failing the request. One batch per channel row (#1420):
 			// the per-break call re-read the channel, the whole catalog and the play history for
 			// every break in the window.
-			podAt := map[int]filler.Pod{}
+			podAt := map[int]pod.Pod{}
 			if s.pods != nil {
 				var idx []int
-				var slots []filler.BreakSlot
+				var slots []pod.BreakSlot
 				for i, b := range bs {
 					if b.Kind == schedule.SlotFiller {
 						idx = append(idx, i)
-						slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
+						slots = append(slots, pod.BreakSlot{Start: b.Start, Length: b.BreakLength()})
 					}
 				}
 				if len(slots) > 0 {

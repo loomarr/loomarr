@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -252,7 +253,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// clip held and unclassified until exact role authority exists.
 			Role:            kind,
 			Era:             EraFromName(heuristicName),
-			GeographicScope: GeographicScope(tags.GeographicScope),
+			GeographicScope: pod.GeographicScope(tags.GeographicScope),
 			Country:         tags.Country, Network: tags.Network,
 			Station: tags.Station, AirDate: tags.AirDate, GeoEvidence: tags.GeoEvidence,
 			DurationMs: pr.DurationMs,
