@@ -95,7 +95,22 @@ const sidePanel: CSSProperties = {
   outline: "none",
 };
 
+// A command surface held near the top of the screen, so the results grow downward from a field
+// that stays put. The content brings its own surface; this only places it.
+const commandSurface: CSSProperties = {
+  position: "fixed",
+  top: 96,
+  left: "50%",
+  zIndex: 50,
+  boxSizing: "border-box",
+  width: "calc(100% - 2rem)",
+  maxWidth: 576,
+  transform: "translateX(-50%)",
+  outline: "none",
+};
+
 const DialogContent = ({
+  accessibilityLabel,
   children,
   finalFocus,
   layout,
@@ -105,42 +120,46 @@ const DialogContent = ({
 }: DialogContentProps) => {
   const wide = useWindowWidth() >= WIDE;
   const side = placement === "side";
+  const top = placement === "top";
   const resolvedLayout = layout ?? (side ? "sectioned" : "padded");
   const popup: CSSProperties = side
     ? sidePanel
-    : {
-        position: "fixed",
-        top: "50%",
-        left: "50%",
-        zIndex: 50,
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        boxSizing: "border-box",
-        width: wide ? "calc(100% - 2rem)" : "100%",
-        maxWidth: maxWidths[size],
-        maxHeight: "calc(100dvh - 2rem)",
-        overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
-        padding: resolvedLayout === "sectioned" ? 0 : 24,
-        transform: "translate(-50%, -50%)",
-        border: `1px solid ${semanticColors.border.decorative}`,
-        borderRadius: semanticRadius.cardCompact,
-        background: semanticColors.surface.raised,
-        color: semanticColors.content.primary,
-        boxShadow: shadow,
-        outline: "none",
-      };
+    : top
+      ? commandSurface
+      : {
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          zIndex: 50,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          boxSizing: "border-box",
+          width: wide ? "calc(100% - 2rem)" : "100%",
+          maxWidth: maxWidths[size],
+          maxHeight: "calc(100dvh - 2rem)",
+          overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
+          padding: resolvedLayout === "sectioned" ? 0 : 24,
+          transform: "translate(-50%, -50%)",
+          border: `1px solid ${semanticColors.border.decorative}`,
+          borderRadius: semanticRadius.cardCompact,
+          background: semanticColors.surface.raised,
+          color: semanticColors.content.primary,
+          boxShadow: shadow,
+          outline: "none",
+        };
   return (
     <DialogPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>
       <DialogPrimitive.Backdrop
         style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / 0.6)" }}
       />
       <DialogPrimitive.Popup
+        aria-label={accessibilityLabel}
         finalFocus={finalFocus as { readonly current: HTMLElement | null } | undefined}
         style={popup}
       >
         <LayoutContext.Provider value={resolvedLayout}>{children}</LayoutContext.Provider>
-        <CornerClose />
+        {top ? null : <CornerClose />}
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );

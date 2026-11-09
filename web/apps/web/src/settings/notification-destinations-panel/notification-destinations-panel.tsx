@@ -4,13 +4,12 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, Field, Surface, Text, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Card, CompactSelect, Field, Surface, Text, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { BellRing, X } from "lucide-react";
+import { BellRing } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAppForm } from "@/lib/app-form";
 
@@ -71,31 +70,29 @@ const FieldInput = ({
         {field.required ? " *" : ""}
       </Label>
       {field.kind === "select" ? (
-        <select
-          id={inputId}
-          className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-          value={value}
-          aria-invalid={error ? "true" : undefined}
+        <CompactSelect
           aria-describedby={error ? errorId : undefined}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {(field.options ?? []).map((option) => (
-            <option value={option.value} key={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          id={inputId}
+          invalid={Boolean(error)}
+          label={field.label}
+          onValueChange={onChange}
+          options={field.options ?? []}
+          value={value}
+        />
       ) : field.kind === "textarea" ? (
-        <textarea
-          id={inputId}
-          className="border-input min-h-28 rounded-md border bg-transparent px-3 py-2 font-mono text-sm"
-          value={value}
-          disabled={cleared}
-          autoComplete={field.sensitive ? "new-password" : undefined}
-          spellCheck={false}
-          aria-invalid={error ? "true" : undefined}
+        <Field
           aria-describedby={error ? errorId : undefined}
-          onChange={(event) => onChange(event.target.value)}
+          autoCapitalize="none"
+          autoComplete={field.sensitive ? "new-password" : undefined}
+          autoCorrect={false}
+          disabled={cleared}
+          id={inputId}
+          invalid={Boolean(error)}
+          multiline
+          numberOfLines={4}
+          onChangeText={onChange}
+          spellCheck={false}
+          value={value}
         />
       ) : (
         <Field
@@ -217,9 +214,9 @@ const ProviderForm = ({
               Enter the provider settings, choose events, and save.
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
-            <X className="size-4" aria-hidden />
-          </Button>
+          <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
+            Close provider form
+          </Action>
         </div>
 
         {error != null ? <ErrorState error={error} /> : null}
@@ -442,9 +439,9 @@ const WebPushForm = ({
               Loomarr asks this browser for permission only when you enable it below.
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close provider form">
-            <X className="size-4" aria-hidden />
-          </Button>
+          <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
+            Close provider form
+          </Action>
         </div>
         {error != null ? <ErrorState error={error} /> : null}
         <form.AppField name="label">

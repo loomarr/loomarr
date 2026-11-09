@@ -38,7 +38,7 @@ const maxIconBytes = 2 << 20
 // (images.RoleIcon.Widths() = 92, 185, 500). See channelLogoURL for why this rung and why JPEG.
 const channelLogoWidth = 500
 
-// ownerKindChannel is the image_refs owner kind for a channel icon. A Ref is what keeps the GC
+// ownerKindChannel is the image owner kind for a channel icon (channel_images). A Ref is what keeps the GC
 // from collecting the icon as an orphan while a channel still points at it (§22).
 const ownerKindChannel = "channel"
 

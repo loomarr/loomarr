@@ -77,7 +77,12 @@ const DialogClose = ({ children }: DialogActionProps) => {
   return cloneElement(children as PressableElement, { onPress: () => setOpen(false) });
 };
 
-const DialogContent = ({ children, layout = "padded", size = "default" }: DialogContentProps) => {
+const DialogContent = ({
+  accessibilityLabel,
+  children,
+  layout = "padded",
+  size = "default",
+}: DialogContentProps) => {
   const { descriptionId, open, setOpen, titleId } = useDialog();
   const reducedMotion = useReducedMotionPreference();
   return (
@@ -108,9 +113,10 @@ const DialogContent = ({ children, layout = "padded", size = "default" }: Dialog
           />
           <ModalLayer visible={open}>
             <View
+              accessibilityLabel={accessibilityLabel}
               accessibilityViewIsModal
               aria-describedby={descriptionId}
-              aria-labelledby={titleId}
+              aria-labelledby={accessibilityLabel ? undefined : titleId}
               backgroundColor="surfaceRaised"
               borderColor="borderDecorative"
               borderRadius={semanticRadius.cardCompact}

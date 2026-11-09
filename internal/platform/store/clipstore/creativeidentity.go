@@ -72,8 +72,7 @@ func (s *Store) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error {
 		{`DELETE FROM filler_clip_fingerprints WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM filler_clip_defects WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM filler_clip_pipeline WHERE clip_hash = ?`, []any{loser}},
-		{`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`, []any{"clip", loser}},
-		{`DELETE FROM clips WHERE hash = ?`, []any{loser}},
+		{`DELETE FROM clips WHERE hash = ?`, []any{loser}}, // its clip_images go with it (ON DELETE CASCADE)
 	}...)
 	for _, step := range steps {
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {

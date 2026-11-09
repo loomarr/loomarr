@@ -1,7 +1,5 @@
-import { Field, typography } from "@loomarr/design-system";
-import { Check, X } from "lucide-react";
+import { Action, Field, typography } from "@loomarr/design-system";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
@@ -117,28 +115,18 @@ const ChannelIdentityField = ({
             explicit per-field confirmation. */}
         {dirty && (
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="suggest"
-              size="icon"
-              className="size-8"
+            <Action
               disabled={!canSave}
-              aria-label={`Save ${label}`}
-              onClick={() => void save()}
+              icon="success"
+              layout="icon"
+              onPress={() => void save()}
+              variant="suggest"
             >
-              <Check className="size-4" aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              disabled={saving}
-              aria-label={`Cancel ${label} edit`}
-              onClick={reset}
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
+              {`Save ${label}`}
+            </Action>
+            <Action disabled={saving} icon="close" layout="icon" onPress={reset} variant="ghost">
+              {`Cancel ${label} edit`}
+            </Action>
           </div>
         )}
       </div>

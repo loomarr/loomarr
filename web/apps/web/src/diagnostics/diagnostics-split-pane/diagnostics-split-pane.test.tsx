@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { DiagnosticsSplitPane } from "./diagnostics-split-pane";
 
 describe("DiagnosticsSplitPane", () => {

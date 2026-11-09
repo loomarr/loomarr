@@ -1,5 +1,5 @@
-import { Tooltip } from "@loomarr/design-system";
-import { GripVertical, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Action, Tooltip } from "@loomarr/design-system";
+import { GripVertical } from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const MIN_DETAIL_WIDTH = 288;
@@ -111,17 +110,17 @@ const DiagnosticsSplitPane = ({
       {collapsed ? (
         <div className={cn(desktopFlex, "items-start justify-center pt-1")}>
           <Tooltip content="Show details">
-            <Button variant="ghost" size="icon" aria-label="Show details" onClick={() => setCollapsed(false)}>
-              <PanelRightOpen aria-hidden />
-            </Button>
+            <Action icon="paneOpen" layout="icon" onPress={() => setCollapsed(false)} variant="ghost">
+              Show details
+            </Action>
           </Tooltip>
         </div>
       ) : (
         <div className={cn(desktopFlex, "min-h-0 flex-col items-center")}>
           <Tooltip content="Hide details">
-            <Button variant="ghost" size="icon" aria-label="Hide details" onClick={() => setCollapsed(true)}>
-              <PanelRightClose aria-hidden />
-            </Button>
+            <Action icon="paneClose" layout="icon" onPress={() => setCollapsed(true)} variant="ghost">
+              Hide details
+            </Action>
           </Tooltip>
           <div className="group relative flex min-h-24 flex-1 items-center justify-center self-stretch">
             <hr

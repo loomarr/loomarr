@@ -26,6 +26,11 @@ interface DialogActionProps {
 }
 
 interface DialogContentProps {
+  /**
+   * The dialog's name when it has no `DialogTitle` to show: a search surface whose own field says
+   * what it is for (the command palette).
+   */
+  accessibilityLabel?: string;
   children: ReactNode;
   /**
    * Web only: where focus goes when the dialog closes, for a dialog opened from a row that may no
@@ -40,9 +45,11 @@ interface DialogContentProps {
   layout?: "padded" | "sectioned";
   /**
    * Web only: `side` docks the panel to the right edge at full height, for detail that sits beside
-   * the list it came from (a clip, a source, a person). Native always centres it.
+   * the list it came from (a clip, a source, a person). `top` holds a command surface near the top
+   * of the screen, 576 wide at most, with no panel or corner close of its own: the content draws
+   * its own surface, and Escape or a press outside closes it. Native always centres it.
    */
-  placement?: "center" | "side";
+  placement?: "center" | "side" | "top";
   /** Web only: where the dialog portals, for a contained renderer such as the story gallery. */
   portalContainer?: PortalContainer | null;
   /** The panel's widest: `default` 448, `form` 672, `reading` 768. */

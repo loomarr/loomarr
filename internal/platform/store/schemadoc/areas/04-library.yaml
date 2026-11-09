@@ -587,20 +587,48 @@ tables:
       loop_count: >
         How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop.
 
-  - name: image_refs
+  - name: clip_images
     about: >
-      What each image is used for. An image can serve several owners (the same poster as a title's art
-      and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
-    retention: >
-      Kept while the thing using the image keeps it; removed when that thing drops or replaces its
-      images, and goes with its image.
+      A clip's images, such as its thumbnail. One of five tables saying what each image is used
+      for, one per kind of owner, so each owner is a real reference; an image with no row in any of
+      them is cleaned up.
+    retention: Goes with its clip or its image; a clip re-keyed to new bytes keeps its rows.
     columns:
+      clip_hash: The clip (a clips hash).
+      role: What the image is for, such as thumb.
       image_hash: The image (an images hash).
-      owner_kind: >
-        What kind of thing uses it, such as channel, clip, library_item (a title's poster),
-        library_candidate (a Needs you result's poster) or filler_split_proposal.
-      owner_id: The id of the thing that uses it, in that kind's own table.
-      role: What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo.
+
+  - name: filler_split_proposal_images
+    about: The stills a proposed split shows, one per cut.
+    retention: Goes with its proposal or its image.
+    columns:
+      proposal_id: The proposal (a filler_split_proposals id).
+      role: What the image is for, such as thumb.
+      image_hash: The image (an images hash).
+
+  - name: channel_images
+    about: A channel's icon and watermark.
+    retention: Goes with its channel or its image; replaced when the icon or watermark changes.
+    columns:
+      channel_id: The channel (a channels id).
+      role: What the image is for, icon or watermark.
+      image_hash: The image (an images hash).
+
+  - name: library_item_images
+    about: A title's poster, backdrop and logo, the one record of which image each is.
+    retention: Goes with its title or its image; a kind replaces only its own role's row.
+    columns:
+      item_id: The title (a library_items id).
+      role: What the image is for, one of poster, backdrop or logo.
+      image_hash: The image (an images hash).
+
+  - name: library_candidate_images
+    about: The posters of what a search found for a title that Needs you.
+    retention: Goes with its title or its image.
+    columns:
+      item_id: The title the candidates are for (a library_items id).
+      role: What the image is for, poster.
+      image_hash: The image (an images hash).
 
   - name: image_derivatives
     about: >
