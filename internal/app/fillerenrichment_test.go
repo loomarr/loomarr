@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -19,7 +20,7 @@ type recordingTranscriptObserver struct{ clip filler.StoreClip }
 
 func (s *recordingTranscriptObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, string, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, "spoken words", nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, "spoken words", nil
 }
 
 type recordingVisionObserver struct {
@@ -29,7 +30,7 @@ type recordingVisionObserver struct {
 
 func (s *recordingVisionObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, s.observation, nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, s.observation, nil
 }
 
 func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) {
@@ -319,7 +320,7 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
 	driver := newFillerPipelineDriver(nil, coordinator, nil)
 	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
-		return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
+		return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
 	}
 	if err := driver.Run(t.Context()); err != nil {
 		t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -18,29 +19,29 @@ func (s *Server) registerProvisioning(api huma.API) {
 	if s.provision == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bootstrap", Method: http.MethodPost, Path: "/v1/setup/bootstrap",
 		Summary: "Create the first admin", Description: "First-run only: creates the owning local admin. Succeeds exactly once (409 once an admin exists). Unauthenticated by design — it is functional only while no admin exists (§11).",
 		Tags: []string{"setup"},
-	}, RolePublic), s.bootstrap)
+	}, httpcore.RolePublic), s.bootstrap)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setup-state", Method: http.MethodGet, Path: "/v1/setup/state",
 		Summary: "Whether the install has an owning admin", Description: "Unauthenticated. Reports whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13), and which sign-in options the login screen may offer. On a demo site it also returns the demo account's username and password, which are public on purpose (#2268); every other install reports demo disabled with no account.",
 		Tags: []string{"setup"},
-	}, RolePublic), s.setupState)
+	}, httpcore.RolePublic), s.setupState)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "import-users", Method: http.MethodPost, Path: "/v1/users/import",
 		Summary: "Import media-server users", Description: "Admin only. Allowlists the named media-server user ids — the only way a media-server user gains access (§11).",
 		Tags: []string{"users"},
-	}, RoleAdmin), s.importUsers)
+	}, httpcore.RoleAdmin), s.importUsers)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "import-candidates", Method: http.MethodGet, Path: "/v1/users/candidates",
 		Summary: "List importable media-server accounts", Description: "Admin only. The media-server accounts available to import, each flagged whether it is already allowlisted (§11). Read-only — listing never provisions.",
 		Tags: []string{"users"},
-	}, RoleAdmin), s.importCandidates)
+	}, httpcore.RoleAdmin), s.importCandidates)
 }
 
 // ImportCandidate is one media-server account an admin may allowlist (§11).
@@ -62,11 +63,11 @@ type importCandidatesOutput struct {
 // would require knowing raw media-server user ids (§11 read side).
 func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCandidatesOutput, error) {
 	if s.provision == nil || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Media server not connected", "Connect a media server in Settings to import its users.")
+		return nil, httpcore.NotImplemented("Media server not connected", "Connect a media server in Settings to import its users.")
 	}
 	found, err := s.provision.Candidates(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach the media server",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't reach the media server",
 			"Loomarr couldn't list users from your media server. Check its connection in Settings and try again.", err)
 	}
 	out := &importCandidatesOutput{}
@@ -131,7 +132,7 @@ func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput
 	}
 	done, err := s.provision.Bootstrapped(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't check setup state",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't check setup state",
 			"Loomarr couldn't tell whether first-run setup is complete. Try again in a moment.", err)
 	}
 	out.Body.Bootstrapped = done
@@ -158,13 +159,13 @@ type bootstrapOutput struct {
 func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapOutput, error) {
 	u, err := s.provision.Bootstrap(ctx, in.Body.Username, in.Body.Password)
 	if errors.Is(err, auth.ErrBootstrapClosed) {
-		return nil, errConflict("Already set up", "An admin account already exists, so first-run setup is closed.")
+		return nil, httpcore.Conflict("Already set up", "An admin account already exists, so first-run setup is closed.")
 	}
 	if errors.Is(err, auth.ErrWeakPassword) {
 		return nil, errPasswordTooShort()
 	}
 	if errors.Is(err, auth.ErrInvalidBootstrap) {
-		return nil, errUnprocessable("Details required", "Enter both a username and a password to create the admin account.")
+		return nil, httpcore.Unprocessable("Details required", "Enter both a username and a password to create the admin account.")
 	}
 	if err != nil {
 		return nil, err
@@ -189,16 +190,16 @@ type importUsersOutput struct {
 // importUsers allowlists media-server users (§11). Admin-only.
 func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*importUsersOutput, error) {
 	if s.provision == nil || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Media server not connected",
+		return nil, httpcore.NotImplemented("Media server not connected",
 			"Connect a media server in Settings to import its users.")
 	}
 	n, err := s.provision.Import(ctx, in.Body.IDs)
 	if errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
-		return nil, errConflict("Person already invited",
+		return nil, httpcore.Conflict("Person already invited",
 			"That Library account has a pending invitation. Revoke it before importing the account directly.")
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Import failed",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Import failed",
 			"Loomarr couldn't import the selected users. Check the media-server connection and try again.", err)
 	}
 	out := &importUsersOutput{}

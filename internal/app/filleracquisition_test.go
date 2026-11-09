@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -31,11 +32,11 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	if err := os.WriteFile(published, []byte("downloaded bytes recorded by acquisition"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	originalHash, err := filler.ClipID(published)
+	originalHash, err := asset.ClipID(published)
 	if err != nil {
 		t.Fatal(err)
 	}
-	originalDigest, originalSize, err := filler.FileSHA256(published)
+	originalDigest, originalSize, err := asset.FileSHA256(published)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	if err := os.WriteFile(published, []byte("substituted bytes that must remain quarantined"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	substitutedHash, err := filler.ClipID(published)
+	substitutedHash, err := asset.ClipID(published)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +105,11 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err := os.WriteFile(failedArrival, []byte("valid acquired bytes whose first move must fail"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	failedHash, err := filler.ClipID(failedArrival)
+	failedHash, err := asset.ClipID(failedArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
-	failedDigest, failedSize, err := filler.FileSHA256(failedArrival)
+	failedDigest, failedSize, err := asset.FileSHA256(failedArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err := os.WriteFile(failedArrival, replacementBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	replacementHash, err := filler.ClipID(failedArrival)
+	replacementHash, err := asset.ClipID(failedArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,11 +188,11 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err := os.WriteFile(validArrival, []byte("another exact acquired artifact"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	validHash, err := filler.ClipID(validArrival)
+	validHash, err := asset.ClipID(validArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validDigest, validSize, err := filler.FileSHA256(validArrival)
+	validDigest, validSize, err := asset.FileSHA256(validArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +210,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err := os.WriteFile(manualArrival, []byte("genuinely unowned operator bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manualHash, err := filler.ClipID(manualArrival)
+	manualHash, err := asset.ClipID(manualArrival)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,11 +274,11 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	if err := os.WriteFile(arrival, ownedBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(arrival)
+	clipHash, err := asset.ClipID(arrival)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(arrival)
+	digest, size, err := asset.FileSHA256(arrival)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,11 +292,11 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	if err := os.WriteFile(destination, collidingBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	collidingHash, err := filler.ClipID(destination)
+	collidingHash, err := asset.ClipID(destination)
 	if err != nil {
 		t.Fatal(err)
 	}
-	collidingDigest, _, err := filler.FileSHA256(destination)
+	collidingDigest, _, err := asset.FileSHA256(destination)
 	if err != nil {
 		t.Fatal(err)
 	}

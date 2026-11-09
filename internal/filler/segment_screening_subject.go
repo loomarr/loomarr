@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -71,7 +72,7 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 	}
 	if tags.ConditioningLineage != nil {
 		lineage := *tags.ConditioningLineage
-		if !validConditioningLineage(&lineage, lineage.ParentHash) || lineage.ParentAssetRole == "" || !isContentHash(lineage.ParentAssetSHA256) || lineage.ChildHash != manifest.SourceMaster.ClipHash {
+		if !validConditioningLineage(&lineage, lineage.ParentHash) || lineage.ParentAssetRole == "" || !split.IsContentHash(lineage.ParentAssetSHA256) || lineage.ChildHash != manifest.SourceMaster.ClipHash {
 			return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject child lineage is invalid")
 		}
 		if tags.Conditioning == nil || validateConditioningPair(*tags.Conditioning, lineage.ChildHash, catalogHash) != nil || !conditioningEvidenceMatchesLineage(*tags.Conditioning, lineage) ||
@@ -92,9 +93,9 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 
 func ValidateSegmentScreeningSubject(subject SegmentScreeningSubject) error {
 	if subject.SchemaVersion != SegmentScreeningSubjectSchemaVersion || subject.ContractVersion != SegmentScreeningSubjectContractVersion ||
-		!isContentHash(subject.CatalogHash) || !isContentHash(subject.SourceMasterHash) || !isContentHash(subject.SourceMasterSHA256) || subject.SourceMasterBytes <= 0 || subject.SourceMasterBytes > tools.ConditioningMaxSnapshotBytes ||
-		!isContentHash(subject.EvidenceHash) || !isContentHash(subject.EvidenceSHA256) || subject.EvidenceBytes <= 0 || subject.EvidenceBytes > tools.ConditioningMaxSnapshotBytes || subject.EvidenceDurationMs <= 0 ||
-		!isContentHash(subject.PlaybackSHA256) || subject.PlaybackBytes <= 0 || subject.PlaybackBytes > tools.ConditioningMaxSnapshotBytes || subject.PlaybackDurationMs <= 0 || !isContentHash(subject.MediaManifestSHA256) ||
+		!split.IsContentHash(subject.CatalogHash) || !split.IsContentHash(subject.SourceMasterHash) || !split.IsContentHash(subject.SourceMasterSHA256) || subject.SourceMasterBytes <= 0 || subject.SourceMasterBytes > tools.ConditioningMaxSnapshotBytes ||
+		!split.IsContentHash(subject.EvidenceHash) || !split.IsContentHash(subject.EvidenceSHA256) || subject.EvidenceBytes <= 0 || subject.EvidenceBytes > tools.ConditioningMaxSnapshotBytes || subject.EvidenceDurationMs <= 0 ||
+		!split.IsContentHash(subject.PlaybackSHA256) || subject.PlaybackBytes <= 0 || subject.PlaybackBytes > tools.ConditioningMaxSnapshotBytes || subject.PlaybackDurationMs <= 0 || !split.IsContentHash(subject.MediaManifestSHA256) ||
 		!validScreeningSubjectID(subject.SourceID) || !validScreeningSubjectID(subject.AcquisitionID) {
 		return fmt.Errorf("segment screening subject identity is invalid")
 	}
@@ -103,7 +104,7 @@ func ValidateSegmentScreeningSubject(subject SegmentScreeningSubject) error {
 			return fmt.Errorf("segment screening subject has unbound conditioning")
 		}
 	} else if !validConditioningLineage(subject.Lineage, subject.Lineage.ParentHash) || subject.Lineage.ParentAssetRole == "" ||
-		!isContentHash(subject.Lineage.ParentAssetSHA256) || subject.Lineage.ChildHash != subject.SourceMasterHash || !isContentHash(subject.ConditioningSHA256) {
+		!split.IsContentHash(subject.Lineage.ParentAssetSHA256) || subject.Lineage.ChildHash != subject.SourceMasterHash || !split.IsContentHash(subject.ConditioningSHA256) {
 		return fmt.Errorf("segment screening subject lineage is invalid")
 	}
 	if subject.SHA256 == "" || subject.SHA256 != SegmentScreeningSubjectSHA256(subject) {

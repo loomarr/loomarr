@@ -215,6 +215,34 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  // #2151 decision 53: episodes that wait on the show's order say so, and Choose opens Needs you.
+  it("says which episodes wait on the show's episode order, and opens Needs you", () => {
+    const onChooseOrder = vi.fn();
+    const waiting: LibraryTitleDetail = {
+      ...SERIES,
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            { id: "90000901", name: "Pilot", number: 1, ready: true },
+            { id: "90000902", name: "Harbour Lights S01E02", number: 2, ready: true, fromFile: true },
+          ],
+        },
+      ],
+    };
+    const { host, button, cleanup } = render(waiting, { onChooseOrder });
+    expect(host.textContent).toContain("We're not sure which order these episodes are in.");
+    act(() => button("Season 1").click());
+    expect(host.textContent?.match(/Name from the file/g)).toHaveLength(1);
+    act(() => button("Choose").click());
+    expect(onChooseOrder).toHaveBeenCalled();
+    cleanup();
+    // Nothing waits: no hint.
+    const plain = render(SERIES, { onChooseOrder });
+    expect(plain.host.textContent).not.toContain("We're not sure which order");
+    plain.cleanup();
+  });
+
   it("checks the files again and says so, and says when updating the details failed", async () => {
     const onUpdateDetails = vi.fn(() => Promise.reject(new Error("tmdb down")));
     const { host, props, button, cleanup } = render(MOVIE, { onUpdateDetails });

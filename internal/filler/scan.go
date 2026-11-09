@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
@@ -206,7 +207,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
 		// which is the same call the probe above makes about a file with no duration.
-		if id, relErr = ClipID(path); relErr != nil {
+		if id, relErr = asset.ClipID(path); relErr != nil {
 			skipped++
 			return nil
 		}

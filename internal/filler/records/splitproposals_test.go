@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 func TestSplitProposalProjectedStructureRoundTripRequiresPairedArtifact(t *testing.T) {
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
+	source := split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
 		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
 	}
 	decisionSource := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
@@ -39,7 +40,7 @@ func TestSplitProposalProjectedStructureRoundTripRequiresPairedArtifact(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	assessment, err := filler.ProjectConfirmedStructureDecision(source, nil, artifact)
+	assessment, err := split.ProjectConfirmedDecision(source, nil, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,12 +86,12 @@ func TestUnmarshalSplitProposalRejectsArtworkForAnotherSpan(t *testing.T) {
 }
 
 func TestMarshalSplitProposalRejectsRoleEvidenceForAnotherSpan(t *testing.T) {
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
+	source := split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
 		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
 	}
-	evidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
-		Source: source, StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial, Reason: "product offer",
+	evidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
+		Source: source, StartMs: 0, EndMs: 30_000, Role: split.RoleCommercial, Reason: "product offer",
 		Frames: [][]byte{[]byte("frame")}, PromptVersion: "prompt-v1", Prompt: "prompt", Response: `{"role":"commercial"}`,
 		RequestedProvider: "ollama", ResolvedProvider: "ollama", RequestedModel: "vision", ResolvedModel: "vision",
 		Modalities: []string{"image", "text"}, Attempts: 1, AssessedAt: time.Now(),
@@ -100,7 +101,7 @@ func TestMarshalSplitProposalRejectsRoleEvidenceForAnotherSpan(t *testing.T) {
 	}
 	proposal := filler.SplitProposal{
 		ID: "proposal", ClipHash: source.ClipHash, Source: source,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_001, RoleEvidence: &evidence}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 30_001, RoleEvidence: &evidence}},
 	}
 	if _, err := marshalSplitProposal(proposal); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("span-binding error = %v", err)
@@ -108,8 +109,8 @@ func TestMarshalSplitProposalRejectsRoleEvidenceForAnotherSpan(t *testing.T) {
 }
 
 func TestMarshalSplitProposalRejectsStructureDecisionForAnotherSource(t *testing.T) {
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
+	source := split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,
 		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: 60_000,
 	}
 	decisionSource := structure.Source{SHA256: strings.Repeat("c", 64), Bytes: source.Bytes, DurationMS: source.DurationMs}

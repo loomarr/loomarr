@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // capture returns a logger writing to a buffer, and the buffer.
@@ -123,9 +125,9 @@ func TestGround_ReportsAProviderRefusal(t *testing.T) {
 // segment sorting first spoke for 36 untagged ones — and sent the operator to a threshold that
 // was never consulted.
 func TestVerdict_ReportsTheMajorityReasonNotTheFirst(t *testing.T) {
-	hold := []SplitSegment{{HoldReason: string(RejectBoundaryUncertain)}}
+	hold := []split.Segment{{HoldReason: string(RejectBoundaryUncertain)}}
 	for range 36 {
-		hold = append(hold, SplitSegment{HoldReason: string(RejectUntagged)})
+		hold = append(hold, split.Segment{HoldReason: string(RejectUntagged)})
 	}
 	part := SplitPartition{Hold: hold}
 
@@ -149,9 +151,9 @@ func TestVerdict_ReportsTheMajorityReasonNotTheFirst(t *testing.T) {
 // When every held segment agrees there is no share to state — "37 cuts: …" reads better than
 // "37 of 37".
 func TestHoldNote_OmitsTheShareWhenUnanimous(t *testing.T) {
-	var hold []SplitSegment
+	var hold []split.Segment
 	for range 3 {
-		hold = append(hold, SplitSegment{HoldReason: string(RejectUntagged)})
+		hold = append(hold, split.Segment{HoldReason: string(RejectUntagged)})
 	}
 	if note := holdNote(SplitPartition{Hold: hold}); note != "3 cuts: "+string(RejectUntagged) {
 		t.Errorf("note = %q", note)

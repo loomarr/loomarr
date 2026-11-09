@@ -7,5 +7,6 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderNeed,
   LibraryProblem,
 } from "./library-needs.type";

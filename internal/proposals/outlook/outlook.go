@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -34,7 +34,7 @@ type Config struct {
 	Episodes  channels.EpisodeResolver
 	Planner   Planner
 	Preview   Preview
-	Additions suggest.ApprovalAdditionResolver
+	Additions accept.ApprovalAdditionResolver
 	Holidays  holidayvocab.Source
 	Now       func() time.Time
 }
@@ -80,17 +80,17 @@ type Assessment struct {
 }
 
 // Assess shares preparation with approval, but has no store-writing capability.
-func (s *Service) Assess(ctx context.Context, row store.Proposal, edit *suggest.ApprovalEdit) (Assessment, error) {
+func (s *Service) Assess(ctx context.Context, row store.Proposal, edit *accept.ApprovalEdit) (Assessment, error) {
 	if s == nil || s.config.Planner == nil || s.config.Preview == nil {
 		return Assessment{}, errors.New("proposal outlook is not configured")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	resolvedEdit, err := suggest.ResolveApprovalEdit(ctx, edit, s.config.Additions)
+	resolvedEdit, err := accept.ResolveApprovalEdit(ctx, edit, s.config.Additions)
 	if err != nil {
 		return Assessment{}, err
 	}
-	prepared, err := suggest.PrepareApproval(row, resolvedEdit, s.config.Holidays.Current())
+	prepared, err := accept.PrepareApproval(row, resolvedEdit, s.config.Holidays.Current())
 	if err != nil {
 		return Assessment{}, err
 	}

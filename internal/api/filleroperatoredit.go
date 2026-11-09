@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -25,7 +26,7 @@ func (s *Server) groundOperatorTags(ctx context.Context, raw []string) ([]string
 	forest := taxonomy.New(taxa)
 	leaves, unknown, ok := forest.Ground(raw)
 	if !ok {
-		return nil, nil, errUnprocessable("Unknown tag",
+		return nil, nil, httpcore.Unprocessable("Unknown tag",
 			fmt.Sprintf("The tag %q is not in the classification vocabulary. Add it under Filler → Advanced → Classification vocabulary first, or choose an existing tag.", unknown))
 	}
 	return leaves, forest, nil
@@ -38,12 +39,12 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 	scope := pod.GeographicScope(g.Scope)
 	geo := pod.Geography{Country: g.Country}.Normalize()
 	if err := geo.Validate(); err != nil {
-		return enrichment.Geography{}, errUnprocessable("Invalid geography", err.Error())
+		return enrichment.Geography{}, httpcore.Unprocessable("Invalid geography", err.Error())
 	}
 	airDate := strings.TrimSpace(g.AirDate)
 	if airDate != "" {
 		if _, err := time.Parse(time.DateOnly, airDate); err != nil {
-			return enrichment.Geography{}, errUnprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
+			return enrichment.Geography{}, httpcore.Unprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
 		}
 	}
 	station := ""
@@ -54,10 +55,10 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 		}
 		found, ok := dir.Resolve(typed, airDate)
 		if !ok {
-			return enrichment.Geography{}, errUnprocessable("Unknown station", "That call sign doesn't match exactly one TV station on that air date. Check the call sign and date.")
+			return enrichment.Geography{}, httpcore.Unprocessable("Unknown station", "That call sign doesn't match exactly one TV station on that air date. Check the call sign and date.")
 		}
 		if geo.Country != "" && geo.Country != found.Country {
-			return enrichment.Geography{}, errUnprocessable("Invalid geography", "That station is in "+found.Country+", not "+geo.Country+".")
+			return enrichment.Geography{}, httpcore.Unprocessable("Invalid geography", "That station is in "+found.Country+", not "+geo.Country+".")
 		}
 		station, geo.Country = found.ID, found.Country
 	}
@@ -66,14 +67,14 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 		geo = pod.Geography{}
 	case pod.GeographicNational:
 		if geo.Country == "" {
-			return enrichment.Geography{}, errUnprocessable("Invalid geography", "National clips require a country.")
+			return enrichment.Geography{}, httpcore.Unprocessable("Invalid geography", "National clips require a country.")
 		}
 	case pod.GeographicLocal:
 		if station == "" {
-			return enrichment.Geography{}, errUnprocessable("Invalid geography", "Local clips require the broadcast station they belong to.")
+			return enrichment.Geography{}, httpcore.Unprocessable("Invalid geography", "Local clips require the broadcast station they belong to.")
 		}
 	default:
-		return enrichment.Geography{}, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
+		return enrichment.Geography{}, httpcore.Unprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
 	}
 	return enrichment.Geography{
 		Scope: string(scope), Country: geo.Country, Network: strings.TrimSpace(g.Network), Station: station, AirDate: airDate,

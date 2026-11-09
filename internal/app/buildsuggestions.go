@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -61,7 +62,7 @@ func buildSuggestions(
 	libraryClient *library.Client,
 	tmdbClient *tmdb.Client,
 	channelService api.ChannelService,
-	approver *suggest.Approver,
+	approver *accept.Approver,
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
 	holidays holidayvocab.Source,
@@ -127,7 +128,7 @@ func buildSuggestions(
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
 		WithQualityRecorder(st)
-	service = service.WithAutoApprove(suggest.NewAutoApprover(
+	service = service.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))

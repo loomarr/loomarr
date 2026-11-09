@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -98,44 +101,53 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("effective feedback changed:\nbefore %+v\nafter  %+v", before, after)
 	}
 
-	// Notification recipients: a requester of a title or channel that is gone, or who is gone,
-	// goes once the grace has passed; one whose title isn't written yet stays.
+	// Requesters: what was asked for and who asked are foreign keys (#2793), so no sweep is
+	// needed. A request for a title that isn't there is refused, and a person's requests go with them.
 	sqlSt, ok := st.(*sqlStore)
 	if !ok {
 		return
 	}
-	if err := st.UpsertUser(ctx, User{ID: "u-1", Name: "Ada", Role: RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
-		t.Fatal(err)
+	for _, id := range []string{"u-1", "u-2"} {
+		if err := st.UpsertUser(ctx, User{ID: id, Name: id, Role: RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := st.UpsertTitle(ctx, sampleRecord(provision.Key("movie:tmdb:90000105"), provision.Requested, time.Time{})); err != nil {
 		t.Fatal(err)
 	}
+	request := func(kind notifications.ReferenceKind, id, person string) error {
+		return identitystore.InsertNotificationReferenceRecipient(ctx, sqlSt.db, sqlSt.ph, kind, id, person, old.Unix())
+	}
 	for _, r := range []struct {
-		kind, id, person string
-		at               time.Time
+		kind   notifications.ReferenceKind
+		id     string
+		person string
 	}{
-		{"title", "movie:tmdb:90000105", "u-1", old},    // kept: the title exists
-		{"channel", "ch-1", "u-1", old},                 // kept: the channel exists
-		{"title", "movie:tmdb:90000106", "u-1", recent}, // kept: inside the grace
-		{"title", "movie:tmdb:90000106", "u-2", old},    // gone: no such title
-		{"channel", "ch-gone", "u-1", old},              // gone: no such channel
-		{"channel", "ch-1", "u-gone", old},              // gone: no such person
+		{notifications.ReferenceTitle, "movie:tmdb:90000105", "u-1"},
+		{notifications.ReferenceTitle, "movie:tmdb:90000105", "u-2"},
+		{notifications.ReferenceChannel, "ch-1", "u-2"},
 	} {
-		if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`INSERT INTO notification_reference_recipients
-			(reference_kind, reference_id, person_id, created_at) VALUES (?, ?, ?, ?)`),
-			r.kind, r.id, r.person, r.at.Unix()); err != nil {
+		if err := request(r.kind, r.id, r.person); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if n, err := st.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-30*24*time.Hour)); err != nil || n != 3 {
-		t.Fatalf("purge orphan recipients = %d, %v; want 3", n, err)
+	if err := request(notifications.ReferenceTitle, "movie:tmdb:90000106", "u-1"); err == nil {
+		t.Error("a request for a title that isn't written was recorded")
 	}
-	var left int
-	if err := sqlSt.db.QueryRowContext(ctx, `SELECT count(*) FROM notification_reference_recipients`).Scan(&left); err != nil {
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`DELETE FROM users WHERE id = ?`), "u-2"); err != nil {
 		t.Fatal(err)
 	}
-	if left != 3 {
-		t.Errorf("%d recipients left, want 3", left)
+	for _, c := range []struct {
+		kind notifications.ReferenceKind
+		id   string
+		want []string
+	}{
+		{notifications.ReferenceTitle, "movie:tmdb:90000105", []string{"u-1"}},
+		{notifications.ReferenceChannel, "ch-1", []string{}},
+	} {
+		if got, err := st.ListNotificationReferenceRecipients(ctx, c.kind, c.id); err != nil || !slices.Equal(got, c.want) {
+			t.Errorf("%s requesters after u-2 went = %v, %v; want %v", c.kind, got, err, c.want)
+		}
 	}
 	if _, err := st.GetDevicePairing(ctx, "expired", now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired pairing lookup = %v, want ErrNotFound", err)

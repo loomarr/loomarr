@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -20,35 +21,35 @@ func (s *Server) registerInvitations(api huma.API) {
 	if s.invitations == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-invitation", Method: http.MethodPost, Path: "/v1/invitations",
 		Summary: "Invite a person (admin)", Tags: []string{"invitations"},
 		DefaultStatus: http.StatusCreated,
-	}, RoleAdmin), s.createInvitation)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.createInvitation)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-invitations", Method: http.MethodGet, Path: "/v1/invitations",
 		Summary: "List person invitations (admin)", Tags: []string{"invitations"},
-	}, RoleAdmin), s.listInvitations)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.listInvitations)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-invitation", Method: http.MethodGet, Path: "/v1/invitations/{id}",
-		Summary: "Inspect a person invitation (admin)", Description: operatorAPI, Tags: []string{"invitations"},
-	}, RoleAdmin), s.getInvitation)
-	huma.Register(api, withRole(huma.Operation{
+		Summary: "Inspect a person invitation (admin)", Description: httpcore.OperatorAPI, Tags: []string{"invitations"},
+	}, httpcore.RoleAdmin), s.getInvitation)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "issue-invitation-grant", Method: http.MethodPost, Path: "/v1/invitations/{id}/grant",
 		Summary: "Regenerate a copied or QR invitation link (admin)", Tags: []string{"invitations"},
-	}, RoleAdmin), s.issueInvitationGrant)
+	}, httpcore.RoleAdmin), s.issueInvitationGrant)
 	if s.invitationDelivery != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "send-invitation-email", Method: http.MethodPost, Path: "/v1/invitations/{id}/email",
 			Summary: "Send or resend an invitation email (admin)", Tags: []string{"invitations"},
 			DefaultStatus: http.StatusAccepted,
-		}, RoleAdmin), s.sendInvitationEmail)
+		}, httpcore.RoleAdmin), s.sendInvitationEmail)
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revoke-invitation", Method: http.MethodDelete, Path: "/v1/invitations/{id}",
 		Summary: "Revoke a person invitation (admin)", Tags: []string{"invitations"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.revokeInvitation)
+	}, httpcore.RoleAdmin), s.revokeInvitation)
 }
 
 type invitationBody struct {
@@ -132,7 +133,7 @@ type getInvitationOutput struct{ Body invitationBody }
 func (s *Server) getInvitation(ctx context.Context, in *invitationIDInput) (*getInvitationOutput, error) {
 	value, err := s.invitations.Get(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Invitation not found", "That invitation doesn't exist or is no longer retained.")
+		return nil, httpcore.NotFound("Invitation not found", "That invitation doesn't exist or is no longer retained.")
 	}
 	if err != nil {
 		return nil, err
@@ -160,7 +161,7 @@ type issueInvitationGrantOutput struct {
 func (s *Server) issueInvitationGrant(ctx context.Context, in *issueInvitationGrantInput) (*issueInvitationGrantOutput, error) {
 	base, err := recipientOrigin(s.accessPublicURL)
 	if err != nil {
-		return nil, errUnprocessable("Recipient address required",
+		return nil, httpcore.Unprocessable("Recipient address required",
 			"Set the recipient-reachable address in Settings → General before creating a link.")
 	}
 	issued, err := s.invitations.Regenerate(ctx, in.ID, access.Conveyance(in.Body.Conveyance))
@@ -187,7 +188,7 @@ func (s *Server) sendInvitationEmail(
 	in *sendInvitationEmailInput,
 ) (*sendInvitationEmailOutput, error) {
 	if s.invitationDelivery == nil {
-		return nil, errNotImplemented("Invitation email unavailable", "Email delivery is not running in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Invitation email unavailable", "Email delivery is not running in this Loomarr process.")
 	}
 	summary, err := s.invitationDelivery.SendEmail(ctx, in.ID, in.Body.RequestID)
 	if err != nil {
@@ -241,13 +242,13 @@ func invitationDeliveryResponse(summary notifications.DeliverySummary) invitatio
 func invitationMutationError(err error) error {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return errNotFound("Invitation not found", "That invitation doesn't exist or can no longer be changed.")
+		return httpcore.NotFound("Invitation not found", "That invitation doesn't exist or can no longer be changed.")
 	case errors.Is(err, identitystore.ErrInvitationIdentityConflict):
-		return errConflict("Person already reserved", "That person already has an account or a pending invitation.")
+		return httpcore.Conflict("Person already reserved", "That person already has an account or a pending invitation.")
 	case errors.Is(err, identitystore.ErrContactAddressConflict):
-		return errConflict("Email already in use", "That contact address is already attached to another person or invitation.")
+		return httpcore.Conflict("Email already in use", "That contact address is already attached to another person or invitation.")
 	default:
-		return errUnprocessable("Invitation couldn't be saved", "Check the selected person and invitation details, then try again.")
+		return httpcore.Unprocessable("Invitation couldn't be saved", "Check the selected person and invitation details, then try again.")
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -220,9 +222,9 @@ func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) Se
 	manifest.Playback.InputSHA256 = manifest.SourceMaster.SHA256
 	lineage := filler.ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: "7777777777777777777777777777777777777777777777777777777777777777",
-		ParentAssetRole: string(filler.SplitSourceEvidence), ParentAssetSHA256: "8888888888888888888888888888888888888888888888888888888888888888",
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: "8888888888888888888888888888888888888888888888888888888888888888",
 		StructureDecisionSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		StructureRole:           filler.SegmentRoleCommercial,
+		StructureRole:           split.RoleCommercial,
 		IntendedStartMs:         1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)
@@ -256,11 +258,11 @@ func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, ident
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sha256, bytes, err := filler.FileSHA256(path)
+	sha256, bytes, err := asset.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(path)
+	clipHash, err := asset.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}

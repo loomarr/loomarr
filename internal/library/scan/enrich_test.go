@@ -407,6 +407,21 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 				t.Fatalf("episode = %q S%dE%d, want %q S1E2 (fetched %v)", facts.Name, facts.SeasonNumber, facts.EpisodeNumber,
 					tc.want, catalog.fetched)
 			}
+			// The show's page says which episodes wait on the answer: all of them, until there is one.
+			shows, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{Kind: "series"})
+			if err != nil || len(shows.Items) != 1 {
+				t.Fatalf("shows = %+v, %v", shows, err)
+			}
+			lib := &Library{ItemStore: h.st, Inventory: h.inv}
+			detail, err := lib.Item(ctx, shows.Items[0].ID)
+			if err != nil || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 3 {
+				t.Fatalf("detail = %+v, %v", detail.Seasons, err)
+			}
+			for _, ep := range detail.Seasons[0].Episodes {
+				if ep.FromFile != (tc.answer == nil) {
+					t.Errorf("episode %d from its file = %v, want %v", ep.Number, ep.FromFile, tc.answer == nil)
+				}
+			}
 			needs, err := h.st.LibraryOrderNeeds(ctx)
 			if err != nil {
 				t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
@@ -52,20 +53,25 @@ func GetUserIn(ctx context.Context, q storedb.Querier, rebind storedb.Placeholde
 		 FROM users WHERE id = ?`), id))
 }
 
-// InsertNotificationReferenceRecipient records that personID asked for the thing referenceKind/
+// InsertNotificationReferenceRecipient records that personID asked for the title or channel
 // referenceID names, so a later notification about it reaches them. It runs on q (a caller's
-// transaction) and is idempotent per (kind, id, person).
+// transaction, which has already written the title or channel: the reference is a foreign key)
+// and is idempotent per (kind, id, person). A person who has since been deleted is not recorded:
+// news could never reach them, and their proposal can still be approved.
 func InsertNotificationReferenceRecipient(
 	ctx context.Context,
 	q storedb.Querier,
 	rebind storedb.Placeholder,
-	referenceKind, referenceID, personID string,
+	kind notifications.ReferenceKind, referenceID, personID string,
 	createdAt int64,
 ) error {
-	_, err := q.ExecContext(ctx, rebind(`INSERT INTO notification_reference_recipients
-		(reference_kind, reference_id, person_id, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (reference_kind, reference_id, person_id) DO NOTHING`),
-		referenceKind, referenceID, personID, createdAt)
+	t, err := requesterTable(kind)
+	if err != nil {
+		return err
+	}
+	_, err = q.ExecContext(ctx, rebind(`INSERT INTO `+t.table+` (`+t.column+`, person_id, created_at)
+		SELECT ?, u.id, ? FROM users u WHERE u.id = ?
+		ON CONFLICT (`+t.column+`, person_id) DO NOTHING`),
+		referenceID, createdAt, personID)
 	return err
 }

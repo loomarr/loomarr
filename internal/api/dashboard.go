@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -51,14 +52,14 @@ type playoutTelemetryOutput struct {
 
 // registerDashboard mounts the dashboard's data routes (§12).
 func (s *Server) registerDashboard(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-playout-telemetry", Method: http.MethodGet, Path: "/v1/playout/sessions",
 		Summary: "Live internal-playout encoder telemetry (admin)",
 		Description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, " +
 			"realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the " +
 			"same snapshot for liveness; this endpoint is the source of truth on reconnect.",
 		Tags: []string{"dashboard"},
-	}, RoleAdmin), s.getPlayoutTelemetry)
+	}, httpcore.RoleAdmin), s.getPlayoutTelemetry)
 }
 
 // getPlayoutTelemetry snapshots the live encoders.

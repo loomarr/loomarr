@@ -19,10 +19,12 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -37,7 +39,7 @@ type fakeFiller struct {
 	fetchedSourceIDs []string
 	rewinds          []struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}
 	retries  []string
@@ -158,10 +160,10 @@ func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (s
 	}, nil
 }
 
-func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {
+func (f *fakeFiller) Rewind(_ context.Context, hash string, from pipelinestate.StageID, force bool) error {
 	f.rewinds = append(f.rewinds, struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}{hash: hash, from: from, force: force})
 	return nil
@@ -302,7 +304,7 @@ func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	return "split-job-1", nil
 }
 
-func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []filler.SplitSegment) error {
+func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []split.Segment) error {
 	if f.confirmNotFound {
 		return store.ErrNotFound
 	}
@@ -764,7 +766,7 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	if admin.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin rewind → %d, want 204", admin.StatusCode)
 	}
-	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageVision || ff.rewinds[0].force {
+	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != pipelinestate.StageVision || ff.rewinds[0].force {
 		t.Errorf("rewinds = %+v, want stuck from vision without force", ff.rewinds)
 	}
 
@@ -1386,7 +1388,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	srv, st, _ := newFillerServerWithImages(t, imageService)
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
-		Segments: []filler.SplitSegment{
+		Segments: []split.Segment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
@@ -1422,7 +1424,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
-		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+		Detection: &split.DetectionProgress{ScannedThroughMs: 600_000},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1449,7 +1451,7 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1489,7 +1491,7 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

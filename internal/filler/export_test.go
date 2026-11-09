@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -42,8 +44,8 @@ func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate
 
 // SummarizePipelines is the in-memory adapter for tests. Production SQL groups equivalent facts
 // before calling Add, but both paths cross Lifecycle for the actual decision.
-func SummarizePipelines(rows []ClipPipeline, at time.Time) PipelineOverview {
-	var out PipelineOverview
+func SummarizePipelines(rows []pipelinestate.ClipPipeline, at time.Time) pipelinestate.PipelineOverview {
+	var out pipelinestate.PipelineOverview
 	for _, row := range rows {
 		out.AddLifecycle(row.Lifecycle(at), 1)
 	}
@@ -94,7 +96,7 @@ func SidecarFetchedMarkFor(sourceID string) map[string]any {
 	return SidecarFetchedMarkForAcquisition(sourceID, "")
 }
 
-func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSegment) string {
+func structureDecisionSHA256ForInterval(proposal SplitProposal, segment split.Segment) string {
 	authority, ok := structureDecisionAuthorityForInterval(proposal, segment)
 	if !ok {
 		return ""
@@ -103,12 +105,12 @@ func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSeg
 }
 
 // ground is groundFromSource for the clip's own file rather than a proposal's evidence derivative.
-func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) groundPass {
+func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []split.Segment) groundPass {
 	file := ""
 	if s.vision != nil {
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
 	}
-	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
+	return s.groundAt(ctx, c, file, split.SourceAsset{}, segs)
 }
 
 // AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an

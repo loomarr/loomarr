@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -34,9 +35,9 @@ const clipPipelineSelect = `SELECT clip_hash, acquisition_id, stage, status, pro
 // ⚠ A corrupt ladder is REPORTED, never silently emptied. An empty ladder renders as "this clip
 // has done nothing", which is a specific and false claim about a clip that may have been through
 // every stage — the same call `ListSplitProposals` makes about corrupt segments.
-func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
+func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 	var (
-		p                      filler.ClipPipeline
+		p                      pipelinestate.ClipPipeline
 		stage                  string
 		status                 string
 		dispo                  string
@@ -54,22 +55,22 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun,
 		&p.PreparationAttempt, &preparationStartedAt, &preparationStartReason, &p.PreparationProgress,
 		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt); err != nil {
-		return filler.ClipPipeline{}, err
+		return pipelinestate.ClipPipeline{}, err
 	}
-	p.Stage = filler.StageID(stage)
-	p.Status = filler.StageStatus(status)
-	p.Disposition = filler.Disposition(dispo)
-	p.RejectReason = filler.RejectReason(reason)
+	p.Stage = pipelinestate.StageID(stage)
+	p.Status = pipelinestate.StageStatus(status)
+	p.Disposition = pipelinestate.Disposition(dispo)
+	p.RejectReason = pipelinestate.RejectReason(reason)
 	p.NextRun = fromEpoch(nextRun)
 	p.PreparationStartedAt = fromEpoch(preparationStartedAt)
-	p.PreparationStartReason = filler.PreparationStartReason(preparationStartReason)
+	p.PreparationStartReason = pipelinestate.PreparationStartReason(preparationStartReason)
 	p.StageQueuedAt = fromEpoch(stageQueuedAt)
 	p.StageStartedAt = fromEpoch(stageStartedAt)
 	p.EnrolledAt = fromEpoch(enrolledAt)
 	p.UpdatedAt = fromEpoch(updatedAt)
 	if raw != "" {
 		if err := json.Unmarshal([]byte(raw), &p.Stages); err != nil {
-			return filler.ClipPipeline{}, fmt.Errorf("pipeline ladder for %s is corrupt: %w", p.ClipHash, err)
+			return pipelinestate.ClipPipeline{}, fmt.Errorf("pipeline ladder for %s is corrupt: %w", p.ClipHash, err)
 		}
 	}
 	return p, nil
@@ -81,7 +82,7 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 // `UpsertClip` there is no omission list to maintain here: the row is authored by exactly one
 // component (`filler.Pipeline`), so every column rides the update and none of them can be blanked
 // by a caller that did not know about them.
-func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error {
+func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error {
 	if err := s.writeClipPipeline(ctx, s.db, p); err != nil {
 		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)
 	}
@@ -92,7 +93,7 @@ type pipelineExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p filler.ClipPipeline) error {
+func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p pipelinestate.ClipPipeline) error {
 	raw, err := json.Marshal(p.Stages)
 	if err != nil {
 		return fmt.Errorf("marshal pipeline ladder: %w", err)
@@ -133,7 +134,7 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 // advancePipelineTx moves the clip's pipeline row from one disposition to the next, leaving its
 // status and schedule alone, and reports whether it moved. Split confirmation completes the reel's
 // row and starts its children's.
-func (s *sqlStore) advancePipelineTx(ctx context.Context, tx store.Tx, hash string, from, to filler.Disposition, at time.Time) (bool, error) {
+func (s *sqlStore) advancePipelineTx(ctx context.Context, tx store.Tx, hash string, from, to pipelinestate.Disposition, at time.Time) (bool, error) {
 	return affectedOne(tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
 		WHERE clip_hash = ? AND disposition = ?`),
 		string(to), epoch(at), hash, string(from)))
@@ -154,7 +155,7 @@ func affectedOne(result sql.Result, err error) (bool, error) {
 // RetryClipPipeline commits the cross-table recovery boundary. A terminal execution failure has
 // been tombstoned; it must become present and queued together, and it remains held until the
 // terminal ready commit admits it. If invalidation failed, the caller never reaches this method.
-func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipPipeline, restore bool) error {
+func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p pipelinestate.ClipPipeline, restore bool) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin clip pipeline retry: %w", err)
@@ -204,13 +205,13 @@ func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipP
 }
 
 // GetClipPipeline reads one row. Absence is not an error — an un-enrolled clip is ordinary.
-func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error) {
+func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
 	p, err := scanClipPipeline(s.db.QueryRowContext(ctx, s.ph(clipPipelineSelect+` WHERE clip_hash = ?`), hash))
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.ClipPipeline{}, false, nil
+		return pipelinestate.ClipPipeline{}, false, nil
 	}
 	if err != nil {
-		return filler.ClipPipeline{}, false, fmt.Errorf("get clip pipeline %s: %w", hash, err)
+		return pipelinestate.ClipPipeline{}, false, fmt.Errorf("get clip pipeline %s: %w", hash, err)
 	}
 	return p, true, nil
 }
@@ -228,7 +229,7 @@ func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.Cli
 func (s *sqlStore) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ?`),
-		string(filler.DispositionComplete), epoch(at), hash)
+		string(pipelinestate.DispositionComplete), epoch(at), hash)
 	if err != nil {
 		return fmt.Errorf("mark pipeline complete %s: %w", hash, err)
 	}
@@ -241,9 +242,9 @@ func (s *sqlStore) MarkPipelineComplete(ctx context.Context, hash string, at tim
 // the engine may return the same row on consecutive passes while another never surfaces, so one
 // clip would be worked repeatedly and another would starve. `ListFillerSources` records the same
 // hazard for a list an operator merely reads; here it decides what work happens.
-func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error) {
+func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error) {
 	q := clipPipelineSelect + ` WHERE disposition = ? AND next_run <= ? ORDER BY next_run, clip_hash`
-	args := []any{string(filler.DispositionRunning), epoch(now)}
+	args := []any{string(pipelinestate.DispositionRunning), epoch(now)}
 	if limit > 0 {
 		q += ` LIMIT ?`
 		args = append(args, limit)
@@ -259,27 +260,27 @@ func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit in
 // PipelineOverview groups storage facts, then lets the domain classify each group. SQL knows how
 // to aggregate; it does not gain a second copy of the lifecycle state machine. Grouping on whether
 // next_run is in the future keeps the result bounded regardless of catalog size.
-func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
+func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT disposition, status, stage, reject_reason,
 		CASE WHEN next_run > ? THEN 1 ELSE 0 END AS scheduled, COUNT(*)
 		FROM filler_clip_pipeline
 		GROUP BY 1, 2, 3, 4, 5`), epoch(at))
 	if err != nil {
-		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview: %w", err)
+		return pipelinestate.PipelineOverview{}, fmt.Errorf("pipeline overview: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out filler.PipelineOverview
+	var out pipelinestate.PipelineOverview
 	for rows.Next() {
 		var disposition, status, stage, rejectReason string
 		var scheduled, count int
 		if err := rows.Scan(&disposition, &status, &stage, &rejectReason, &scheduled, &count); err != nil {
-			return filler.PipelineOverview{}, fmt.Errorf("scan pipeline overview: %w", err)
+			return pipelinestate.PipelineOverview{}, fmt.Errorf("scan pipeline overview: %w", err)
 		}
-		row := filler.ClipPipeline{
-			Disposition:  filler.Disposition(disposition),
-			Status:       filler.StageStatus(status),
-			Stage:        filler.StageID(stage),
-			RejectReason: filler.RejectReason(rejectReason),
+		row := pipelinestate.ClipPipeline{
+			Disposition:  pipelinestate.Disposition(disposition),
+			Status:       pipelinestate.StageStatus(status),
+			Stage:        pipelinestate.StageID(stage),
+			RejectReason: pipelinestate.RejectReason(rejectReason),
 		}
 		if scheduled != 0 {
 			row.NextRun = at.Add(time.Second)
@@ -287,13 +288,13 @@ func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (filler.P
 		out.AddLifecycle(row.Lifecycle(at), count)
 	}
 	if err := rows.Err(); err != nil {
-		return filler.PipelineOverview{}, fmt.Errorf("pipeline overview rows: %w", err)
+		return pipelinestate.PipelineOverview{}, fmt.Errorf("pipeline overview rows: %w", err)
 	}
 	return out, nil
 }
 
 // ListClipPipelines reads pipeline rows for the Incoming read model.
-func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error) {
+func (s *sqlStore) ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
 	where, args, err := clipPipelineWhere(f, true)
 	if err != nil {
 		return nil, err
@@ -316,7 +317,7 @@ func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilte
 
 // CountClipPipelines answers the same filtered question without materialising an audit feed.
 // Incoming uses it to report an honest total while keeping the returned rows to one page.
-func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error) {
+func (s *sqlStore) CountClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) (int, error) {
 	where, args, err := clipPipelineWhere(f, false)
 	if err != nil {
 		return 0, err
@@ -331,7 +332,7 @@ func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilt
 
 // ListPreparationWork keeps the pipeline read and its coarse duration join bounded without an
 // N+1 catalog lookup. Order remains ListClipPipelines' stable newest-first order.
-func (s *sqlStore) ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error) {
+func (s *sqlStore) ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error) {
 	pipelines, err := s.ListClipPipelines(ctx, f)
 	if err != nil || len(pipelines) == 0 {
 		return nil, err
@@ -368,7 +369,7 @@ func (s *sqlStore) ListPreparationWork(ctx context.Context, f filler.PipelineFil
 	return out, nil
 }
 
-func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []any, error) {
+func clipPipelineWhere(f pipelinestate.PipelineFilter, includeCursor bool) (string, []any, error) {
 	var where []string
 	var args []any
 	if len(f.Dispositions) > 0 {
@@ -469,8 +470,8 @@ func (s *sqlStore) pruneOrphanPipelines(ctx context.Context) error {
 	return nil
 }
 
-func collectClipPipelines(rows *sql.Rows) ([]filler.ClipPipeline, error) {
-	var out []filler.ClipPipeline
+func collectClipPipelines(rows *sql.Rows) ([]pipelinestate.ClipPipeline, error) {
+	var out []pipelinestate.ClipPipeline
 	for rows.Next() {
 		p, err := scanClipPipeline(rows)
 		if err != nil {

@@ -143,12 +143,12 @@ func intentMatchesAnyCue(intent Intent, cues ...string) bool {
 	return false
 }
 
-// stampEpisodeSelection turns explicit intent into a code-owned per-series
+// EpisodeSelectionForIntent turns explicit intent into a code-owned per-series
 // editorial policy. The model never chooses episode identities. A named holiday
 // is more specific than a general highlights cue; explicit narrative ordering
 // disables highlights but can still order a holiday-filtered pool sequentially.
-// EpisodeSelectionForIntent is the server-owned series policy preview used by
-// proposal review and the approval gate. Clients may display it but never choose it.
+// It is the server-owned series policy preview used by proposal review and the
+// approval gate. Clients may display it but never choose it.
 func EpisodeSelectionForIntent(request proposals.Intent, v holidayvocab.Vocabulary) schedule.EpisodeSelection {
 	intent := Intent{Intent: request}
 	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
@@ -164,7 +164,9 @@ func EpisodeSelectionForIntent(request proposals.Intent, v holidayvocab.Vocabula
 	return selection
 }
 
-func stampEpisodeSelection(items []proposals.ProposalItem, intent proposals.Intent, holidays holidayvocab.Vocabulary) bool {
+// StampEpisodeSelection sets every item's episode selection from the intent: the policy for a
+// series, none for anything else. It reports whether any item changed.
+func StampEpisodeSelection(items []proposals.ProposalItem, intent proposals.Intent, holidays holidayvocab.Vocabulary) bool {
 	selection := EpisodeSelectionForIntent(intent, holidays)
 	changed := false
 	for i := range items {

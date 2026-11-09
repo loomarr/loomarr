@@ -11,24 +11,17 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
-
-// userIDFromHuma returns the authenticated user's id, or "" for a token
-// (break-glass) caller with no user record. Used to stamp created_by/decided_by.
-func userIDFromHuma(ctx context.Context) string {
-	if u, ok := userFrom(ctx); ok {
-		return u.ID
-	}
-	return ""
-}
 
 // registerProposals mounts /v1/proposals* (§7/§8). Submit is open to any
 // authenticated user (members request; §8 human-in-the-loop); list/get are
@@ -36,46 +29,46 @@ func userIDFromHuma(ctx context.Context) string {
 // is the ONLY path from a proposal to an acquisition, and it is admin-gated, so
 // nothing unapproved ever reaches /v1/titles (§19).
 func (s *Server) registerProposals(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "submit-proposal", Method: http.MethodPost, Path: "/v1/proposals",
 		Summary: "Start a proposal job from an intent", Description: "Any authenticated user (§8).",
 		Tags: []string{"proposals"},
-	}, RoleMember), s.submitProposal)
+	}, httpcore.RoleMember), s.submitProposal)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-proposals", Method: http.MethodGet, Path: "/v1/proposals",
 		Summary: "List proposals by status", Description: "status=submitted is the approval queue.",
 		Tags: []string{"proposals"},
-	}, RoleMember), s.listProposals)
+	}, httpcore.RoleMember), s.listProposals)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-proposal", Method: http.MethodGet, Path: "/v1/proposals/{id}",
 		Summary: "Get a proposal + its job status", Tags: []string{"proposals"},
-	}, RoleMember), s.getProposal)
+	}, httpcore.RoleMember), s.getProposal)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-proposal-outlook", Method: http.MethodPost, Path: "/v1/proposals/{id}/outlook",
 		Summary:     "Observe launch readiness and fresh programming for the exact pending proposal and edits",
 		Description: "Read-only; never approves, acquires or prepares media.", Tags: []string{"proposals"},
-	}, RoleMember), s.getProposalOutlook)
+	}, httpcore.RoleMember), s.getProposalOutlook)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "approve-proposal", Method: http.MethodPost, Path: "/v1/proposals/{id}/approve",
 		Summary: "Approve a proposal (admin)", Description: "Admin only. Enqueues acquisitions through the approval gate (§8).",
 		Tags: []string{"proposals"},
-	}, RoleAdmin), s.approveProposal)
+	}, httpcore.RoleAdmin), s.approveProposal)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-approve-proposals", Method: http.MethodPost, Path: "/v1/proposals/approve",
 		Summary:     "Approve several proposals (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.",
 		Tags:        []string{"proposals"},
-	}, RoleAdmin), s.bulkApproveProposals)
+	}, httpcore.RoleAdmin), s.bulkApproveProposals)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "deny-proposal", Method: http.MethodPost, Path: "/v1/proposals/{id}/deny",
 		Summary: "Deny a proposal (admin)", Description: "Admin only.", Tags: []string{"proposals"},
-	}, RoleAdmin), s.denyProposal)
+	}, httpcore.RoleAdmin), s.denyProposal)
 }
 
 // --- submit ---
@@ -100,7 +93,7 @@ type submitOutput struct {
 // check that makes the rule the same one the web form applies.
 func checkDescription(description string) error {
 	if utf8.RuneCountInString(strings.TrimSpace(description)) < proposals.MinDescriptionLen {
-		return errBadRequest("Description too short",
+		return httpcore.BadRequest("Description too short",
 			fmt.Sprintf("Describe the channel you want in at least %d characters (a sentence is plenty).", proposals.MinDescriptionLen))
 	}
 	return nil
@@ -126,12 +119,12 @@ func (s *Server) suggestionConfigurationError(ctx context.Context) error {
 		}
 	}
 	if tmdbMissing && !aiMissing {
-		return errGroundingNotConfigured(
+		return httpcore.GroundingNotConfigured(
 			"TMDB is needed for channel suggestions",
 			"Connect TMDB in Settings → Connections so Loomarr can match channel descriptions to real titles.",
 		)
 	}
-	return errFeatureNotConfigured(
+	return httpcore.FeatureNotConfigured(
 		"AI isn't set up",
 		"Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.",
 	)
@@ -139,7 +132,7 @@ func (s *Server) suggestionConfigurationError(ctx context.Context) error {
 
 func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
 	if s.suggest == nil {
-		return nil, errFeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
+		return nil, httpcore.FeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
 	}
 	if err := s.suggestionConfigurationError(ctx); err != nil {
 		return nil, err
@@ -147,7 +140,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err
 	}
-	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
+	createdBy := httpcore.UserIDFrom(ctx) // the member who requested it (§8 My proposals)
 	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)
 	if err != nil {
 		return nil, err
@@ -236,7 +229,7 @@ func (s *Server) personNames(ctx context.Context) (personNames, error) {
 // name maps a stored created_by/decided_by to something a person can read. An unknown id
 // yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
 func (n personNames) name(id string) string {
-	if id == suggest.AutoApprovedBy {
+	if id == accept.AutoApprovedBy {
 		return "Automatic"
 	}
 	return n[id]
@@ -282,7 +275,7 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 		// on a token returns exactly the proposals that token submitted (usually none), which
 		// is the honest reading of "mine" for a caller that is not a person. What it can never
 		// do is fall through to everyone's, which is the failure mode worth designing against.
-		props, err = s.store.ListProposalsByCreator(ctx, userIDFromHuma(ctx))
+		props, err = s.store.ListProposalsByCreator(ctx, httpcore.UserIDFrom(ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +322,7 @@ type proposalOutput struct{ Body ProposalDTO }
 func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposalOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
+		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -383,7 +376,7 @@ type approveInput struct {
 // edit and an empty ModSummary. The server approval gate may still canonicalise a missing or
 // crafted series selector from the trusted original Intent; an empty-but-non-nil edit would
 // falsely describe that server grounding as "approved with modifications: none".
-func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
+func approvalEditFromDTO(b *ApprovalEditDTO) *accept.ApprovalEdit {
 	if b == nil || (len(b.Drop) == 0 && len(b.Add) == 0 && b.Note == "") {
 		return nil
 	}
@@ -391,7 +384,7 @@ func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
 	for _, k := range b.Drop {
 		drop = append(drop, provision.Key(k))
 	}
-	return &suggest.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note}
+	return &accept.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note}
 }
 
 type approveOutput struct {
@@ -405,7 +398,7 @@ type approveOutput struct {
 // errProposalTooOld is the answer for a proposal whose job was purged before the proposal was
 // decided: its channel cannot be created, but nothing is wrong with the server.
 func errProposalTooOld() huma.StatusError {
-	return errUnprocessable("This request is too old to approve",
+	return httpcore.Unprocessable("This request is too old to approve",
 		"Loomarr no longer has the details this request needs to create a channel. Deny it and ask again.")
 }
 
@@ -416,13 +409,13 @@ func errProposalTooOld() huma.StatusError {
 func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approveOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
+		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	if p.Status != "submitted" {
-		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+		return nil, httpcore.Conflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
 
 	// The gate has ONE implementation, shared with the auto-approve path (§8, §11), so
@@ -434,21 +427,21 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if s.approver == nil {
 		return nil, errors.New("approve: approval coordinator is not configured")
 	}
-	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), userIDFromHuma(ctx))
-	if errors.Is(err, suggest.ErrNotSubmitted) {
-		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), httpcore.UserIDFrom(ctx))
+	if errors.Is(err, accept.ErrNotSubmitted) {
+		return nil, httpcore.Conflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
-	if errors.Is(err, suggest.ErrSuperseded) {
-		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
+	if errors.Is(err, accept.ErrSuperseded) {
+		return nil, httpcore.Conflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
-	if errors.Is(err, suggest.ErrProposalJobGone) {
+	if errors.Is(err, accept.ErrProposalJobGone) {
 		return nil, errProposalTooOld()
 	}
-	if errors.Is(err, suggest.ErrRevisionActive) {
-		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
+	if errors.Is(err, accept.ErrRevisionActive) {
+		return nil, httpcore.Conflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
 	}
-	if errors.Is(err, suggest.ErrEmptyApproval) {
-		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
+	if errors.Is(err, accept.ErrEmptyApproval) {
+		return nil, httpcore.Unprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
 	}
 	if err != nil {
 		return nil, err
@@ -462,7 +455,7 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	// approval that actually happened — recording intent would put entries in the feed for
 	// requests that were refused.
 	//
-	// Deliberately NOT inside suggest.Approver: that is the one chokepoint every approve path
+	// Deliberately NOT inside accept.Approver: that is the one chokepoint every approve path
 	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
 	// widen the gate's signature for telemetry.
 	//
@@ -509,7 +502,7 @@ type bulkApproveResult struct {
 // missing approver, persist: the server can't tell them apart, and a refused retry costs less
 // than a stuck item with nothing to press.
 func bulkFailure(err error) (status int, retryable bool) {
-	status = statusFromError(err, http.StatusInternalServerError)
+	status = httpcore.StatusFromError(err, http.StatusInternalServerError)
 	return status, status >= http.StatusInternalServerError && status != http.StatusNotImplemented
 }
 
@@ -580,21 +573,21 @@ type denyOutput struct {
 func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
+		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	p.Status = "denied"
-	p.ApprovedBy = userIDFromHuma(ctx)
+	p.ApprovedBy = httpcore.UserIDFrom(ctx)
 	p.DenyReason = in.Body.Reason
 	p.UpdatedAt = time.Now()
 	if err := s.store.CommitProposalDenial(ctx, p); err != nil {
 		switch {
 		case errors.Is(err, store.ErrProposalNotSubmitted):
-			return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+			return nil, httpcore.Conflict("Already handled", "This suggestion has already been approved or dismissed.")
 		case errors.Is(err, store.ErrProposalRevisionActive):
-			return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
+			return nil, httpcore.Conflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
 		default:
 			return nil, err
 		}
@@ -629,19 +622,19 @@ func approvedLine(enqueued int) string {
 func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body outlook.Assessment }, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Suggestion not found", "That suggestion no longer exists.")
+		return nil, httpcore.NotFound("Suggestion not found", "That suggestion no longer exists.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	if p.Status != "submitted" {
-		return nil, errConflict("Already handled", "Only pending suggestions have a pre-approval outlook.")
+		return nil, httpcore.Conflict("Already handled", "Only pending suggestions have a pre-approval outlook.")
 	}
 	if s.proposalOutlook == nil {
-		return nil, errFeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
+		return nil, httpcore.FeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
 	}
 	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
-	if errors.Is(err, suggest.ErrProposalJobGone) {
+	if errors.Is(err, accept.ErrProposalJobGone) {
 		return nil, errProposalTooOld()
 	}
 	if err != nil {

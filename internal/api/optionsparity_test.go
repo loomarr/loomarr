@@ -67,7 +67,8 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 		t.Fatal("found no &Server{…} literal in api.go — this test can no longer see what it guards")
 	}
 
-	rename := map[string]string{"LiveTV": "livetv", "SSO": "sso"}
+	// CookieSecure and TrustProxy arrive grouped, as Server.origin (httpcore.Origin).
+	rename := map[string]string{"LiveTV": "livetv", "SSO": "sso", "CookieSecure": "origin", "TrustProxy": "origin"}
 	ot := reflect.TypeOf(Options{})
 	st := reflect.TypeOf(Server{})
 

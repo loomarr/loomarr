@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -17,14 +18,14 @@ func (s *Server) registerInvitationRedemption(api huma.API) {
 	if s.invitationRedemption == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-invitation", Method: http.MethodPost, Path: "/v1/invitations/preview",
 		Summary: "Preview an invitation without redeeming it", Tags: []string{"invitations"},
-	}, RolePublic), s.previewInvitation)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RolePublic), s.previewInvitation)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "redeem-invitation", Method: http.MethodPost, Path: "/v1/invitations/redeem",
 		Summary: "Prove the invited credential and activate the account", Tags: []string{"invitations"},
-	}, RolePublic), s.redeemInvitation)
+	}, httpcore.RolePublic), s.redeemInvitation)
 }
 
 type invitationBearerInput struct {
@@ -89,7 +90,7 @@ func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput
 		return nil, invitationRedemptionError(err)
 	}
 	return &meOutput{
-		SetCookie: s.sessionCookie(requestFrom(ctx), token, expires),
+		SetCookie: s.sessionCookie(httpcore.RequestFrom(ctx), token, expires),
 		Body: meBody{ID: user.ID, Name: user.Name, Role: string(user.Role), Disabled: user.Disabled,
 			Quota: user.Quota, AutoApprove: user.AutoApprove,
 			Local: !user.MediaServerLinked, OfflineLogin: user.MediaServerLinked && user.PasswordHash != ""},
@@ -99,13 +100,13 @@ func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput
 func invitationRedemptionError(err error) error {
 	switch {
 	case errors.Is(err, auth.ErrInvalidInvitation):
-		return errGone("Invitation unavailable", "This invitation is invalid, expired, revoked, or already used. Ask an administrator for a new invitation.")
+		return httpcore.Gone("Invitation unavailable", "This invitation is invalid, expired, revoked, or already used. Ask an administrator for a new invitation.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return errPasswordTooShort()
 	case errors.Is(err, auth.ErrInvalidCredentials):
-		return errUnauthorized("Account couldn't be verified", "Those Library credentials couldn't verify the invited account. Check them and try again.")
+		return httpcore.Unauthorized("Account couldn't be verified", "Those Library credentials couldn't verify the invited account. Check them and try again.")
 	case errors.Is(err, auth.ErrInvitationProviderUnavailable):
-		return errServiceUnavailable("Library temporarily unavailable", "Loomarr must contact the Library before this account's first sign-in. Wait for it to return, then try again.")
+		return httpcore.ServiceUnavailable("Library temporarily unavailable", "Loomarr must contact the Library before this account's first sign-in. Wait for it to return, then try again.")
 	default:
 		return err
 	}

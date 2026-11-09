@@ -10,7 +10,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt time.Time) {
@@ -268,9 +270,9 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 	}
 	for _, id := range []string{"a.mp4", "b.mp4", "c.mp4"} {
 		seedHeldClip(t, st, id)
-		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-			ClipHash: id, Stage: filler.StageTranscode, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+			ClipHash: id, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -302,9 +304,9 @@ func TestFillerWatch_CountsAreIncomingsTotals(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	for i, hash := range []string{"a.mp4", "b.mp4", "c.mp4"} {
 		seedHeldClip(t, st, hash)
-		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageTranscode, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
+		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+			ClipHash: hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -312,7 +314,7 @@ func TestFillerWatch_CountsAreIncomingsTotals(t *testing.T) {
 	putClip(t, st, filler.Clip{Hash: "reel", Path: "reel.mp4", Name: "Reel", Held: true, IsComposite: true})
 	if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
 		ID: "split-1", ClipHash: "reel", CreatedAt: now,
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

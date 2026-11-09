@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // AcquisitionIntentVersion is persisted with every pull so a later ranking change never
@@ -53,8 +54,8 @@ func (i AcquisitionIntent) Normalize() AcquisitionIntent {
 	i.CatalogReason = strings.TrimSpace(i.CatalogReason)
 	i.Roles = uniqueRoles(i.Roles)
 	i.Audiences = uniqueAudiences(i.Audiences)
-	i.TaxonomyGaps = uniqueStrings(i.TaxonomyGaps)
-	i.SourceAllowlist = uniqueStrings(i.SourceAllowlist)
+	i.TaxonomyGaps = split.UniqueStrings(i.TaxonomyGaps)
+	i.SourceAllowlist = split.UniqueStrings(i.SourceAllowlist)
 	return i
 }
 
@@ -222,21 +223,6 @@ type AcquisitionSourceDecision struct {
 	Disposition    AcquisitionSourceDisposition `json:"disposition"`
 	CandidateCount int                          `json:"candidateCount"`
 	Detail         string                       `json:"detail"`
-}
-
-func uniqueStrings(in []string) []string {
-	out := make([]string, 0, len(in))
-	seen := map[string]bool{}
-	for _, value := range in {
-		value = strings.TrimSpace(value)
-		key := strings.ToLower(value)
-		if value != "" && !seen[key] {
-			seen[key] = true
-			out = append(out, value)
-		}
-	}
-	sort.Slice(out, func(a, b int) bool { return strings.ToLower(out[a]) < strings.ToLower(out[b]) })
-	return out
 }
 
 func uniqueRoles(in []Role) []Role {

@@ -76,7 +76,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 			if err := json.Unmarshal([]byte(snapshot.Job.FailureTraceJSON), &record.FailureTrace); err != nil {
 				return Record{}, fmt.Errorf("decode Proposal Job %s failure trace: %w", jobID, err)
 			}
-			if err := suggest.ValidateDecisionTrace(record.FailureTrace); err != nil {
+			if err := proposals.ValidateDecisionTrace(record.FailureTrace); err != nil {
 				return Record{}, fmt.Errorf("validate Proposal Job %s failure trace: %w", jobID, err)
 			}
 		}

@@ -316,7 +316,7 @@ func TestSuggest_TwoEmptyDateUnionsStopAfterLogicalRetrievals(t *testing.T) {
 	)
 	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.ReasonRetrievalEmpty {
 		t.Fatalf("failure = %#v, want two empty logical retrievals", err)
 	}
 	if got := corpus.Discoveries(); len(got) != 4 {
@@ -388,7 +388,7 @@ func TestSuggest_InitialAmbiguousDateMeaningDoesNotDispatchCatalog(t *testing.T)
 	}))
 	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "dated action"})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalDateSemanticsUnclear {
 		t.Fatalf("failure = %#v, want initial date clarification", err)
 	}
 	if got := corpus.Discoveries(); len(got) != 0 {
@@ -409,7 +409,7 @@ func TestSuggest_InitialConflictingDateMeaningDoesNotDispatchCatalog(t *testing.
 	}))
 	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990 action"})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalConstraintsConflict {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalConstraintsConflict {
 		t.Fatalf("failure = %#v, want initial date conflict", err)
 	}
 	if got := corpus.Discoveries(); len(got) != 0 {

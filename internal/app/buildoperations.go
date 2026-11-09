@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/access"
@@ -295,7 +296,7 @@ func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *sl
 
 type authBuild struct {
 	backup               api.BackupStreamer
-	authorizer           api.Authorizer
+	authorizer           httpcore.Authorizer
 	login                api.LoginService
 	sso                  api.SSOService
 	sessions             api.SessionManager
@@ -328,7 +329,7 @@ func buildAuth(
 			return readGeneratedSecret(ctx, settings.SecretPlayout)
 		}
 	}
-	result.authorizer = api.NewTokenAuthorizer(apiToken)
+	result.authorizer = httpcore.NewTokenAuthorizer(apiToken)
 	if st == nil {
 		return result
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The TRANSCRIBE stage (§10 V51b): what does the clip SAY?
@@ -81,8 +82,8 @@ func NewTranscribeStage(tools MediaTools, store TranscribeClipStore, clipDir str
 	return &TranscribeStage{tools: tools, store: store, clipDir: clipDir, drop: drop, enabled: enabled, now: now}
 }
 
-func (s *TranscribeStage) ID() StageID     { return StageTranscribe }
-func (s *TranscribeStage) Cost() StageCost { return CostWhisper }
+func (s *TranscribeStage) ID() pipelinestate.StageID { return pipelinestate.StageTranscribe }
+func (s *TranscribeStage) Cost() StageCost           { return CostWhisper }
 
 // Applies when transcription is on, the clip has not been heard, and it stands to gain.
 func (s *TranscribeStage) Applies(_ context.Context, c StoreClip) (bool, string) {
@@ -117,7 +118,7 @@ func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult
 		// `fatalStages` for exactly this reason.
 		return StageResult{}, "", fmt.Errorf("transcribe %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, StageTranscribe, 100)
+	reportProgress(ctx, pipelinestate.StageTranscribe, 100)
 
 	text := TranscriptText(segs)
 	wordless := text == ""
@@ -130,9 +131,9 @@ func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult
 	updated := c
 	updated.Transcript = text
 	if wordless {
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "no speech in it"}, text, nil
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue, Note: "no speech in it"}, text, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, text, nil
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, text, nil
 }
 
 // Run is the readiness-stage adapter around Observe.

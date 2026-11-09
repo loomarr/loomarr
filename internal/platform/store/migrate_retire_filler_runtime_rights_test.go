@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestRetireFillerRuntimeRightsMigrationSQLite(t *testing.T) {
@@ -42,9 +43,9 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 		string(filler.Commercial), 30_000, false, at.Unix()); err != nil {
 		t.Fatal(err)
 	}
-	if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone, Progress: 100,
-		Disposition: filler.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
+	if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageID("admission"), Status: pipelinestate.StatusDone, Progress: 100,
+		Disposition: pipelinestate.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
 	}); err != nil {
 		t.Fatal(err)
 	}

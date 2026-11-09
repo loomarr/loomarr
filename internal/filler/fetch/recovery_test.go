@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -49,11 +50,11 @@ func stagedRecoveryArtifact(t *testing.T, root string) filler.AcquisitionArtifac
 	}, true); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(stage)
+	digest, size, err := asset.FileSHA256(stage)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(stage)
+	clipHash, err := asset.ClipID(stage)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,8 +21,10 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 	safe := modulePath + "/internal/safe"
 	testOnly := modulePath + "/internal/testonly"
 	wire := modulePath + "/internal/wire"
+	apiCore := modulePath + "/internal/api/httpcore"
 	pkgs := map[string]*build.Package{
 		api:      {GoFiles: []string{"api.go"}},
+		apiCore:  {GoFiles: []string{"problem.go"}, Imports: []string{"github.com/danielgtaylor/huma/v2"}},
 		app:      {GoFiles: []string{"app.go"}, Imports: []string{api}},
 		nested:   {GoFiles: []string{"domain.go"}, Imports: []string{api}},
 		safe:     {GoFiles: []string{"safe.go"}},
@@ -374,13 +376,42 @@ func TestEveryPackageHasAPackageDoc(t *testing.T) {
 	}
 }
 
+// inboundAdapterPackage reports whether path is part of the inbound HTTP adapter: a package named
+// in inboundDependencyExceptions, or any package under internal/api/, the adapter's area packages
+// (httpcore and the per-area handler packages), which share its Huma wire definitions.
+func inboundAdapterPackage(path string) bool {
+	if _, excepted := inboundDependencyExceptions[path]; excepted {
+		return true
+	}
+	return strings.HasPrefix(path, modulePath+"/internal/api/")
+}
+
+// Only the inbound adapter and the composition root build on internal/api's sub-packages. A domain
+// package that wanted a problem constructor or a role would be reaching into the HTTP layer, the
+// same one-way direction TestProductionPackagesDoNotImportAPI holds for internal/api itself.
+func TestOnlyTheInboundAdapterImportsAPISubpackages(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	for path, pkg := range pkgs {
+		if inboundAdapterPackage(path) {
+			continue
+		}
+		for _, imported := range pkg.Imports {
+			if strings.HasPrefix(imported, modulePath+"/internal/api/") {
+				t.Errorf("%s imports %s — internal/api's sub-packages are for the inbound adapter and the "+
+					"composition root; a domain package needing one of its types belongs in its owning module",
+					path, imported)
+			}
+		}
+	}
+}
+
 func inboundDependencyRulePackages(pkgs map[string]*build.Package) []string {
 	var roots []string
 	for path, pkg := range pkgs {
 		if !strings.HasPrefix(path, modulePath+"/internal/") || len(pkg.GoFiles)+len(pkg.CgoFiles) == 0 {
 			continue
 		}
-		if _, excepted := inboundDependencyExceptions[path]; excepted {
+		if inboundAdapterPackage(path) {
 			continue
 		}
 		roots = append(roots, path)

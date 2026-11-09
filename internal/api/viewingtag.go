@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -83,11 +84,11 @@ func withViewerTag(u, tag string) string {
 // id and named as it was paired; a browser is keyed and named by its browser family and system.
 // A break-glass API_TOKEN caller has no person, so it is never attributed.
 func (s *Server) viewerOf(ctx context.Context) (viewing.Viewer, bool) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return viewing.Viewer{}, false
 	}
-	if deviceID, ok := deviceIDFrom(ctx); ok {
+	if deviceID, ok := httpcore.DeviceIDFrom(ctx); ok {
 		label := "Paired device"
 		if s.store != nil {
 			if dt, err := s.store.GetDeviceToken(ctx, deviceID); err == nil && strings.TrimSpace(dt.DeviceName) != "" {
@@ -101,8 +102,8 @@ func (s *Server) viewerOf(ctx context.Context) (viewing.Viewer, bool) {
 		return viewing.Viewer{UserID: user.ID, DeviceKey: "device:" + key, DeviceLabel: label}, true
 	}
 	label := "Browser"
-	if r := requestFrom(ctx); r != nil {
-		label = clientLabel(r.UserAgent())
+	if r := httpcore.RequestFrom(ctx); r != nil {
+		label = httpcore.ClientLabel(r.UserAgent())
 	}
 	return viewing.Viewer{UserID: user.ID, DeviceKey: "browser:" + label, DeviceLabel: label}, true
 }

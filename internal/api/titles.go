@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -20,7 +21,7 @@ import (
 func (s *Server) registerMiddleware(api huma.API) {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		r, _ := humago.Unwrap(ctx)
-		role := RoleAnonymous
+		role := httpcore.RoleAnonymous
 		var user *identitystore.User
 		var deviceID string
 		if s.auth != nil {
@@ -56,11 +57,11 @@ func (s *Server) registerMiddleware(api huma.API) {
 		//
 		// Runs after CSRF: a cookie-authenticated request missing the header is refused as
 		// CSRF regardless of role, which keeps that refusal from reading as "wrong role".
-		if want := roleForOperation(ctx.Operation()); !authorizeRole(want, role) {
+		if want := httpcore.RoleForOperation(ctx.Operation()); !httpcore.AuthorizeRole(want, role) {
 			// Goes through WriteErr so the request-id stamping and cause logging in
 			// installUserFacingErrors applies here too — a refusal an operator cannot
 			// correlate to a request is a refusal they cannot debug.
-			if role == RoleAnonymous {
+			if role == httpcore.RoleAnonymous {
 				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "You need to sign in to do this.")
 			} else {
 				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "This action needs an admin account.")
@@ -68,13 +69,13 @@ func (s *Server) registerMiddleware(api huma.API) {
 			return
 		}
 
-		c := huma.WithValue(ctx, roleCtxKey{}, role)
-		c = huma.WithValue(c, reqCtxKey{}, r) // raw request for handlers (login IP, cookies)
+		c := httpcore.ContextWithRole(ctx, role)
+		c = httpcore.ContextWithRequest(c, r) // raw request for handlers (login IP, cookies)
 		if user != nil {
-			c = huma.WithValue(c, userCtxKey{}, *user)
+			c = httpcore.ContextWithUser(c, *user)
 		}
 		if deviceID != "" {
-			c = huma.WithValue(c, deviceCtxKey{}, deviceID)
+			c = httpcore.ContextWithDevice(c, deviceID)
 		}
 		next(c)
 	})
@@ -138,21 +139,21 @@ func toDTO(r provision.Record) TitleDTO {
 // user; POST/DELETE require admin (§7: enqueuing an acquisition is the approval
 // gate's concern).
 func (s *Server) registerTitles(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "enqueue-title", Method: http.MethodPost, Path: "/v1/titles",
 		Summary: "Enqueue/ensure a title", Description: "Idempotent by external id (§4). Admin only.",
 		Tags: []string{"titles"},
-	}, RoleAdmin), s.enqueueTitle)
+	}, httpcore.RoleAdmin), s.enqueueTitle)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-title", Method: http.MethodGet, Path: "/v1/titles/{key}",
-		Summary: "Get a title's provisioning state", Description: operatorAPI, Tags: []string{"titles"},
-	}, RoleMember), s.getTitle)
+		Summary: "Get a title's provisioning state", Description: httpcore.OperatorAPI, Tags: []string{"titles"},
+	}, httpcore.RoleMember), s.getTitle)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-titles", Method: http.MethodGet, Path: "/v1/titles",
 		Summary: "List titles, optionally filtered by state", Tags: []string{"titles"},
-	}, RoleMember), s.listTitles)
+	}, httpcore.RoleMember), s.listTitles)
 
 }
 
@@ -178,7 +179,7 @@ func (s *Server) enqueueTitle(ctx context.Context, in *enqueueInput) (*titleOutp
 	}
 	key, err := t.Key()
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid title",
+		return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid title",
 			"That title's identity couldn't be resolved. Check the media type and id, then try again.", err)
 	}
 	// Idempotent enqueue (§4 inv. 3): only create if absent, else return current.
@@ -201,7 +202,7 @@ type keyInput struct {
 func (s *Server) getTitle(ctx context.Context, in *keyInput) (*titleOutput, error) {
 	rec, err := s.store.GetTitle(ctx, provision.Key(in.Key))
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Title not found", "That title doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Title not found", "That title doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -255,12 +256,12 @@ func (s *Server) listTitles(ctx context.Context, in *listInput) (*listOutput, er
 	)
 	switch {
 	case in.Since > 0 && in.State != "" && provision.State(in.State) != provision.Available:
-		return nil, errBadRequest("Arrivals are available titles",
+		return nil, httpcore.BadRequest("Arrivals are available titles",
 			"Only an available title has arrived. Leave out the state, or ask for available ones.")
 	case in.Since > 0:
 		recs, err = s.store.ListTitlesAvailableSince(ctx, time.UnixMilli(in.Since))
 	case in.State == "":
-		return nil, errBadRequest("State required", "Choose a state to filter titles by.")
+		return nil, httpcore.BadRequest("State required", "Choose a state to filter titles by.")
 	default:
 		recs, err = s.store.ListTitlesByState(ctx, provision.State(in.State))
 	}

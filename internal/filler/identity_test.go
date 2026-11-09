@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -209,7 +210,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	if err := os.WriteFile(sourceFile, []byte("the soft copy's downloaded bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceHash, err := ClipID(sourceFile)
+	sourceHash, err := asset.ClipID(sourceFile)
 	if err != nil {
 		t.Fatal(err)
 	}

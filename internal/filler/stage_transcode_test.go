@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -43,7 +46,7 @@ func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *t
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
 		t.Fatalf("Run error = %v, want capacity refusal", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, MediaAssetRootName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(dir, split.MediaAssetRootName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("retained-media tree exists after refusal: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, transcodeStagingDir)); !errors.Is(err, os.ErrNotExist) {
@@ -221,7 +224,7 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	if !observed.Held || observed.ParentHash != parentHash {
 		t.Fatalf("concurrent Sync published target = %+v; want owner-bound conditioning hold", observed)
 	}
-	if run.err != nil || run.result.Verdict != VerdictContinue {
+	if run.err != nil || run.result.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("transcode result = %+v, err=%v", run.result, run.err)
 	}
 }
@@ -315,7 +318,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out.Verdict != VerdictReview || out.Clip.Hash != childHash || stored.oldHash != "" {
+			if out.Verdict != pipelinestate.VerdictReview || out.Clip.Hash != childHash || stored.oldHash != "" {
 				t.Fatalf("invalid evidence result = %+v, stored replacement = %q", out, stored.oldHash)
 			}
 			got, err := os.ReadFile(childFull)
@@ -366,7 +369,7 @@ func TestTranscodeStage_HoldsWhenConditioningSourceOrParentBytesDoNotMatchCatalo
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
-			if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 				t.Fatalf("identity mismatch result = %+v, stored=%q, err=%v", out, stored.oldHash, err)
 			}
 		})
@@ -416,7 +419,7 @@ func TestTranscodeStage_PathReplacementDuringConditioningPublishesNothing(t *tes
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 		t.Fatalf("path replacement result = %+v, stored=%q, err=%v", out, stored.oldHash, err)
 	}
 }
@@ -478,7 +481,7 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
-			if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 				t.Fatalf("sparse %s replacement result = %+v, stored=%q, err=%v", target, out, stored.oldHash, err)
 			}
 			if _, err := os.Stat(childFull); err != nil {
@@ -528,7 +531,7 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, Name: "Completed child", Role: Commercial, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictContinue || out.Clip.Hash != childHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash != childHash {
 		t.Fatalf("restart result = %+v, %v", out, err)
 	}
 }
@@ -607,7 +610,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
-			if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 				t.Fatalf("invalid restart result = %+v, stored=%q, err=%v", out, stored.oldHash, err)
 			}
 		})
@@ -665,7 +668,7 @@ func TestTranscodeStage_MezzanineMarkerAloneCannotCertifyAChildRestart(t *testin
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictReview {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("marker-only restart = %+v, %v; want review", out, err)
 	}
 }
@@ -704,7 +707,7 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 		t.Fatalf("post-measurement result = %+v, stored=%q, err=%v", out, stored.oldHash, err)
 	}
 	got, readErr := os.ReadFile(childFull)
@@ -740,7 +743,7 @@ func TestTranscodeStage_MissingParentHoldsBeforeMeasurement(t *testing.T) {
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: "missing-parent",
 	}})
-	if err != nil || out.Verdict != VerdictReview || out.Clip.Hash != childHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Clip.Hash != childHash {
 		t.Fatalf("missing parent result = %+v, %v", out, err)
 	}
 }
@@ -827,7 +830,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			if observed := <-observedCancellation; !errors.Is(observed, context.Canceled) {
 				t.Fatalf("boundary observed %v, want context cancellation identity", observed)
 			}
-			if got.err != nil || got.out.Verdict != VerdictReview || stored.oldHash != "" || removed {
+			if got.err != nil || got.out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" || removed {
 				t.Fatalf("%s cancellation result = %+v, stored=%q removed=%v err=%v", phase, got.out, stored.oldHash, removed, got.err)
 			}
 			afterMedia, mediaErr := os.ReadFile(childFull)
@@ -885,7 +888,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != VerdictContinue || out.Clip.Hash == childHash || out.Clip.ParentHash != parentHash {
+	if out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash == childHash || out.Clip.ParentHash != parentHash {
 		t.Fatalf("transcode result = %+v", out)
 	}
 	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
@@ -927,10 +930,10 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 	}
 	for name, tc := range map[string]struct {
 		probedMs    int64
-		wantVerdict Verdict
+		wantVerdict pipelinestate.Verdict
 	}{
-		"publishes the staged measurement":         {probedMs: 30_000, wantVerdict: VerdictContinue},
-		"holds when the probe disagrees on length": {probedMs: 30_021, wantVerdict: VerdictReview},
+		"publishes the staged measurement":         {probedMs: 30_000, wantVerdict: pipelinestate.VerdictContinue},
+		"holds when the probe disagrees on length": {probedMs: 30_021, wantVerdict: pipelinestate.VerdictReview},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -981,7 +984,7 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			if out.Verdict != tc.wantVerdict {
 				t.Fatalf("verdict = %v (%s), want %v", out.Verdict, out.Detail, tc.wantVerdict)
 			}
-			if tc.wantVerdict != VerdictContinue {
+			if tc.wantVerdict != pipelinestate.VerdictContinue {
 				return
 			}
 			tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
@@ -1139,7 +1142,7 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 				Hash: sourceHash, Path: sourceRel, ParentHash: parentHash,
 			}})
-			if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
+			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 				t.Fatalf("mismatched existing output = %+v, stored=%q, err=%v", out, stored.oldHash, err)
 			}
 			if got, readErr := os.ReadFile(sourceFull); readErr != nil || string(got) != "reviewed child source" {
@@ -1189,7 +1192,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	clip := StoreClip{Clip: Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
 
 	first, err := stage.Run(context.Background(), clip)
-	if err == nil || first.Verdict != VerdictContinue {
+	if err == nil || first.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("failed conditioned replacement = %+v, %v; want retryable error", first, err)
 	}
 	if _, err := os.Stat(sourceFull); err != nil {
@@ -1203,7 +1206,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	}
 
 	second, err := stage.Run(context.Background(), clip)
-	if err != nil || second.Verdict != VerdictContinue || second.Clip.Hash != stored.clip.Hash {
+	if err != nil || second.Verdict != pipelinestate.VerdictContinue || second.Clip.Hash != stored.clip.Hash {
 		t.Fatalf("conditioned recovery = %+v, %v", second, err)
 	}
 	if _, err := os.Stat(sourceFull); !os.IsNotExist(err) {
@@ -1256,11 +1259,11 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 	})
 	clip := StoreClip{Clip: Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
 	first, err := stage.Run(context.Background(), clip)
-	if err == nil || first.Verdict != VerdictContinue {
+	if err == nil || first.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("first interrupted publication = %+v, %v; want retryable error", first, err)
 	}
 	second, err := stage.Run(context.Background(), clip)
-	if err != nil || second.Verdict != VerdictContinue || second.Clip.Hash == sourceHash {
+	if err != nil || second.Verdict != pipelinestate.VerdictContinue || second.Clip.Hash == sourceHash {
 		t.Fatalf("duration-shift recovery = %+v, %v; want exact existing evidence recovery", second, err)
 	}
 }
@@ -1305,7 +1308,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: sourceHash, Path: sourceRel, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictContinue || out.Clip.Hash == sourceHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash == sourceHash {
 		t.Fatalf("cleanup failure result = %+v, %v", out, err)
 	}
 	if _, err := os.Stat(sourceFull); err != nil {
@@ -1359,7 +1362,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newHash, err := ClipID(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	newHash, err := asset.ClipID(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1522,7 +1525,7 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != VerdictReject || out.Reason != ReasonBlackContent {
+	if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonBlackContent {
 		t.Fatalf("quality verdict = %v/%q (%s)", out.Verdict, out.Reason, out.Detail)
 	}
 	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
@@ -1556,7 +1559,7 @@ func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testi
 		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
 	}
 	retry, err := stage.Run(context.Background(), clip)
-	if err != nil || retry.Verdict != VerdictReject || retry.Reason != ReasonSilentContent {
+	if err != nil || retry.Verdict != pipelinestate.VerdictReject || retry.Reason != pipelinestate.ReasonSilentContent {
 		t.Fatalf("persisted quality retry = %+v, %v", retry, err)
 	}
 }
@@ -1567,7 +1570,7 @@ func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := ClipID(tmp)
+	hash, err := asset.ClipID(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}

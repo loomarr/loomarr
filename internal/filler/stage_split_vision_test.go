@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -60,18 +61,18 @@ type scriptedRoleEscalator struct {
 	err   error
 }
 
-func (s *scriptedRoleEscalator) EscalateRole(_ context.Context, source SplitSourceAsset, _ string, segment SplitSegment, assessedAt time.Time) (*StructureRoleEvidence, error) {
+func (s *scriptedRoleEscalator) EscalateRole(_ context.Context, source split.SourceAsset, _ string, segment split.Segment, assessedAt time.Time) (*split.RoleEvidence, error) {
 	s.calls++
 	s.spans = append(s.spans, [2]int64{segment.StartMs, segment.EndMs})
 	if s.err != nil {
 		return nil, s.err
 	}
-	evidence, err := NewStructureRoleEvidence(StructureRoleEvidenceInput{
+	evidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
 		Source: source, StartMs: segment.StartMs, EndMs: segment.EndMs,
-		Role: SegmentRoleCommercial, Reason: "the complete sequence contains a product offer and call to action",
+		Role: split.RoleCommercial, Reason: "the complete sequence contains a product offer and call to action",
 		Video: []byte("bounded-video"), PromptVersion: "video-role-v1", Prompt: "classify bounded video", Response: `{"role":"commercial"}`,
 		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video", ResolvedModel: "video",
-		Modalities: []string{"text", "video"}, Tokens: StructureRoleTokenUsage{Video: 1}, Attempts: 1, AssessedAt: assessedAt,
+		Modalities: []string{"text", "video"}, Tokens: split.RoleTokenUsage{Video: 1}, Attempts: 1, AssessedAt: assessedAt,
 	})
 	if err != nil {
 		return nil, err
@@ -118,12 +119,12 @@ func gatePolicy() *AutoSplitPolicy {
 // correct behaviour, and would make every test here assert the wrong thing. These tests are about
 // GROUNDING (tags), so their boundaries must be beyond reproach for the tag half to be what the
 // gate is deciding on.
-func twoSegments() []SplitSegment {
-	segs := []SplitSegment{
+func twoSegments() []split.Segment {
+	segs := []split.Segment{
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "reel part 1",
-			startSrc: srcReelEdge, endSrc: srcBlack | srcSilence},
+			StartSrc: split.SrcReelEdge, EndSrc: split.SrcBlack | split.SrcSilence},
 		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "reel part 2",
-			startSrc: srcBlack | srcSilence, endSrc: srcReelEdge},
+			StartSrc: split.SrcBlack | split.SrcSilence, EndSrc: split.SrcReelEdge},
 	}
 	scoreBoundaries(segs)
 	return segs
@@ -235,11 +236,11 @@ func TestSegmentVisionDropsMalformedTitleWithoutDiscardingOtherFields(t *testing
 }
 
 func TestMergeGroundingCopiesANameOnlyOntoTheExactFallbackSpan(t *testing.T) {
-	onto := []SplitSegment{
+	onto := []split.Segment{
 		{StartMs: 0, EndMs: 30_000, Name: "Clip 1 from reel", NameOrigin: SplitNameFallback},
 		{StartMs: 30_000, EndMs: 60_000, Name: "Chapter title", NameOrigin: SplitNameSourceAuthored},
 	}
-	from := []SplitSegment{
+	from := []split.Segment{
 		{StartMs: 0, EndMs: 30_000, Name: "Acme commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "ACME"},
 		{StartMs: 30_000, EndMs: 60_000, Name: "Wrong overwrite", NameOrigin: SplitNameModelProposed, NameEvidence: "WRONG"},
 		{StartMs: 60_000, EndMs: 90_000, Name: "Wrong span", NameOrigin: SplitNameModelProposed, NameEvidence: "WRONG"},
@@ -255,11 +256,11 @@ func TestMergeGroundingCopiesANameOnlyOntoTheExactFallbackSpan(t *testing.T) {
 }
 
 func TestBindSplitNameEvidenceMakesTheServerAuthoritative(t *testing.T) {
-	persisted := []SplitSegment{{
+	persisted := []split.Segment{{
 		StartMs: 0, EndMs: 30_000, Name: "Toyburrow commercial",
 		NameOrigin: SplitNameModelProposed, NameEvidence: "TOYBURROW",
 	}}
-	submitted := []SplitSegment{
+	submitted := []split.Segment{
 		{StartMs: 0, EndMs: 30_000, Name: "Toyburrow commercial", NameOrigin: SplitNameSourceAuthored, NameEvidence: "forged"},
 		{StartMs: 0, EndMs: 30_000, Name: "My toy advert", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
 		{StartMs: 1_000, EndMs: 30_000, Name: "Toyburrow commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
@@ -297,7 +298,7 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 		t.Fatalf("ground pass = %+v", pass)
 	}
 	for index, segment := range segments {
-		if segment.RoleEvidence == nil || segment.RoleEvidence.Role != SegmentRoleCommercial || segment.RoleEvidence.Source != source || segment.RoleEvidence.StartMs != segment.StartMs || segment.RoleEvidence.EndMs != segment.EndMs || segment.RoleEvidence.SHA256 == "" {
+		if segment.RoleEvidence == nil || segment.RoleEvidence.Role != split.RoleCommercial || segment.RoleEvidence.Source != source || segment.RoleEvidence.StartMs != segment.StartMs || segment.RoleEvidence.EndMs != segment.EndMs || segment.RoleEvidence.SHA256 == "" {
 			t.Fatalf("segment %d role evidence = %+v", index, segment.RoleEvidence)
 		}
 	}
@@ -308,15 +309,15 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 		t.Fatalf("resolved frame roles triggered %d video escalations", escalator.calls)
 	}
 
-	base := assessStructure(t, source.DurationMs, []StructureObservation{
-		structureObservation("black", ObservationBlackInterval, ObservationProposesBoundary, 29_900, 30_100),
-		structureObservation("silence", ObservationSilenceInterval, ObservationProposesBoundary, 29_900, 30_100),
+	base := assessStructure(t, source.DurationMs, []split.Observation{
+		structureObservation("black", split.ObservationBlackInterval, split.ObservationProposesBoundary, 29_900, 30_100),
+		structureObservation("silence", split.ObservationSilenceInterval, split.ObservationProposesBoundary, 29_900, 30_100),
 	}, nil)
 	assessment, err := reassessProposalStructure(SplitProposal{Source: source, Structure: &base, Segments: segments}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Kind != StructureCompilationBreak || len(assessment.Plan) != 2 || assessment.Plan[0].Role != SegmentRoleCommercial || assessment.Plan[1].Role != SegmentRoleCommercial {
+	if assessment.Kind != split.KindCompilationBreak || len(assessment.Plan) != 2 || assessment.Plan[0].Role != split.RoleCommercial || assessment.Plan[1].Role != split.RoleCommercial {
 		t.Fatalf("role-enriched assessment = %+v", assessment)
 	}
 	// Partial confirmation removes published cuts from the live proposal. Regrounding a held cut
@@ -327,7 +328,7 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remaining.Kind != StructureCompilationBreak || remaining.Plan[0].Role != SegmentRoleCommercial || remaining.Plan[1].Role != SegmentRoleCommercial {
+	if remaining.Kind != split.KindCompilationBreak || remaining.Plan[0].Role != split.RoleCommercial || remaining.Plan[1].Role != split.RoleCommercial {
 		t.Fatalf("partial proposal erased prior role evidence: %+v", remaining)
 	}
 }
@@ -555,7 +556,7 @@ func TestSegmentVision_ResumesAfterTheCheckedBatch(t *testing.T) {
 }
 
 func TestDiscardDeterministic_RemovesDuplicatesAndBelowFloorOnly(t *testing.T) {
-	segs := []SplitSegment{
+	segs := []split.Segment{
 		{Index: 0, StartMs: 0, EndMs: 30_000, DupOf: "existing.mp4"},
 		{Index: 1, StartMs: 30_000, EndMs: 34_000},
 		{Index: 2, StartMs: 34_000, EndMs: 80_000, Unsplittable: true},
@@ -572,10 +573,10 @@ func TestDiscardDeterministic_RemovesDuplicatesAndBelowFloorOnly(t *testing.T) {
 
 func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	queue := proposalQueue{proposals: []SplitProposal{
-		{ClipHash: "duplicate", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, DupOf: "old.mp4"}}},
-		{ClipHash: "short", Segments: []SplitSegment{{StartMs: 0, EndMs: 4_000}}},
-		{ClipHash: "unchecked", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000}}},
-		{ClipHash: "already-ambiguous", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "duplicate", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, DupOf: "old.mp4"}}},
+		{ClipHash: "short", Segments: []split.Segment{{StartMs: 0, EndMs: 4_000}}},
+		{ClipHash: "unchecked", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000}}},
+		{ClipHash: "already-ambiguous", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
 	}}
 	s := NewSplitStage(nil, queue).
 		WithAutoConfirm(*gatePolicy(), func() time.Duration { return 10 * time.Second }).
@@ -611,8 +612,8 @@ func (pendingStructureShadow) ObserveStructureSplit(context.Context, SplitPropos
 
 func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testing.T) {
 	queue := proposalQueue{proposals: []SplitProposal{
-		{ClipHash: "unobserved", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
-		{ClipHash: "observed", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "observed", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
 	}}
 	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: pendingStructureShadow{
 		pending: map[string]bool{"unobserved": true},

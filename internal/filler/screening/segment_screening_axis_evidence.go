@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -85,8 +86,8 @@ func ValidateSegmentScreeningAxisEvidence(evidence SegmentScreeningAxisEvidence)
 	}
 	if evidence.SchemaVersion != SegmentScreeningAxisEvidenceSchemaVersion ||
 		evidence.ContractVersion != SegmentScreeningAxisEvidenceContractVersion ||
-		!filler.IsContentHash(evidence.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(evidence.Profile) != nil ||
-		ValidateSegmentScreeningResult(projected) != nil || !filler.IsContentHash(evidence.RawEvidenceSHA256) ||
+		!split.IsContentHash(evidence.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(evidence.Profile) != nil ||
+		ValidateSegmentScreeningResult(projected) != nil || !split.IsContentHash(evidence.RawEvidenceSHA256) ||
 		evidence.AssessedAt.IsZero() || evidence.SHA256 != SegmentScreeningAxisEvidenceSHA256(evidence) {
 		return fmt.Errorf("segment screening axis evidence is invalid")
 	}
@@ -98,7 +99,7 @@ func ValidateSegmentScreeningAxisEvidence(evidence SegmentScreeningAxisEvidence)
 
 func ValidateSegmentScreeningAxisProfile(profile SegmentScreeningAxisProfile) error {
 	if ValidateSegmentScreeningAxis(profile.Axis) != nil || !ValidScreeningReasonCode(profile.EvidenceContract) ||
-		!filler.IsContentHash(profile.PolicySHA256) || !filler.IsContentHash(profile.CertificationSHA256) || !filler.IsContentHash(profile.ImplementationSHA256) {
+		!split.IsContentHash(profile.PolicySHA256) || !split.IsContentHash(profile.CertificationSHA256) || !split.IsContentHash(profile.ImplementationSHA256) {
 		return fmt.Errorf("segment screening axis profile is invalid")
 	}
 	if axis, safety := airworthinessAxis(profile.Axis); safety {

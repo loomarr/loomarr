@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -37,7 +38,7 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []clipstore.Clip
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
@@ -453,7 +454,7 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
@@ -514,7 +515,7 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  httpcore.NewTokenAuthorizer(adminToken),
 		Log:   slog.New(slog.DiscardHandler),
 		FillerLayout: func() filler.Layout {
 			layout, layoutErr := filler.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))

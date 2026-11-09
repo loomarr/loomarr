@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -227,7 +228,7 @@ func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidenceSHA25
 }
 
 func (r SegmentScreeningReference) validate() error {
-	if r.SchemaVersion != segmentScreeningReferenceSchemaVersion || !isContentHash(r.SubjectSHA256) || !isContentHash(r.EvidenceSHA256) {
+	if r.SchemaVersion != segmentScreeningReferenceSchemaVersion || !split.IsContentHash(r.SubjectSHA256) || !split.IsContentHash(r.EvidenceSHA256) {
 		return fmt.Errorf("segment screening reference is invalid")
 	}
 	return nil
@@ -250,9 +251,9 @@ type ConditioningLineage struct {
 	// StructureRole is the exact semantic role from the confirmed complete-timeline decision.
 	// It remains distinct from SidecarTags.Kind because promo is projected to the legacy
 	// interstitial catalog kind while its more precise assessment meaning must survive rebuilds.
-	StructureRole   StructureSegmentRole `json:"structureRole,omitempty"`
-	IntendedStartMs int64                `json:"intendedStartMs"`
-	IntendedEndMs   int64                `json:"intendedEndMs"`
+	StructureRole   split.Role `json:"structureRole,omitempty"`
+	IntendedStartMs int64      `json:"intendedStartMs"`
+	IntendedEndMs   int64      `json:"intendedEndMs"`
 }
 
 // ConditioningEvidence keeps measurements separate from policy decisions and target markers.

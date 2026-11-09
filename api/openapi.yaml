@@ -6744,6 +6744,9 @@ components:
           description: The last episode a multi-episode file holds
           format: int64
           type: integer
+        fromFile:
+          description: Its name and number are its file's, until the show's episode order is said
+          type: boolean
         id:
           type: string
         name:
@@ -6758,6 +6761,7 @@ components:
         - name
         - number
         - ready
+        - fromFile
       type: object
     LibraryFolderNameDTO:
       additionalProperties: false
