@@ -133,8 +133,8 @@ func (m *Tunarr) EnsureChannel(_ context.Context, spec tunarr.ChannelSpec) (stri
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if spec.TunarrID == "" {
-		// ⚠ **A DUPLICATE NUMBER IS REFUSED, because the real Tunarr refuses it** (§9 V54). This
-		// fake used to accept any number on create, so every test passed while production failed:
+		// ⚠ **A DUPLICATE NUMBER IS REFUSED, because the real Tunarr refuses it** (§9 V54). A fake
+		// that accepts any number on create lets every test pass while production fails:
 		// Tunarr answers `POST /api/channels` with `500` and an EMPTY BODY when the number is
 		// taken, which stranded a channel permanently. A double that cannot say no cannot catch
 		// the bug — the same lesson as the context-ignoring doubles in filler and the scheduler.
