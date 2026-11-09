@@ -29,5 +29,6 @@ export { PlayerMore } from "./player-more";
 export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
 export { PlayerSheet } from "./player-sheet";
+export { PORTRAIT_PICTURE_TOP } from "./portrait-chrome";
 export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
 export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

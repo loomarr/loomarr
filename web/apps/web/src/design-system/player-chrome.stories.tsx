@@ -10,6 +10,7 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PORTRAIT_PICTURE_TOP,
   pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
@@ -384,6 +385,69 @@ const MoreBehind: Story = {
   },
 };
 
+// The first play of the session starts muted: a pill under the controls takes one tap to undo it.
+const UnmutePill: Story = { args: { unmute: fn() } };
+
+// A portrait phone (pick A, #2775): the picture pinned under the top row, the band and keys below it in
+// the black space, nothing over the picture. A stand-in strip marks where the player draws the video.
+const PHONE = { height: 844, width: 390 } as const;
+const PhoneFrame = (args: PlayerChromeProps) => (
+  <div style={{ ...PHONE, background: "#000", margin: "0 auto", position: "relative" }}>
+    <div
+      style={{
+        aspectRatio: "16 / 9",
+        background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
+        position: "absolute",
+        top: PORTRAIT_PICTURE_TOP,
+        width: "100%",
+      }}
+    />
+    <PlayerChrome {...args} />
+  </div>
+);
+const portraitArgs = {
+  density: "touch" as const,
+  keys: { ...keys, density: "touch" as const, last: undefined, pointer: false },
+  layout: "portrait" as const,
+  top: { ...top, density: "touch" as const, pointer: false },
+};
+const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
+const PortraitBehind: Story = {
+  args: {
+    ...portraitArgs,
+    ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
+    keys: { ...portraitArgs.keys, playing: false },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitCommercials: Story = {
+  args: { ...portraitArgs, ...chromeArgs({ lagSeconds: 75, mode: "behind" }), keys: portraitArgs.keys },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitUnmute: Story = {
+  args: { ...portraitArgs, unmute: fn() },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitMore: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="touch"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+          last={{ number: "3", onPress: fn() }}
+          picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          {...moreData(live)}
+        />
+      </PlayerSheet>
+    ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+
 // Title art, drawn as shapes (no real titles in a public repo): a wide wordmark, a nearly square emblem
 // and a 16:9 fanart. The band sizes each logo by area, so a wide and a square one carry the same weight.
 const svgArt = (width: number, height: number, body: string) => ({
@@ -489,12 +553,18 @@ export {
   OffAir,
   PictureSheet,
   Playing,
+  Portrait,
+  PortraitBehind,
+  PortraitCommercials,
+  PortraitMore,
+  PortraitUnmute,
   StationId,
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
   Touch,
   TypingChannel,
+  UnmutePill,
   WatermarkBottomLeft,
   WatermarkBottomRight,
   WatermarkTopLeft,

@@ -126,7 +126,15 @@ interface PlayerChromeProps {
   live: PlayerLiveState;
   onGoLive: () => void;
   keys: PlayerKeysProps;
+  /**
+   * `overlay` draws over the picture and auto-hides (§9.1). `portrait` is the phone held upright
+   * (§9.7): the top row above the picture, the band and keys below it, nothing over the picture, and
+   * always shown. The app pins the picture at `PORTRAIT_PICTURE_TOP`.
+   */
+  layout?: "overlay" | "portrait";
   top: PlayerTopRowProps;
+  /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
+  unmute?: () => void;
   /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
   readout?: { digits: string; missed?: boolean };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
