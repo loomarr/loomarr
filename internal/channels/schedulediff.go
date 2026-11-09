@@ -159,7 +159,7 @@ func withDraft(ch store.Channel, draftLineup []schedule.LineupEntry, draftPolicy
 // would: at each rolling-window turn, and at each instant the clock changes the arrangement (a
 // rule starting or ending, a holiday). It returns the blocks and the instant the walk reached.
 //
-// The window turns follow the guide's forecast (playoutResolver.segmentedBroadcasts): with
+// The window turns follow the guide's forecast (playoutresolve.Resolver.segmentedBroadcasts): with
 // carry-over the next window starts where the programme crossing the boundary ends; without it
 // (Tunarr) the window is cut on the boundary and walked from the fixed anchor. A rule boundary
 // keeps the epoch and cuts, which is what reconcile does when it re-arranges mid-window. One

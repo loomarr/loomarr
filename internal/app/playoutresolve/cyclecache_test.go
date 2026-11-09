@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -68,13 +68,13 @@ func (s *stubChannels) set(mutate func(*store.Channel)) {
 	mutate(&s.ch)
 }
 
-func cachedResolver(t *testing.T, ch store.Channel) (*playoutResolver, *countingCycle, *stubChannels) {
+func cachedResolver(t *testing.T, ch store.Channel) (*Resolver, *countingCycle, *stubChannels) {
 	t.Helper()
 	eng := &countingCycle{slots: []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 600_000},
 	}}
 	chans := &stubChannels{ch: ch}
-	return &playoutResolver{
+	return &Resolver{
 		engine:   eng,
 		now:      time.Now,
 		channels: chans,
@@ -222,7 +222,7 @@ func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 func TestCycleCache_NoStoreFallsBackToLiveComputation(t *testing.T) {
 	t.Parallel()
 	eng := &countingCycle{slots: []schedule.Slot{{Kind: schedule.SlotProgram}}}
-	r := &playoutResolver{engine: eng, now: time.Now} // no channels, no cycles
+	r := &Resolver{engine: eng, now: time.Now} // no channels, no cycles
 
 	slots, _, err := r.cycleAt(context.Background(), "ch1", time.Now())
 	if err != nil {

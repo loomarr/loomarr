@@ -14,7 +14,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 11 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filler/clips`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.

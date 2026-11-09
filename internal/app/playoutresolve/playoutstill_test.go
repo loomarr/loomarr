@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func (r *recordedAirings) RecordAiring(_ context.Context, _ string, _ provision.
 
 // stillResolver plays slots from now, each programme from its own library file (named for its
 // item id) and no media server.
-func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings airingRecorder) *playoutResolver {
+func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings AiringRecorder) *Resolver {
 	t.Helper()
 	accepted := &stubChannels{}
 	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
@@ -41,7 +41,7 @@ func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings a
 			t.Fatal(err)
 		}
 	}
-	return &playoutResolver{
+	return &Resolver{
 		channels:    accepted,
 		now:         func() time.Time { return now },
 		libraryFile: files,
@@ -87,7 +87,7 @@ func TestIndexedKeyframe_SeeksWithTheMeasuredIndexOfTheFilesCurrentBytes(t *test
 	if err := os.WriteFile(file, []byte("media"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r := &playoutResolver{inventory: inventory.New(st), analyses: st, now: time.Now}
+	r := &Resolver{inventory: inventory.New(st), analyses: st, now: time.Now}
 	if _, ok := r.ensureLocalInventorySource(ctx, file); !ok {
 		t.Fatal("registering the local source failed")
 	}

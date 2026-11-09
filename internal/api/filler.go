@@ -438,7 +438,7 @@ func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
 // playsCounted reports whether THIS install can observe a filler clip airing.
 //
 // It is exactly "does internal playout run here": the resolver is what records a play (see
-// playoutadapter.airingFiller), and a Tunarr-backed install has none — its filler is aired by
+// playoutresolve.Resolver.airingFiller), and a Tunarr-backed install has none — its filler is aired by
 // Tunarr, which never reports back. Deriving it from the same field the program route checks
 // means the flag cannot drift from the behaviour it describes.
 func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
