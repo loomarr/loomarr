@@ -460,7 +460,7 @@ func TestURLForAndSrcSet(t *testing.T) {
 		t.Errorf("URLFor = %q, want %q", got, want)
 	}
 
-	set := svc.SrcSet(hash, RolePoster, FormatAVIF)
+	set := svc.SrcSet(hash, RolePoster, FormatAVIF, 0)
 	if strings.Contains(set, "loomarr.example.test") {
 		t.Errorf("SrcSet = %q, want same-origin paths for the in-app browser", set)
 	}
