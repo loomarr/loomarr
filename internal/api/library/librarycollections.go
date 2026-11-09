@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 // These are Loomarr's collections, not the media server's (`/v1/library/collections`, which
 // channel scopes still name until cutover, step 15).
 
-func (s *Server) registerLibraryCollections(api huma.API) {
+func (s *Handlers) registerLibraryCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listCollections", Method: http.MethodGet, Path: "/v1/collections",
 		Summary:     "Your collections",
@@ -107,7 +107,7 @@ type setDTO struct {
 	Titles []libraryItemDTO `json:"titles" doc:"The library's movies of the set, in its order"`
 }
 
-func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollectionsOutput, error) {
+func (s *Handlers) listCollections(ctx context.Context, _ *struct{}) (*listCollectionsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollect
 	return out, nil
 }
 
-func (s *Server) copySet(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {
+func (s *Handlers) copySet(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -163,11 +163,11 @@ func (s *Server) copySet(ctx context.Context, in *collectionIDInput) (*collectio
 	return s.collectionResponse(ctx, id)
 }
 
-func (s *Server) getCollection(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {
+func (s *Handlers) getCollection(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {
 	return s.collectionResponse(ctx, in.ID)
 }
 
-func (s *Server) createCollection(ctx context.Context, in *struct{ Body collectionBody }) (*collectionOutput, error) {
+func (s *Handlers) createCollection(ctx context.Context, in *struct{ Body collectionBody }) (*collectionOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -183,7 +183,7 @@ func (s *Server) createCollection(ctx context.Context, in *struct{ Body collecti
 	return s.collectionResponse(ctx, id)
 }
 
-func (s *Server) updateCollection(ctx context.Context, in *struct {
+func (s *Handlers) updateCollection(ctx context.Context, in *struct {
 	ID   string `path:"id"`
 	Body collectionBody
 }) (*collectionOutput, error) {
@@ -205,7 +205,7 @@ func (s *Server) updateCollection(ctx context.Context, in *struct {
 	return s.collectionResponse(ctx, in.ID)
 }
 
-func (s *Server) deleteCollection(ctx context.Context, in *collectionIDInput) (*struct{}, error) {
+func (s *Handlers) deleteCollection(ctx context.Context, in *collectionIDInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -227,7 +227,7 @@ func (s *Server) deleteCollection(ctx context.Context, in *collectionIDInput) (*
 	return nil, nil
 }
 
-func (s *Server) collectionResponse(ctx context.Context, id string) (*collectionOutput, error) {
+func (s *Handlers) collectionResponse(ctx context.Context, id string) (*collectionOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses
 
 // collectionUses maps each collection id a channel scope names to those channels, by number: the
 // channel's own scope and each rule's.
-func (s *Server) collectionUses(ctx context.Context) (map[string][]collectionChannelDTO, error) {
+func (s *Handlers) collectionUses(ctx context.Context) (map[string][]collectionChannelDTO, error) {
 	channels, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)

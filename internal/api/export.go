@@ -13,6 +13,7 @@ import (
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -54,9 +55,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerSearch(humaAPI)
-	srv.registerMovieCollections(humaAPI)
-	srv.registerCollections(humaAPI)
-	srv.registerLibrary(humaAPI)
+	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)

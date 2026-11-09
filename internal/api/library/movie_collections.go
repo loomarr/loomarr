@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-func (s *Server) registerMovieCollections(api huma.API) {
+func (s *Handlers) registerMovieCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "resolveMovieCollections", Method: http.MethodGet, Path: "/v1/movie-collections",
 		Summary: "Resolve grounded movie collections", Tags: []string{"search"},
@@ -27,7 +27,7 @@ type movieCollectionsOutput struct {
 	Body MovieCollectionResolution
 }
 
-func (s *Server) doResolveMovieCollections(ctx context.Context, in *movieCollectionsInput) (*movieCollectionsOutput, error) {
+func (s *Handlers) doResolveMovieCollections(ctx context.Context, in *movieCollectionsInput) (*movieCollectionsOutput, error) {
 	if s.movieCollections == nil || (s.liveSettings != nil && strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) == "") {
 		return nil, httpcore.NotImplemented("Movie collections aren't ready",
 			"Connect TMDB in Settings to see the other films in a collection.")
@@ -53,7 +53,7 @@ func (s *Server) doResolveMovieCollections(ctx context.Context, in *movieCollect
 	}
 	for i := range resolution.Collections {
 		if resolution.Collections[i].Members == nil {
-			resolution.Collections[i].Members = []SearchCandidate{}
+			resolution.Collections[i].Members = []httpcore.SearchCandidate{}
 		}
 	}
 	return &movieCollectionsOutput{Body: resolution}, nil

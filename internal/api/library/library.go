@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -58,7 +58,7 @@ type LibraryRootService interface {
 	CopySet(ctx context.Context, id string) (string, error)
 }
 
-func (s *Server) registerLibrary(api huma.API) {
+func (s *Handlers) registerLibrary(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryRoots", Method: http.MethodGet, Path: "/v1/library/roots",
 		Summary:     "List media folders",
@@ -185,14 +185,14 @@ func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libr
 	return out
 }
 
-func (s *Server) libraryRootsService() (LibraryRootService, error) {
+func (s *Handlers) libraryRootsService() (LibraryRootService, error) {
 	if s.libraryRoots == nil {
 		return nil, httpcore.FeatureNotConfigured("Media folders unavailable", "The library scanner is not set up on this server.")
 	}
 	return s.libraryRoots, nil
 }
 
-func (s *Server) listLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
+func (s *Handlers) listLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -204,7 +204,7 @@ func (s *Server) listLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRoo
 	return libraryRootsView(all, nil), nil
 }
 
-func (s *Server) discoverLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
+func (s *Handlers) discoverLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ type addLibraryRootInput struct {
 	}
 }
 
-func (s *Server) addLibraryRoot(ctx context.Context, in *addLibraryRootInput) (*libraryRootsOutput, error) {
+func (s *Handlers) addLibraryRoot(ctx context.Context, in *addLibraryRootInput) (*libraryRootsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ type setLibraryRootInUseInput struct {
 	}
 }
 
-func (s *Server) setLibraryRootInUse(ctx context.Context, in *setLibraryRootInUseInput) (*libraryRootsOutput, error) {
+func (s *Handlers) setLibraryRootInUse(ctx context.Context, in *setLibraryRootInUseInput) (*libraryRootsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ type setLibraryPathMappingInput struct {
 	}
 }
 
-func (s *Server) setLibraryPathMapping(ctx context.Context, in *setLibraryPathMappingInput) (*libraryRootsOutput, error) {
+func (s *Handlers) setLibraryPathMapping(ctx context.Context, in *setLibraryPathMappingInput) (*libraryRootsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -319,7 +319,7 @@ type libraryStatusOutput struct {
 	}
 }
 
-func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -377,7 +377,7 @@ func heldView(counts []store.LibraryHeldCount) []libraryHeldDTO {
 	return out
 }
 
-func (s *Server) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+func (s *Handlers) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -396,7 +396,7 @@ type confirmLibraryRemovalInput struct {
 	}
 }
 
-func (s *Server) confirmLibraryRemoval(ctx context.Context, in *confirmLibraryRemovalInput) (*libraryStatusOutput, error) {
+func (s *Handlers) confirmLibraryRemoval(ctx context.Context, in *confirmLibraryRemovalInput) (*libraryStatusOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err

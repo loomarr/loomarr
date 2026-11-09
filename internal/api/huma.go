@@ -12,6 +12,7 @@ import (
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -70,17 +71,8 @@ type Server struct {
 	arrDiscovery ArrDiscovery
 	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
-	suggest          SuggestService
-	search           SearchService
-	movieCollections MovieCollectionService
-	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
-	// nil-semantics every other optional service here uses.
-	collections CollectionService
-	// libraryRoots backs /v1/library/roots*, /v1/library/path-map and /v1/library/status (#2151);
-	// nil ⇒ those routes 409 as not configured.
-	libraryRoots LibraryRootService
-	// libraryHooks backs /v1/library/hooks/* (#2151 decision 10); nil ⇒ those routes 409.
-	libraryHooks LibraryHookService
+	suggest SuggestService
+	search  SearchService
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
@@ -370,33 +362,7 @@ type SuggestService interface {
 // grounding tool. Returns candidates as generic maps so the API layer needn't
 // import the catalog types (kept dependency-light).
 type SearchService interface {
-	Search(ctx context.Context, request SearchRequest) ([]SearchCandidate, error)
-}
-
-// MovieCollectionService resolves authoritative TMDB movie-collection rosters
-// for the bounded Title Keys visible in proposal review. The returned members
-// are ordinary grounded candidates so choosing them still uses the existing
-// per-title approval gate.
-type MovieCollectionService interface {
-	ResolveMovieCollections(context.Context, MovieCollectionRequest) (MovieCollectionResolution, error)
-}
-
-type MovieCollectionRequest struct {
-	Keys []string
-}
-
-type MovieCollectionResolution struct {
-	Collections []MovieCollection `json:"collections"`
-	// Complete is false when a requested Key or referenced roster could not be
-	// resolved or validated. That keeps incomplete evidence distinct from an
-	// authoritative standalone.
-	Complete bool `json:"complete"`
-}
-
-type MovieCollection struct {
-	TMDBID  int               `json:"tmdbId" minimum:"1"`
-	Name    string            `json:"name" minLength:"1"`
-	Members []SearchCandidate `json:"members" minItems:"2"`
+	Search(ctx context.Context, request SearchRequest) ([]httpcore.SearchCandidate, error)
 }
 
 // SearchRequest selects exactly one Catalog operation. Query uses federated title
@@ -428,53 +394,6 @@ type SearchDiscovery struct {
 	Network          string
 	Cast             []string
 	Creators         []string
-}
-
-// CollectionService backs GET /v1/library/collections — the media server's collections
-// (Emby/Jellyfin BoxSets) that back `scope.collections` (programming-design §2.2).
-//
-// ⚠ A LIST, not a search. Collections are a small closed set the operator curates by hand,
-// so the picker shows all of them; there is no query parameter because there is nothing to
-// narrow. This is why it is not a `scope` on /v1/search — a Candidate models a provisionable
-// title and a collection is not one, the same distinction that keeps clips off that route.
-type CollectionService interface {
-	Collections(ctx context.Context) ([]LibraryCollection, error)
-}
-
-// LibraryCollection is the API view of one media-server collection. The ID is opaque and
-// server-local — it is what `scope.collections` stores — so the Name is carried alongside it
-// purely so the picker can show a human something. ⚠ Never a TMDB collection (franchise) id;
-// see programming-design §2.2 on the two namespaces sharing one English word.
-type LibraryCollection struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	ChildCount int    `json:"childCount,omitempty"`
-}
-
-// SearchCandidate is the API view of a catalog candidate (§7.2). It carries the
-// same source-backed editorial and enforcement evidence as the LLM grounding
-// tool, so the doc's "humans and the model see identical results" promise (§8)
-// holds on the read side too.
-type SearchCandidate struct {
-	MediaType        string   `json:"mediaType"`
-	TMDBID           int      `json:"tmdbId,omitempty"`
-	TVDBID           int      `json:"tvdbId,omitempty"`
-	Name             string   `json:"name"`
-	Year             int      `json:"year,omitempty"`
-	InLibrary        bool     `json:"inLibrary"`
-	LibraryItemID    string   `json:"libraryItemId,omitempty"`
-	Genres           []string `json:"genres,omitempty"`
-	Overview         string   `json:"overview,omitempty"`
-	OriginalLanguage string   `json:"originalLanguage,omitempty"`
-	OriginCountries  []string `json:"originCountries,omitempty"`
-	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
-	VoteAverage      float64  `json:"voteAverage,omitempty"`
-	VoteCount        int      `json:"voteCount,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	Networks         []string `json:"networks,omitempty"`
-	Cast             []string `json:"cast,omitempty"`
-	Creators         []string `json:"creators,omitempty"`
-	OfficialRating   string   `json:"officialRating,omitempty"`
 }
 
 // holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
@@ -572,27 +491,27 @@ type Options struct {
 	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
 	// acceptable only in tests. Production wires it at composition beside Devices.
 	DeviceLimiter    *auth.RateLimiter
-	CookieSecure     string                        // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy       bool                          // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
-	DevLogin         bool                          // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof            bool                          // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	MetricsToken     string                        // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
-	Demo             DemoAccount                   // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
-	Channels         guideapi.ChannelService       // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV           LiveTVService                 // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunerRescanner   channelsapi.TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
-	TunarrConnect    TunarrConnector               // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	ArrDiscovery     ArrDiscovery                  // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
-	Suggest          SuggestService                // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	ProposalProgress proposalsapi.ProposalProgress // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
-	ProposalWorkflow proposalsapi.ProposalWorkflow // authoritative /v1/proposal-jobs Journey reads
-	Search           SearchService                 // /v1/search (Phase 11); nil ⇒ search route 501
-	MovieCollections MovieCollectionService        // /v1/movie-collections; nil ⇒ route 501
-	Collections      CollectionService             // /v1/library/collections (§2.2); nil ⇒ route 501
-	LibraryRoots     LibraryRootService            // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
-	LibraryHooks     LibraryHookService            // /v1/library/hooks/* (#2151); nil ⇒ 409
-	IdeaLibrary      channelsapi.IdeaLibrary       ///v1/discovery/ideas (#1665); nil ⇒ route 501
-	Icons            channelsapi.IconService       ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	CookieSecure     string                            // COOKIE_SECURE: auto|true|false (§11)
+	TrustProxy       bool                              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	DevLogin         bool                              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof            bool                              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	MetricsToken     string                            // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
+	Demo             DemoAccount                       // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
+	Channels         guideapi.ChannelService           // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV           LiveTVService                     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner   channelsapi.TunerRescanner        // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect    TunarrConnector                   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	ArrDiscovery     ArrDiscovery                      // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
+	Suggest          SuggestService                    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	ProposalProgress proposalsapi.ProposalProgress     // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
+	ProposalWorkflow proposalsapi.ProposalWorkflow     // authoritative /v1/proposal-jobs Journey reads
+	Search           SearchService                     // /v1/search (Phase 11); nil ⇒ search route 501
+	MovieCollections libraryapi.MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
+	Collections      libraryapi.CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
+	LibraryRoots     libraryapi.LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
+	LibraryHooks     libraryapi.LibraryHookService     // /v1/library/hooks/* (#2151); nil ⇒ 409
+	IdeaLibrary      channelsapi.IdeaLibrary           ///v1/discovery/ideas (#1665); nil ⇒ route 501
+	Icons            channelsapi.IconService           ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.

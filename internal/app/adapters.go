@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -179,7 +181,7 @@ func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 // to the API's dependency-light shape).
 type searchAdapter struct{ cat *catalog.Catalog }
 
-func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([]api.SearchCandidate, error) {
+func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([]httpcore.SearchCandidate, error) {
 	var cands []catalog.Candidate
 	var err error
 	if request.Discovery != nil {
@@ -207,7 +209,7 @@ func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.SearchCandidate, 0, len(cands))
+	out := make([]httpcore.SearchCandidate, 0, len(cands))
 	for _, c := range cands {
 		out = append(out, searchCandidateFromCatalog(c))
 	}
@@ -218,34 +220,34 @@ type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,
-	request api.MovieCollectionRequest,
-) (api.MovieCollectionResolution, error) {
+	request libraryapi.MovieCollectionRequest,
+) (libraryapi.MovieCollectionResolution, error) {
 	keys := make([]provision.Key, 0, len(request.Keys))
 	for _, key := range request.Keys {
 		keys = append(keys, provision.Key(key))
 	}
 	resolved, err := a.resolver.Resolve(ctx, keys)
 	if err != nil {
-		return api.MovieCollectionResolution{}, err
+		return libraryapi.MovieCollectionResolution{}, err
 	}
-	out := api.MovieCollectionResolution{
-		Collections: make([]api.MovieCollection, 0, len(resolved.Collections)),
+	out := libraryapi.MovieCollectionResolution{
+		Collections: make([]libraryapi.MovieCollection, 0, len(resolved.Collections)),
 		Complete:    resolved.Complete,
 	}
 	for _, collection := range resolved.Collections {
-		members := make([]api.SearchCandidate, 0, len(collection.Members))
+		members := make([]httpcore.SearchCandidate, 0, len(collection.Members))
 		for _, member := range collection.Members {
 			members = append(members, searchCandidateFromCatalog(member))
 		}
-		out.Collections = append(out.Collections, api.MovieCollection{
+		out.Collections = append(out.Collections, libraryapi.MovieCollection{
 			TMDBID: collection.TMDBID, Name: collection.Name, Members: members,
 		})
 	}
 	return out, nil
 }
 
-func searchCandidateFromCatalog(c catalog.Candidate) api.SearchCandidate {
-	return api.SearchCandidate{
+func searchCandidateFromCatalog(c catalog.Candidate) httpcore.SearchCandidate {
+	return httpcore.SearchCandidate{
 		MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
 		Genres: c.Genres, Overview: c.Overview,
@@ -430,14 +432,14 @@ type libraryCollections struct {
 	own ownCollections
 }
 
-func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
+func (a libraryCollections) Collections(ctx context.Context) ([]libraryapi.LibraryCollection, error) {
 	own, err := a.own.ListLibraryCollections(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.LibraryCollection, 0, len(own))
+	out := make([]libraryapi.LibraryCollection, 0, len(own))
 	for _, c := range own {
-		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
+		out = append(out, libraryapi.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
 	}
 	return out, nil
 }

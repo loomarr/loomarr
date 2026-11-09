@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -18,11 +17,7 @@ import (
 // found for each, and the maintainer's answer. The API says which facts agree; the words are the
 // UI's.
 
-// libraryCandidateImageOwner owns the posters of a title's candidates, so the image service keeps
-// them while the title is listed.
-const libraryCandidateImageOwner = "library_candidate"
-
-func (s *Server) registerLibraryNeeds(api huma.API) {
+func (s *Handlers) registerLibraryNeeds(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryNeeds", Method: http.MethodGet, Path: "/v1/library/needs",
 		Summary:     "Titles that need you",
@@ -143,7 +138,7 @@ type listLibraryNeedsOutput struct {
 	}
 }
 
-func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibraryNeedsOutput, error) {
+func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibraryNeedsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -205,23 +200,6 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 	return out, nil
 }
 
-// candidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
-// its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
-func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
-	if s.images == nil || url == "" {
-		return nil
-	}
-	rec, err := s.images.Adopt(ctx, url, images.IngestRequest{
-		Role: images.RolePoster, Visibility: images.VisibilityMember,
-		OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
-	})
-	if err != nil || !rec.HasBytes() {
-		return nil
-	}
-	dto := s.imageToDTO(ctx, rec)
-	return &dto
-}
-
 type libraryItemIDInput struct {
 	ID string `path:"id" maxLength:"64"`
 }
@@ -233,7 +211,7 @@ type linkLibraryItemInput struct {
 	}
 }
 
-func (s *Server) linkLibraryItem(ctx context.Context, in *linkLibraryItemInput) (*struct{}, error) {
+func (s *Handlers) linkLibraryItem(ctx context.Context, in *linkLibraryItemInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -242,7 +220,7 @@ func (s *Server) linkLibraryItem(ctx context.Context, in *linkLibraryItemInput) 
 	return nil, libraryAnswerErr(svc.Link(ctx, in.ID, id))
 }
 
-func (s *Server) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+func (s *Handlers) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -250,7 +228,7 @@ func (s *Server) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput) 
 	return nil, libraryAnswerErr(svc.Ignore(ctx, in.ID))
 }
 
-func (s *Server) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+func (s *Handlers) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -298,7 +276,7 @@ type chooseLibraryEpisodeOrderInput struct {
 	}
 }
 
-func (s *Server) chooseLibraryEpisodeOrder(ctx context.Context, in *chooseLibraryEpisodeOrderInput) (*struct{}, error) {
+func (s *Handlers) chooseLibraryEpisodeOrder(ctx context.Context, in *chooseLibraryEpisodeOrderInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -343,7 +321,7 @@ type searchLibraryTitlesOutput struct {
 	}
 }
 
-func (s *Server) searchLibraryTitles(ctx context.Context, in *searchLibraryTitlesInput) (*searchLibraryTitlesOutput, error) {
+func (s *Handlers) searchLibraryTitles(ctx context.Context, in *searchLibraryTitlesInput) (*searchLibraryTitlesOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err

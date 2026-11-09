@@ -46,7 +46,7 @@ type searchInput struct {
 }
 type searchOutput struct {
 	Body struct {
-		Candidates []SearchCandidate `json:"candidates"`
+		Candidates []httpcore.SearchCandidate `json:"candidates"`
 	}
 }
 
