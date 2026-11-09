@@ -120,7 +120,7 @@ func buildFoundation(
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 
-		holidays := newHolidaySnapshot(st, log)
+		holidays := holidayvocab.NewSnapshot(st, log)
 		holidays.Reload(rootCtx)
 		owner.goRunAfterBuild(holidays.Run)
 		result.holidays, result.reloadHolidays = holidays.Current, holidays.Reload

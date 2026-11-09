@@ -8,6 +8,7 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -127,11 +128,11 @@ type llmSecrets struct {
 }
 
 func (s llmSecrets) ReadKey(ctx context.Context, key string) (string, error) {
-	return readProtectedSetting(ctx, s.store, s.protection, key)
+	return protectedsettings.Read(ctx, s.store, s.protection, key)
 }
 
 func (s llmSecrets) WriteKey(ctx context.Context, key, value string) error {
-	return writeProtectedSetting(ctx, s.store, s.protection, key, value)
+	return protectedsettings.Write(ctx, s.store, s.protection, key, value)
 }
 
 // llmPullEvents publishes a model pull's progress on the SSE bus (§7, type=llm_pull). The FE
