@@ -21,18 +21,16 @@ import (
 // sets the channel's logo to the content-addressed URL → the reconcile pushes that URL to
 // Tunarr's channel icon → Tunarr fetches GET /v1/images/{hash}/w500.jpg directly, unauthenticated.
 //
-// ⚠ **There is no serve half here any more.** Until V52 phase 8 the bytes lived in the DB
-// (`channel_icons`) and a sibling route served them, which is why this comment used to describe a
-// blob that rode the §16 backup and a URL built from the upload request's Host. Both are gone: the
-// image service owns storage (§22), and its URLs derive from the operator-configured
-// `server.public_url` rather than from an attacker-controllable request header.
+// ⚠ **There is no serve half here.** The image service owns storage (§22), and its URLs derive
+// from the operator-configured `server.public_url` rather than from an attacker-controllable
+// request header.
 //
 // The §16 trade is recorded rather than lost — an upload is the one image origin that cannot be
 // re-fetched after losing /data/images, which §22's Durability section accepts and the GC surfaces
 // as a system warning.
 
 // maxIconBytes caps an upload at 2 MiB — a channel icon is a small poster/logo; this fences
-// a hostile or accidental large upload out of the DB blob without a config knob.
+// a hostile or accidental large upload out of the image store without a config knob.
 const maxIconBytes = 2 << 20
 
 // ownerKindChannel is the image owner kind for a channel icon (channel_images). A Ref is what keeps the GC
@@ -80,12 +78,11 @@ type uploadIconOutput struct {
 // the channel's logo at the serve URL, and persists — the auto-reconcile on the next sweep (or
 // an explicit reconcile) pushes it to Tunarr.
 //
-// ⚠ **The CSRF check that used to live here is gone because the middleware now covers it.**
-// It existed only because this was a raw mux handler outside registerMiddleware; a multipart
-// POST is the classic CSRF vector, and the guard was hand-rolled to compensate. As a Huma
-// operation the same rule applies from one place (titles.go), so keeping a second copy would
-// mean two implementations of one rule to keep in step — which is how backupHandler and
-// eventsHandler ended up disagreeing about nil authorizers.
+// ⚠ **No hand-rolled CSRF check here: the request middleware covers it.** A multipart POST is
+// the classic CSRF vector, and a raw mux handler outside registerMiddleware would need its own
+// guard. As a Huma operation the same rule applies from one place (internal/api/middleware.go),
+// so a second copy would mean two implementations of one rule to keep in step — which is how two
+// raw handlers once disagreed about nil authorizers.
 func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
@@ -124,9 +121,8 @@ func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (
 			"The image service isn't configured on this instance.")
 	}
 
-	// ⚠ The bytes go to the image service (§22), NOT into the database. `channel_icons` stored retired-ok
-	// them as a BLOB specifically so they would ride the §16 backup; §22 reverses that trade
-	// deliberately and records what replaces the guarantee (uploads are the one unrecoverable
+	// ⚠ The bytes go to the image service (§22), NOT into the database, so they do not ride the
+	// §16 backup: §22 records what replaces that guarantee (uploads are the one unrecoverable
 	// origin — see Durability). The Ref recorded here is what keeps the GC from collecting the
 	// icon as an orphan while a channel still points at it.
 	img, err := s.images.Ingest(ctx, bytes.NewReader(data), images.IngestRequest{
@@ -157,15 +153,6 @@ func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (
 	return out, nil
 }
 
-// ⚠ **`serveChannelIcon` and `GET /v1/channels/{id}/icon` were RETIRED in V52 phase 8.** They
-// served icon bytes out of the `channel_icons` table — a second image store, addressed by CHANNEL retired-ok
-// rather than by content, needing a `?v=` cache-bust precisely because its URL could not change
-// when its bytes did. Phase 5 moved uploads to the image service and left that route as the
-// migration window for icons uploaded before it; the window is closed and the table is gone.
-//
-// What replaced it is `channelLogoURL` below: a content-addressed /v1/images URL that Tunarr and
-// the media server fetch exactly as they fetched this one, with an honest immutable cache.
-
 // channelLogoURL builds the icon URL stored on the channel and pushed to Tunarr. It delegates
 // to the image service's URLFor, which derives the base from the OPERATOR-CONFIGURED
 // server.public_url — NOT from request headers (r.Host / X-Forwarded-Host are
@@ -173,11 +160,11 @@ func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (
 // header could poison it). When server.public_url is unset it yields a RELATIVE URL, which
 // still works when Tunarr resolves Loomarr at the same origin.
 //
-// ⚠ **The `?v=` cache-bust is gone, and its absence is the point.** The old URL addressed a
-// channel (`/v1/channels/{id}/icon`), so replacing the icon reused the URL and needed a query
-// param to defeat downstream caches. This one addresses the BYTES: a different icon is a
-// different hash is a different URL, so the cache-bust is structural rather than bolted on.
-// That is the same property that lets the serve route send `Cache-Control: immutable`.
+// ⚠ **No `?v=` cache-bust, and its absence is the point.** A URL addressed by CHANNEL
+// (`/v1/channels/{id}/icon`) would be reused when the icon is replaced and need a query param
+// to defeat downstream caches. This one addresses the BYTES: a different icon is a different
+// hash is a different URL, so the cache-bust is structural rather than bolted on. That is the
+// same property that lets the serve route send `Cache-Control: immutable`.
 //
 // ⚠ **JPEG, deliberately, and this is the one place the compatibility floor earns its keep.**
 // §22 keeps a JPEG rendition for old iOS and legacy Android WebViews, over-represented among a

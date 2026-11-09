@@ -20,8 +20,8 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
-// summarized (counts) rather than dumped slot-by-slot on the channel resource;
+// registerChannels mounts /v1/channels* (§7). Reads are visible to any
+// authenticated user; create/update/delete/reconcile require admin.
 func (s *Handlers) registerChannels(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-channels", Method: http.MethodGet, Path: "/v1/channels",
@@ -40,13 +40,13 @@ func (s *Handlers) registerChannels(api huma.API) {
 		Tags:        []string{"channels"},
 	}, httpcore.RoleMember), s.channelIconSuggestions)
 
-	// ⚠ **`channel-icon` (GET /v1/channels/{id}/icon) was RETIRED in V52 phase 8**, with the
-	// `channel_icons` table behind it. A channel's logo is a /v1/images URL now, which Tunarr and retired-ok
-	// the media server fetch unauthenticated exactly as they fetched this — the public-with-no-
-	// credential property moved to the image serve route, where §22 makes visibility a property of
-	// the IMAGE rather than of the route.
+	// ⚠ **There is no `channel-icon` serve route (GET /v1/channels/{id}/icon)**, and no
+	// `channel_icons` table behind one (retired-ok). A channel's logo is a /v1/images URL, which Tunarr and
+	// the media server fetch unauthenticated — the public-with-no-credential property lives on
+	// the image serve route, where §22 makes visibility a property of the IMAGE rather than of
+	// the route.
 	//
-	// The upload half below survives; only the serving moved.
+	// Only the upload half is here.
 
 	// The upload — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
 	// edge, before the handler's own read limit; the handler still checks, because the multipart
@@ -252,8 +252,7 @@ func (s *Handlers) createChannel(ctx context.Context, in *createChannelInput) (*
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
 // omitting a field and setting it to its zero value are distinguishable (a rename to
 // "" is rejected by Validate, not silently ignored). Operator-owned fields + the
-// per-channel policy + pause/resume via status; lineup edits arrive with the lineup
-// read shape (Phase 3).
+// per-channel policy + pause/resume via status + the whole-list lineup replace.
 type updateChannelInput struct {
 	ID   string `path:"id" example:"ch_abc123"`
 	Body struct {

@@ -44,16 +44,17 @@ func (s *Server) registerMiddleware(api huma.API) {
 			return
 		}
 
-		// ⚠ **AUTHORIZATION, from the route's own declaration** (§11, routeauth.go). The
-		// role a route needs rides on its operation, so this enforces it for every route at
-		// once — rather than depending on each handler body remembering to ask. An
-		// operation that declared nothing requires admin, so forgetting fails CLOSED.
+		// ⚠ **AUTHORIZATION, from the route's own declaration** (§11, httpcore/routeauth.go).
+		// The role a route needs rides on its operation, so this enforces it for every route at
+		// once — rather than depending on each handler body remembering to ask (there is
+		// deliberately no per-handler requireAdmin helper). An operation that declared nothing
+		// requires admin, so forgetting fails CLOSED.
 		//
 		// Runs after CSRF: a cookie-authenticated request missing the header is refused as
 		// CSRF regardless of role, which keeps that refusal from reading as "wrong role".
 		if want := httpcore.RoleForOperation(ctx.Operation()); !httpcore.AuthorizeRole(want, role) {
 			// Goes through WriteErr so the request-id stamping and cause logging in
-			// installUserFacingErrors applies here too — a refusal an operator cannot
+			// httpcore.ErrorTransformer applies here too — a refusal an operator cannot
 			// correlate to a request is a refusal they cannot debug.
 			if role == httpcore.RoleAnonymous {
 				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "You need to sign in to do this.")
@@ -84,11 +85,3 @@ func isMutating(method string) bool {
 		return false
 	}
 }
-
-// (`requireAdmin` lived in this package until 2026-08-10. It returned a 403 unless the caller
-// resolved to admin, and 80 handler bodies opened by calling it — every one of them inside an
-// operation that ALREADY declared RoleAdmin, which `registerMiddleware` above enforces for every
-// route at once. Deleting the function rather than leaving it unused is the point: while it exists,
-// the next handler can call it and re-create the two-places-nothing-connects shape routeauth.go
-// documents, where intent lived in a Description and enforcement 250 lines away. The role now
-// rides the operation, and an operation that declares nothing fails CLOSED.)

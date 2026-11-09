@@ -14,8 +14,8 @@ func ConstantEq(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// Role is the caller's authorization level (§11). Phase 8 recognizes admin (via
-// API_TOKEN) and anonymous; Phase 9 adds session-derived member/admin.
+// Role is the caller's authorization level (§11): anonymous, a session- or device-derived member,
+// or admin (a session, a device, or the API_TOKEN bearer).
 type Role string
 
 const (
@@ -24,21 +24,19 @@ const (
 	RoleAdmin     Role = "admin"
 )
 
-// Authorizer resolves a request to a role (§7 authorization model). It is the
-// seam Phase 9 fills with session-cookie auth; Phase 8 ships an API_TOKEN Bearer
-// authorizer so /v1 routes aren't wide open before sessions exist (§11
-// break-glass admin).
+// Authorizer resolves a request to a role (§7 authorization model). Production uses the
+// session-cookie authorizer in internal/api (sessionauth.go); NewTokenAuthorizer is the
+// API_TOKEN-only form (§11 break-glass admin).
 type Authorizer interface {
 	Authorize(r *http.Request) Role
 }
 
 // tokenAuthorizer authenticates the static API_TOKEN as admin via
-// `Authorization: Bearer <token>` (§11). Empty token ⇒ no Bearer auth (sessions
-// only, once Phase 9 lands).
+// `Authorization: Bearer <token>` (§11). Empty token ⇒ no Bearer auth.
 type tokenAuthorizer struct{ token string }
 
 // NewTokenAuthorizer returns an Authorizer that treats the API_TOKEN bearer as
-// admin. If token is empty, every request is anonymous (until Phase 9).
+// admin. If token is empty, every request is anonymous.
 func NewTokenAuthorizer(token string) Authorizer { return tokenAuthorizer{token: token} }
 
 func (a tokenAuthorizer) Authorize(r *http.Request) Role {
@@ -71,7 +69,3 @@ func RoleFrom(ctx context.Context) Role {
 	}
 	return RoleAnonymous
 }
-
-// (`roleFromHuma` lived here until 2026-08-10. It was a one-line alias for `roleFrom`, and its
-// only caller was `requireAdmin` — the per-handler admin check the middleware made redundant.
-// `roleFrom` itself is still live; a handler that needs the caller's role reads it directly.)

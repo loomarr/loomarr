@@ -14,7 +14,7 @@ import (
 
 // The channel WIRE SHAPE and the mapping to and from it (§7.1).
 //
-// Split out of channels.go: translation is a different job from handling, and keeping it here
+// Kept apart from channels.go: translation is a different job from handling, and keeping it here
 // means a DTO change is reviewable without reading past fifteen handlers.
 //
 // The direction of the mapping matters. `channelToDTO` is a projection — it summarises the
@@ -23,7 +23,9 @@ import (
 // replace: an edit carries only what the operator changed, so a naive overwrite would silently
 // discard fields the UI never sent.
 
-// the full lineup editor is a Phase-13 UI concern.
+// ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
+// summarized (counts) rather than dumped slot-by-slot on the channel resource; the
+// intent-level lineup rides in `lineup`.
 type ChannelDTO struct {
 	ID       string `json:"id" example:"ch_abc123"`
 	Revision int64  `json:"revision" minimum:"1" doc:"Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition."`
@@ -64,8 +66,8 @@ type ChannelDTO struct {
 	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations"`
 	// Lineup is the intent-level "what should play" — the titles the channel is built
 	// from, in order (distinct from the summarized Desired slots above). Read-only here;
-	// the diff a refine shows (kept/added/removed) is computed against this. Editing the
-	// lineup entries is Phase 3.
+	// the diff a refine shows (kept/added/removed) is computed against this. Edits arrive as a
+	// whole-list replace on PATCH.
 	Lineup []LineupEntryDTO `json:"lineup" doc:"The channel's titles, in order (the intent-level lineup, not the expanded slots)"`
 }
 
@@ -248,6 +250,3 @@ func LineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error
 	}
 	return incoming, nil
 }
-
-// registerChannels mounts /v1/channels* (§7). Reads are visible to any
-// authenticated user; create/update/delete/reconcile require admin.

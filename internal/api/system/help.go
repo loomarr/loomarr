@@ -181,11 +181,10 @@ type systemVersionOutput struct {
 
 // systemVersion is the typed twin of /v1/readyz.
 //
-// ⚠ The old note here said the probes "deliberately stay OUTSIDE huma and unauthenticated…
-// registering them would have put an auth requirement in front of a container health probe".
-// The concern was right and its premise has since stopped holding: RolePublic marks an
-// operation reachable with no credential, so /v1/healthz and /v1/readyz are Huma operations,
-// still anonymous, with their bare paths kept as permanent aliases (ops.go).
+// ⚠ The probes must stay anonymous, since an auth requirement in front of a container health
+// probe would break it. RolePublic marks an operation reachable with no credential, so
+// /v1/healthz and /v1/readyz are Huma operations, still anonymous, with their bare paths kept
+// as permanent aliases (api/ops/ops.go).
 //
 // This endpoint is NOT redundant with them. It carries what an operator quotes in a bug
 // report — version, commit, build time, Go runtime, os/arch, process start, applied schema

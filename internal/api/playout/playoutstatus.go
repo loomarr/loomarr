@@ -63,7 +63,7 @@ type ChannelHealth struct {
 	Name   string `json:"name" doc:"Channel name for display (empty = unknown)"`
 	Target string `json:"target" doc:"Codec audience: browser|mediaserver (§9.1 V47)"`
 	// Viewers/BufferedMS are the live throughput, folded in from the session so the merged panel needs
-	// only this endpoint (previously split across GET /v1/playout/sessions).
+	// only this endpoint.
 	Viewers    int           `json:"viewers" doc:"How many clients are attached"`
 	BufferedMS int64         `json:"bufferedMs" doc:"Encoded lead over realtime in ms; negative = falling behind"`
 	Encoder    string        `json:"encoder" doc:"Resolved encoder, or 'copy' when direct-playing"`
@@ -264,11 +264,10 @@ func (s *Handlers) statusGPU(ctx context.Context) PlayoutGPU {
 	}
 	g := PlayoutGPU{Name: name, VRAMGiB: vramGiB}
 
-	// ⚠ **LIVE residency, from Ollama /api/ps — not the on-disk-size estimate this used to report.**
-	// The old path looked up the active model tag in the catalog and reported its on-DISK size as
-	// "VRAM held". That lied in the exact case this status exists to diagnose: it showed a model as
-	// resident and holding several GB even after Ollama had unloaded it — so `contended` fired (or
-	// didn't) on a fiction, and the one tool meant to confirm GPU contention could not be trusted.
+	// ⚠ **LIVE residency, from Ollama /api/ps — never an on-disk-size estimate.** A catalog
+	// lookup of the active model tag reports its on-DISK size as "VRAM held", which lies in the
+	// exact case this status exists to diagnose: it shows a model as resident and holding several
+	// GB even after Ollama has unloaded it, so `contended` would fire (or not) on a fiction.
 	// residentLLMVRAM asks Ollama what is ACTUALLY loaded right now; nothing resident → 0 held → no
 	// contention, a real answer. Best-effort: nil injection or a probe error leaves the header at 0,
 	// never a failed request (the channel-health rows do not depend on it).

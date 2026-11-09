@@ -69,7 +69,7 @@ type BackupContent struct {
 //
 // All four are admin-only — a backup carries every secret the instance holds.
 //
-// ⚠ The two byte routes were plain mux handlers until they moved onto rawOp (rawop.go). They
+// ⚠ The two byte routes are httpcore.RawOps, not plain mux handlers (httpcore/rawop.go). They
 // live HERE, with the typed half, rather than in Router: splitting one resource across two
 // registration mechanisms is what let the list be spec'd while its download was not.
 func (s *Handlers) registerSystemBackups(api huma.API) {
@@ -111,7 +111,7 @@ func (s *Handlers) registerSystemBackups(api huma.API) {
 }
 
 // backupNameInput names a file in the backup directory. Declared for the spec; the handler
-// still reads r.PathValue("name"). See rawop.go for why an undeclared path param matters.
+// still reads r.PathValue("name"). See httpcore/rawop.go for why an undeclared path param matters.
 type backupNameInput struct {
 	Name string `path:"name" example:"loomarr-2026-08-08T02-00-00Z.db" doc:"Backup filename, as listed by system-backups-list"`
 }
@@ -155,7 +155,7 @@ func (s *Handlers) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBa
 // as opposed to /v1/backup which makes a new one.
 //
 // Keeps the stdlib (w, r) signature because http.ServeContent does Range, If-Modified-Since and
-// 206 in one call; it is mounted as a rawOp (rawop.go), so authorization is the operation's
+// 206 in one call; it is mounted as an httpcore.RawOp, so authorization is the operation's
 // declared RoleAdmin enforced by the shared middleware, not a check in this body.
 func (s *Handlers) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.backups == nil {

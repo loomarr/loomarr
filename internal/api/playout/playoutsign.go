@@ -144,7 +144,7 @@ func (s *Handlers) playoutHLSURLWithKey(key, channelID string, quality string, e
 // player (§9.1 Watch, V46).
 //
 // Same-origin is strictly better for the browser: the page already runs on Loomarr's origin, so a
-// relative `/playout/hls/...` needs no CORS (hls.js fetches by XHR, which a cross-origin absolute
+// relative `/v1/playout/hls/...` needs no CORS (hls.js fetches by XHR, which a cross-origin absolute
 // URL would trip) AND does not depend on `server.public_url` being set or reachable. Native apps
 // cannot use this — they have no origin to be relative to — which is exactly why the absolute form
 // above still exists. Returns "" only when the signature can't be minted (no token).

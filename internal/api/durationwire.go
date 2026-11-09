@@ -11,15 +11,15 @@ import (
 
 // durationWire is how a schedule.Duration is described ON THE WIRE (§7.1, §14.1).
 //
-// ⚠ **This lives here, in the transport layer, because it is transport knowledge.** It used to be
-// a `Schema(huma.Registry) *huma.Schema` method on `schedule.Duration` itself, which made the
-// PURE DOMAIN package import the HTTP framework — `internal/channels/schedule` is 4,000-odd lines of
-// I/O-free scheduling logic, and it depended on huma/v2 to describe one field's JSON encoding.
-// The architecture gate bans `internal/api` from the domain but says nothing about the framework
-// the API happens to use, so nothing caught it.
+// ⚠ **This lives here, in the transport layer, because it is transport knowledge.** A
+// `Schema(huma.Registry) *huma.Schema` method on `schedule.Duration` itself would make the PURE
+// DOMAIN package import the HTTP framework — `internal/channels/schedule` is I/O-free scheduling
+// logic and must not depend on huma/v2 to describe one field's JSON encoding. The architecture
+// gate bans `internal/api` from the domain but says nothing about the framework the API happens
+// to use, so keeping the method out is a convention, not something the gate enforces.
 //
-// Huma discovers wire formats by interface (`SchemaProvider`), so the method could not simply be
-// moved — the domain type would stop being recognised. `Registry.RegisterTypeAlias` is the
+// Huma discovers wire formats by interface (`SchemaProvider`), so the domain type cannot simply
+// stay schema-less — it would be described by its Go shape. `Registry.RegisterTypeAlias` is the
 // supported way out: it is consulted BEFORE the SchemaProvider check, so aliasing Duration to a
 // type declared here routes generation through this schema instead.
 //

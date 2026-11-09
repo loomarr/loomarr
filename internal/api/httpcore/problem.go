@@ -30,10 +30,10 @@ func StatusFromError(err error, fallback int) int {
 // carry the machine detail instead: `instance` is the request correlation id (so a
 // developer greps the logs), and `type` optionally links to the troubleshooting docs.
 //
-// Use apiErr / the status shims below at every call site so title+detail are always set
+// Use Problem / the status shims below at every call site so title+detail are always set
 // together. The bare huma.Error4xx helpers default the title to the HTTP status label
-// ("Unauthorized") and take only a detail — which is what produced the old
-// "Unauthorized / invalid username or password" stack.
+// ("Unauthorized") and take only a detail, which reads as "Unauthorized / invalid username
+// or password".
 
 // Problem builds a problem with an explicit friendly title and detail. docHref is an optional
 // anchor into the embedded troubleshooting docs (e.g. "troubleshooting#llm"); it becomes the
@@ -49,7 +49,7 @@ func Problem(status int, title, detail string, docHref ...string) huma.StatusErr
 
 // ProblemWithCause is Problem for a call that has an underlying cause to record. The cause is
 // passed to huma so ErrorTransformer logs it (keyed by the request id) — it is
-// NOT shown to the client. Use this wherever the old call passed a trailing `err`.
+// NOT shown to the client. Use this wherever a failure has an `err` to keep.
 func ProblemWithCause(status int, title, detail string, errs ...error) huma.StatusError {
 	// Build via huma so the causes ride along as ErrorModel.Errors for the hook to log;
 	// then overwrite the status-label title with our friendly one.
@@ -63,18 +63,15 @@ func ProblemWithCause(status int, title, detail string, errs ...error) huma.Stat
 
 // Status shims — the same set the handlers reach for, but title-first so the friendly
 // summary is impossible to forget. detail should be a full sentence.
+//
+// There is deliberately no 403 shim: the authorization middleware writes every 403 through
+// huma.WriteErr so the request-id stamping applies.
 func BadRequest(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusBadRequest, title, detail, doc...)
 }
 func Unauthorized(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusUnauthorized, title, detail, doc...)
 }
-
-// (`errForbidden` lived here until 2026-08-10, breaking this family's symmetry on purpose. Its
-// only caller was `requireAdmin`; 403s now come from the authorization middleware, which writes
-// them via huma.WriteErr so the request-id stamping applies. A helper whose only caller is gone
-// is dead weight that reads as a capability — the same reason `normalizeForMatch` went from
-// internal/filler. Restore it the moment a handler genuinely needs to refuse mid-body.)
 func NotFound(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusNotFound, title, detail, doc...)
 }
@@ -187,7 +184,7 @@ func WriteJSON(w http.ResponseWriter, code int, v any) {
 }
 
 // WriteProblem sends an RFC 7807 problem+json body from a PLAIN mux handler (the ones Huma
-// doesn't wrap: /v1/events, /v1/backup, the /v1 catch-all 404). It mirrors what the Huma
+// doesn't wrap: the SPA catch-all's /v1 404, and a RawOp handler refusing mid-body). It mirrors what the Huma
 // path produces — friendly title+detail plus the request `instance` id — so a client sees
 // the same shape everywhere. Logs 4xx/5xx server-side keyed by the id, like the Huma hook; a nil
 // log writes the body and logs nothing.
