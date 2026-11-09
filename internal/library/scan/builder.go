@@ -66,12 +66,7 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 // order, so the first such id is the deciding one.
 func match(resolved precedence.Resolved, records []mp.Record) store.LibraryMatch {
 	for _, id := range resolved.IDs {
-		switch id.Value.Namespace {
-		case mp.NamespaceTMDB, mp.NamespaceTVDB, mp.NamespaceIMDB:
-		default:
-			continue
-		}
-		if id.Value.Value == "" {
+		if !id.Value.Namespace.Grounds() || id.Value.Value == "" {
 			continue
 		}
 		m := store.LibraryMatch{Basis: string(id.From.Basis), App: string(id.From.Provider)}
