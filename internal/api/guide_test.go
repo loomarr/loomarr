@@ -716,6 +716,7 @@ func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Bellwether Junction", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000091"}}},
 		{ID: "show", Kind: "series", Name: "Copperfield Lane", IDs: []store.LibraryID{{Namespace: "tvdb", Value: "90000092"}}},
+		{ID: "show-e2", Kind: "episode", Name: "Copperfield Lane E2", SeriesID: "show"},
 	}, now); err != nil {
 		t.Fatal(err)
 	}
