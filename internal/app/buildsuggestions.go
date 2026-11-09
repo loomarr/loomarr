@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -42,8 +43,8 @@ type suggestionBuild struct {
 	workflow         proposalsapi.ProposalWorkflow
 	durableWorkflow  *workflow.Workflow
 	search           api.SearchService
-	movieCollections api.MovieCollectionService
-	collections      api.CollectionService
+	movieCollections libraryapi.MovieCollectionService
+	collections      libraryapi.CollectionService
 	ideaLibrary      channelsapi.IdeaLibrary
 	systemLLM        system.SystemLLMService
 	icons            channelsapi.IconService

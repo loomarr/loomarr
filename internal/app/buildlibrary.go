@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
@@ -89,8 +89,8 @@ func libraryNotifierOf(c *productNotificationCoordinator) libraryNotifier {
 
 // libraryServices is Settings → Library and the arrs' webhooks; both nil without a store.
 type libraryServices struct {
-	roots api.LibraryRootService
-	hooks api.LibraryHookService
+	roots libraryapi.LibraryRootService
+	hooks libraryapi.LibraryHookService
 }
 
 // buildLibrary wires Settings → Library (#2151 decision 6) and starts the scanner, its folder

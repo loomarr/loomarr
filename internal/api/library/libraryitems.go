@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 // libraryItemsPageMax caps one page of the poster grid.
 const libraryItemsPageMax = 200
 
-func (s *Server) registerLibraryItems(api huma.API) {
+func (s *Handlers) registerLibraryItems(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryItems", Method: http.MethodGet, Path: "/v1/library/items",
 		Summary:     "List the library's titles",
@@ -59,7 +59,7 @@ type removeLibraryExtraCopyInput struct {
 	}
 }
 
-func (s *Server) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*struct{}, error) {
+func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (s *Server) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryEx
 	}
 }
 
-func (s *Server) updateLibraryItemDetails(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+func (s *Handlers) updateLibraryItemDetails(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (s *Server) updateLibraryItemDetails(ctx context.Context, in *libraryItemID
 	}
 }
 
-func (s *Server) checkLibraryItemFiles(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+func (s *Handlers) checkLibraryItemFiles(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -157,9 +157,9 @@ func libraryItemOf(it store.LibraryItemSummary, posters map[string]*httpcore.Ima
 
 // libraryPosters renders the items' posters, by hash. An image whose bytes have not arrived is
 // left out, so the grid shows the title's name rather than a broken image.
-func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*httpcore.ImageDTO {
+func (s *Handlers) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*httpcore.ImageDTO {
 	out := map[string]*httpcore.ImageDTO{}
-	if s.images == nil {
+	if s.libraryImageFn == nil {
 		return out
 	}
 	for _, it := range items {
@@ -172,20 +172,6 @@ func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSu
 		out[it.Poster] = s.libraryImage(ctx, it.Poster)
 	}
 	return out
-}
-
-// libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
-// arrived, so a surface draws without it rather than showing a broken image.
-func (s *Server) libraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
-	if s.images == nil || hash == "" {
-		return nil
-	}
-	rec, err := s.images.Get(ctx, hash)
-	if err != nil || !rec.HasBytes() {
-		return nil
-	}
-	dto := s.imageToDTO(ctx, rec)
-	return &dto
 }
 
 type listLibraryItemsInput struct {
@@ -202,7 +188,7 @@ type listLibraryItemsOutput struct {
 	}
 }
 
-func (s *Server) listLibraryItems(ctx context.Context, in *listLibraryItemsInput) (*listLibraryItemsOutput, error) {
+func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInput) (*listLibraryItemsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
@@ -307,7 +293,7 @@ type getLibraryItemOutput struct {
 	Body libraryItemDetailDTO
 }
 
-func (s *Server) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*getLibraryItemOutput, error) {
+func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*getLibraryItemOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err

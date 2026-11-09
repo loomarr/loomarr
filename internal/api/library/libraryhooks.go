@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type LibraryHookService interface {
 	Test(ctx context.Context, app string) error
 }
 
-func (s *Server) registerLibraryHooks(api huma.API) {
+func (s *Handlers) registerLibraryHooks(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "receiveLibraryHook", Method: http.MethodPost, Path: "/v1/library/hooks/{app}",
 		Summary: "Receive an event from Sonarr or Radarr",
@@ -50,7 +50,7 @@ type libraryHookInput struct {
 	RawBody       []byte
 }
 
-func (s *Server) receiveLibraryHook(ctx context.Context, in *libraryHookInput) (*struct{}, error) {
+func (s *Handlers) receiveLibraryHook(ctx context.Context, in *libraryHookInput) (*struct{}, error) {
 	if s.libraryHooks == nil {
 		return nil, httpcore.FeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
 	}
@@ -84,7 +84,7 @@ type libraryHookTestInput struct {
 	App string `path:"app" enum:"sonarr,radarr"`
 }
 
-func (s *Server) testLibraryHook(ctx context.Context, in *libraryHookTestInput) (*struct{}, error) {
+func (s *Handlers) testLibraryHook(ctx context.Context, in *libraryHookTestInput) (*struct{}, error) {
 	if s.libraryHooks == nil {
 		return nil, httpcore.FeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
 	}
@@ -115,7 +115,7 @@ type libraryHookDTO struct {
 }
 
 // libraryHooksView is every arr's webhook; empty without the service.
-func (s *Server) libraryHooksView() []libraryHookDTO {
+func (s *Handlers) libraryHooksView() []libraryHookDTO {
 	out := []libraryHookDTO{}
 	if s.libraryHooks == nil {
 		return out

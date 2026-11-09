@@ -256,6 +256,41 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) httpcore.Imag
 	}
 }
 
+// libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
+// arrived, so a surface draws without it rather than showing a broken image.
+func (s *Server) libraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
+	if s.images == nil || hash == "" {
+		return nil
+	}
+	rec, err := s.images.Get(ctx, hash)
+	if err != nil || !rec.HasBytes() {
+		return nil
+	}
+	dto := s.imageToDTO(ctx, rec)
+	return &dto
+}
+
+// libraryCandidateImageOwner owns the posters of a title's candidates, so the image service keeps
+// them while the title is listed.
+const libraryCandidateImageOwner = "library_candidate"
+
+// candidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
+// its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
+func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
+	if s.images == nil || url == "" {
+		return nil
+	}
+	rec, err := s.images.Adopt(ctx, url, images.IngestRequest{
+		Role: images.RolePoster, Visibility: images.VisibilityMember,
+		OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
+	})
+	if err != nil || !rec.HasBytes() {
+		return nil
+	}
+	dto := s.imageToDTO(ctx, rec)
+	return &dto
+}
+
 // imageDTOsByHash resolves a set of image hashes in ONE pass, deduplicated.
 //
 // ⚠ **Every list endpoint that renders images must go through this rather than looking one up per

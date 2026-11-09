@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -57,7 +57,7 @@ func TestLibraryCollectionsListTheHouseholds(t *testing.T) {
 		{ID: "own-3", Name: "Rainy Days", Members: []string{"m3"}},
 	}}
 	got, err := libraryCollections{own: own}.Collections(context.Background())
-	want := []api.LibraryCollection{
+	want := []libraryapi.LibraryCollection{
 		{ID: "own-1", Name: "Harbor Films", ChildCount: 2},
 		{ID: "own-3", Name: "Rainy Days", ChildCount: 1},
 	}

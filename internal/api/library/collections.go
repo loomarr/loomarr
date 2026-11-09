@@ -1,4 +1,4 @@
-package api
+package library
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 // Member-readable, like /v1/search: it is read-only, exposes no more than the media server
 // already shows the same user, and picking a collection still routes a channel through
 // submit→approve. So it adds no privilege surface (§7.2).
-func (s *Server) registerCollections(api huma.API) {
+func (s *Handlers) registerCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryCollections", Method: http.MethodGet, Path: "/v1/library/collections",
 		Summary: "List media-server collections", Tags: []string{"library"},
@@ -27,7 +27,7 @@ type collectionsOutput struct {
 	}
 }
 
-func (s *Server) doListCollections(ctx context.Context, _ *struct{}) (*collectionsOutput, error) {
+func (s *Handlers) doListCollections(ctx context.Context, _ *struct{}) (*collectionsOutput, error) {
 	if s.collections == nil {
 		return nil, httpcore.NotImplemented("Collections aren't available",
 			"Connect your media library in Settings to use collections.")

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -48,7 +49,7 @@ func TestMovieCollectionAdapterUsesAuthoritativeTMDBRoster(t *testing.T) {
 		func() catalog.LibraryPresence { return presence },
 	)}
 
-	got, err := adapter.ResolveMovieCollections(context.Background(), api.MovieCollectionRequest{
+	got, err := adapter.ResolveMovieCollections(context.Background(), libraryapi.MovieCollectionRequest{
 		Keys: []string{"movie:tmdb:90000671", "movie:tmdb:90000673"},
 	})
 	if err != nil {

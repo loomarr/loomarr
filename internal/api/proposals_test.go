@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -83,7 +84,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 		config = configs[0]
 	}
 	fs := &fakeSuggest{}
-	search := &testkit.SearchService[api.SearchRequest, api.SearchCandidate]{Results: []api.SearchCandidate{{
+	search := &testkit.SearchService[api.SearchRequest, httpcore.SearchCandidate]{Results: []httpcore.SearchCandidate{{
 		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
