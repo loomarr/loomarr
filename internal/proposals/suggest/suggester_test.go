@@ -1216,7 +1216,7 @@ func TestSuggest_NamedSourceAmbiguitySurvivesModelDiscoveryFilters(t *testing.T)
 			}
 			requestsBeforeSuggest := len(mt.Requests())
 			_, err = s.Suggest(context.Background(), intent)
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+			if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 				t.Fatalf("error = %v, want ambiguous source title rejected after filtered discovery", err)
 			}
 			if model.Calls != 2 {
@@ -1382,7 +1382,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 			)
 
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Something like QFUN"})
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+			if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 				t.Fatalf("error = %v, want typed no-grounded-title failure", err)
 			}
 		})
@@ -1905,7 +1905,7 @@ func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
 	)
 	s := buildSuggester(t, llmMock)
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "sci-fi"})
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 		t.Fatalf("empty-grounding should return ErrNoGroundedTitles, got: %v", err)
 	}
 }
@@ -1945,7 +1945,7 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 			s := suggest.New(model, titlesearch.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+			if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
 			}
 			var failure *suggest.Failure
@@ -1969,7 +1969,7 @@ func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(
 
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Larkspur Collection"})
 	var failure *suggest.Failure
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.TerminalNamedSetUnproven {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.TerminalNamedSetUnproven {
 		t.Fatalf("direct final unproven member = %#v, want named-set recovery terminal", err)
 	}
 }
@@ -2010,7 +2010,7 @@ func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t 
 			s := suggest.New(model, titlesearch.New(lib, tm), tm, 10)
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			var failure *suggest.Failure
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalNamedSetUnproven {
+			if !errors.Is(err, proposals.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalNamedSetUnproven {
 				t.Fatalf("failure = %#v, must retain its non-membership classification", err)
 			}
 		})
@@ -2051,7 +2051,7 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 			s := suggest.New(model, titlesearch.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+			if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 				t.Fatalf("bare concept admitted lexical candidate: error=%v trace=%+v", err, prop.Trace)
 			}
 		})
@@ -2218,7 +2218,7 @@ func TestSuggest_SoftDescriptionExampleRemainsOptional(t *testing.T) {
 	_, err := suggest.New(model, titlesearch.New(nil, corpus), nil, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "Something like QFUN. Think Grand Oak Hotel."})
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 		t.Fatalf("soft example error = %v, want empty selection to remain a no-grounded-title result", err)
 	}
 }

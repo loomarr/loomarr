@@ -9,7 +9,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
@@ -120,7 +119,7 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 		{"retrieval failure", proposals.TerminalRetrievalFailure, 0, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
 		{"reference unreadable", proposals.TerminalReferenceUnreadable, 0, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
 		{"retrieval empty", proposals.ReasonRetrievalEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
-		{"selection empty", suggest.FailureSelectionEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"selection empty", string(FailureSelectionEmpty), 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
 		{"named set", proposals.TerminalNamedSetUnproven, 0, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
 		{"constraints", proposals.TerminalConstraintsConflict, 0, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
 		{"dates", proposals.TerminalDateSemanticsUnclear, 0, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
@@ -129,8 +128,8 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 		{"provider unavailable", proposals.TerminalProviderFailure, 0, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
 		{"malformed final json", proposals.TerminalMalformedExhausted, 0, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
 		{"generation", proposals.TerminalGenerationFailure, 0, FailureReasonGenerationFailed, RecoveryActionRetryLater},
-		{"budget before grounding", suggest.FailureBudgetExhausted, 0, FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater},
-		{"budget after grounding", suggest.FailureBudgetExhausted, 1, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
+		{"budget before grounding", string(FailureBudgetExhausted), 0, FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater},
+		{"budget after grounding", string(FailureBudgetExhausted), 1, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

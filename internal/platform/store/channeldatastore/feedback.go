@@ -50,7 +50,8 @@ type FeedbackFilter struct {
 // The second statement only deletes a clear with no OLDER row, so a choice and its clear that
 // both land between the two statements keep each other: the clear is not the oldest.
 func (s *Store) PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error) {
-	sameTarget := `n.scope = discovery_feedback.scope AND n.scope_id = discovery_feedback.scope_id
+	// scope_id is NULL for the household, and NULL = NULL is never true.
+	sameTarget := `n.scope = discovery_feedback.scope AND n.scope_id IS NOT DISTINCT FROM discovery_feedback.scope_id
 		AND n.target_key = discovery_feedback.target_key`
 	superseded, err := s.h.ExecContext(ctx, `DELETE FROM discovery_feedback WHERE EXISTS (
 		SELECT 1 FROM discovery_feedback n WHERE `+sameTarget+` AND (n.created_at_ns > discovery_feedback.created_at_ns
@@ -141,7 +142,7 @@ func (s *Store) AppendDiscoveryFeedback(ctx context.Context, feedback DiscoveryF
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 
 		feedback.ID, feedback.ActorID, feedback.Scope,
-		feedback.ScopeID, feedback.Target, feedback.Action, feedback.Reason, feedback.CreatedAt.UnixNano())
+		storedb.OptionalID(feedback.ScopeID), feedback.Target, feedback.Action, feedback.Reason, feedback.CreatedAt.UnixNano())
 	if err != nil {
 		return fmt.Errorf("append discovery feedback: %w", err)
 	}
@@ -156,10 +157,10 @@ func (s *Store) ListDiscoveryFeedback(ctx context.Context, filter FeedbackFilter
 		return nil, fmt.Errorf("list discovery feedback: invalid scope")
 	}
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT id, actor_id, scope, scope_id, target_key,
-		action, reason, created_at_ns FROM discovery_feedback WHERE scope = ? AND scope_id = ?
+		action, reason, created_at_ns FROM discovery_feedback WHERE scope = ? AND scope_id IS NOT DISTINCT FROM ?
 		ORDER BY created_at_ns DESC, id DESC`),
 
-		filter.Scope, filter.ScopeID)
+		filter.Scope, storedb.OptionalID(filter.ScopeID))
 	if err != nil {
 		return nil, fmt.Errorf("list discovery feedback: %w", err)
 	}
@@ -168,7 +169,7 @@ func (s *Store) ListDiscoveryFeedback(ctx context.Context, filter FeedbackFilter
 	for rows.Next() {
 		var feedback DiscoveryFeedback
 		var createdAt int64
-		if err := rows.Scan(&feedback.ID, &feedback.ActorID, &feedback.Scope, &feedback.ScopeID,
+		if err := rows.Scan(&feedback.ID, &feedback.ActorID, &feedback.Scope, (*storedb.OptionalID)(&feedback.ScopeID),
 			&feedback.Target, &feedback.Action, &feedback.Reason, &createdAt); err != nil {
 			return nil, fmt.Errorf("list discovery feedback: %w", err)
 		}

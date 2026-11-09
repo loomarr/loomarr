@@ -262,9 +262,9 @@ func (p *observedProvider) Snapshot(groundErr error) Observation {
 	switch {
 	case groundErr == nil:
 		out.GroundingStage = "grounded"
-	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles) && strings.Contains(groundErr.Error(), "llm chat:"):
+	case !errors.Is(groundErr, proposals.ErrNoGroundedTitles) && strings.Contains(groundErr.Error(), "llm chat:"):
 		out.GroundingStage = "provider_error"
-	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles):
+	case !errors.Is(groundErr, proposals.ErrNoGroundedTitles):
 		out.GroundingStage = "generation_error"
 	case out.ToolCalls == 0:
 		out.GroundingStage = "no_tool_call"
@@ -439,7 +439,7 @@ func deterministicChecks(c Case, prop proposals.Proposal, groundErr error) []str
 	// result also satisfies it (nothing fabricated). A provider or generation
 	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
-		if groundErr != nil && (errors.Is(groundErr, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
+		if groundErr != nil && (errors.Is(groundErr, proposals.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
 			if c.MinGrounded == 0 {
 				return nil // an explicit abstention case fabricated nothing → passes
 			}

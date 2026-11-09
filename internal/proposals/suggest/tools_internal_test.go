@@ -28,7 +28,7 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 	), titlesearch.New(nil, corpus), nil, 10)
 
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classic Mudpuddles"})
-	if !errors.Is(err, ErrNoGroundedTitles) {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
 	}
 	searches := corpus.Searches()

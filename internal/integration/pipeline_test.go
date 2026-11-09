@@ -108,7 +108,7 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, workflow.New(st, ids, clock), suggester,
+	svc := suggest.NewService(st, workflow.New(st, ids, clock, suggest.IntentHash), suggester,
 		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration

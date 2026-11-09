@@ -80,7 +80,7 @@ func buildSuggestions(
 		return result, nil
 	}
 
-	result.durableWorkflow = workflow.New(st, newID, time.Now)
+	result.durableWorkflow = workflow.New(st, newID, time.Now, suggest.IntentHash)
 	result.workflow = result.durableWorkflow
 
 	var err error

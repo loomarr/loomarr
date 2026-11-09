@@ -411,12 +411,12 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 					var readErr *referenceReadError
 					if errors.As(sourceErr, &readErr) {
 						terminal, code = proposals.TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
-					} else if errors.Is(sourceErr, ErrNoGroundedTitles) {
+					} else if errors.Is(sourceErr, proposals.ErrNoGroundedTitles) {
 						terminal, code = proposals.ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
 					}
 				}
 				trace.Terminal = terminal
-				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", ErrNoGroundedTitles, sourceErr))
+				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", proposals.ErrNoGroundedTitles, sourceErr))
 			}
 			for _, candidates := range [][]titlesearch.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
 				for _, candidate := range candidates {
@@ -447,19 +447,19 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 				}
 				if len(out.Picks) == 0 {
 					trace.Terminal = FailureSelectionEmpty
-					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, ErrNoGroundedTitles)
+					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, proposals.ErrNoGroundedTitles)
 				}
 			}
 			reportProgress(ctx, PhaseScoring, 0)
 			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace, *acceptedMeaning)
-			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
+			if errors.Is(buildErr, proposals.ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
 				groundingRetried = true
 				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
 				temp = temp / 2
 				continue
 			}
 			if buildErr != nil {
-				if errors.Is(buildErr, ErrNoGroundedTitles) {
+				if errors.Is(buildErr, proposals.ErrNoGroundedTitles) {
 					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
 						trace.Terminal = proposals.TerminalNamedSetUnproven
 					} else if trace.Terminal == "" {
@@ -695,7 +695,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					*emptyRetrievals++
 					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {
 						trace.Terminal = proposals.ReasonRetrievalEmpty
-						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, ErrNoGroundedTitles)
+						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, proposals.ErrNoGroundedTitles)
 					}
 				}
 			}
@@ -738,11 +738,6 @@ func conflictingConstraints(intent Intent) bool {
 func normalizeConstraint(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
-
-// ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
-// the intent surfaced no themed, real content. The worker fails the job with this
-// (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
-var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
 
 var errDateSemanticsUnclear = errors.New("clarify_dates")
 var errDateConstraintsConflict = errors.New("constraints_conflict")

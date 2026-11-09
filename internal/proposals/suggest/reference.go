@@ -98,7 +98,7 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 			return sourceGroundingResult{}, err
 		}
 		if len(referenceResult.candidates) == 0 {
-			return sourceGroundingResult{}, ErrNoGroundedTitles
+			return sourceGroundingResult{}, proposals.ErrNoGroundedTitles
 		}
 		result.reference = referenceResult
 	}

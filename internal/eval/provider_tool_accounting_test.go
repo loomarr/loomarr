@@ -4,9 +4,10 @@ package eval
 
 import (
 	"context"
+	"testing"
+
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"testing"
 )
 
 func TestObservedProviderAttributesOnlyAcknowledgedModelCalls(t *testing.T) {

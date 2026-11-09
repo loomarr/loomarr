@@ -12,6 +12,17 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
+// mustUsers saves a member for each id, for a test whose rows name people: a channel's requester
+// is a foreign key to users (#2793).
+func mustUsers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func testDiscoveryFeedbackMissingChannel(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
