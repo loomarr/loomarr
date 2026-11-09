@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -60,7 +61,7 @@ func TestReferenceChannelJourneys(t *testing.T) {
 // approveReferenceJourney preserves the ordinary approval boundary for all reference
 // variants. It returns durable scheduling state, the production preview, and the
 // public Channel response so reconciliation notes cannot disappear at the API seam.
-func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channel, []schedule.Slot, api.ChannelDTO) {
+func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore.Channel, []schedule.Slot, api.ChannelDTO) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -174,7 +175,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			if err != nil || record.State != provision.Wanted {
 				t.Fatalf("approved acquisition: %+v, %v", record, err)
 			}
-			materialize := func() store.Channel {
+			materialize := func() channelstore.Channel {
 				t.Helper()
 				// A fresh production availability adapter also proves reconstruction
 				// from durable state without relying on an in-process arrival event.

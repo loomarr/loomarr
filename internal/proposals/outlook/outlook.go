@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -19,12 +20,12 @@ import (
 
 // Planner derives the same channel that approval would commit, without writes.
 type Planner interface {
-	PlanSubmittedChannel(context.Context, store.Proposal) (store.Channel, error)
+	PlanSubmittedChannel(context.Context, store.Proposal) (channelstore.Channel, error)
 }
 
 // Preview evaluates the normal channel scheduling inputs using fresh observations.
 type Preview interface {
-	PreviewPlannedChannel(context.Context, store.Channel, time.Time, schedule.Availability) (channels.CycleResult, error)
+	PreviewPlannedChannel(context.Context, channelstore.Channel, time.Time, schedule.Availability) (channels.CycleResult, error)
 }
 
 // Config supplies existing read-only adapters and the approval/scheduling authorities.
@@ -141,7 +142,7 @@ func (s *Service) Assess(ctx context.Context, row store.Proposal, edit *accept.A
 	channel.ReconcileDeadline = time.Time{} // operational due-now time is not proposal content
 	snapshot, err := json.Marshal(struct {
 		Proposal proposals.Proposal
-		Channel  store.Channel
+		Channel  channelstore.Channel
 	}{prepared.Body, channel})
 	if err != nil {
 		return Assessment{}, err

@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
@@ -185,7 +186,7 @@ func getPlayout(t *testing.T, srv *httptest.Server, path string) *http.Response 
 
 func seedChannel(t *testing.T, st store.Store, id, name string, number int, backend string) {
 	t.Helper()
-	ch := store.Channel{Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive}}
 	if backend != "" {
 		ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: backend}
 	}

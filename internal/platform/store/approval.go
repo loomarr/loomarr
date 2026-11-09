@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -215,7 +216,7 @@ func (s *sqlStore) commitProposalApproval(
 	if err := validateApprovalBinding(ctx, tx, s.ph, p, commit.Channel); err != nil {
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
-	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
+	if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
 			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
 		}
@@ -311,8 +312,8 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 // validateApprovalBinding checks, inside the approval transaction, that the planned channel is
 // the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
 // channel the job originated. A job with no channel yet may only create one it originates.
-func validateApprovalBinding(ctx context.Context, q channelDB, ph placeholder, p Proposal, ch Channel) error {
-	bound, err := channelForJob(ctx, q, ph, p.JobID)
+func validateApprovalBinding(ctx context.Context, q channelstore.DB, ph placeholder, p Proposal, ch Channel) error {
+	bound, err := channelstore.ChannelForJobIn(ctx, q, ph, p.JobID)
 	switch {
 	case err == nil:
 		if bound.ID != ch.ID {

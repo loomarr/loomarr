@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -52,7 +53,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, channel := range []store.Channel{
+	for _, channel := range []channelstore.Channel{
 		{
 			Channel: schedule.Channel{ID: "direct", Name: "Direct", Number: 20, Status: schedule.StatusLive},
 			Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
@@ -122,7 +123,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
-	channel := store.Channel{
+	channel := channelstore.Channel{
 		Channel: schedule.Channel{
 			ID: "alcohol-channel", Name: "Alcohol channel", Number: 31,
 			Strategy: schedule.Sequential, Status: schedule.StatusBuilding,

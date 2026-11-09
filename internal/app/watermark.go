@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
@@ -45,7 +46,7 @@ type channelWatermarks struct {
 	// Calendar (UTC, the US).
 	calendar func() schedule.Calendar
 	channels interface {
-		GetChannel(context.Context, string) (store.Channel, error)
+		GetChannel(context.Context, string) (channelstore.Channel, error)
 	}
 	originals interface {
 		Original(context.Context, string) (string, error)
@@ -341,7 +342,7 @@ func (b bugDesign) colours(color string) (watermark.Colour, watermark.Palette) {
 // holiday version), else the generated callsign bug in the resolved look, colour and holiday
 // version. The automatic TMDB network logo (between the two in the maintainer's order) is not
 // wired yet.
-func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res schedule.ResolvedWatermark, design bugDesign) (string, func() (bugRenderer, error)) {
+func (c *channelWatermarks) source(ctx context.Context, ch channelstore.Channel, res schedule.ResolvedWatermark, design bugDesign) (string, func() (bugRenderer, error)) {
 	if res.Image != "" && c.originals != nil {
 		return "image:" + res.Image, func() (bugRenderer, error) {
 			path, err := c.originals.Original(ctx, res.Image)

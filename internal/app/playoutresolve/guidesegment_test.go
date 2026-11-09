@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -238,5 +238,5 @@ func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
 
 // unanchoredChannel is a channel row in the given status that has no playout anchor.
 func unanchoredChannel(status schedule.ChannelStatus) *stubChannels {
-	return &stubChannels{ch: store.Channel{Channel: schedule.Channel{ID: "ch1", Status: status}}}
+	return &stubChannels{ch: channelstore.Channel{Channel: schedule.Channel{ID: "ch1", Status: status}}}
 }

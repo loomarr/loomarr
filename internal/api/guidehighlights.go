@@ -12,7 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -272,7 +272,7 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 		return nil, err
 	}
 	// Nothing airs on a paused or removed channel.
-	channels = slices.DeleteFunc(channels, func(ch store.Channel) bool {
+	channels = slices.DeleteFunc(channels, func(ch channelstore.Channel) bool {
 		return !ch.Status.Reconcilable()
 	})
 	// The same bounded fan-out as the guide: each timeline is CPU-bound schedule arithmetic.
@@ -302,7 +302,7 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 	wg.Wait()
 
 	picks := pickHighlights(airings, limit)
-	byID := make(map[string]store.Channel, len(channels))
+	byID := make(map[string]channelstore.Channel, len(channels))
 	for _, ch := range channels {
 		byID[ch.ID] = ch
 	}

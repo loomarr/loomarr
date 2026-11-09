@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -72,7 +73,7 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		if i == 1 {
 			channelID = "channel-b"
 		}
-		if _, err := h.store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		if _, err := h.store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 			ID: channelID, Number: 80 + i, Name: channelID, Status: schedule.StatusBuilding,
 			IntentRef: id, Strategy: schedule.Sequential,
 		}, IntentJSON: `{"description":"action"}`,

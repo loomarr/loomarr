@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -28,7 +28,7 @@ type Adjacencer interface {
 
 // RunnerStore is the slice of the store the runner needs.
 type RunnerStore interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 }
 
@@ -107,7 +107,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 // qualifies: live, building, AND drifted. drifted is a TRANSIENT reconcile state ("the guide is
 // catching up to the desired lineup"), not a reason to stop curating; excluding it would freeze
 // re-curation on any channel whose Tunarr push is momentarily behind.
-func eligible(ch store.Channel) bool {
+func eligible(ch channelstore.Channel) bool {
 	if ch.IntentRef == "" || ch.Policy.AutoCurate == nil {
 		return false
 	}
@@ -118,7 +118,7 @@ func eligible(ch store.Channel) bool {
 // (description + era/tone/constraints) plus the current lineup as context, and NO RefineText —
 // the "change" is simply "re-evaluate against the library as it is now". Returns ok=false when
 // the channel has no readable original request (nothing to re-run).
-func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (proposals.Intent, bool) {
+func (r *Runner) refreshIntent(ctx context.Context, ch channelstore.Channel) (proposals.Intent, bool) {
 	intent, err := suggest.IntentOfChannel(ch)
 	if err != nil {
 		r.log.Warn("re-curation: the channel's original request is unavailable; skipping channel",
@@ -146,7 +146,7 @@ const adjacentLimit = 12
 // BEST-EFFORT and non-fatal in every direction: no corpus wired, a walk that errors, or a
 // channel whose lineup yields no TMDB seeds all return nil, and re-curation proceeds with
 // the LLM corpus alone. Adjacency widens a run; it must never fail one.
-func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposals.AdjacentContext {
+func (r *Runner) adjacentFor(ctx context.Context, ch channelstore.Channel) []proposals.AdjacentContext {
 	if r.adj == nil || len(ch.Lineup) == 0 {
 		return nil
 	}

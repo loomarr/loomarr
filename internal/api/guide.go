@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -279,7 +279,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		}
 
 		wg.Add(1)
-		go func(i int, ch store.Channel) {
+		go func(i int, ch channelstore.Channel) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()

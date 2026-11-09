@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
@@ -103,7 +104,7 @@ func tmdbPosterStub(t *testing.T, posters map[string]string, fail map[string]boo
 
 func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []schedule.LineupEntry) {
 	t.Helper()
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: id, Name: "Test", Number: 1, Status: "live"},
 		Lineup:  entries,
 	}); err != nil {

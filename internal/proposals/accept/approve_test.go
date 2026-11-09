@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -66,10 +67,10 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 }
 
 func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
-	for _, conflict := range []error{store.ErrChannelConflict, store.ErrChannelStale} {
+	for _, conflict := range []error{channelstore.ErrChannelConflict, channelstore.ErrChannelStale} {
 		t.Run(conflict.Error(), func(t *testing.T) {
 			st := &testkit.ApprovalStore{CommitErrors: []error{conflict, nil}}
-			channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) store.Channel {
+			channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) channelstore.Channel {
 				ch := testkit.ApprovedChannel(p, attempt)
 				ch.ID = "ch-approved"
 				return ch
@@ -101,7 +102,7 @@ func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 	}
 	newer := store.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
 	st := &testkit.ApprovalStore{
-		CommitErrors: []error{store.ErrChannelStale},
+		CommitErrors: []error{channelstore.ErrChannelStale},
 		LatestFunc: func(call int) (store.Proposal, error) {
 			if call == 1 {
 				return store.Proposal{}, store.ErrNotFound
@@ -126,7 +127,7 @@ func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 
 func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	st := &testkit.ApprovalStore{Enqueued: 1}
-	channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, _ int) store.Channel {
+	channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, _ int) channelstore.Channel {
 		ch := testkit.ApprovedChannel(p, 1)
 		ch.ID = "ch-approved"
 		return ch

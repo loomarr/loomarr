@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -244,11 +245,11 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 			}
 		}
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(channelSelect+` ORDER BY number`))
+	rows, err := tx.QueryContext(ctx, s.ph(channelstore.Select+` ORDER BY number`))
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
 	}
-	channels, err := scanChannels(rows)
+	channels, err := channelstore.ScanChannels(rows)
 	_ = rows.Close()
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
@@ -259,7 +260,7 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		if !dirty {
 			continue
 		}
-		if _, err := s.saveChannel(ctx, tx, channels[i]); err != nil {
+		if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, channels[i]); err != nil {
 			return 0, fmt.Errorf("channels: %w", err)
 		}
 		changed++

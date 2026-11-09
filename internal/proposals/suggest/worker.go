@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -31,7 +32,7 @@ import (
 // ProposalStore is the slice of the store the worker needs outside the durable workflow: the
 // channel a re-curation job belongs to. Every job lifecycle transition goes through the workflow.
 type ProposalStore interface {
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends

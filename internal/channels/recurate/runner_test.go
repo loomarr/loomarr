@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -58,7 +59,7 @@ func ownIntent(t *testing.T, st store.Store, jobID string) string {
 // seedChannelStatus writes a channel with the given status + auto-curate opt-in.
 func seedChannelStatus(t *testing.T, st store.Store, id, jobID string, status schedule.ChannelStatus, ac *schedule.AutoCurate, number int) {
 	t.Helper()
-	ch := store.Channel{}
+	ch := channelstore.Channel{}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.IntentJSON = ownIntent(t, st, jobID)

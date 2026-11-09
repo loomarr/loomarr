@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -47,12 +48,12 @@ type Availability interface {
 // interface with the consumer makes new persistence dependencies an explicit
 // channels-package decision instead of inheriting the aggregate store surface.
 type EngineStore interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
 	GetJob(ctx context.Context, id string) (store.Job, error)
-	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
+	SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 	RecordScheduledAirings(ctx context.Context, channelID string, airings []channeldatastore.ScheduledAiring, recordedAt time.Time) error
@@ -790,7 +791,7 @@ func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout
 // stamped as known from the programme's start, so a window arranged later reads every programme
 // that started before it opened, however late the reconcile that records it runs. Idempotent, and
 // best-effort: a ledger write never fails a reconcile.
-func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time.Time) {
+func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, now time.Time) {
 	if e.store == nil || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
 		return
 	}

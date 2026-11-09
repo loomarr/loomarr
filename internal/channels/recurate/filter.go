@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -52,7 +53,7 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
+func filterAcquisitionsProtected(p store.Proposal, ch channelstore.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
 	body := p.Body
 	var res filterResult
 
@@ -266,7 +267,7 @@ func (b *bench) weakestBelow(incoming float64) (benchEntry, bool) {
 // Every lineup entry stores the Fit of the pick that added or last re-scored it, so the order
 // reflects both how well a title serves the intent and how long it has gone without airing. An
 // unscored entry reads as the neutral fit, never as the weakest.
-func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) *bench {
+func retirableByWeakest(ch channelstore.Channel, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) *bench {
 	// ⚠ FAIL CLOSED on an unknown schedule. An empty Desired means "we do not know what is
 	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
 	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an

@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -183,7 +184,7 @@ type ChannelBinder interface {
 	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is
 	// about to commit, including edits and its approvedBy stamp, so it never has to discover
 	// the decision through a stale or not-yet-visible store read.
-	PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error)
+	PlanApprovedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error)
 	// AfterApprovalCommitted may probe codecs and reconcile with Tunarr. Those are remote or
 	// derived consequences, not part of the local transaction; failures are recorded and
 	// retried by the channel sweep rather than unwinding an approval that already committed.
@@ -361,7 +362,7 @@ func (a *Approver) approveDurably(
 	// The unique indexes arbitrate that race; because the whole transaction rolled back, reload +
 	// replan is safe and keeps a transient household-scale collision out of the HTTP contract.
 	const maxChannelPlanAttempts = 4
-	var ch store.Channel
+	var ch channelstore.Channel
 	var enqueued int
 	for attempt := 0; attempt < maxChannelPlanAttempts; attempt++ {
 		// This check belongs inside the retry loop. A newer approval can commit after an
@@ -390,7 +391,7 @@ func (a *Approver) approveDurably(
 		if err == nil {
 			break
 		}
-		if (!errors.Is(err, store.ErrChannelConflict) && !errors.Is(err, store.ErrChannelStale)) || attempt == maxChannelPlanAttempts-1 {
+		if (!errors.Is(err, channelstore.ErrChannelConflict) && !errors.Is(err, channelstore.ErrChannelStale)) || attempt == maxChannelPlanAttempts-1 {
 			return ApprovalResult{}, err
 		}
 		if err := ctx.Err(); err != nil {

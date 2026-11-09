@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -345,7 +346,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 	now := time.Date(2026, time.September, 22, 3, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
 
-	approve := func(jobID string, number int) store.Channel {
+	approve := func(jobID string, number int) channelstore.Channel {
 		t.Helper()
 		if err := st.CreateJob(ctx, store.Job{
 			ID: jobID, Kind: "suggest", Status: "queued", CreatedBy: "alice",
@@ -365,7 +366,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 			t.Fatal(err)
 		}
 		prop.Status, prop.ApprovedBy, prop.ApprovedAt = "approved", "admin", now
-		ch := store.Channel{}
+		ch := channelstore.Channel{}
 		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
 		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
 		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: prop, Channel: ch}); err != nil {
