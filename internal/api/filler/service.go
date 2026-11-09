@@ -48,9 +48,9 @@ type Service interface {
 	IngestPull(ctx context.Context, pullID string, targets []acquisition.AcquisitionTarget, commit func(context.Context, acquisition.AcquisitionRun) error) (jobID string, err error)
 	// IngestAsked is Ingest plus "remember this source", for `POST /v1/filler/ingest` only.
 	//
-	// ⚠ The split is a correctness fix: registration used to live inside Ingest, and auto-fetch
-	// passes the URL of every ITEM inside an already-registered collection — so one fetch
-	// registered 30 clips as 30 sources. Only the caller knows which it holds.
+	// ⚠ Registration stays out of Ingest because auto-fetch passes the URL of every ITEM inside
+	// an already-registered collection — registering there would turn one fetch of 30 clips into
+	// 30 sources. Only the caller knows which it holds.
 	IngestAsked(ctx context.Context, urls []string) (jobID string, err error)
 	// Discover searches archive.org for candidate clips WITHOUT downloading anything (§10,
 	// V33). One search request whatever the result count — the operator is deciding what to

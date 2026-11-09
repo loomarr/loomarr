@@ -159,8 +159,8 @@ type bulkApproveFillerPullInput struct {
 		// downloads at once, and groups can exceed the 24-25 used elsewhere in this API for
 		// interactive lookups — each item only queues work through the existing single-approve
 		// path below, so this bounds request size without forcing the client to chunk. Deliberately
-		// NOT applied to bulk-approve-proposals (internal/api/proposals.go): that is an existing,
-		// uncapped contract, and capping it is outside this change.
+		// NOT applied to bulk-approve-proposals (internal/api/proposals): that is an existing,
+		// uncapped contract.
 		IDs []string `json:"ids" minItems:"1" maxItems:"100" doc:"Pull ids to approve, each through the single approval gate"`
 	}
 }

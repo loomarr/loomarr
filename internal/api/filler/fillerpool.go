@@ -9,9 +9,9 @@ import (
 
 // Catalog-wide filler health — the Filler page's pool strip (§10 V35).
 //
-// This is the surface that REPLACED the mock's Coverage tab. The per-channel meter
-// (`/v1/channels/{id}/filler/coverage`) answers "will THIS channel's breaks resolve"; this one
-// answers "can the catalog serve the install at all, and where should a pull go".
+// The per-channel meter (`/v1/channels/{id}/filler/coverage`) answers "will THIS channel's breaks
+// resolve"; this one answers "can the catalog serve the install at all, and where should a pull
+// go".
 //
 // ⚠ **The per-channel numbers are not recomputed here.** `PodPreviewer.Pool` fills them by
 // calling the same `Coverage` the channel route calls, once per live channel. The strip and the
