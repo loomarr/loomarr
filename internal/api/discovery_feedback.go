@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -29,37 +30,37 @@ func (s *Server) registerDiscoveryFeedback(api huma.API) {
 }
 
 type discoveryFeedbackBody struct {
-	Scope     store.FeedbackScope  `json:"scope" enum:"household,channel"`
-	ScopeID   string               `json:"scopeId,omitempty"`
-	TargetKey provision.Key        `json:"targetKey"`
-	Action    store.FeedbackAction `json:"action" enum:"keep,less,never,surprise"`
-	Reason    string               `json:"reason,omitempty" maxLength:"280"`
+	Scope     channeldatastore.FeedbackScope  `json:"scope" enum:"household,channel"`
+	ScopeID   string                          `json:"scopeId,omitempty"`
+	TargetKey provision.Key                   `json:"targetKey"`
+	Action    channeldatastore.FeedbackAction `json:"action" enum:"keep,less,never,surprise"`
+	Reason    string                          `json:"reason,omitempty" maxLength:"280"`
 }
 
 type discoveryFeedbackInput struct{ Body discoveryFeedbackBody }
 type clearDiscoveryFeedbackInput struct {
 	Body struct {
-		Scope     store.FeedbackScope `json:"scope" enum:"household,channel"`
-		ScopeID   string              `json:"scopeId,omitempty"`
-		TargetKey provision.Key       `json:"targetKey"`
+		Scope     channeldatastore.FeedbackScope `json:"scope" enum:"household,channel"`
+		ScopeID   string                         `json:"scopeId,omitempty"`
+		TargetKey provision.Key                  `json:"targetKey"`
 	}
 }
 type listDiscoveryFeedbackInput struct {
-	Scope   store.FeedbackScope `query:"scope" enum:"household,channel"`
-	ScopeID string              `query:"scopeId"`
+	Scope   channeldatastore.FeedbackScope `query:"scope" enum:"household,channel"`
+	ScopeID string                         `query:"scopeId"`
 }
 type discoveryFeedbackOutput struct{ Body discoveryFeedbackDTO }
 type listDiscoveryFeedbackOutput struct{ Body []discoveryFeedbackDTO }
 
 type discoveryFeedbackDTO struct {
-	ID        string               `json:"id"`
-	ActorID   string               `json:"actorId"`
-	Scope     store.FeedbackScope  `json:"scope"`
-	ScopeID   string               `json:"scopeId,omitempty"`
-	TargetKey provision.Key        `json:"targetKey"`
-	Action    store.FeedbackAction `json:"action"`
-	Reason    string               `json:"reason,omitempty"`
-	CreatedAt time.Time            `json:"createdAt"`
+	ID        string                          `json:"id"`
+	ActorID   string                          `json:"actorId"`
+	Scope     channeldatastore.FeedbackScope  `json:"scope"`
+	ScopeID   string                          `json:"scopeId,omitempty"`
+	TargetKey provision.Key                   `json:"targetKey"`
+	Action    channeldatastore.FeedbackAction `json:"action"`
+	Reason    string                          `json:"reason,omitempty"`
+	CreatedAt time.Time                       `json:"createdAt"`
 }
 
 func (s *Server) recordDiscoveryFeedback(ctx context.Context, in *discoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
@@ -67,11 +68,11 @@ func (s *Server) recordDiscoveryFeedback(ctx context.Context, in *discoveryFeedb
 }
 
 func (s *Server) clearDiscoveryFeedback(ctx context.Context, in *clearDiscoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
-	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, store.FeedbackClear, "")
+	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, channeldatastore.FeedbackClear, "")
 }
 
-func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope store.FeedbackScope, scopeID string,
-	target provision.Key, action store.FeedbackAction, reason string,
+func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope channeldatastore.FeedbackScope, scopeID string,
+	target provision.Key, action channeldatastore.FeedbackAction, reason string,
 ) (*discoveryFeedbackOutput, error) {
 	if s.store == nil {
 		return nil, errFeatureNotConfigured("Discovery feedback unavailable", "The persistence service is not configured.")
@@ -83,7 +84,7 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope store.Feedba
 	if actor == "" {
 		actor = "api-token"
 	}
-	feedback := store.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(newRequestID(), "req_"),
+	feedback := channeldatastore.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(newRequestID(), "req_"),
 		ActorID: actor, Scope: scope, ScopeID: scopeID, Target: target, Action: action,
 		Reason: strings.TrimSpace(reason), CreatedAt: time.Now().UTC()}
 	if err := s.store.AppendDiscoveryFeedback(ctx, feedback); err != nil {
@@ -99,18 +100,18 @@ func (s *Server) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFee
 	if s.store == nil || !validFeedbackScope(in.Scope, in.ScopeID) {
 		return nil, errBadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
 	}
-	household, err := s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
+	household, err := s.store.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		return nil, err
 	}
-	var channel []store.DiscoveryFeedback
-	if in.Scope == store.FeedbackChannel {
-		channel, err = s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: in.Scope, ScopeID: in.ScopeID})
+	var channel []channeldatastore.DiscoveryFeedback
+	if in.Scope == channeldatastore.FeedbackChannel {
+		channel, err = s.store.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: in.Scope, ScopeID: in.ScopeID})
 		if err != nil {
 			return nil, err
 		}
 	}
-	events := store.EffectiveDiscoveryFeedback(household, channel)
+	events := channeldatastore.EffectiveDiscoveryFeedback(household, channel)
 	out := &listDiscoveryFeedbackOutput{Body: make([]discoveryFeedbackDTO, 0, len(events))}
 	for _, event := range events {
 		out.Body = append(out.Body, feedbackDTO(event))
@@ -118,7 +119,7 @@ func (s *Server) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFee
 	return out, nil
 }
 
-func validFeedbackRequest(scope store.FeedbackScope, scopeID string, target provision.Key) bool {
+func validFeedbackRequest(scope channeldatastore.FeedbackScope, scopeID string, target provision.Key) bool {
 	mt, provider, id, ok := provision.ParseKey(target)
 	if !ok {
 		return false
@@ -133,11 +134,11 @@ func validFeedbackRequest(scope store.FeedbackScope, scopeID string, target prov
 	return validFeedbackScope(scope, scopeID) && err == nil && canonical == target
 }
 
-func validFeedbackScope(scope store.FeedbackScope, scopeID string) bool {
-	return (scope == store.FeedbackHousehold && scopeID == "") || (scope == store.FeedbackChannel && scopeID != "")
+func validFeedbackScope(scope channeldatastore.FeedbackScope, scopeID string) bool {
+	return (scope == channeldatastore.FeedbackHousehold && scopeID == "") || (scope == channeldatastore.FeedbackChannel && scopeID != "")
 }
 
-func feedbackDTO(feedback store.DiscoveryFeedback) discoveryFeedbackDTO {
+func feedbackDTO(feedback channeldatastore.DiscoveryFeedback) discoveryFeedbackDTO {
 	return discoveryFeedbackDTO{ID: feedback.ID, ActorID: feedback.ActorID, Scope: feedback.Scope,
 		ScopeID: feedback.ScopeID, TargetKey: feedback.Target, Action: feedback.Action,
 		Reason: feedback.Reason, CreatedAt: feedback.CreatedAt}

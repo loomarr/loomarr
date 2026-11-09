@@ -570,13 +570,6 @@ type AiringStore interface {
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
-// ScheduledAiring is one programme a channel's schedule put on air (#1677).
-type ScheduledAiring struct {
-	Key           provision.Key
-	LibraryItemID string
-	AiredAt       time.Time
-}
-
 // ActivityStore is the Dashboard feed (§5, §12, V32).
 type ActivityStore interface {
 	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log

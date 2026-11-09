@@ -63,6 +63,8 @@ type sqlStore struct {
 	*jobsCluster
 	// The activity-feed cluster (activitystore), embedded the same way; see activity.go.
 	*activityCluster
+	// The channel-data cluster (channeldatastore), embedded the same way; see channeldata.go.
+	*channelDataCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path            string
@@ -74,7 +76,7 @@ type sqlStore struct {
 // bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a
 // store never exists with a nil cluster.
 func bindClusters(s *sqlStore) *sqlStore {
-	return bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s))))))
+	return bindChannelData(bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s)))))))
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's

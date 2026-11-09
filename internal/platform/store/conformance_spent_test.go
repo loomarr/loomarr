@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -88,7 +89,7 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return EffectiveDiscoveryFeedback(household, channel)
+		return channeldatastore.EffectiveDiscoveryFeedback(household, channel)
 	}
 	before := effective()
 	if n, err := st.PurgeSupersededDiscoveryFeedback(ctx); err != nil || n != 4 {

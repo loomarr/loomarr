@@ -279,6 +279,13 @@ func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
 }
 
+// internal/platform/store/channeldatastore is the cluster of data that hangs off channels (favourites and
+// recents, hidden ideas, airing history, discovery feedback). It builds on the storedb kernel, in the
+// same direction as the clusters above, and store embeds it and re-exports its types.
+func TestChannelDataStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channeldatastore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

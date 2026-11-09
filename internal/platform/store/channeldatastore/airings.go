@@ -1,12 +1,20 @@
-package store
+package channeldatastore
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
+
+// ScheduledAiring is one programme a channel's schedule put on air (#1677).
+type ScheduledAiring struct {
+	Key           provision.Key
+	LibraryItemID string
+	AiredAt       time.Time
+}
 
 // Airing history (§5, programming-design §3.1) — what a channel actually broadcast.
 //
@@ -33,14 +41,14 @@ const airingRetention = 8 * 24 * time.Hour
 // Idempotent per airing: playout re-resolves the same programme many times, always with the same
 // start, and only the first write lands, so `recorded_at` is when the airing was FIRST observed.
 // That is what lets LastAiredByChannel ignore rows written after a window opened.
-func (s *sqlStore) RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
+func (s *Store) RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
 	return s.recordAiringIn(ctx, "airings", channelID, key, libraryItemID, airedAt, recordedAt)
 }
 
 // RecordScheduledAirings logs programmes a channel's schedule put on air, watched or not (#1677).
 // It is the scheduled signal; RecordAiring is the watched one, and the two never share a table, so
 // neither poisons the other. Each airing is written once, with the same retention as `airings`.
-func (s *sqlStore) RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error {
+func (s *Store) RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error {
 	for _, a := range airings {
 		if err := s.recordAiringIn(ctx, "scheduled_airings", channelID, a.Key, a.LibraryItemID, a.AiredAt, recordedAt); err != nil {
 			return err
@@ -51,14 +59,15 @@ func (s *sqlStore) RecordScheduledAirings(ctx context.Context, channelID string,
 
 // recordAiringIn writes one airing to table (airings or scheduled_airings), once, and prunes the
 // unit's rows past the retention horizon down to the newest of them.
-func (s *sqlStore) recordAiringIn(ctx context.Context, table, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
+func (s *Store) recordAiringIn(ctx context.Context, table, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
 	if channelID == "" || libraryItemID == "" {
 		return nil // nothing identifiable to record; not an error (playout must never fail on telemetry)
 	}
-	res, err := s.db.ExecContext(ctx, s.ph(
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO `+table+` (channel_id, library_item_id, aired_at, recorded_at, key) VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (channel_id, library_item_id, aired_at) DO NOTHING`),
-		channelID, libraryItemID, epoch(airedAt), epoch(recordedAt), string(key))
+
+		channelID, libraryItemID, storedb.Epoch(airedAt), storedb.Epoch(recordedAt), string(key))
 	if err != nil {
 		return fmt.Errorf("record %s %s/%s: %w", table, channelID, libraryItemID, err)
 	}
@@ -66,11 +75,12 @@ func (s *sqlStore) recordAiringIn(ctx context.Context, table, channelID string, 
 		return nil // a repeat of an airing already logged: nothing new to prune
 	}
 	// Keep every airing inside the retention horizon plus the newest one older than it.
-	horizon := epoch(recordedAt.Add(-airingRetention))
-	if _, err := s.db.ExecContext(ctx, s.ph(
+	horizon := storedb.Epoch(recordedAt.Add(-airingRetention))
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM `+table+` WHERE channel_id = ? AND library_item_id = ? AND recorded_at < ?
 		   AND aired_at < (SELECT MAX(aired_at) FROM `+table+`
 		                   WHERE channel_id = ? AND library_item_id = ? AND recorded_at < ?)`),
+
 		channelID, libraryItemID, horizon, channelID, libraryItemID, horizon); err != nil {
 		return fmt.Errorf("prune %s %s/%s: %w", table, channelID, libraryItemID, err)
 	}
@@ -85,19 +95,21 @@ func (s *sqlStore) recordAiringIn(ctx context.Context, table, channelID string, 
 // that records a programme which started before the boundary, cannot re-arrange it. A unit that
 // has not aired (as of `before`) is absent — callers read absence as "never aired", which ranks
 // it first. The whole channel at once, because that is how placement consumes it.
-func (s *sqlStore) LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
+func (s *Store) LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
 	return s.lastAiredIn(ctx, "airings", channelID, before)
 }
 
 // LastScheduledByChannel is LastAiredByChannel over the scheduled ledger (#1677).
-func (s *sqlStore) LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
+func (s *Store) LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
 	return s.lastAiredIn(ctx, "scheduled_airings", channelID, before)
 }
 
-func (s *sqlStore) lastAiredIn(ctx context.Context, table, channelID string, before time.Time) (map[string]time.Time, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) lastAiredIn(ctx context.Context, table, channelID string, before time.Time) (map[string]time.Time, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT library_item_id, MAX(aired_at) FROM `+table+` WHERE channel_id = ? AND recorded_at < ?
-		 GROUP BY library_item_id`), channelID, epoch(before))
+		 GROUP BY library_item_id`),
+
+		channelID, storedb.Epoch(before))
 	if err != nil {
 		return nil, fmt.Errorf("list %s %s: %w", table, channelID, err)
 	}
@@ -122,9 +134,10 @@ func (s *sqlStore) lastAiredIn(ctx context.Context, table, channelID string, bef
 // channel. A series key covers many episodes, so this is "when did this title last air", the
 // question a lineup entry asks. A key that has not aired inside the retained history is absent;
 // callers read absence as "never aired".
-func (s *sqlStore) LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT key, MAX(aired_at) FROM airings WHERE channel_id = ? GROUP BY key`), channelID)
+func (s *Store) LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
+		`SELECT key, MAX(aired_at) FROM airings WHERE channel_id = ? GROUP BY key`),
+		channelID)
 	if err != nil {
 		return nil, fmt.Errorf("list airings by key %s: %w", channelID, err)
 	}

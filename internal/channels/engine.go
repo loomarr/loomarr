@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -54,7 +55,7 @@ type EngineStore interface {
 	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
-	RecordScheduledAirings(ctx context.Context, channelID string, airings []store.ScheduledAiring, recordedAt time.Time) error
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []channeldatastore.ScheduledAiring, recordedAt time.Time) error
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
@@ -800,8 +801,8 @@ func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time
 		}
 	}
 	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
-		airing := store.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
-		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []store.ScheduledAiring{airing}, b.Start); err != nil {
+		airing := channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
+		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []channeldatastore.ScheduledAiring{airing}, b.Start); err != nil {
 			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
 			return
 		}
