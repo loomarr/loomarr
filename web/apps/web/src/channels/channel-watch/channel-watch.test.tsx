@@ -232,6 +232,42 @@ describe("ChannelWatch pickers", () => {
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
   });
 
+  // The maintainer's report: once a chrome control had been clicked, or focus had left the frame,
+  // ↑/↓ stopped changing channel. They are the page's while the player is up.
+  it("steps channels from the arrow keys after a chrome click and with focus on the page", async () => {
+    stubTracks();
+    hls.step.mockClear();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    const mute = screen.getByRole("button", { name: "Mute" });
+    await userEvent.click(mute);
+    expect(screen.getByRole("button", { name: "Unmute" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    // One press, one step.
+    expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1]);
+
+    (document.activeElement as HTMLElement).blur();
+    expect(document.body).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{PageUp}");
+    expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1, 1]);
+  });
+
+  // (The live keys have no volume slider; VideoPlayer's own tests pin the slider and menu cases.)
+  it("leaves the arrows to an open sheet, wherever focus is", async () => {
+    stubTracks();
+    hls.step.mockClear();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    const more = await openMore();
+    await userEvent.keyboard("{ArrowDown}");
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(more).toBeInTheDocument();
+    expect(hls.step).not.toHaveBeenCalled();
+  });
+
   // Seeking the window (#2088 decision 2). The timeline's clock is the server's: live is 1_060_000.
   describe("seeking the window", () => {
     const programmeFrom = (startMs: number) =>
