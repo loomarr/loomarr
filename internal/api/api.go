@@ -14,6 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
@@ -67,7 +68,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search,
+		suggest:   opts.Suggest,
 		now:       opts.Now,
 		viewing:   viewing.New(),
 		systemLLM: opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
@@ -87,7 +88,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
 	srv.registerMiddleware(humaAPI)
-	srv.registerTitles(humaAPI)
+	catalogapi.New(catalogapi.Deps{
+		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Search,
+	}).Register(humaAPI)
 	people.New(people.Deps{
 		Store: opts.Store, Log: log, Metrics: recorder, Origin: srv.origin,
 		Login: opts.Login, Sessions: opts.Sessions, Passwords: opts.Passwords, UserSync: opts.UserSync,
@@ -148,7 +151,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Activity: opts.Activity, DecisionQuality: opts.DecisionQuality, ProposalNotifications: opts.ProposalNotifications,
 		Holidays: func() holidayvocab.Vocabulary { return srv.holidayCalendar().Vocab() },
 	}).Register(humaAPI)
-	srv.registerSearch(humaAPI)
 	libraryDeps := libraryapi.Deps{
 		Store: opts.Store, LiveSettings: opts.LiveSettings, LibraryRoots: opts.LibraryRoots,
 		LibraryHooks: opts.LibraryHooks, Collections: opts.Collections, MovieCollections: opts.MovieCollections,

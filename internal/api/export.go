@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
@@ -45,7 +46,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// orval couldn't type them (the FE↔BE seam that 13.0 closes).
 	srv := &Server{log: log, schemaOnly: true}
 	srv.registerMiddleware(humaAPI)
-	srv.registerTitles(humaAPI)
+	catalogapi.New(catalogapi.Deps{}).Register(humaAPI)
 	people.New(people.Deps{Log: log}, true).Register(humaAPI)
 	system.New(system.Deps{Log: log}, true).Register(humaAPI)
 	channelsapi.New(channelsapi.Deps{}).Register(humaAPI)
@@ -55,7 +56,6 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	guideapi.New(guideapi.Deps{}).Register(humaAPI)
 	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
-	srv.registerSearch(humaAPI)
 	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
 	imagesapi.New(imagesapi.Deps{}).Register(humaAPI)

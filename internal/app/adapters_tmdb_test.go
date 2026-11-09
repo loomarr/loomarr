@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/moviecollections"
@@ -22,7 +22,7 @@ func TestSearchAdapterCarriesGroundedEditorialEvidence(t *testing.T) {
 		VoteAverage: 8.2, VoteCount: 27_000, Keywords: []string{"secret code"},
 	}}}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), api.SearchRequest{
+	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Query: "marigold", Scope: "tmdb", Limit: 20,
 	})
 	if err != nil {
@@ -67,11 +67,11 @@ func TestSearchAdapterUsesCatalogDiscoveryForStructuredRequests(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
 		MediaType: provision.Series, TMDBID: 90_020_001, Name: "Signal House", Networks: []string{"Kestrel One"},
 	}}}
-	discovery := &api.SearchDiscovery{
+	discovery := &catalogapi.SearchDiscovery{
 		MediaType: "series", Genres: []string{"Comedy"}, Network: "Kestrel One", OriginCountry: "US",
 	}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), api.SearchRequest{
+	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Scope: "all", Limit: 12, Discovery: discovery,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestSearchAdapterNarrowsTitleResultsByMediaType(t *testing.T) {
 		{MediaType: provision.Series, TMDBID: 90000002, Name: "Series"},
 	}}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), api.SearchRequest{
+	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Query: "shared title", MediaType: "series", Scope: "tmdb", Limit: 20,
 	})
 	if err != nil {
