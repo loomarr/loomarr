@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -74,7 +75,7 @@ func TestPlan_JobNamingAChannelPatchesItWithoutMovingTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertUser(ctx, store.User{ID: "u-member", Name: "Member", Role: store.RoleMember}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-member", Name: "Member", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	saved.RequestedBy = "u-member"
