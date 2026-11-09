@@ -245,7 +245,9 @@ const Block = ({
                 numberOfLines={1}
                 textAlign="left"
                 textRole="cardLabel"
-                tone={pending || kind === "flex" ? "muted" : "primary"}
+                // Secondary, not muted: light muted is 4.1:1 on the pending and elevated fills (axe
+                // needs 4.5); dark's two tones are the same grey, so dark doesn't change.
+                tone={pending || kind === "flex" ? "secondary" : "primary"}
               >
                 {hasSeries ? a.title : guideAiringLabel(a)}{" "}
               </Text>
