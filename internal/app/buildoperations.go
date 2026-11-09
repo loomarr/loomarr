@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -89,7 +90,7 @@ func buildOperations(
 	emitter *eventEmitter,
 	registry *jobs.Registry,
 	owner *generationLifecycle,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	overrides Overrides,
 	log *slog.Logger,
@@ -377,7 +378,7 @@ func buildAuth(
 func buildGuide(
 	st store.Store,
 	set resolved,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	metricRecorder *metrics.Recorder,
 ) api.GuideReader {

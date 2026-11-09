@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -43,9 +43,9 @@ func TestPlayoutResolver_PremeasureQueuesUnmeasuredLibraryFilesOnce(t *testing.T
 		t.Fatal(err)
 	}
 	worker := &submittedRefs{}
-	r := &playoutResolver{inventory: inventory.New(st), analyses: st, libraryFile: st, now: time.Now, measurer: worker}
+	r := &Resolver{inventory: inventory.New(st), analyses: st, libraryFile: st, now: time.Now, measurer: worker}
 
-	r.premeasure(t.Context(), []string{"m1", "no-such-item"})
+	r.Premeasure(t.Context(), []string{"m1", "no-such-item"})
 	if len(worker.refs) != 1 || worker.refs[0].Path != path {
 		t.Fatalf("submitted %+v; want the scheduled item's file once", worker.refs)
 	}
@@ -53,7 +53,7 @@ func TestPlayoutResolver_PremeasureQueuesUnmeasuredLibraryFilesOnce(t *testing.T
 	if err := st.RecordInventoryAnalysis(t.Context(), inventory.Analysis{SourceID: ref.ID, Revision: ref.Revision, AnalyzedAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	r.premeasure(t.Context(), []string{"m1"})
+	r.Premeasure(t.Context(), []string{"m1"})
 	if len(worker.refs) != 1 {
 		t.Fatalf("submitted %+v; want a measured revision skipped", worker.refs)
 	}

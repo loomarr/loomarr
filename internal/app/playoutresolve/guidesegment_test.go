@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -79,7 +79,7 @@ func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 	from := time.Now().Truncate(24 * time.Hour)
 	accepted := &stubChannels{}
 	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
-	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
+	r := &Resolver{engine: eng, channels: accepted, now: time.Now}
 	to := from.Add(72 * time.Hour) // three windows
 
 	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, playout.BroadcastsBetween)
@@ -113,7 +113,7 @@ func TestSegmentedBroadcasts_ClipsAdjacentCyclesAtWindowBoundaryWithoutCarryOver
 	accepted := &stubChannels{}
 	accepted.ch.ID = "ch1"
 	accepted.ch.PlayoutAnchor = boundary.Add(-50 * time.Minute)
-	r := &playoutResolver{engine: eng, channels: accepted, now: func() time.Time { return boundary }}
+	r := &Resolver{engine: eng, channels: accepted, now: func() time.Time { return boundary }}
 
 	bs, err := r.segmentedBroadcasts(
 		context.Background(), "ch1", boundary.Add(-30*time.Minute), boundary.Add(30*time.Minute),
@@ -144,7 +144,7 @@ func TestSegmentedBroadcasts_UnboundedWindowResolvesOnce(t *testing.T) {
 	from := time.Now().Truncate(time.Hour)
 	accepted := &stubChannels{}
 	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
-	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
+	r := &Resolver{engine: eng, channels: accepted, now: time.Now}
 	if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, from.Add(72*time.Hour),
 		playout.BroadcastsBetween); err != nil {
 		t.Fatalf("segmentedBroadcasts: %v", err)
@@ -161,7 +161,7 @@ func TestSegmentedBroadcasts_IsBoundedBySegmentCap(t *testing.T) {
 	from := time.Now().Truncate(time.Minute)
 	accepted := &stubChannels{}
 	accepted.ch.ID, accepted.ch.PlayoutAnchor = "ch1", from
-	r := &playoutResolver{engine: eng, channels: accepted, now: time.Now}
+	r := &Resolver{engine: eng, channels: accepted, now: time.Now}
 	if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, from.Add(24*time.Hour),
 		playout.BroadcastsBetween); err != nil {
 		t.Fatalf("segmentedBroadcasts: %v", err)
@@ -186,7 +186,7 @@ func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testi
 	}}
 	// Accepted for the window on air: reconcile moves the anchor to where each window starts.
 	accepted.ch.PlayoutAnchor = now.Truncate(24 * time.Hour)
-	r := &playoutResolver{engine: eng, channels: accepted, now: func() time.Time { return now }}
+	r := &Resolver{engine: eng, channels: accepted, now: func() time.Time { return now }}
 
 	from := now.Add(-time.Hour)
 	bs, err := r.segmentedBroadcasts(
@@ -215,7 +215,7 @@ func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
 		for name, project := range projections {
 			t.Run(string(status)+"/"+name, func(t *testing.T) {
 				eng := &rotatingCycle{window: 24 * time.Hour}
-				r := &playoutResolver{engine: eng, channels: unanchoredChannel(status), now: time.Now}
+				r := &Resolver{engine: eng, channels: unanchoredChannel(status), now: time.Now}
 
 				bs, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, project)
 				if err != nil {
@@ -229,7 +229,7 @@ func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
 	}
 
 	for _, status := range []schedule.ChannelStatus{schedule.StatusLive, schedule.StatusDrifted} {
-		r := &playoutResolver{engine: &rotatingCycle{window: 24 * time.Hour}, channels: unanchoredChannel(status), now: time.Now}
+		r := &Resolver{engine: &rotatingCycle{window: 24 * time.Hour}, channels: unanchoredChannel(status), now: time.Now}
 		if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, playout.BroadcastsBetween); err == nil {
 			t.Fatalf("a %s channel with no anchor laid out a timeline; it is corrupt state and must be refused", status)
 		}

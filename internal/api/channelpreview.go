@@ -386,7 +386,7 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	// would answer the question only for someone already mid-edit.
 	//
 	// No cache is bypassed by this: the arranged-cycle cache lives in the playout adapter
-	// (app/cyclecache.go), which reaches the engine directly and never comes through here.
+	// (app/playoutresolve/cyclecache.go), which reaches the engine directly and never comes through here.
 	cycle, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, nil, nil)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")

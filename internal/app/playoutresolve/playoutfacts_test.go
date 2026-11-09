@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) 
 // skipped tone mapping (#2173). The scanner's header read takes the parameter set's transfer, so a
 // library item's airtime format takes its colour transfer from there; any other id keeps the probe's.
 func TestPlayoutResolver_FormatOfTakesALibraryItemsTransferFromItsHeader(t *testing.T) {
-	r := &playoutResolver{
+	r := &Resolver{
 		libraryVideo: libraryVideoFake{
 			"lib-hdr": {Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le",
 				ColorTransfer: "smpte2084"},
@@ -45,7 +45,7 @@ func TestPlayoutResolver_FormatOfTakesALibraryItemsTransferFromItsHeader(t *test
 // A library item's format and HDR come only from its playing file's header as the scanner read it
 // (#2151 step 16): no media server is asked, so any other id is unknown, which is not HDR.
 func TestPlayoutResolver_LibraryItemFormatFromTheTables(t *testing.T) {
-	r := &playoutResolver{libraryVideo: libraryVideoFake{
+	r := &Resolver{libraryVideo: libraryVideoFake{
 		"lib-hdr": {Kind: "video", Codec: "HEVC", Width: 3840, Height: 2160, FrameRate: "24000/1001",
 			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"},
 		"lib-hlg": {Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, ColorTransfer: "arib-std-b67"},

@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -89,7 +89,7 @@ func clipAt(name string) string {
 	return filler.ClipRelPath(hex.EncodeToString(sum[:]), ".mp4")
 }
 
-func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
+func fillerResolver(t *testing.T, dir string, pod filler.Pod) *Resolver {
 	t.Helper()
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotFiller},
@@ -97,7 +97,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	}
 	accepted := &stubChannels{}
 	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
-	return &playoutResolver{
+	return &Resolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
 		engine:    stubCycle{slots: slots},
 		channels:  accepted,
@@ -126,7 +126,7 @@ func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
 	accepted.ch.Desired = []schedule.Slot{{
 		Kind: schedule.SlotFlex, Title: "accepted broadcast", DurationMs: 60000,
 	}}
-	r := &playoutResolver{
+	r := &Resolver{
 		engine: preview, channels: accepted,
 		now: func() time.Time { return testPlayoutAnchor() },
 	}
@@ -153,7 +153,7 @@ func TestAiringNow_FreshChannelStartsAtPersistedActivation(t *testing.T) {
 		{Kind: schedule.SlotFlex, Title: "first", DurationMs: int64((30 * time.Minute) / time.Millisecond)},
 		{Kind: schedule.SlotFlex, Title: "second", DurationMs: int64((30 * time.Minute) / time.Millisecond)},
 	}
-	r := &playoutResolver{channels: accepted, now: func() time.Time { return anchor.Add(time.Second) }}
+	r := &Resolver{channels: accepted, now: func() time.Time { return anchor.Add(time.Second) }}
 
 	airing, _, err := r.AiringNow(context.Background(), "fresh")
 	if err != nil {

@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"bytes"
@@ -76,12 +76,12 @@ func (l *lockedBuffer) String() string {
 }
 
 func newThumbsUnderTest(
-	t *testing.T, client *tmdb.Client, fetch timelineImageFetcher, logs *lockedBuffer,
-) *timelineThumbs {
+	t *testing.T, client *tmdb.Client, fetch TimelineImageFetcher, logs *lockedBuffer,
+) *TimelineThumbs {
 	t.Helper()
 	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", newMemImageStore())
 	log := slog.New(slog.NewTextHandler(logs, nil))
-	return newTimelineThumbs(t.Context(), timelineThumbResolver{tmdb: client, images: svc, fetch: fetch}, log)
+	return NewTimelineThumbs(t.Context(), client, svc, fetch, log)
 }
 
 // A cold programme image must not be fetched — or even looked up — while the Guide request is open.

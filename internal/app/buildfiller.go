@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -265,12 +266,12 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck,
+	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
 	interactiveLLM *llm.InteractiveGate) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
 	encodeHost := func() encode.HostProfile {
-		return playoutRes.fileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
+		return playoutRes.FileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
 	}
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
