@@ -1090,6 +1090,31 @@ func TestSuggest_ExecutesOnlyFirstToolCallFromParallelResponse(t *testing.T) {
 	}
 }
 
+// A tool call whose arguments the provider could not decode is answered with that error, so the model
+// can resend it; it is not run as an argument-free search.
+func TestSuggest_MalformedToolArgumentsAreAnsweredWithTheError(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		llm.Response{ToolCalls: []llm.ToolCall{{
+			ID: "bad", Name: "catalog_search", Arguments: map[string]any{},
+			ArgumentsError: "tool arguments are not a valid JSON object: unexpected end of JSON input",
+		}}},
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)
+	if _, err := buildSuggester(t, llmMock).Suggest(context.Background(), proposals.Intent{Description: "science fiction"}); err != nil {
+		t.Fatal(err)
+	}
+	var answered string
+	for _, m := range llmMock.LastMessages {
+		if m.Role == llm.Tool && m.ToolCallID == "bad" {
+			answered = m.Content
+		}
+	}
+	if !strings.Contains(answered, "not a valid JSON object") {
+		t.Fatalf("the malformed call was answered with %q, want the decode error", answered)
+	}
+}
+
 // A small local model can return schema-valid {"picks":[]} without ever using
 // the catalog. Give that specific failure one bounded grounding retry rather
 // than persisting a misleading no-results outcome.
