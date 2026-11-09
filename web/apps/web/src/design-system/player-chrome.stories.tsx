@@ -4,12 +4,13 @@ import { ThemeScope } from "@loomarr/design-system";
 import {
   PlayerAudio,
   PlayerChrome,
+  type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
-  PlayerReadout,
   PlayerSheet,
+  pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -280,26 +281,48 @@ const AudioSheet: Story = {
 };
 
 // Digits being typed with the controls up: the readout on a solid ink backing, white, under the top row.
-const TypingChannel: Story = {
-  render: (args) => (
-    <>
-      <PlayerChrome {...args} />
-      <ThemeScope theme="dark">
-        <PlayerReadout density="pointer" digits="1–" />
-      </ThemeScope>
-    </>
-  ),
-};
+const TypingChannel: Story = { args: { readout: { digits: "1–" } } };
 
-const NoSuchChannel: Story = {
-  render: (args) => (
-    <>
-      <PlayerChrome {...args} />
-      <ThemeScope theme="dark">
-        <PlayerReadout density="pointer" digits="99" missed />
-      </ThemeScope>
-    </>
-  ),
+const NoSuchChannel: Story = { args: { readout: { digits: "99", missed: true } } };
+
+// The channel's watermark is burned into the picture and never moves. The chrome steps around it
+// (§9.6, #2772): a 16:9 frame so the picture fills it, and a stand-in bug drawn where playout puts it.
+const FRAME = { height: 720, width: 1280 } as const;
+const BugFrame = ({
+  corner,
+  ...args
+}: Story["args"] & { corner: "bottom-left" | "bottom-right" | "top-left" | "top-right" }) => {
+  const watermark = { corner, margin: 0.05, size: 0.06 };
+  const picture = pictureIn(FRAME);
+  const h = watermark.size * picture.height;
+  const inset = watermark.margin * picture.height;
+  return (
+    <div style={{ ...FRAME, margin: "0 auto", position: "relative" }}>
+      <div
+        style={{
+          background: "rgba(255, 255, 255, 0.4)",
+          [corner.startsWith("top") ? "top" : "bottom"]: picture.y + inset,
+          [corner.endsWith("right") ? "right" : "left"]: picture.x + inset,
+          height: h,
+          position: "absolute",
+          width: h * 2.5,
+        }}
+      />
+      <PlayerChrome {...(args as PlayerChromeProps)} watermark={watermark} />
+    </div>
+  );
+};
+const bugStory = (corner: "bottom-left" | "bottom-right" | "top-left" | "top-right"): Story => ({
+  render: (args) => <BugFrame {...args} corner={corner} />,
+});
+const WatermarkTopRight = bugStory("top-right");
+const WatermarkTopLeft = bugStory("top-left");
+const WatermarkBottomRight = bugStory("bottom-right");
+const WatermarkBottomLeft = bugStory("bottom-left");
+// A top-right bug with digits being typed: the readout starts below the bug too.
+const WatermarkTopRightTyping: Story = {
+  args: { readout: { digits: "1–" } },
+  render: (args) => <BugFrame {...args} corner="top-right" />,
 };
 
 const PictureSheet: Story = {
@@ -437,5 +460,10 @@ export {
   StreamStopped,
   Touch,
   TypingChannel,
+  WatermarkBottomLeft,
+  WatermarkBottomRight,
+  WatermarkTopLeft,
+  WatermarkTopRight,
+  WatermarkTopRightTyping,
   WithLast,
 };

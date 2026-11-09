@@ -11,10 +11,10 @@ import {
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
-  PlayerReadout,
   PlayerSheet,
   playbarFromTimeline,
   WatchingPanel,
+  watermarkOf,
 } from "@loomarr/ui";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -267,18 +267,14 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     viewerPaused: player.liveTransport.state.mode === "paused",
   });
 
-  // The number readout, top right of the frame: the digits so far, dashed out to the longest channel
-  // number, over "Enter channel" or, for a number no channel has, "No such channel". Over the
-  // picture it sits on a solid ink backing (§9.2), white, never amber.
-  const numberReadout = entry.digits ? (
-    <ThemeScope theme="dark">
-      <PlayerReadout
-        density={density}
-        digits={entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
-        missed={entry.missed}
-      />
-    </ThemeScope>
-  ) : undefined;
+  // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
+  // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
+  // for a number no channel has, "No such channel". On a solid ink backing (§9.2), white, never amber.
+  const readout = entry.digits
+    ? { digits: entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–"), missed: entry.missed }
+    : undefined;
+  // The channel's bug is burned into the picture; the chrome keeps out of its corner (§9.6, #2772).
+  const watermark = watermarkOf(channel.policy?.watermark);
 
   // The sheet's own name for the channel it is about.
   const sheetChannel = { name: osdChannel.name, number: String(osdChannel.number) };
@@ -414,6 +410,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           }}
           live={live}
           onGoLive={chrome.goLive}
+          readout={readout}
           sheet={openSheetFor(chrome)}
           top={{
             audioOpen: sheet === "audio",
@@ -425,6 +422,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             pointer: !touch,
           }}
           visible={chrome.controlsShown && !tuning}
+          watermark={watermark}
         />
       )}
     </>
@@ -445,13 +443,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
       // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        tuning || numberReadout ? (
+        tuning ? (
           <>
-            {tuning && player.stillURL && (
+            {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            {tuning && <TunerLoader channel={osdChannel} heldFrame={heldFrame} />}
-            {numberReadout}
+            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }
