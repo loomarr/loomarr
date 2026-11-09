@@ -5,6 +5,7 @@ import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action, Badge, Card, Field } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
@@ -12,6 +13,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
@@ -171,12 +173,19 @@ const TaxonEditor = ({
 }) => {
   const queryClient = useQueryClient();
   const current = editor.taxon;
-  const [slug, setSlug] = useState(current?.slug ?? "");
-  const [label, setLabel] = useState(current?.label ?? "");
-  const [axis, setAxis] = useState<Axis>(editor.axis);
-  const [parent, setParent] = useState(current?.parent ?? "");
-  const [synonyms, setSynonyms] = useState((current?.synonyms ?? []).join(", "));
-  const [aliases, setAliases] = useState((current?.retiredAliases ?? []).join(", "));
+  // The term's fields. Saving never submits the form: it asks for an impact review first, so the
+  // buttons below run the review and the form only holds the values.
+  const form = useAppForm({
+    defaultValues: {
+      slug: current?.slug ?? "",
+      label: current?.label ?? "",
+      axis: editor.axis as Axis,
+      parent: current?.parent ?? "",
+      synonyms: (current?.synonyms ?? []).join(", "),
+      aliases: (current?.retiredAliases ?? []).join(", "),
+    },
+  });
+  const { slug, label, axis, parent, synonyms, aliases } = useStore(form.store, (state) => state.values);
   const [review, setReview] = useState<Review>();
 
   const refresh = async () => {
@@ -270,22 +279,32 @@ const TaxonEditor = ({
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field
-          id="taxon-label"
-          label="Label"
-          onChangeText={(text) => edit(() => setLabel(text))}
-          value={label}
-        />
-        <Field
-          autoCapitalize="none"
-          autoCorrect={false}
-          disabled={editor.mode === "edit"}
-          id="taxon-slug"
-          label="Slug"
-          onChangeText={(text) => edit(() => setSlug(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))}
-          placeholder="breakfast-cereal"
-          value={slug}
-        />
+        <form.Field name="label">
+          {(field) => (
+            <Field
+              id="taxon-label"
+              label="Label"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Field name="slug">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              autoCorrect={false}
+              disabled={editor.mode === "edit"}
+              id="taxon-slug"
+              label="Slug"
+              onChangeText={(text) =>
+                edit(() => field.handleChange(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
+              }
+              placeholder="breakfast-cereal"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
         <div>
           <BrowserSelectControl
             appearance="field"
@@ -293,8 +312,8 @@ const TaxonEditor = ({
             label="Axis"
             onValueChange={(value) => {
               edit(() => {
-                setAxis(value);
-                setParent("");
+                form.setFieldValue("axis", value);
+                form.setFieldValue("parent", "");
               });
             }}
             options={AXES.map((value) => ({ label: AXIS_COPY[value].label, value }))}
@@ -309,30 +328,38 @@ const TaxonEditor = ({
         <BrowserSelectControl
           appearance="field"
           label="Parent"
-          onValueChange={(value) => edit(() => setParent(value))}
+          onValueChange={(value) => edit(() => form.setFieldValue("parent", value))}
           options={[
             { label: "Top level", value: "" },
             ...parentOptions.map((taxon) => ({ label: `${taxon.label} (${taxon.slug})`, value: taxon.slug })),
           ]}
           value={parent}
         />
-        <Field
-          autoCapitalize="none"
-          id="taxon-synonyms"
-          label="Classifier synonyms"
-          onChangeText={(text) => edit(() => setSynonyms(text))}
-          placeholder="soda, soft drink"
-          value={synonyms}
-        />
-        <Field
-          autoCapitalize="none"
-          autoCorrect={false}
-          id="taxon-aliases"
-          label="Retired slugs"
-          onChangeText={(text) => edit(() => setAliases(text))}
-          placeholder="old-machine-name"
-          value={aliases}
-        />
+        <form.Field name="synonyms">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              id="taxon-synonyms"
+              label="Classifier synonyms"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              placeholder="soda, soft drink"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Field name="aliases">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              autoCorrect={false}
+              id="taxon-aliases"
+              label="Retired slugs"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              placeholder="old-machine-name"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
       </div>
       <p className="text-muted-foreground text-xs">
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
