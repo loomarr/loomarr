@@ -10,7 +10,8 @@ const jsonResponse = (body: unknown) =>
 // ChannelHero owns the useChannelTimeline hook, so a story stubs `fetch` to answer
 // GET /v1/channels/{id}/timeline with a fixed body, as ChannelUpcoming's stories do. The body is
 // typed so a response change fails typecheck. No remote images in stories: with no picture to
-// load, the hero shows its generated channel art, which is the state worth a baseline.
+// load, the hero shows its generated channel art, which is the state worth a baseline. The frame is
+// wider than the hero's 48rem cap, so a baseline shows the 16:9 box stopping at 768px.
 const withStubbedTimeline =
   (body: Omit<TimelineOutputBody, "$schema">): Decorator =>
   (Story) => {
@@ -27,7 +28,7 @@ const meta = {
   title: "Channels/ChannelHero",
   component: ChannelHero,
   args: { channelId: "ch-1", channel: { name: "Saturday Cartoons", number: 7 } },
-  decorators: [widthFrame(640)],
+  decorators: [widthFrame(1024)],
 } satisfies Meta<typeof ChannelHero>;
 
 export default meta;
@@ -49,6 +50,11 @@ export const GeneratedArt: Story = {
       ],
     }),
   ],
+};
+
+// On a phone the hero is the full column width, still 16:9.
+export const Phone: Story = {
+  decorators: [widthFrame(390), ...(GeneratedArt.decorators as Decorator[])],
 };
 
 // An empty schedule still opens on art rather than a blank box.
