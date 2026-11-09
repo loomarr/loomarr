@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -101,7 +101,7 @@ type clearFillerDefectLabelInput struct {
 	ClipID string `path:"clipId" minLength:"1" maxLength:"128"`
 }
 
-func (s *Server) registerFillerDefects(api huma.API) {
+func (s *Handlers) registerFillerDefects(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-defect-report", Method: http.MethodGet, Path: "/v1/filler/defects",
 		Summary: "Defect floor report",
@@ -124,7 +124,7 @@ func (s *Server) registerFillerDefects(api huma.API) {
 	}, httpcore.RoleAdmin), s.clearFillerDefectLabel)
 }
 
-func (s *Server) fillerDefectReport(ctx context.Context, in *fillerDefectReportInput) (*fillerDefectReportOutput, error) {
+func (s *Handlers) fillerDefectReport(ctx context.Context, in *fillerDefectReportInput) (*fillerDefectReportOutput, error) {
 	if s.fillerDefects == nil {
 		return nil, httpcore.FeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}
@@ -137,15 +137,15 @@ func (s *Server) fillerDefectReport(ctx context.Context, in *fillerDefectReportI
 	return &fillerDefectReportOutput{Body: fillerDefectReportDTO(r)}, nil
 }
 
-func (s *Server) labelFillerDefect(ctx context.Context, in *labelFillerDefectInput) (*struct{}, error) {
+func (s *Handlers) labelFillerDefect(ctx context.Context, in *labelFillerDefectInput) (*struct{}, error) {
 	return nil, s.setFillerDefectLabel(ctx, in.ClipID, defects.Label(in.Body.Label))
 }
 
-func (s *Server) clearFillerDefectLabel(ctx context.Context, in *clearFillerDefectLabelInput) (*struct{}, error) {
+func (s *Handlers) clearFillerDefectLabel(ctx context.Context, in *clearFillerDefectLabelInput) (*struct{}, error) {
 	return nil, s.setFillerDefectLabel(ctx, in.ClipID, "")
 }
 
-func (s *Server) setFillerDefectLabel(ctx context.Context, clipID string, label defects.Label) error {
+func (s *Handlers) setFillerDefectLabel(ctx context.Context, clipID string, label defects.Label) error {
 	if s.fillerDefects == nil {
 		return httpcore.FeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}

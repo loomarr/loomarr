@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
@@ -726,7 +727,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
-	if errors.Is(err, ErrIngestUnavailable) {
+	if errors.Is(err, fillerapi.ErrIngestUnavailable) {
 		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
@@ -1038,7 +1039,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		// on the Settings page. A private write path would be the one setting with no history.
 		results := s.settings.Patch(ctx,
 			map[string]string{settings.FillerSourceFolderEnabled.Key(): strconv.FormatBool(in.Body.Enabled)},
-			auditActor(ctx))
+			httpcore.AuditActor(ctx))
 		for _, r := range results {
 			if r.Status == "pinned" {
 				return nil, httpcore.Conflict("That switch is set by the environment",
@@ -1223,7 +1224,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// own children in one pre-ordered pass.
 	var registered []FillerSourceDTO
 	byProvider := map[string][]FillerSourceDTO{}
-	home := s.fillerHomeGeography().Normalize()
+	home := fillerapi.HomeGeography(s.liveSettings).Normalize()
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
@@ -1312,7 +1313,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			EffectiveEnabled: folderEnabled,
 			ProviderEnabled:  true,
 			Switchable:       true,
-			Target:           orPlaceholder(dir, "not configured"),
+			Target:           fillerapi.OrPlaceholder(dir, "not configured"),
 			Detail:           "watched directly — new files appear on the next pass",
 			// filler-dir is what DirSource writes; the older tunarr-local value is counted
 			// here too because those clips also live in the folder — the provenance string
@@ -1571,7 +1572,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {
-		if errors.Is(err, ErrIngestUnavailable) {
+		if errors.Is(err, fillerapi.ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}
@@ -1605,13 +1606,6 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	out.Body.Outcomes = fillerSourceCheckSummaryDTO(fetchResult.Outcomes)
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
 	return out, nil
-}
-
-func orPlaceholder(v, placeholder string) string {
-	if v == "" {
-		return placeholder
-	}
-	return v
 }
 
 // errSourceDisabled is the shared answer for "you switched this off".

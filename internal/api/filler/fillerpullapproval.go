@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type approveFillerPullInput struct {
 }
 
 // approveFillerPull is THE commit point — the only path on which a pull downloads anything.
-func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInput) (*pullOutput, error) {
+func (s *Handlers) approveFillerPull(ctx context.Context, in *approveFillerPullInput) (*pullOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -130,7 +130,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	p.Status = acquisition.PullApproved
 	p.Note = strings.TrimSpace(in.Body.Note)
 	p.DecidedAt = time.Now().UTC()
-	p.DecidedBy = auditActor(ctx)
+	p.DecidedBy = httpcore.AuditActor(ctx)
 	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run acquisition.AcquisitionRun) error {
 		return s.store.CommitPullApproval(commitCtx, p, run)
 	}); err != nil {
@@ -198,7 +198,7 @@ type bulkApproveFillerPullOutput struct {
 // Sequential, not concurrent, like bulk-approve-proposals: approvals write pulls and start
 // downloads, and household-scale batches are small. Concurrency here would buy milliseconds and
 // risk interleaving writes.
-func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFillerPullInput) (*bulkApproveFillerPullOutput, error) {
+func (s *Handlers) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFillerPullInput) (*bulkApproveFillerPullOutput, error) {
 	out := &bulkApproveFillerPullOutput{}
 	out.Body.Results = make([]bulkApproveFillerPullResult, 0, len(in.Body.IDs))
 	for _, id := range in.Body.IDs {
@@ -224,7 +224,7 @@ type dismissFillerPullInput struct {
 	ID string `path:"id"`
 }
 
-func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInput) (*pullOutput, error) {
+func (s *Handlers) dismissFillerPull(ctx context.Context, in *dismissFillerPullInput) (*pullOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -241,7 +241,7 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	}
 	p.Status = acquisition.PullDismissed
 	p.DecidedAt = time.Now().UTC()
-	p.DecidedBy = auditActor(ctx)
+	p.DecidedBy = httpcore.AuditActor(ctx)
 	if err := s.store.DismissPull(ctx, p); err != nil {
 		if errors.Is(err, records.ErrPullNotPending) {
 			return nil, httpcore.Conflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")

@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -62,7 +63,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
+		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
 		intakeLanguages:  opts.IntakeLanguages,
@@ -152,13 +153,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerCollections(humaAPI)
 	srv.registerLibrary(humaAPI)
 	srv.registerFiller(humaAPI)
-	srv.registerFillerDefects(humaAPI)
 	srv.registerFillerSources(humaAPI)
-	srv.registerFillerWatch(humaAPI)
-	srv.registerFillerPulls(humaAPI)
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
-	srv.registerFillerResearch(humaAPI)
+	fillerapi.New(fillerapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Filler: opts.Filler,
+		FillerLayout: opts.FillerLayout, FillerResearch: opts.FillerResearch, FillerDefects: opts.FillerDefects,
+	}).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerDashboard(humaAPI)

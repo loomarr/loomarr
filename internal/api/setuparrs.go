@@ -65,7 +65,7 @@ func (s *Server) arrsFromRequester(ctx context.Context, _ *struct{}) (*arrsFromR
 		if s.configValue(keys.apiKey) == "" {
 			edits[keys.apiKey.Key()] = server.APIKey
 		}
-		for _, result := range s.settings.Patch(ctx, edits, auditActor(ctx)) {
+		for _, result := range s.settings.Patch(ctx, edits, httpcore.AuditActor(ctx)) {
 			if result.Status != "saved" {
 				// Pinned by the environment, or refused: Loomarr leaves that arr as it is.
 				pick.Filled = false

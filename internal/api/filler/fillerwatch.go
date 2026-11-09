@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -107,7 +107,7 @@ type fillerFetchStatusService interface {
 	FetchStatus(context.Context) (acquisition.FetchStatus, error)
 }
 
-func (s *Server) registerFillerWatch(api huma.API) {
+func (s *Handlers) registerFillerWatch(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-watch", Method: http.MethodGet, Path: "/v1/filler/watch",
 		Summary: "Is filler working right now",
@@ -121,7 +121,7 @@ func (s *Server) registerFillerWatch(api huma.API) {
 	}, httpcore.RoleMember), s.fillerWatch)
 }
 
-func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutput, error) {
+func (s *Handlers) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutput, error) {
 	out := &fillerWatchOutput{}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
@@ -147,7 +147,7 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count held clips", err)
 	}
-	if out.Body.Preparing, err = s.store.CountClipPipelines(ctx, incomingPreparingFilter()); err != nil {
+	if out.Body.Preparing, err = s.store.CountClipPipelines(ctx, IncomingPreparingFilter()); err != nil {
 		return nil, huma.Error500InternalServerError("count preparing clips", err)
 	}
 	if out.Body.NeedsYou, err = s.store.CountReadySplitProposals(ctx); err != nil {

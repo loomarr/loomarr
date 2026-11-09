@@ -95,7 +95,7 @@ func (s *Server) withAuditNames(ctx context.Context, entries []SettingEntry) ([]
 	if err != nil {
 		return nil, err
 	}
-	caller := auditActor(ctx)
+	caller := httpcore.AuditActor(ctx)
 	for i := range entries {
 		id := entries[i].UpdatedBy
 		entries[i].UpdatedByYou = id != "" && id == caller
@@ -125,7 +125,7 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 	out := &settingsPatchOutput{}
 	var saved map[string]string
 	err := s.mutateLiveTVSettings(ctx, touchesAny(in.Body.Edits, liveTVWiringKeys), func(mutationCtx context.Context) bool {
-		out.Body.Results = s.settings.Patch(mutationCtx, in.Body.Edits, auditActor(mutationCtx))
+		out.Body.Results = s.settings.Patch(mutationCtx, in.Body.Edits, httpcore.AuditActor(mutationCtx))
 		saved = savedEdits(in.Body.Edits, out.Body.Results)
 		return touchesAny(saved, liveTVWiringKeys) || settingsPersistenceFailed(out.Body.Results)
 	})
@@ -298,7 +298,7 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 	}
 	var res SettingResult
 	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
-		res = s.settings.SetEnvOverride(mutationCtx, in.Key, in.Body.Enabled, auditActor(mutationCtx))
+		res = s.settings.SetEnvOverride(mutationCtx, in.Key, in.Body.Enabled, httpcore.AuditActor(mutationCtx))
 		return res.Status == "applied"
 	})
 	if err != nil {
@@ -315,16 +315,6 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 	}
 	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
-}
-
-// auditActor is the admin's user id for the §3 audit trail (updated_by). The
-// API_TOKEN break-glass path has no user → empty (stored NULL), same as a system
-// write.
-func auditActor(ctx context.Context) string {
-	if u, ok := httpcore.UserFrom(ctx); ok {
-		return u.ID
-	}
-	return ""
 }
 
 type settingsTestInput struct {

@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -42,7 +42,7 @@ type fillerResearchTestOutput struct {
 	}
 }
 
-func (s *Server) registerFillerResearch(api huma.API) {
+func (s *Handlers) registerFillerResearch(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-research-status", Method: http.MethodGet, Path: "/v1/filler/research/status",
 		Summary:     "Clip-detail research status",
@@ -58,7 +58,7 @@ func (s *Server) registerFillerResearch(api huma.API) {
 	}, httpcore.RoleAdmin), s.fillerResearchTest)
 }
 
-func (s *Server) fillerResearchStatus(ctx context.Context, _ *struct{}) (*fillerResearchStatusOutput, error) {
+func (s *Handlers) fillerResearchStatus(ctx context.Context, _ *struct{}) (*fillerResearchStatusOutput, error) {
 	if s.fillerResearch == nil {
 		return nil, httpcore.NotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
 	}
@@ -69,7 +69,7 @@ func (s *Server) fillerResearchStatus(ctx context.Context, _ *struct{}) (*filler
 	return &fillerResearchStatusOutput{Body: fillerResearchStatusDTO(status)}, nil
 }
 
-func (s *Server) fillerResearchTest(ctx context.Context, in *fillerResearchTestInput) (*fillerResearchTestOutput, error) {
+func (s *Handlers) fillerResearchTest(ctx context.Context, in *fillerResearchTestInput) (*fillerResearchTestOutput, error) {
 	if s.fillerResearch == nil {
 		return nil, httpcore.NotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
 	}

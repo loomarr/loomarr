@@ -34,7 +34,7 @@ var providerIDLiterals = map[string]bool{"youtube": true, "archive": true, "fold
 // providerLiteralAllowlist maps a repo-relative file to why it still compares a provider-ID
 // literal. It is a ratchet: a file leaves it when it stops, and cannot join it without a reason.
 var providerLiteralAllowlist = map[string]string{
-	"internal/api/fillerwatch.go":                 "drop-folder watch projection; follow-up moves it onto the registry",
+	"internal/api/filler/fillerwatch.go":          "drop-folder watch projection; follow-up moves it onto the registry",
 	"internal/filler/acquisition/compilations.go": "filler domain rule keyed on the folder kind; follow-up passes the provider's Description instead",
 	"internal/filler/curated.go":                  "filler domain rule keyed on fetched kinds; follow-up passes the provider's Description instead",
 	"internal/filler/sync.go":                     "scan dispatch by kind; follow-up moves scanning onto the scanned providers",

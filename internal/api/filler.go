@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -981,7 +982,7 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 		return nil, httpcore.Conflict("That provider is paused",
 			"Resume it under Filler → Sources before downloading from it.")
 	}
-	if errors.Is(err, ErrIngestUnavailable) {
+	if errors.Is(err, fillerapi.ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
 		// used to say "run the loomarr:filler image" — that variant no longer exists (the
 		// single image always ships the tooling, §16), so the remedy it named was a dead
