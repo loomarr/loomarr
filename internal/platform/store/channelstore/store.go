@@ -49,10 +49,6 @@ type Invalidations interface {
 	NotifyChannel() string
 }
 
-// FeedbackChannelScope is the discovery_feedback scope of a channel's own choices; deleting a
-// channel deletes them in the same transaction. It must equal the store's FeedbackChannel, which a
-// store test pins.
-const FeedbackChannelScope = "channel"
 
 // Store is the channel persistence over one storedb.Handle.
 type Store struct {
@@ -288,7 +284,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
+	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
@@ -472,11 +468,7 @@ func (s *Store) DeleteChannel(ctx context.Context, id string, expectedRevision i
 			return channelRevisionMiss(ctx, tx, s.h.Rebind, id, expectedRevision)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM discovery_feedback WHERE scope = ? AND scope_id = ?`),
-		FeedbackChannelScope, id); err != nil {
-		return fmt.Errorf("delete channel %s feedback: %w", id, err)
-	}
+	// The channel's feedback went with the row (discovery_feedback.scope_id cascades, #2793).
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete channel %s: commit: %w", id, err)
 	}
@@ -605,7 +597,7 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

@@ -21,7 +21,6 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
 	ch.IntentJSON = `{"description":"intent of ` + id + `"}`
-	ch.RequestedBy = "requester-" + id
 	ch.Name = "Channel " + id
 	ch.Number = number
 	ch.Group = "Loomarr"
@@ -251,7 +250,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}} {
+	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}, {ID: "u-gone", Name: "Gone", Role: RoleMember}} {
 		if err := s.UpsertUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}
@@ -268,6 +267,23 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	ghost := sampleChannel("ch-ghost", 3, time.Time{})
 	ghost.IntentRef, ghost.RequestedBy = "job-ghost", "u-gone"
 	mustSaveChannel(t, s, ghost)
+	// The person is deleted: the channel stays, with no requester (requested_by is SET NULL).
+	sqlSt, ok := s.(*sqlStore)
+	if !ok {
+		t.Skip("needs the SQL store")
+	}
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`DELETE FROM users WHERE id = ?`), "u-gone"); err != nil {
+		t.Fatal(err)
+	}
+	if g, err := s.GetChannel(ctx, "ch-ghost"); err != nil || g.RequestedBy != "" {
+		t.Errorf("channel whose requester was deleted = %q, %v; want kept with no requester", g.RequestedBy, err)
+	}
+	// A requester must be a person.
+	stray := sampleChannel("ch-stray", 4, time.Time{})
+	stray.RequestedBy = "u-never"
+	if _, err := s.SaveChannel(ctx, stray); err == nil {
+		t.Error("saved a channel whose requester is no person; the foreign key is missing")
+	}
 
 	got, err := s.GetChannel(ctx, "ch-req")
 	if err != nil {
