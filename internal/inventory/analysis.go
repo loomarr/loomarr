@@ -173,7 +173,7 @@ func ValidateAnalysis(a Analysis) (Analysis, error) {
 	return a, nil
 }
 
-// AnalysisReader is the consumer seam for phase 2 (packager) and phase 3 (scheduler): everything
+// AnalysisReader is the consumer seam for the packager and the scheduler: everything
 // Loomarr measured about a source, from the database alone.
 type AnalysisReader interface {
 	InventoryAnalysis(context.Context, SourceID) (Analysis, bool, error)

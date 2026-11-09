@@ -75,8 +75,8 @@ type Filler struct {
 //
 // The commercials give the demo a break-body pool (#1684): without them every demo break was the
 // bumper card, so neither the pool meter nor the #1670 repetition kit could measure filler here.
-// Their ids follow the filename convention the pipeline reads with no model (`KindFromName`,
-// `EraFromName`), so they enrol as commercials with an era and NO audience, which is what an
+// Their ids follow the filename convention the pipeline reads with no model (`clips.RoleFromName`,
+// `clips.EraFromName`), so they enrol as commercials with an era and NO audience, which is what an
 // install with the LLM off holds. The eras spread across four decades so an era-targeted channel
 // has a small exact rung and a larger pool below it.
 var Fillers = []Filler{

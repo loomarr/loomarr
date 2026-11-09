@@ -47,7 +47,7 @@ func TestOpenPackItemsArePinnedLicensedAndAllAges(t *testing.T) {
 	if n := len(p.Fillers); n < 10 || n > 20 {
 		t.Errorf("pack = %d filler clips, want 10–20", n)
 	}
-	// The filler pipeline enrols a clip by its name's kind token and year (filler.KindFromName,
+	// The filler pipeline enrols a clip by its name's kind token and year (clips.RoleFromName,
 	// clips.EraFromName); a clip without them would sit unclassified and never reach a break.
 	convention := regexp.MustCompile(`^(commercial|trailer|psa)-[a-z0-9-]+-(19[3-9]\d|20[0-3]\d)$`)
 	for _, f := range p.Fillers {
