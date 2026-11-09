@@ -82,7 +82,9 @@ const HomePage = () => {
           )}
           {hasLife && (
             <Tonight
+              channels={channels}
               highlights={unwrap(highlights.data, (b) => b.highlights) ?? []}
+              nowMs={nowMs}
               timeZone={body?.timezone}
             />
           )}

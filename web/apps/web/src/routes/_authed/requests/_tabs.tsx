@@ -1,9 +1,12 @@
 import type { RequestTab } from "@loomarr/core/requests";
 import { NavTabs } from "@loomarr/ui";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { ChannelIdeas } from "@/home/channel-ideas";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRequests } from "@/queue/use-requests";
 
@@ -25,6 +28,12 @@ const RequestsLayout = () => {
   const { pathname } = useLocation();
   const { entries, inTab, needsYouCount, pendingApprovals, isLoading, error, refetch } = useRequests();
 
+  const { isAdmin } = useAuth();
+  const [nowMs] = useState(() => Date.now());
+  // Channel ideas sit above the list (#2763); they render nothing while there is no idea. As on
+  // Home, a member's section: an admin builds channels directly.
+  const ideas = isAdmin ? null : <ChannelIdeas empty={false} nowMs={nowMs} />;
+
   const activeId = TAB_IDS.find((id) => pathname.endsWith(`/${id}`)) ?? "in-progress";
   const nothingRequested = !isLoading && error == null && entries.length === 0 && pendingApprovals === 0;
 
@@ -36,7 +45,8 @@ const RequestsLayout = () => {
           <ErrorState error={error} onRetry={refetch} />
         </div>
       ) : nothingRequested ? (
-        <div className="p-6">
+        <div className="flex flex-col gap-6 p-6">
+          {ideas}
           <EmptyState
             title="You haven't requested a channel yet"
             description="Describe a channel and Loomarr will build it. You'll follow it here, from request to your guide."
@@ -48,6 +58,7 @@ const RequestsLayout = () => {
         </div>
       ) : (
         <>
+          {ideas && <div className="px-6 pt-6 empty:hidden">{ideas}</div>}
           <div className="px-6">
             <NavTabs
               label="Requests sections"
