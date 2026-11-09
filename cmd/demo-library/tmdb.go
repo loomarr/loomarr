@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/tmdb"
-	"github.com/loomarr/loomarr/internal/tmdb/tmdbstandin"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
+	"github.com/loomarr/loomarr/internal/library/tmdb/tmdbstandin"
 )
 
 // TMDBPrefix is where `serve` mounts the TMDB stand-in (#1941). A backend started with

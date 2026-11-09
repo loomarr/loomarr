@@ -9,10 +9,10 @@ import "sort"
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
 // into one directory per area, the directory is the area and this table goes. Most areas already
 // have their directory (media, channels, proposals, playout, filler, people, platform); still
-// directly under internal/ are the library area's catalog, inventory, metadataprovider,
-// moviecollections, episodeevidence, provision, provisionbackstop, requester and tmdb, the edge
-// area is the two directories api and app, and the test area's demolibrary, eval, integration,
-// testkit, tmdb/tmdbstandin and platform/store/storetest sit outside any single directory.
+// directly under internal/ are the library area's catalog, metadataprovider, provision,
+// provisionbackstop, requester and library itself, the edge area is the two directories api and
+// app, and the test area's demolibrary, eval, integration, testkit, library/tmdb/tmdbstandin and
+// platform/store/storetest sit outside any single directory.
 type area struct {
 	Name        string
 	Title       string
@@ -37,7 +37,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "library/arrhook", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
+			"library", "library/arrhook", "library/scan", "library/inventory", "library/tmdb", "catalog",
 			"provision", "provisionbackstop", "requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -66,7 +66,7 @@ var areas = []area{
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager every ffmpeg run goes through, the image jobs and " +
 				"their schedules, the outbound HTTP client for fetched artwork, and start-up configuration",
-			"library": "the `inventory` stream, keyframe and break values that header reads and measurements " +
+			"library": "the `library/inventory` stream, keyframe and break values that header reads and measurements " +
 				"fill in",
 		},
 	},
@@ -85,7 +85,7 @@ var areas = []area{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
 				"reconcile and re-curation, the activity feed, the language model for recommendations, and " +
 				"the holiday, language and audience-rating vocabularies",
-			"library": "the titles a channel plays: `provision` keys and states, `inventory` break " +
+			"library": "the titles a channel plays: `provision` keys and states, `library/inventory` break" +
 				"analysis, and `catalog` candidates for re-curation",
 			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
 				"channel through the suggester",
@@ -238,7 +238,7 @@ var areas = []area{
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
 			"platform/store/storetest",
-			"demolibrary", "tmdb/tmdbstandin", "integration", "eval",
+			"demolibrary", "library/tmdb/tmdbstandin", "integration", "eval",
 		},
 		ImportsAnyArea: true,
 	},
@@ -256,7 +256,7 @@ var flows = []flow{
 		Title: "From a request to Live TV",
 		Text: "A member asks for a channel through `api`. `proposals/workflow` turns the request into a " +
 			"durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` " +
-			"(the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
+			"(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
 			"`platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
 			"channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a " +
 			"`provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. " +

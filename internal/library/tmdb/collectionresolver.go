@@ -1,6 +1,7 @@
-// Package moviecollections resolves authoritative TMDB movie-collection rosters
-// for a bounded set of provisioned movie Keys.
-package moviecollections
+package tmdb
+
+// Movie-collection resolution: authoritative TMDB collection rosters for a bounded set of
+// provisioned movie Keys.
 
 import (
 	"context"
@@ -12,10 +13,10 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// Source is the internal seam over TMDB's movie-detail and collection-detail
+// CollectionSource is the internal seam over TMDB's movie-detail and collection-detail
 // operations. CollectionForMovie distinguishes an authoritative standalone
 // (zero ID, nil error) from an unresolved lookup (error).
-type Source interface {
+type CollectionSource interface {
 	CollectionForMovie(context.Context, int) (CollectionRef, error)
 	MovieCollection(context.Context, int) (SourceCollection, error)
 }
@@ -37,27 +38,27 @@ type Collection struct {
 	Members []catalog.Candidate
 }
 
-type Resolution struct {
+type CollectionResolution struct {
 	Collections []Collection
 	Complete    bool
 }
 
-type Resolver struct {
-	source   Source
+type CollectionResolver struct {
+	source   CollectionSource
 	presence catalog.LibraryPresenceSource
 }
 
-func New(source Source) *Resolver {
-	return &Resolver{source: source}
+func NewCollectionResolver(source CollectionSource) *CollectionResolver {
+	return &CollectionResolver{source: source}
 }
 
-func (r *Resolver) WithPresenceSource(source catalog.LibraryPresenceSource) *Resolver {
+func (r *CollectionResolver) WithPresenceSource(source catalog.LibraryPresenceSource) *CollectionResolver {
 	r.presence = source
 	return r
 }
 
-func (r *Resolver) Resolve(ctx context.Context, keys []provision.Key) (Resolution, error) {
-	resolution := Resolution{Collections: make([]Collection, 0), Complete: true}
+func (r *CollectionResolver) Resolve(ctx context.Context, keys []provision.Key) (CollectionResolution, error) {
+	resolution := CollectionResolution{Collections: make([]Collection, 0), Complete: true}
 	if r.source == nil {
 		return resolution, errors.New("movie collection source is not configured")
 	}

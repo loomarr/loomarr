@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error) {

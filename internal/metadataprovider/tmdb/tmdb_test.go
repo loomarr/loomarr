@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/metadataprovider/providertest"
 	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/testkit"
-	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
 const apiKey = "test-key"

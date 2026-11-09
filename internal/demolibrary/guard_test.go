@@ -251,7 +251,6 @@ var migratedGo = []string{
 	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
 	// (slice 9).
 	"internal/catalog/", "internal/integration/", "internal/library/",
-	"internal/moviecollections/", "internal/tmdb/",
 	"internal/proposals/suggest/date_meaning_test.go",
 	"internal/proposals/suggest/intent_policy_test.go",
 	"internal/proposals/suggest/scopenarrows_test.go",
@@ -303,8 +302,8 @@ var realDataGo = map[string]string{
 	"internal/requester/seerr_contract_test.go":             "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
 	"internal/proposals/suggest/live_latency_test.go":       "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/proposals/suggest/live_named_titles_test.go":  "drives a real LLM on requests that name real titles",
-	"internal/tmdb/exists_contract_test.go":                 "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
-	"internal/tmdb/fixture_test.go":                         "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/library/tmdb/exists_contract_test.go":         "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
+	"internal/library/tmdb/fixture_test.go":                 "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
 	"internal/playout/watermark/render_samplelogos_test.go": "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
 }
 

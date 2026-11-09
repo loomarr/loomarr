@@ -126,7 +126,7 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   not read. Its details rank below every service. The default `uniqueid` names its catalog. Reads are
   capped at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop
   malformed ids.
-- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
+- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/library/tmdb` client. A movie or
   series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
   content ratings, keywords, images), so the record carries guide text, genres, keywords, the
   community rating, series status, the US certification (the strictest of a movie's releases),

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // ErrNotAnswerable is a title the maintainer cannot answer for: one the scanner did not write, so

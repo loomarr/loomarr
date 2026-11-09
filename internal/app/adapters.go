@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -25,7 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
@@ -216,7 +215,7 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 	return out, nil
 }
 
-type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
+type movieCollectionAdapter struct{ resolver *tmdb.CollectionResolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,

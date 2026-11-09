@@ -10,10 +10,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/demolibrary"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // #1941: the real TMDB client, pointed at the demo server's /tmdb/3, finds the demo catalogue's

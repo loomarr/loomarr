@@ -7,11 +7,10 @@ import (
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 func TestSearchAdapterCarriesGroundedEditorialEvidence(t *testing.T) {
@@ -45,7 +44,7 @@ func TestMovieCollectionAdapterUsesAuthoritativeTMDBRoster(t *testing.T) {
 		90000672: {LibraryItemID: "library-672", OfficialRating: "PG"},
 	}}
 	client := tmdb.NewWithBase(tmdbServer.URL, "key")
-	adapter := movieCollectionAdapter{resolver: moviecollections.New(client).WithPresenceSource(
+	adapter := movieCollectionAdapter{resolver: tmdb.NewCollectionResolver(client).WithPresenceSource(
 		func() catalog.LibraryPresence { return presence },
 	)}
 

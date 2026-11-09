@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // A measured source with no audio is a known answer (audioStreams empty), not an unmeasured one:

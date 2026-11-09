@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -198,7 +198,7 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 			)
 			collections, presence := atlasFinchCollection(corpus)
 			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
-				WithMovieCollections(moviecollections.New(collections).WithPresenceSource(func() catalog.LibraryPresence { return presence }))
+				WithMovieCollections(tmdb.NewCollectionResolver(collections).WithPresenceSource(func() catalog.LibraryPresence { return presence }))
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			if err != nil {
 				t.Fatal(err)
@@ -226,17 +226,17 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 func atlasFinchCollection(corpus *catalogfixture.Corpus) (*moviecollectionsfixture.Source, *catalogfixture.Presence) {
 	var members []catalog.Candidate
 	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{}}
-	refs := map[int]moviecollections.CollectionRef{}
+	refs := map[int]tmdb.CollectionRef{}
 	for _, c := range corpus.Candidates {
 		presence.Hits[c.TMDBID] = catalog.Presence{LibraryItemID: "item-" + strconv.Itoa(c.TMDBID)}
 		if c.Name == "Seekers of the Sunken Bell" || strings.HasPrefix(c.Name, "Atlas Finch") {
 			members = append(members, catalog.Candidate{MediaType: "movie", TMDBID: c.TMDBID, Name: c.Name, Year: c.Year})
-			refs[c.TMDBID] = moviecollections.CollectionRef{TMDBID: 90000084, Name: "Atlas Finch Collection"}
+			refs[c.TMDBID] = tmdb.CollectionRef{TMDBID: 90000084, Name: "Atlas Finch Collection"}
 		}
 	}
 	return &moviecollectionsfixture.Source{
 		Refs:        refs,
-		Collections: map[int]moviecollections.SourceCollection{90000084: {TMDBID: 90000084, Name: "Atlas Finch Collection", Members: members}},
+		Collections: map[int]tmdb.SourceCollection{90000084: {TMDBID: 90000084, Name: "Atlas Finch Collection", Members: members}},
 	}, presence
 }
 
