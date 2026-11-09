@@ -15,11 +15,11 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`catalog`** · 7 importers · → `library`, `platform/store`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`episodeevidence`** · 3 importers
+- **`episodeevidence`** · 2 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`inventory`** · 7 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
-- **`library`** · 12 importers · → `episodeevidence`, `inventory`, `platform/httpx`, `platform/metrics`
+- **`library`** · 12 importers · → `inventory`, `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.

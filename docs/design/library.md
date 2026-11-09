@@ -6,15 +6,11 @@ Formerly `design.md` §5 (media inventory, cached series episodes), §6 (Emby an
 ## The media server contract
 
 Emby and Jellyfin share one adapter; `library.flavor` selects the auth header, never the logic.
+Since #2151 step 16 the adapter reads no catalog: presence, search, bulk scans, episodes and item
+metadata come from the Library's own tables.
 
-- **Lookup:** `GET /Items?Recursive=true&AnyProviderIdEquals=<tmdb.<id>|tvdb.<id>>&IncludeItemTypes=<Movie|Series>&Limit=1`.
-  Present means `Items` is non-empty. A series counts as in-library when the show exists. Provider
-  name casing differs across server versions: check it first when a known title comes back empty.
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Bulk scans** drive availability ([acquisition](acquisition.md#state-machine)): `RecentlyAdded(since)`
-  sorts by `DateCreated` with `MinDateLastSaved`, and `AllItems()` is the same query without it. Both
-  return provider ids, so a scan item produces the same `provision.Key` as a Title.
 - **Collections** (BoxSets) back `scope.collections`: `Collections()` lists them, and
   `CollectionMembers(id)` returns members with full provider ids through `ParentId`. `ChildCount` is not
   returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
@@ -648,11 +644,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   uses: `catalog.LibrarySearch`, `catalog.LibraryOwnership`, `LibraryItemFacts` and
   `channels.LibraryEpisodeResolver`. A schedule evidence snapshot therefore names library item
   ids, so one frozen against the media server's ids drifts and must be frozen again.
+- **The media-server client keeps no catalog reads** (step 16). `library.Client` lost its search,
+  presence lookup, bulk scan, episode and metadata reads; what it still asks the media server is
+  sign-in and users, folder discovery, filler, the live tuner, and — until prod has run them —
+  the cutover's id map (`ServerFiles`) and the collection import. The demo stand-in serves a
+  series' episodes to that id map. Tests drive the catalog through `catalogfixture.ScriptedLibrary`
+  or the Library's own tables, and the media-server double no longer scripts titles.
 
 ## Search
 
 Loomarr builds no search index (decision [0003](decisions/0003-federated-search.md)). `GET
-/v1/search?q=&scope=library|tmdb|all` fans out to the media server's `SearchTerm` and TMDB's
+/v1/search?q=&scope=library|tmdb|all` fans out to the Library's titles (by name) and TMDB's
 `/search/multi` and returns unified `Candidate` results with an `in_library` flag. Clips use `LIKE`.
 
 - **Scopes follow live configuration.** `all` searches whichever corpora are configured now and
