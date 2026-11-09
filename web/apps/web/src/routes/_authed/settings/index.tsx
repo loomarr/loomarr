@@ -1,10 +1,12 @@
-import { SearchField } from "@loomarr/ui";
+import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import {
+  type CSSProperties,
   forwardRef,
   type KeyboardEvent,
   type KeyboardEventHandler,
+  type MouseEventHandler,
   type ReactNode,
   useMemo,
   useRef,
@@ -13,62 +15,44 @@ import {
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
-  canVisitDestination,
-  SETTINGS_DESTINATIONS,
-  SETTINGS_TASK_GROUPS,
+  cardDestinations,
+  destinationById,
+  SETTINGS_CARDS,
   type SettingsDestination,
 } from "@/settings/settings-destinations";
 import { findSettings } from "@/settings/settings-finder";
+import { useSettingsStatus } from "@/settings/settings-status";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
+// The overview renders its own children into this link, with its own style and hover handlers.
 interface DestinationAnchorProps {
   destination: SettingsDestination;
-  className: string;
-  children: ReactNode;
+  className?: string;
+  children?: ReactNode;
+  style?: CSSProperties;
   onKeyDown?: KeyboardEventHandler<HTMLAnchorElement>;
+  onMouseEnter?: MouseEventHandler<HTMLAnchorElement>;
+  onMouseLeave?: MouseEventHandler<HTMLAnchorElement>;
 }
 
 const DestinationAnchor = forwardRef<HTMLAnchorElement, DestinationAnchorProps>(
-  ({ destination, className, children, onKeyDown }, ref) =>
+  ({ destination, children, ...anchor }, ref) =>
     destination.section ? (
-      <Link
-        ref={ref}
-        to="/filler/settings/$section"
-        params={{ section: destination.section }}
-        className={className}
-        onKeyDown={onKeyDown}
-      >
+      <Link ref={ref} to="/filler/settings/$section" params={{ section: destination.section }} {...anchor}>
         {children}
       </Link>
     ) : (
-      <Link ref={ref} to={destination.path} className={className} onKeyDown={onKeyDown}>
+      <Link ref={ref} to={destination.path} {...anchor}>
         {children}
       </Link>
     ),
 );
 DestinationAnchor.displayName = "DestinationAnchor";
 
-const DestinationLink = ({ destination }: { destination: SettingsDestination }) => (
-  <DestinationAnchor
-    destination={destination}
-    className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-  >
-    <span className="min-w-0 flex-1">
-      <span className="block text-sm font-medium">{destination.label}</span>
-      <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
-        {destination.description}
-      </span>
-    </span>
-    <ArrowRight
-      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-      aria-hidden
-    />
-  </DestinationAnchor>
-);
-
 const SettingsHome = () => {
   const { isAdmin } = useAuth();
   const entries = useSettingsEntries();
+  const statusOf = useSettingsStatus(isAdmin);
   const [query, setQuery] = useState("");
   const resultLinks = useRef<Array<HTMLAnchorElement | null>>([]);
   const results = useMemo(() => findSettings({ query, entries, isAdmin }), [entries, isAdmin, query]);
@@ -84,26 +68,53 @@ const SettingsHome = () => {
     }
   };
 
-  const browseDestinations = (group: string) =>
-    SETTINGS_DESTINATIONS.filter(
-      (item) => item.browse && item.group === group && canVisitDestination(item, isAdmin),
-    );
-
-  const advanced = browseDestinations("advanced")[0];
+  // A member sees only the cards they can visit: a card with no page for them is left out.
+  const cards: SettingsOverviewCard[] = SETTINGS_CARDS.flatMap((card) => {
+    const pages = cardDestinations(card.id, isAdmin);
+    if (pages.length === 0) return [];
+    const { status, problem } = statusOf(card.id);
+    const fix = problem ? destinationById(problem.destinationId) : undefined;
+    return [
+      {
+        id: card.id,
+        title: card.title,
+        description: card.description,
+        status,
+        problem:
+          problem && fix
+            ? { text: problem.text, pageLabel: fix.label, link: <DestinationAnchor destination={fix} /> }
+            : undefined,
+        pages: pages.map((page) => {
+          const host = page.hostId ? destinationById(page.hostId) : undefined;
+          return {
+            id: page.id,
+            label: page.label,
+            note: host ? `on ${host.label}` : undefined,
+            link: <DestinationAnchor destination={page} />,
+          };
+        }),
+      },
+    ];
+  });
+  const advanced = cardDestinations("advanced", isAdmin)[0];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Settings" description="Find what you want to change, or browse by task." />
+      <PageHeader title="Settings" description="Search reaches any setting directly." />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto max-w-5xl space-y-8 p-6">
-          <section aria-labelledby="settings-finder-heading">
-            <h2 id="settings-finder-heading" className="text-base font-medium">
-              Find a setting
-            </h2>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Search in everyday words, or paste a setting key or environment variable.
-            </p>
-            <div className="mt-3">
+        <SettingsOverview
+          advanced={
+            advanced
+              ? {
+                  label: advanced.label,
+                  description: advanced.description,
+                  link: <DestinationAnchor destination={advanced} />,
+                }
+              : undefined
+          }
+          cards={cards}
+          search={
+            <section aria-label="Find a setting">
               <SearchField
                 clearLabel="Clear settings search"
                 controls={hasQuery ? "settings-finder-results" : undefined}
@@ -114,90 +125,52 @@ const SettingsHome = () => {
                 placeholder="Try “Jellyfin”, “backups”, or FILLER_FETCH_EVERY"
                 value={query}
               />
-            </div>
 
-            {hasQuery && (
-              <div id="settings-finder-results" className="mt-3" aria-live="polite">
-                {results.length === 0 ? (
-                  <div className="border-border rounded-lg border border-dashed px-4 py-5">
-                    <p className="text-sm font-medium">No settings found</p>
-                    <p className="text-muted-foreground mt-1 text-sm">
-                      Try a shorter phrase, a service name, or an exact key.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="border-border bg-card overflow-hidden rounded-lg border">
-                    <p className="border-border text-muted-foreground border-b px-4 py-2 text-xs">
-                      {results.length} {results.length === 1 ? "match" : "matches"}
-                    </p>
-                    <nav aria-label="Settings search results" className="divide-border divide-y">
-                      {results.slice(0, 10).map((result, index) => (
-                        <DestinationAnchor
-                          key={result.destination.id}
-                          ref={(node) => {
-                            resultLinks.current[index] = node;
-                          }}
-                          destination={result.destination}
-                          onKeyDown={(event) => moveResultFocus(event, index)}
-                          className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium">
-                              {result.setting?.label || result.destination.label}
+              {hasQuery && (
+                <div id="settings-finder-results" className="mt-3" aria-live="polite">
+                  {results.length === 0 ? (
+                    <div className="border-border rounded-lg border border-dashed px-4 py-5">
+                      <p className="text-sm font-medium">No settings found</p>
+                      <p className="text-muted-foreground mt-1 text-sm">
+                        Try a shorter phrase, a service name, or an exact key.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border-border bg-card overflow-hidden rounded-lg border">
+                      <p className="border-border text-muted-foreground border-b px-4 py-2 text-xs">
+                        {results.length} {results.length === 1 ? "match" : "matches"}
+                      </p>
+                      <nav aria-label="Settings search results" className="divide-border divide-y">
+                        {results.slice(0, 10).map((result, index) => (
+                          <DestinationAnchor
+                            key={result.destination.id}
+                            ref={(node) => {
+                              resultLinks.current[index] = node;
+                            }}
+                            destination={result.destination}
+                            onKeyDown={(event) => moveResultFocus(event, index)}
+                            className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium">
+                                {result.setting?.label || result.destination.label}
+                              </span>
+                              <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                                {result.groupLabel} · {result.destination.label}
+                                {result.setting ? ` · ${result.setting.key}` : ""}
+                              </span>
                             </span>
-                            <span className="text-muted-foreground mt-0.5 block truncate text-xs">
-                              {result.groupLabel} · {result.destination.label}
-                              {result.setting ? ` · ${result.setting.key}` : ""}
-                            </span>
-                          </span>
-                          <ArrowRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
-                        </DestinationAnchor>
-                      ))}
-                    </nav>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          <div className="space-y-7">
-            {SETTINGS_TASK_GROUPS.map((group) => {
-              const destinations = browseDestinations(group.id);
-              if (destinations.length === 0) return null;
-              return (
-                <section key={group.id} aria-labelledby={`settings-group-${group.id}`}>
-                  <div className="mb-3">
-                    <h2 id={`settings-group-${group.id}`} className="text-base font-medium">
-                      {group.label}
-                    </h2>
-                    <p className="text-muted-foreground mt-0.5 text-xs">{group.description}</p>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {destinations.map((item) => (
-                      <DestinationLink key={item.id} destination={item} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-
-          {advanced && (
-            <section className="border-border border-t pt-5" aria-label="Advanced settings">
-              <DestinationAnchor
-                destination={advanced}
-                // `-my-1 py-1`: a 27 px tap area for a 19 px line, drawn where it was (#1785).
-                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring -my-1 inline-flex items-center gap-2 py-1 text-sm focus-visible:ring-2 focus-visible:outline-none"
-              >
-                Advanced settings
-                <ArrowRight className="size-3.5" aria-hidden />
-              </DestinationAnchor>
-              <p className="text-muted-foreground mt-1 text-xs">
-                For exact keys and deployment troubleshooting.
-              </p>
+                            <ArrowRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                          </DestinationAnchor>
+                        ))}
+                      </nav>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
-          )}
-        </div>
+          }
+        />
       </div>
     </div>
   );

@@ -537,7 +537,7 @@
       "tailwindClasses": 8
     },
     "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 128
+      "tailwindClasses": 56
     },
     "src/routes/_authed/settings/route.tsx": {
       "tailwindClasses": 7

@@ -176,16 +176,28 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
-  it("opens on a task-based home and finds the exact owner of a setting", async () => {
+  it("opens on seven cards and finds the exact owner of a setting", async () => {
     stubSettings();
     renderAt("/settings");
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Set up Loomarr" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
+    for (const card of [
+      "Connections",
+      "AI",
+      "Channels",
+      "Filler",
+      "People and access",
+      "Notifications",
+      "Server",
+    ]) {
+      expect(screen.getByRole("heading", { name: card })).toBeInTheDocument();
+    }
+    // The empty baseline has no notification destination, so that is the one thing to look at.
+    expect(await screen.findByText("1 thing needs a look.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Notifications" })).toHaveAttribute(
+      "href",
+      "/settings/notifications",
+    );
 
     const finder = screen.getByRole("searchbox", { name: "Find a setting" });
     // Paste, not type: 32 keystrokes each re-filter the whole home, which ran past 5s on CI runners.
@@ -207,8 +219,8 @@ describe("Settings", () => {
       "not a real setting",
     );
     expect(await screen.findByText("No settings found")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Connections/ })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connections" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Server" })).toBeInTheDocument();
   });
 
   it("uses a grouped server landing instead of a second tab matrix", async () => {
@@ -427,10 +439,10 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 
     // Leave through the task home and come back — navigation is not a commit boundary.
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
+    await userEvent.click(await screen.findByRole("link", { name: /^Advanced settings/ }));
     await screen.findByText("job.workers");
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
+    await userEvent.click(await screen.findByRole("link", { name: "Connections" }));
 
     expect(await screen.findByLabelText("Library URL")).toHaveValue("http://emby:9999");
     expect(screen.getByText(/1 unsaved/i)).toBeInTheDocument();
@@ -447,13 +459,13 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     await userEvent.type(url, "http://emby:9999");
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
+    await userEvent.click(await screen.findByRole("link", { name: /^Advanced settings/ }));
     await screen.findByText("job.workers");
     // `job.workers` is env-pinned in the fixture, so edit the OTHER connection key instead —
     // asserting against a disabled field would prove nothing about the buffer.
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
+    await userEvent.click(await screen.findByRole("link", { name: "Connections" }));
     const tunarr = await screen.findByLabelText("Tunarr URL");
     await userEvent.clear(tunarr);
     await userEvent.type(tunarr, "http://tunarr:9999");
