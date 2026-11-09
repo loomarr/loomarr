@@ -18,7 +18,7 @@ import (
 // advert it says it is?" — and none of them can be answered from a thumbnail.
 //
 // ⚠ **Named `media`, deliberately NOT `preview`**, for the reason `thumb` is not: "preview"
-// already means a pod listing in `PodAdapter.Preview` and two channel-scoped operations. A third
+// already means a pod listing in `pod.Adapter.Preview` and two channel-scoped operations. A third
 // meaning on a route name is how an endpoint ends up called by the wrong handler a year later.
 //
 // A plain mux handler rather than a Huma op, like `thumb` and the backup download.

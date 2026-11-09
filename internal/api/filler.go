@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -184,7 +185,7 @@ func (s *Server) registerFiller(api huma.API) {
 	// information than the row it decorates. NOT public like the channel icon — that one is open
 	// so Tunarr can fetch it machine-to-machine, a reason that does not apply here.
 	//
-	// ⚠ `media`, never `preview`: /v1/channels/{id}/filler/coverage and PodAdapter.Preview
+	// ⚠ `media`, never `preview`: /v1/channels/{id}/filler/coverage and pod.Adapter.Preview
 	// already mean "the pod pool a channel would get", as JSON.
 	//
 	// ⚠ **`filler-thumb` and `filler-hover` were RETIRED in V52 phase 8.** A clip's still and
@@ -630,7 +631,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		Era:                 in.Era,
 		Audience:            filler.Audience(in.Audience),
 		Category:            in.Category,
-		GeographicScope:     filler.GeographicScope(in.GeographicScope),
+		GeographicScope:     pod.GeographicScope(in.GeographicScope),
 		Country:             in.Country,
 		Taxon:               in.Taxon,
 		WithoutTaxonomyTags: in.Unclassified,

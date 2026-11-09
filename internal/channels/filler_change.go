@@ -6,13 +6,14 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
-// fillerFitter is the eligibility half of the production PodAdapter. Keeping it narrower than
+// fillerFitter is the eligibility half of the production pod.Adapter. Keeping it narrower than
 // PodFiller lets older backends retain their existing assembly interface while this latency path
 // reuses the exact predicates behind coverage, preview and playout (§10 V57).
 type fillerFitter interface {
-	FitForChannel(channelID string, sel filler.Selection, clip filler.Clip) filler.Fit
+	FitForChannel(channelID string, sel pod.Selection, clip filler.Clip) pod.Fit
 }
 
 // ReconcileFillerChange immediately converges only channels that could use at least one before or

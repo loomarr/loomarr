@@ -1,0 +1,606 @@
+// Package pod assembles a commercial break (§10): which clips fill a pod, in what order, under the
+// channel's language, era, geography, season and audience rules, with household-wide rotation and
+// the quality ladder deciding between them. It also reports coverage: how much of a channel's
+// filler pool each rule leaves usable.
+//
+// Assembly is pure and SEEDED-DETERMINISTIC (seed = channel + window start), so tests reproduce
+// exactly and the same break rebuilds identically across reconciles (§10/§19) — which is also what
+// lets the guide promise the clips that will really air. Tunarr-backed channels still get pods via
+// flex + filler lists; internal playout resolves each break itself.
+package pod
+
+import (
+	"math/rand"
+	"sort"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+)
+
+// Exposure is one clip's watched-airing history across the household, as one break sees it (§10
+// rotation): how many of its stored airings count, and the latest. Rotation needs recency and
+// whether a clip is new; the global Clip counters remain the operator-facing totals.
+type Exposure struct {
+	PlayCount    int64
+	LastPlayedAt time.Time
+}
+
+// Airing is one watched airing of a clip on any channel (see clipcatalog.Airing).
+type Airing = clips.Airing
+
+// AiringHistory is the household's stored airings and how long one takes to settle: an airing
+// recorded less than Settle before a break starts may have been recorded after that break's first
+// clip was resolved, so the break does not count it.
+type AiringHistory struct {
+	Airings []Airing
+	Settle  time.Duration
+}
+
+// ExposuresBefore is the history a break starting at `before` ranks by: every airing that aired
+// strictly before it and was recorded at least Settle before it. A zero cutoff counts all history.
+//
+// ⚠ Both cuts keep a break's snapshot fixed while the break airs, which a rebuild relies on: the
+// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle its tail.
+// An airing at or after the break's start is the break's own (or later). An airing recorded after
+// the break's first clip was resolved can come from ANOTHER channel with an earlier start: a viewer
+// who tunes in there mid-clip records that clip, aired minutes ago, now. Playout resolves a break's
+// first clip no earlier than its run-ahead before the break, which Settle covers.
+//
+// ⚠ Pure and in the domain (#1420) so one read of the history can serve every break of a guide
+// window: the cut used to live in the store query, which forced one query per break.
+func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
+	out := map[string]Exposure{}
+	for _, a := range h.Airings {
+		if !before.IsZero() && (!a.AiredAt.Before(before) || !a.RecordedAt.Before(before.Add(-h.Settle))) {
+			continue
+		}
+		e := out[a.ClipHash]
+		e.PlayCount++
+		if a.AiredAt.After(e.LastPlayedAt) {
+			e.LastPlayedAt = a.AiredAt
+		}
+		out[a.ClipHash] = e
+	}
+	return out
+}
+
+// Pod is an assembled ad break (§10): an intro bumper → matched commercials →
+// return bumper, sized to a flex gap. It's what the scheduler inserts between
+// programs via Tunarr flex + filler lists. Every entry is a real catalog clip
+// (grounding: §10) or the embedded bumper-card fallback.
+type Pod struct {
+	Entries         []Entry
+	TotalMs         int64
+	MatchLevel      MatchLevel // how far down the fallback ladder we went (§10)
+	CooldownRelaxed bool       // at least one unpinned clip had to be reused inside cooldown
+}
+
+// Entry is one clip placed in a pod, in play order.
+//
+// Carries BOTH identifiers because the two playout backends need different ones (§9.1):
+// internal playout hands `Path` to ffmpeg, Tunarr references `TunarrProgramID` in a
+// filler-list. One assembler, one seed, one pod — two ways to name the same clip.
+type Entry struct {
+	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` since V38c. "" for
+	// the embedded bumper card.
+	//
+	// ⚠ It used to be the identity as well ("relative to FILLER_DIR"), and this comment said so.
+	// Identity is the hash now (§10 V38c), and the two must not be confused HERE in particular:
+	// playout hands this straight to `ClipPath`, whose allow-list rejects anything that is not a
+	// hash or a shard path. Assembly filling this with a bare filename means every break resolves
+	// to nothing and the channel plays SILENCE — caught by playoutfiller_test, which is the only
+	// reason it is not shipping.
+	Path string
+	// Hash is the clip's IDENTITY (§10 V38c) — what the hash-keyed store methods take. "" for
+	// the embedded bumper card, which has no catalog row.
+	//
+	// ⚠ Carried because `Path` alone is not enough to write back. Playout counts an airing via
+	// `RecordClipPlay`, which is keyed `WHERE hash = ?`; without this field the resolver passed
+	// the path, the UPDATE matched nothing, and play counters sat at zero from V38c to V41. The
+	// error there is deliberately swallowed as telemetry, so nothing surfaced it.
+	Hash string
+	// TunarrProgramID is set only when Tunarr knows the clip; "" for the bumper card and on
+	// any install without Tunarr.
+	TunarrProgramID string
+	Name            string
+	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
+	// it is not a filename (ViewerName).
+	NameSource     clips.NameSource
+	Role           Role
+	DurationMs     int64
+	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
+	// Era and Quality are carried purely so the guide's hover card can EXPLAIN a break
+	// (§12) — "1994 · 480p" tells a viewer the grain is authentic rather than broken.
+	// Assembly never reads them; they ride along from the catalog row.
+	Era     int
+	Quality string
+	// Brand, Audience, Category and VisibleText join Era/Quality as DISPLAY-ONLY passengers
+	// (§10 V44): the hover card explains a break with what the clip is FOR ("Kellogg's · cereal")
+	// as well as when it is from. Like Era/Quality, assembly never reads them — they ride along
+	// from the catalog row so a clip cannot reach the guide with its metadata mysteriously absent.
+	// Grounded at the SOURCE (a brand/category persists on the Clip only when a text or visual
+	// signal literally contained it, §8); here they are merely carried, never derived.
+	Brand       string
+	Audience    Audience
+	Category    string
+	VisibleText string
+	// RecentRepeat is computed from the immutable exposure snapshot used to plan this break.
+	// RotationPinned distinguishes an intentional operator override from pool-pressure relaxation.
+	RecentRepeat   bool
+	RotationPinned bool
+	// variants are the clip's other versions (Clip.Variants), reserved with it so a break never
+	// carries two versions of one ad. Unexported: assembly state, not part of what a break shows.
+	variants []string
+	// stationSegment marks a station's own material, which a break holds at most one of (#2065).
+	stationSegment bool
+}
+
+// MatchLevel records how the pod was filled — the fallback ladder rung reached
+// (§10). Surfaced so the UI can show "matched" vs "fallback-widened" vs
+// "bumper-card-only" (the PodTimeline states in the frontend design).
+type MatchLevel string
+
+const (
+	MatchExact      MatchLevel = "exact"       // exact-era + audience matches filled the pod
+	MatchWidened    MatchLevel = "widened"     // era widened to the decade / any-era to fill
+	MatchAudience   MatchLevel = "audience"    // any appropriate-audience clip, era ignored
+	MatchBumperCard MatchLevel = "bumper_card" // no ad fits: station material, else the embedded card — never dead air
+)
+
+// Window describes the break to fill (§10). It carries the deterministic seed
+// material (channel + window) so the same break rebuilds identically.
+type Window struct {
+	ChannelID string
+	// Seed derives from channel + window start so pod assembly is reproducible
+	// (§10/§19 seeded-deterministic). Tests pass a fixed seed.
+	Seed int64
+	// Era + Audience are the block's target (90s cartoons → 1990s + kids). Era is a RANGE
+	// (§10, V51f) — before that it was one int and the "To year" the UI collected was discarded.
+	Era        EraRange
+	EraWindows []EraRange
+	Audience   Audience
+	Geography  Geography
+	// Language is the channel's commercial language; "" inherits Policy.Language (language_boundary.go).
+	Language string
+	// GapMs is the flex gap to fill.
+	GapMs int64
+	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
+	PodMax int
+	// BreakDurationMs is the live global target. A per-channel Selection may override it.
+	BreakDurationMs int64
+	// The per-channel selection (§10 FillerSelection), all optional:
+	//   Categories — commercial-pool category narrowing (empty = any).
+	//   Roles      — which clip roles the pod may use (empty = the default set);
+	//                applied catalog-wide in Assemble, so it shapes bumpers too.
+	//   Pinned     — clip ids to force in as a top-priority pool (before the ladder).
+	//   Excluded   — clip ids never used; threaded into `used` by the caller/Assemble.
+	Categories []string
+	Roles      []string
+	Pinned     []string
+	Excluded   []string
+	// Exposures is the household's snapshot before SnapshotAt (§10 rotation, ExposuresBefore).
+	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
+	Exposures  map[string]Exposure
+	SnapshotAt time.Time
+	// Season is the household calendar at the break's start (season.go). The zero value names no
+	// holiday, so every clip is year-round.
+	Season schedule.HolidaySeason
+}
+
+// Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
+type Policy struct {
+	// Geography is the live Installation default. Empty preserves legacy behaviour.
+	Geography Geography
+	// Language is the household's commercial language (`filler.language`), every channel's default.
+	// Empty is no language boundary on a channel that names none.
+	Language string
+	// LocalStations resolves a place to the broadcast stations within the local radius
+	// (`filler.local_radius_km`). Nil means no clip is local anywhere.
+	LocalStations LocalStations
+	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
+	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
+	//
+	// ⚠ **Until V51f these were set in TESTS ONLY, and that is what made `PoolReport.Eligible`
+	// a lie.** `durationEligible` therefore always returned true, so `Eligible` — which
+	// `coverage.go` headlines as "the number that surprises operators" — was arithmetically
+	// identical to `Commercials` for every install that has ever run. The pool strip printed the
+	// same number twice and presented the pair as a diagnosis.
+	MinClipMs int64
+	MaxClipMs int64
+	// PodMax caps clips per pod (FILLER_POD_MAX, §15). 0 ⇒ a sane default (fillCommercials
+	// falls back to 4). Wired from the setting so preview and reconcile agree — previously
+	// the adapter hardcoded 32, ignoring the knob.
+	PodMax int
+	// BreakDurationMs is the live global target for each break. A channel may override
+	// it through Selection; zero falls back to the documented 2 minute default (ResolveBreakDurationMs).
+	BreakDurationMs int64
+	// MinQualityHeight is the opt-in minimum clip height in pixels (FILLER_MIN_QUALITY, §15;
+	// V17c). 0 ⇒ OFF, which is the default and the only value that preserves what
+	// `00014_clips_quality` originally promised.
+	//
+	// ⚠ **Off by default is the safety property, not a convenience.** That migration shipped
+	// with quality as display-only and warned that a well-meaning "prefer HD" would quietly
+	// starve the era-accurate 4:3 commercials the whole feature exists to play. That is still
+	// true; the floor exists for the narrower case an operator actually hits — a 240p rip that
+	// is unwatchable rather than nostalgic — and it costs them era accuracy they are choosing
+	// to trade away in their own settings.
+	//
+	// ⚠ A clip with NO known quality (audio-only, or scanned before 00014) is always eligible.
+	// Excluding unknowns would silently empty the catalog of every clip predating that
+	// migration the moment someone set a floor, which reads as "my commercials vanished".
+	MinQualityHeight int
+	// Cooldown is a preference, never permission to leave a break empty. Rotation ranks new clips,
+	// then least-recently played clips outside this interval, then deterministically relaxes it.
+	Cooldown time.Duration
+	// Calendar is the household's holiday calendar, the one programming reads (#2030): it dates
+	// each break's Window.Season.
+	Calendar schedule.Calendar
+}
+
+// FallbackCard is the embedded default bumper-card asset (§10): Loomarr ships one
+// and sets it as each channel's Tunarr fallback at creation, so the bottom of the
+// ladder exists on day one. Operators can replace it per channel.
+var FallbackCard = Entry{
+	Name:           "Loomarr — We'll be right back",
+	NameSource:     clips.NameFromCurated, // product copy, written by a person
+	Role:           Bumper,
+	DurationMs:     5000, // 5s card
+	IsFallbackCard: true,
+}
+
+// Assemble builds a pod for a window from the catalog (§10). It is PURE and
+// SEEDED-DETERMINISTIC: same clips + same window.Seed → identical pod, so a break
+// reproduces exactly across reconciles and in tests (§19). It respects era/
+// audience matching, category variety (no three of one category in a row), pod
+// density (PodMax + the gap), and no-repeat within the window; when matches run
+// out it descends the fallback ladder, ending at the embedded bumper card so a
+// pod is never empty ("never dead air", §10).
+//
+// `used` is the set of clip Paths (identity) already played in the current window — the
+// caller threads it across pods in a window for no-repeat-in-window (§10). Assemble
+// adds the clips it uses to `used`.
+func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod {
+	if used == nil {
+		used = map[string]bool{}
+	}
+	rng := rand.New(rand.NewSource(w.Seed))
+
+	// The outer boundary: no pin or relaxed ladder rung may bypass geography.
+	catalog = filterGeography(catalog, policy.area(w.Geography))
+
+	// Per-channel selection (§10), all no-ops when unset:
+	//  - EXCLUDE: seed the no-repeat set with the excluded ids. Because `used` is
+	//    already checked as an exclusion at every pick site (bumpers + every ladder
+	//    rung + pin), this removes them everywhere with no other change. Exclude thus
+	//    also WINS over pin (a pinned-and-excluded id is `used` before pin runs).
+	for _, id := range w.Excluded {
+		used[id] = true
+	}
+	//  - ROLES: narrow the catalog to the selected roles before anything picks from
+	//    it, so the choice shapes bumpers (pickBumper) as well as the commercial fill.
+	catalog = filterRoles(catalog, w.Roles, policy.area(w.Geography).Stations)
+
+	// Intro bumper (best-effort — a matched bumper if we have one).
+	// A station segment closes a break, before the programme returns; it never opens one (#2065).
+	introUsed := cloneSet(used)
+	introUsed[stationSegmentKey] = true
+	intro, hasIntro := pickBumper(catalog, w, policy, introUsed, rng)
+	if hasIntro && intro.DurationMs > w.GapMs {
+		hasIntro = false
+	}
+
+	// Return bumper, chosen NOW so its real length comes off the break before anything is
+	// placed. It used to be picked after the ads and appended only "if it still fits", so a break
+	// the ads filled to the brim lost its return bumper; a constant 12s reserve was a guess at
+	// two bumpers that held only when they happened to be 6s. Reserving the actual clip means the
+	// intro + ads + return bumper always sum to at most the break, and the ads give way — a
+	// shorter whole clip fills the remainder — rather than the bumper or the last ad's tail.
+	// It is only appended after the ads; `used` already keeps the ads off it.
+	afterIntro := cloneSet(used)
+	if hasIntro {
+		reserve(afterIntro, intro)
+	}
+	ret, hasReturn := pickBumper(catalog, w, policy, afterIntro, rng)
+	if hasReturn && bookendMs(intro, hasIntro)+ret.DurationMs > w.GapMs {
+		hasReturn = false
+	}
+
+	// ⚠ **A break with ads beats a break with bumpers.** Reserving both bookends first means a
+	// break whose bumpers leave less room than the shortest ad (a 30s break, 30s ads and any
+	// bumper; or very long bumpers) has no room for ANY ad, and used to collapse to the 5s card —
+	// which has no playable file, so the channel's breaks switched off altogether. Each plan below
+	// is tried in order and the first that places real content wins: both bookends, then without
+	// the return bumper, then without the intro. Only when no ad fits even alone is it the card.
+	plans := []bookendPlan{{hasIntro, hasReturn}}
+	if hasReturn {
+		plans = append(plans, bookendPlan{hasIntro, false})
+	}
+	if hasIntro {
+		plans = append(plans, bookendPlan{false, false})
+	}
+	for _, plan := range plans {
+		trial := cloneSet(used) // a plan that fails must not leave its reservations behind
+		if pod, ok := assembleBreak(catalog, w, policy, trial, rng, plan.intro(intro), plan.ret(ret)); ok {
+			for id := range trial {
+				used[id] = true
+			}
+			return pod
+		}
+	}
+
+	// No ad fits, so the break is the channel's own station material, resting or not (#2036). It
+	// still reports bumper_card, since no ad matched, but it plays: the card has no file.
+	trial := cloneSet(used)
+	if pod, ok := stationBreak(catalog, w, policy, trial, rng); ok {
+		for id := range trial {
+			used[id] = true
+		}
+		return pod
+	}
+
+	// Bottom of the ladder: nothing at all fits, so the pod is just the embedded card and the
+	// break is never empty (§10 never dead air).
+	pod := Pod{MatchLevel: MatchBumperCard}
+	pod.append(FallbackCard, used)
+	return pod
+}
+
+// bookendPlan says which of a break's two bookends a plan keeps.
+type bookendPlan struct{ hasIntro, hasReturn bool }
+
+func (p bookendPlan) intro(e Entry) *Entry {
+	if !p.hasIntro {
+		return nil
+	}
+	return &e
+}
+
+func (p bookendPlan) ret(e Entry) *Entry {
+	if !p.hasReturn {
+		return nil
+	}
+	return &e
+}
+
+func bookendMs(e Entry, has bool) int64 {
+	if !has {
+		return 0
+	}
+	return e.DurationMs
+}
+
+func cloneSet(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(in)+8)
+	for id, v := range in {
+		out[id] = v
+	}
+	return out
+}
+
+// reserve keeps a clip, and every other version of its ad, out of every later pick. "" is not an
+// identity.
+func reserve(used map[string]bool, e Entry) {
+	if e.Hash == "" {
+		return
+	}
+	used[e.Hash] = true
+	for _, v := range e.variants {
+		used[v] = true
+	}
+	if e.stationSegment {
+		used[stationSegmentKey] = true
+	}
+}
+
+// assembleBreak builds one break around the given bookends (either may be nil) and reports
+// whether it holds real content — pins or laddered commercials. `used` is the caller's scratch
+// copy, so a plan that comes back false leaves nothing reserved.
+func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand, intro, ret *Entry) (Pod, bool) {
+	pod := Pod{MatchLevel: MatchBumperCard}
+	if intro != nil {
+		pod.append(*intro, used)
+	}
+	var returnMs int64
+	if ret != nil {
+		returnMs = ret.DurationMs
+		reserve(used, *ret)
+	}
+
+	// PIN: force the channel's pinned clips in first, as a top-priority pool ahead of
+	// the ladder (the one thing the ranking ladder can't express). Pins still respect
+	// the pod budget — a pin can't make an unbounded pod — and skip anything already
+	// `used` (i.e. excluded or a pinned bumper already placed).
+	pinWindow := w
+	pinWindow.GapMs -= pod.TotalMs + returnMs
+	pinned := pickPinned(catalog, pinWindow, policy, used)
+	var share seasonShare
+	for _, c := range pinned {
+		e := clipToEntry(c, w, policy)
+		e.RotationPinned = true
+		pod.append(e, used)
+		share.add(c, w)
+	}
+
+	// Fill the rest with matched commercials from the tightest non-empty pool,
+	// enforcing category variety + no-repeat, up to PodMax and the gap. The pins
+	// already consumed some of PodMax/GapMs (they're in `used` + counted in the pod's
+	// TotalMs), so the remaining budget is what's left. If the pins already filled the
+	// quota (remaining PodMax ≤ 0), skip the fill entirely — otherwise fillCommercials'
+	// own "≤0 ⇒ default" fallback would treat an exhausted quota as "unset" and overfill.
+	var level MatchLevel
+	var commercials []Clip
+	remaining := w
+	remaining.GapMs = w.GapMs - pod.TotalMs - returnMs
+	pools := candidatePools(catalog, remaining, policy)
+	if remainMax := w.PodMax - len(pinned); remainMax > 0 {
+		remaining.PodMax = remainMax
+		level, commercials = fillCommercials(pools, remaining, policy, used, rng, &share)
+		if level != "" {
+			pod.MatchLevel = level
+		}
+		for _, c := range commercials {
+			pod.append(clipToEntry(c, w, policy), used)
+		}
+	}
+
+	// Pins alone count as content — a pinned-only pod is a real pod, not the fallback. With
+	// neither, this plan has no break body and the caller tries fewer bookends (or the card).
+	if len(pinned) == 0 && len(commercials) == 0 {
+		return Pod{}, false
+	}
+	if level == "" {
+		// Pins placed but no laddered commercials filled — the pod IS the pins (plus
+		// bumpers). Report an exact match: the operator got precisely what they pinned.
+		pod.MatchLevel = MatchExact
+	}
+
+	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
+	// whatever the ads could not was the "commercial breaks feel short" complaint.
+	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials), &share)
+	pod.stationSegmentLast()
+
+	if ret != nil {
+		pod.append(*ret, used)
+	}
+	return pod, true
+}
+
+// pickPinned returns the channel's pinned clips that exist in the (kind-filtered)
+// catalog, pass the duration policy, aren't already `used` (excluded / already
+// placed), and fit the pod budget — placed in the operator's pinned order (stable,
+// not shuffled: a pin is an explicit choice, so honor its order). Pins bypass the
+// era/audience/category ladder entirely (that's the point of pinning), but still
+// respect PodMax and the gap so a long pin list can't produce an unbounded pod.
+func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
+	if len(w.Pinned) == 0 {
+		return nil
+	}
+	// ⚠ Keyed by HASH (= Clip.ID()), the wire identity `w.Pinned` carries (§10 V45a). This was keyed
+	// on Path and silently never matched after identity moved off the path — a pinned clip was dropped
+	// from every pod. The `used` reservation map is hash-keyed throughout for the same reason.
+	byID := make(map[string]Clip, len(catalog))
+	for _, c := range catalog {
+		byID[c.ID()] = c
+	}
+	// w.GapMs is already net of both bumpers (Assemble reserves them).
+	budget := w.GapMs
+	var out []Clip
+	var totalMs int64
+	for _, id := range w.Pinned {
+		if len(out) >= w.PodMax {
+			break
+		}
+		c, ok := byID[id]
+		if !ok || taken(used, c) || !durationEligible(c, policy) {
+			continue
+		}
+		if totalMs+c.DurationMs > budget {
+			continue
+		}
+		out = append(out, c)
+		totalMs += c.DurationMs
+		// Reserve (with its variants) so later pins, the ladder fill and the return bumper skip it.
+		reserve(used, Entry{Hash: id, variants: c.Variants})
+	}
+	return out
+}
+
+// stationSegmentLast moves the break's one station segment to the end of its body, so it airs last
+// before the return bumper (#2065). A station segment that is itself the return bumper is already there.
+func (p *Pod) stationSegmentLast() {
+	for i, e := range p.Entries {
+		if e.stationSegment {
+			p.Entries = append(append(p.Entries[:i:i], p.Entries[i+1:]...), e)
+			return
+		}
+	}
+}
+
+func (p *Pod) append(e Entry, used map[string]bool) {
+	p.Entries = append(p.Entries, e)
+	p.TotalMs += e.DurationMs
+	if e.RecentRepeat && !e.RotationPinned {
+		p.CooldownRelaxed = true
+	}
+	// ⚠ Reserve by HASH — the identity `used` is keyed on everywhere (pinned/excluded seed it with
+	// hashes). Entry carries both; keying on Path here let a clip pinned/excluded by hash slip the
+	// reservation (it never matched), so no-repeat and exclusion were both silently broken (§10 V45a).
+	reserve(used, e)
+}
+
+func clipToEntry(c Clip, w Window, policy Policy) Entry {
+	tier, _ := rotationRank(c, w, policy)
+	return Entry{
+		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
+		Name: c.Name, NameSource: c.NameSource, Role: c.Role, DurationMs: c.DurationMs,
+		// Display-only passengers (see Entry) — every entry gets them from one place, so
+		// a clip cannot reach the hover card with its metadata mysteriously absent.
+		Era: c.Era, Quality: c.Quality,
+		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
+		RecentRepeat:   tier == rotationRecent,
+		variants:       c.Variants,
+		stationSegment: isStationSegment(c),
+	}
+}
+
+// bookendCandidates is every unused, in-season-or-year-round bumper/station-id in the channel's
+// language the window may draw on: the era-matching ones when there are any, else all of them.
+func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
+	var bumpers []Clip
+	for _, c := range catalog {
+		if c.IsBumper() && !taken(used, c) && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
+			bumpers = append(bumpers, c)
+		}
+	}
+	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
+		return era
+	}
+	return bumpers
+}
+
+// pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
+// avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
+func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (Entry, bool) {
+	bumpers := bookendCandidates(catalog, w, policy, used)
+	if len(bumpers) == 0 {
+		return Entry{}, false
+	}
+	sort.Slice(bumpers, func(i, j int) bool { return bumpers[i].Path < bumpers[j].Path })
+	// Keep the historical seeded choice among equally ranked bumpers, but never let it jump ahead
+	// of a new or older candidate. Equal-rank choices remain varied across breaks.
+	sort.SliceStable(bumpers, func(i, j int) bool { return rotationLess(bumpers[i], bumpers[j], w, policy) })
+	bestTier, bestAt := rotationRank(bumpers[0], w, policy)
+	best := 1
+	for best < len(bumpers) {
+		tier, at := rotationRank(bumpers[best], w, policy)
+		if tier != bestTier || !at.Equal(bestAt) {
+			break
+		}
+		best++
+	}
+	return clipToEntry(bumpers[rng.Intn(best)], w, policy), true
+}
+
+// stationBreak fills a break that has no ad with bumpers and idents, in rotation order: never
+// aired, then least recently aired, resting ones last but still placed. A short pool is what puts
+// a break here (#2036), and a repeated ident is better than the card. It reports false when no
+// station clip fits.
+func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (Pod, bool) {
+	cands := sortByID(bookendCandidates(catalog, w, policy, used))
+	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
+	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
+	pod := Pod{MatchLevel: MatchBumperCard}
+	remainingMs := w.GapMs
+	for _, c := range cands {
+		if len(pod.Entries) >= maxTailClips {
+			break
+		}
+		if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+			continue
+		}
+		pod.append(clipToEntry(c, w, policy), used)
+		remainingMs -= c.DurationMs
+	}
+	return pod, len(pod.Entries) > 0
+}

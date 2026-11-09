@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -116,10 +117,10 @@ func seedPodClips(t *testing.T, st records.Store) {
 }
 
 func timelinePodsFixture() (*fakePods, *fakeImageService) {
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    40_000,
-		Entries: []filler.PodEntry{
+		Entries: []pod.Entry{
 			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial, DurationMs: 30_000},
 			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID, DurationMs: 10_000},
 		},
@@ -190,9 +191,9 @@ func TestChannelTimeline_BreakCarriesPodWithStills(t *testing.T) {
 func TestChannelTimeline_FallbackCardHasNoStill(t *testing.T) {
 	now := time.Now()
 	fp, img := timelinePodsFixture()
-	fp.pod = filler.Pod{
-		MatchLevel: filler.MatchBumperCard, TotalMs: 5_000,
-		Entries: []filler.PodEntry{{Name: "Please stand by", Role: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
+	fp.pod = pod.Pod{
+		MatchLevel: pod.MatchBumperCard, TotalMs: 5_000,
+		Entries: []pod.Entry{{Name: "Please stand by", Role: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
 	}
 	h := startTimelinePodsHarness(t, timelineBreakGuide(now), fp, img, false)
 	seedChannel(t, h.Store, "ch1", "Kettleton Classics", 1, "internal")

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -59,9 +60,9 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 				return filler.AcquisitionRepairSummary{}, nil
 			},
 		},
-		pool: func(context.Context) (filler.PoolReport, error) {
+		pool: func(context.Context) (pod.PoolReport, error) {
 			poolAsked = true
-			return filler.PoolReport{Eligible: 12}, nil
+			return pod.PoolReport{Eligible: 12}, nil
 		},
 		now:              func() time.Time { return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC) },
 		storage:          governor,
@@ -109,7 +110,7 @@ func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 			}
 		}
 	}
-	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (filler.PoolReport, error) { return filler.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
+	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (pod.PoolReport, error) { return pod.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
 	got, err := a.Readiness(ctx)
 	if err != nil {
 		t.Fatal(err)

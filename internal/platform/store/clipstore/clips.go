@@ -1083,7 +1083,7 @@ func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int
 // a viewer reconnect or retry may resolve it again. One airing is one (channel, clip, start)
 // row, so all callbacks for it are one durable write without process-local memory; only that
 // first write increments the global catalog counter. `recordedAt` is the wall clock of that
-// write, which a break's snapshot needs to stay fixed while it airs (filler.ExposuresBefore).
+// write, which a break's snapshot needs to stay fixed while it airs (pod.ExposuresBefore).
 //
 // A clip keeps its newest fillerAiringsKept airings and every airing younger than
 // fillerAiringsTrimAge: rotation reads the latest airing a break may count, and supply reads every
@@ -1149,7 +1149,7 @@ const (
 )
 
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
-// per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
+// per-break snapshot is cut from them by pod.ExposuresBefore, so one read serves a whole window.
 func (s *Store) FillerAirings(ctx context.Context) ([]clips.Airing, error) {
 	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at_ms, recorded_at_ms FROM filler_airings`)
 	if err != nil {

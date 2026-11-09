@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -277,8 +278,8 @@ func buildFillerSubsystem(
 		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
 	// The places' policy: the household's geography, region fallback included, so a fallback
 	// country's national clips stay usable.
-	placePolicy := func() filler.Policy {
-		return filler.Policy{LocalStations: local.resolve, Geography: set.homeGeography()}
+	placePolicy := func() pod.Policy {
+		return pod.Policy{LocalStations: local.resolve, Geography: set.homeGeography()}
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
@@ -336,13 +337,13 @@ func buildFillerSubsystem(
 		if err != nil {
 			return filler.CoverageGaps{}, err
 		}
-		windows := make(map[string][]filler.EraRange, len(pool.Channels))
+		windows := make(map[string][]pod.EraRange, len(pool.Channels))
 		for _, ch := range pool.Channels {
 			windows[ch.ChannelID] = ch.Report.EraWindows
 		}
 		now := time.Now()
 		spacing := time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second
-		gaps := filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year())
+		gaps := filler.CoverageGapsFrom(pool, pod.SizePool(airings, windows, spacing, now), now.Year())
 		if !gaps.Met() {
 			// A short pass also looks for the stations near each place, in the eras it is short of
 			// (#2059 decision 9). Without them it still fetches; it just doesn't look for local.

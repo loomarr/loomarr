@@ -225,7 +225,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   rotation, every commercial that aired re-sized every break, and the timeline walked from the
   anchor moved by tens of seconds to minutes at each reconcile (2026-10-24). Each break that airs
   is then assembled to its own slot's length, which is its hard budget. **One function owns the length**
-  (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
+  (`pod.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
   setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
   the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
   bumper together never exceed it, because the slot is cut at exactly the break length and anything

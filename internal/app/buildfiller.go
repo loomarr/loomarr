@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -535,7 +536,7 @@ func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTra
 // back-patches (the resolver is built with the channel engine, the adapter needs the filler
 // catalog), and pulling them in here would mean handing a builder the two services it exists to
 // stay independent of.
-func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *filler.PodAdapter {
+func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *pod.Adapter {
 	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
 	// This was a value built here at boot, so every reader took a snapshot: writing
 	// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
@@ -544,7 +545,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	//
 	// Caught on the live stack, not by a test: `filler.max_clip_duration=45s` left
 	// `PoolReport.Eligible` at 20 with a 64s clip in the catalog; it dropped to 19 only
-	// after a re-exec. Every unit test builds a `filler.Policy` literal and calls the domain
+	// after a re-exec. Every unit test builds a `pod.Policy` literal and calls the domain
 	// functions directly, so the setting→policy edge is the one segment they cannot reach.
 	//
 	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
@@ -554,8 +555,8 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
 	local := &localStations{stations: &stationDirectory{list: list},
 		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
-	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
-		return filler.Policy{
+	podAdapter := pod.NewAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() pod.Policy {
+		return pod.Policy{
 			Geography:       set.homeGeography(),
 			Language:        settings.FillerLanguage.Get(set),
 			LocalStations:   local.resolve,

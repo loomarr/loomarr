@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -15,7 +16,7 @@ func TestListingGateAdmitsOnlyANearbyStationDatedInTheEra(t *testing.T) {
 		}
 		return "", false
 	}}
-	eras := []EraRange{{From: 1980, To: 1989}}
+	eras := []pod.EraRange{{From: 1980, To: 1989}}
 	for _, c := range []struct {
 		title   string
 		sign    string
@@ -42,7 +43,7 @@ func TestListingGateAdmitsOnlyANearbyStationDatedInTheEra(t *testing.T) {
 
 func TestListingGateAdmitsALanguageAChannelAirs(t *testing.T) {
 	near := func(string) (string, bool) { return "WAAA", true }
-	eras := []EraRange{{From: 1980, To: 1989}}
+	eras := []pod.EraRange{{From: 1980, To: 1989}}
 	for _, c := range []struct {
 		languages string
 		title     string

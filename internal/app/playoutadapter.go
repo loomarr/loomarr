@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -1015,7 +1016,7 @@ func (r *playoutResolver) airingFiller(
 	//
 	// gap.Offset is how far into the break we are, so the break began that long ago, and a break is
 	// assembled to its own slot, never past it (a placeholder to the configured break length).
-	pod, err := r.pods.PreviewAt(ctx, channelID, filler.BreakSlot{
+	pod, err := r.pods.PreviewAt(ctx, channelID, pod.BreakSlot{
 		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.BreakLength(),
 	})
 	if err != nil || len(pod.Entries) == 0 {

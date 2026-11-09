@@ -14,9 +14,9 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
-  Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`filler/clips`** · 4 importers
+- **`filler`** · 10 importers · → `filler/clips`, `filler/language`, `filler/pod`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+  Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
+- **`filler/clips`** · 5 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`filler/defectfloor`** · 2 importers · → `filler`, `media/creative`, `media/defects`, `platform/llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/media/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
@@ -24,11 +24,13 @@ One area of the [package map](../package-map.md#start-here).
   Owns progressive descriptive understanding for filler clips.
 - **`filler/fetch`** · 3 importers · → `filler`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`filler/language`** · 4 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
+- **`filler/language`** · 5 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
+- **`filler/pod`** · 5 importers · → `channels/schedule`, `filler/clips`, `filler/language`
+  Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
+- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 4 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -197,7 +198,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil || !found || event.AcquisitionID != jobID || event.Enrollment.Kind != filler.EnrollmentAcquisition {
 		t.Fatalf("Ready event = %+v, found=%v, err=%v", event, found, err)
 	}
-	pool, err := filler.NewPodAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
+	pool, err := pod.NewAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

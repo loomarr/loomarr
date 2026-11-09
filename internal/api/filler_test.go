@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -702,7 +703,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	}
 	// The typed call sign resolves against the broadcast station directory: the station's id and
 	// country are stored, never the text (#2059 decision 5).
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Network != "Kestrel One" ||
+	if got.GeographicScope != pod.GeographicLocal || got.Country != "US" || got.Network != "Kestrel One" ||
 		got.Station != "fcc:59441" || got.AirDate != "1991-03-10" || got.GeoEvidence != "operator" {
 		t.Fatalf("stored geography = %+v", got.Clip)
 	}
@@ -746,7 +747,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 		t.Fatalf("station by id → %d, want 200", kept.StatusCode)
 	}
 	if got, err := st.GetClip(context.Background(), "geo"); err != nil || got.Station != "fcc:25453" ||
-		got.GeographicScope != filler.GeographicNational || got.Country != "US" {
+		got.GeographicScope != pod.GeographicNational || got.Country != "US" {
 		t.Fatalf("national clip kept station = %+v (%v)", got.Clip, err)
 	}
 }

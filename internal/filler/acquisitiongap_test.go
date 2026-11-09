@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -19,7 +20,7 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 		candidate("a", "modern-hd", 2015, 1080, ""),
 		candidate("a", "nineties-sd", 1994, 480, ""),
 	}
-	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}
+	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, input, nil, gaps)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +50,7 @@ func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
 		candidate("a", "undated", 0, 720, ""),
 	}
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 2}, input, nil,
-		filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Role{filler.StationID}})
+		filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Role{filler.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,13 +67,13 @@ func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
 // Merged windows stay one gap, and open-ended ones keep a stable key.
 func TestGapKey(t *testing.T) {
 	for _, tc := range []struct {
-		r    filler.EraRange
+		r    pod.EraRange
 		want string
 	}{
-		{filler.EraRange{From: 1990, To: 1999}, "era:1990-1999"},
-		{filler.EraRange{From: 2005}, "era:2005-"},
-		{filler.EraRange{To: 1979}, "era:-1979"},
-		{filler.EraRange{}, ""},
+		{pod.EraRange{From: 1990, To: 1999}, "era:1990-1999"},
+		{pod.EraRange{From: 2005}, "era:2005-"},
+		{pod.EraRange{To: 1979}, "era:-1979"},
+		{pod.EraRange{}, ""},
 	} {
 		if got := filler.EraGapKey(tc.r); got != tc.want {
 			t.Errorf("EraGapKey(%+v) = %q, want %q", tc.r, got, tc.want)
@@ -81,19 +82,19 @@ func TestGapKey(t *testing.T) {
 }
 
 func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
-	channel := func(level filler.MatchLevel, windows ...filler.EraRange) filler.ChannelCoverage {
-		return filler.ChannelCoverage{Report: filler.CoverageReport{Level: level, EraWindows: windows}}
+	channel := func(level pod.MatchLevel, windows ...pod.EraRange) pod.ChannelCoverage {
+		return pod.ChannelCoverage{Report: pod.CoverageReport{Level: level, EraWindows: windows}}
 	}
-	pool := filler.PoolReport{Channels: []filler.ChannelCoverage{
-		channel(filler.MatchExact, filler.EraRange{From: 1980, To: 1989}),    // covered: no gap
-		channel(filler.MatchAudience, filler.EraRange{From: 1990, To: 1994}), // gap
-		channel(filler.MatchBumperCard, filler.EraRange{From: 1995, To: 1999}),
-		channel(filler.MatchWidened), // any era: nothing to steer by
-		channel(filler.MatchWidened, filler.EraRange{From: 2010, To: 2012}),
+	pool := pod.PoolReport{Channels: []pod.ChannelCoverage{
+		channel(pod.MatchExact, pod.EraRange{From: 1980, To: 1989}),    // covered: no gap
+		channel(pod.MatchAudience, pod.EraRange{From: 1990, To: 1994}), // gap
+		channel(pod.MatchBumperCard, pod.EraRange{From: 1995, To: 1999}),
+		channel(pod.MatchWidened),
+		channel(pod.MatchWidened, pod.EraRange{From: 2010, To: 2012}),
 	}}
 	pool.Bookends = 3
-	got := filler.CoverageGapsFrom(pool, filler.PoolTargets{}, 2026)
-	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
+	got := filler.CoverageGapsFrom(pool, pod.PoolTargets{}, 2026)
+	want := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
 	}
@@ -102,28 +103,28 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 // A channel can fill every break from its own era and still be short of an evening (#2035): its
 // era is a gap until the exact rung reaches the target, and Short is the largest shortfall.
 func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
-	exact := func(clips int, era filler.EraRange) filler.ChannelCoverage {
-		return filler.ChannelCoverage{Report: filler.CoverageReport{
-			Level: filler.MatchExact, EraWindows: []filler.EraRange{era},
-			Rungs: []filler.RungCoverage{{Level: filler.MatchExact, Clips: clips}, {Level: filler.MatchWidened, Clips: clips + 40}},
+	exact := func(clips int, era pod.EraRange) pod.ChannelCoverage {
+		return pod.ChannelCoverage{Report: pod.CoverageReport{
+			Level: pod.MatchExact, EraWindows: []pod.EraRange{era},
+			Rungs: []pod.RungCoverage{{Level: pod.MatchExact, Clips: clips}, {Level: pod.MatchWidened, Clips: clips + 40}},
 		}}
 	}
-	targets := filler.PoolTargets{Decade: 50, PerDecade: map[int]float64{1980: 80}}
-	pool := filler.PoolReport{Bookends: 2, Channels: []filler.ChannelCoverage{
-		exact(30, filler.EraRange{From: 1980, To: 1989}), // 80 wanted: 50 short
-		exact(60, filler.EraRange{From: 1990, To: 1999}), // the default, 50: met
-		exact(90, filler.EraRange{From: 2000, To: 2019}), // two decades at the default, 100: 10 short
+	targets := pod.PoolTargets{Decade: 50, PerDecade: map[int]float64{1980: 80}}
+	pool := pod.PoolReport{Bookends: 2, Channels: []pod.ChannelCoverage{
+		exact(30, pod.EraRange{From: 1980, To: 1989}), // 80 wanted: 50 short
+		exact(60, pod.EraRange{From: 1990, To: 1999}), // the default, 50: met
+		exact(90, pod.EraRange{From: 2000, To: 2019}), // two decades at the default, 100: 10 short
 	}}
 	got := filler.CoverageGapsFrom(pool, targets, 2026)
-	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
+	want := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
 	}
 	if got.Met() {
 		t.Fatal("a short pool reads as met")
 	}
-	pool.Channels[0] = exact(80, filler.EraRange{From: 1980, To: 1989})
-	pool.Channels[2] = exact(100, filler.EraRange{From: 2000, To: 2019})
+	pool.Channels[0] = exact(80, pod.EraRange{From: 1980, To: 1989})
+	pool.Channels[2] = exact(100, pod.EraRange{From: 2000, To: 2019})
 	if got := filler.CoverageGapsFrom(pool, targets, 2026); !got.Met() {
 		t.Fatalf("a pool at its target = %+v, want met", got)
 	}
@@ -132,16 +133,16 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 // A role gap: live channels whose breaks have no bookend, because the catalog holds no bumper or
 // station ID at all. Every pod then opens and closes on the break body alone.
 func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
-	live := filler.PoolReport{Channels: []filler.ChannelCoverage{{Report: filler.CoverageReport{Level: filler.MatchExact}}}}
+	live := pod.PoolReport{Channels: []pod.ChannelCoverage{{Report: pod.CoverageReport{Level: pod.MatchExact}}}}
 	want := []filler.Role{filler.Bumper, filler.StationID}
-	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
+	if got := filler.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
 	live.Bookends = 1
-	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with a bookend = %v, want none", got)
 	}
-	if got := filler.CoverageGapsFrom(filler.PoolReport{}, filler.PoolTargets{}, 2026).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(pod.PoolReport{}, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)
 	}
 }
@@ -163,16 +164,6 @@ func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
 	}
 }
 
-func TestCoverageReportsTheEraTargetItRead(t *testing.T) {
-	if got := filler.Coverage(sampleCatalog(), kidsWindow(1), filler.Policy{}).EraWindows; !reflect.DeepEqual(got, []filler.EraRange{filler.Year(1992)}) {
-		t.Fatalf("era windows = %+v, want the channel's 1992 target", got)
-	}
-	anyEra := filler.Window{ChannelID: "ch", Audience: filler.Kids, GapMs: 120_000, PodMax: 4}
-	if got := filler.Coverage(sampleCatalog(), anyEra, filler.Policy{}).EraWindows; got != nil {
-		t.Fatalf("era windows = %+v, want nil for an any-era channel", got)
-	}
-}
-
 func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
@@ -182,7 +173,7 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 		},
 	}
 	fetcher := newFetcher(t, stub, limits(1, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
-		return filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}, nil
+		return filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}, nil
 	})
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -219,7 +210,7 @@ func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 			"WAAA": {{ID: "waaa-news", URL: "https://archive.org/details/waaa-news", Title: "WAAA news update 1991", Height: 360}},
 		},
 	}
-	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
+	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
 	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{
 		fetchStub:        stub.fetchStub,
 		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) { return nil, nil },
@@ -273,7 +264,7 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 		{ID: "waaa-undated", URL: "https://archive.org/details/waaa-undated", Title: "WAAA-TV station ID"},
 		{ID: "wzzz-1984", URL: "https://archive.org/details/wzzz-1984", Title: "WZZZ-TV station ID 1984"},
 	}}}
-	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}}, Short: 5, Stations: []string{"WAAA"}}
+	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: 5, Stations: []string{"WAAA"}}
 	stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}}
 	fetcher := newFetcher(t, stub, limits(10, 2000)).
 		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil }).
@@ -325,7 +316,7 @@ func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
 	}
 	short := 3
 	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
-		return filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
+		return filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
 	})
 	res, err := fetcher.Run(t.Context())
 	if err != nil {

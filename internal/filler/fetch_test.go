@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -1247,5 +1248,22 @@ func TestFetch_ScheduledRunKeepsQueueFailureBestEffort(t *testing.T) {
 	}
 	if res.SourcesPolled != 2 || res.Queued != 0 {
 		t.Fatalf("scheduled result = %+v, want both sources attempted and none queued", res)
+	}
+}
+
+func TestFetch_AsksHomeSourcesBeforeFallbackCountries(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "au", Kind: "archive", URI: "au", Enabled: true, Region: 2},
+			{ID: "us", Kind: "archive", URI: "us", Enabled: true},
+			{ID: "gb", Kind: "archive", URI: "gb", Enabled: true, Region: 1},
+		},
+		offers: refs("a"),
+	}
+	if _, err := newFetcher(t, stub, limits(1, 2000)).Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"us", "gb", "au"}; !slices.Equal(stub.listed, want) {
+		t.Fatalf("listed %v, want %v", stub.listed, want)
 	}
 }
