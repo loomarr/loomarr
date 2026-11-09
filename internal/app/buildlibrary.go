@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/media/images"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
@@ -124,6 +125,13 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		{Authority: "sonarr", Lister: sonarr, Fetcher: sonarr, Address: address(conns.Sonarr)},
 		{Authority: "radarr", Lister: radarr, Fetcher: radarr, Address: address(conns.Radarr)},
 	}
+	// The catalog the Library's details come from; its declared ids are the Library's catalog rows.
+	var provider *mptmdb.Provider
+	var keys scan.CatalogKeys
+	if deps.tmdb != nil {
+		provider = mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		keys = provider.Capabilities().Resolves
+	}
 	im := &scan.Importer{
 		Store:     st,
 		Inventory: inv,
@@ -137,6 +145,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Art:      localart.New(),
 		Artwork:  libraryArtworkOf(deps.images, st),
 		Catalog:  st,
+		Keys:     keys,
 		Answers:  st,
 		Resolver: resolver,
 		Header:   libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
@@ -184,9 +193,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		CollectionStore: st, SetRecords: st}
-	if deps.tmdb != nil {
-		provider := mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		CollectionStore: st, SetRecords: st, Keys: keys}
+	if provider != nil {
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {
@@ -269,7 +277,7 @@ func tmdbSearcher(client *tmdb.Client) scan.Searcher {
 				continue
 			}
 			hits = append(hits, scan.SearchHit{
-				Kind: string(c.MediaType), TMDBID: strconv.Itoa(c.TMDBID), Name: c.Name, Year: c.Year, Overview: c.Overview,
+				Kind: string(c.MediaType), ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(c.TMDBID)}, Name: c.Name, Year: c.Year, Overview: c.Overview,
 			})
 		}
 		return hits, nil

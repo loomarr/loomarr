@@ -31,15 +31,16 @@ const (
 // SearchHit is one title a catalog search found.
 type SearchHit struct {
 	// Kind is movie or series.
-	Kind     string
-	TMDBID   string
+	Kind string
+	// ID is the title by the id of the catalog that found it.
+	ID       mp.ExternalID
 	Name     string
 	Year     int
 	Overview string
 }
 
-// Searcher finds catalog titles by name (TMDB). It returns tmdb.ErrAPIKeyRequired when the catalog
-// is not configured.
+// Searcher finds catalog titles by name. It returns tmdb.ErrAPIKeyRequired when the catalog is
+// not configured.
 type Searcher func(ctx context.Context, term string, limit int) ([]SearchHit, error)
 
 // MatchStore is where the Matcher finds titles nothing grounds and keeps what it found for them.
@@ -69,7 +70,7 @@ type Matcher struct {
 	Episodes func(ctx context.Context, seriesID string) (map[int]int, error)
 	// Match answers a title a search settled: exactly one result agrees on everything it can be
 	// checked by (decisions 56 and 57). Nil leaves every title to the maintainer.
-	Match func(ctx context.Context, itemID, tmdbID string) error
+	Match func(ctx context.Context, itemID string, id mp.ExternalID) error
 }
 
 // evidence is what the files say about a title beyond its name: a movie's length, a series'
@@ -188,7 +189,7 @@ func (m *Matcher) Tick(ctx context.Context) error {
 		if err := m.Store.SaveLibraryCandidates(ctx, need.ID, searched, candidates); err != nil {
 			return err
 		}
-		if settled != "" && m.Match != nil {
+		if settled.Value != "" && m.Match != nil {
 			if err := m.Match(ctx, need.ID, settled); err != nil {
 				m.log().Warn("library match: settled title not answered", "item", need.ID, "err", err)
 			}
@@ -197,18 +198,18 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	return nil
 }
 
-// candidates searches for one title and ranks what it finds. settled is the TMDB id of the one
-// candidate that agrees on everything the title can be checked by (decisions 56 and 57), or ""
+// candidates searches for one title and ranks what it finds. settled is the catalog id of the one
+// candidate that agrees on everything the title can be checked by (decisions 56 and 57), or zero
 // when none or more than one does: then the maintainer decides (decision 58).
 func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, ev evidence) (
-	_ []store.LibraryCandidate, settled string, _ error,
+	_ []store.LibraryCandidate, settled mp.ExternalID, _ error,
 ) {
 	if err := m.wait(ctx); err != nil {
-		return nil, "", err
+		return nil, mp.ExternalID{}, err
 	}
 	hits, err := m.Search(ctx, title, 20)
 	if err != nil {
-		return nil, "", err
+		return nil, mp.ExternalID{}, err
 	}
 	var out []store.LibraryCandidate
 	for _, hit := range hits {
@@ -219,7 +220,7 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 			break
 		}
 		c := store.LibraryCandidate{
-			Kind: hit.Kind, TMDBID: hit.TMDBID, Name: hit.Name, Year: hit.Year, Overview: hit.Overview,
+			Kind: hit.Kind, ID: libraryID(hit.ID), Name: hit.Name, Year: hit.Year, Overview: hit.Overview,
 			NameMatch: sameName(hit.Name, title), YearMatch: sameYear(hit.Year, ev.year),
 		}
 		if rec, ok := m.details(ctx, hit); ok {
@@ -235,11 +236,11 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 	for _, c := range out {
 		if ev.settles(c) {
 			agreeing++
-			settled = c.TMDBID
+			settled = externalID(c.ID)
 		}
 	}
 	if agreeing != 1 {
-		settled = ""
+		settled = mp.ExternalID{}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return agreement(out[i]) > agreement(out[j]) })
 	if len(out) > matchKept {
@@ -272,9 +273,9 @@ func (m *Matcher) details(ctx context.Context, hit SearchHit) (mp.Record, bool) 
 	if err := m.wait(ctx); err != nil {
 		return mp.Record{}, false
 	}
-	rec, err := m.Provider.Fetch(ctx, mp.Ref{Kind: mp.Kind(hit.Kind), ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: hit.TMDBID}})
+	rec, err := m.Provider.Fetch(ctx, mp.Ref{Kind: mp.Kind(hit.Kind), ID: hit.ID})
 	if err != nil {
-		m.log().Debug("library match: candidate details not fetched", "tmdb", hit.TMDBID, "err", err)
+		m.log().Debug("library match: candidate details not fetched", "namespace", hit.ID.Namespace, "id", hit.ID.Value, "err", err)
 		return mp.Record{}, false
 	}
 	return rec, true

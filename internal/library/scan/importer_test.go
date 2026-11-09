@@ -87,7 +87,7 @@ func newHarness(t *testing.T, managers ...Manager) *harness {
 	h.im = &Importer{
 		Store: h.st, Inventory: h.inv, Disk: fakeDisk{readable: map[string]bool{h.root: true}},
 		Managers: func() []Manager { return managers },
-		NFO:      nfo.New(), Resolver: resolver,
+		NFO:      nfo.New(), Resolver: resolver, Keys: fakeCatalogKeys,
 		Header: func(_ context.Context, path string) (header.Header, error) {
 			h.reads.Add(1)
 			return header.Header{Container: "matroska,webm", DurationMillis: 1_320_000, Streams: []inventory.Stream{

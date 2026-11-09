@@ -79,6 +79,7 @@ export type {
   LibraryCollectionPoster,
   LibraryCollectionSortable,
   LibraryCollectionsProps,
+  LibraryExternalId,
   LibraryFilter,
   LibraryFolder,
   LibraryHealth,

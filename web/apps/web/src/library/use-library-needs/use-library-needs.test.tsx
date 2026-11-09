@@ -13,8 +13,8 @@ const wrapper = ({ children }: PropsWithChildren) => (
   </QueryClientProvider>
 );
 
-const candidate = (tmdbId: string, name: string, nameMatches: boolean) => ({
-  tmdbId,
+const candidate = (value: string, name: string, nameMatches: boolean) => ({
+  externalId: { namespace: "tmdb", value },
   kind: "movie" as const,
   name,
   nameMatches,
@@ -55,11 +55,11 @@ describe("useLibraryNeeds", () => {
 
     await waitFor(() => expect(result.current.loaded).toBe(true));
     const [named, unnamed] = result.current.needs;
-    expect(named?.best?.tmdbId).toBe("90000101");
-    expect(named?.others.map((c) => c.tmdbId)).toEqual(["90000102"]);
+    expect(named?.best?.externalId.value).toBe("90000101");
+    expect(named?.others.map((c) => c.externalId.value)).toEqual(["90000102"]);
     expect(named?.files).toEqual(["/media/movies/90000011.mkv"]);
     expect(unnamed?.best).toBeUndefined();
-    expect(unnamed?.others.map((c) => c.tmdbId)).toEqual(["90000103"]);
+    expect(unnamed?.others.map((c) => c.externalId.value)).toEqual(["90000103"]);
   });
 
   it("lists the titles that need a look with what's wrong with them", async () => {
@@ -109,8 +109,8 @@ describe("useLibraryNeeds", () => {
     await waitFor(() => expect(lists).toBe(1));
 
     await expect(result.current.answers.onIgnore("90000011")).rejects.toThrow();
-    await result.current.answers.onLink("90000011", "90000101");
-    expect(linked).toEqual({ tmdbId: "90000101" });
+    await result.current.answers.onLink("90000011", { namespace: "imdb", value: "tt90000101" });
+    expect(linked).toEqual({ externalId: { namespace: "imdb", value: "tt90000101" } });
     await waitFor(() => expect(lists).toBeGreaterThanOrEqual(2));
   });
 });

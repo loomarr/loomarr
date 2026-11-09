@@ -53,13 +53,19 @@ func (s *Server) registerLibraryNeeds(api huma.API) {
 	}, RoleAdmin), s.searchLibraryTitles)
 }
 
+// externalIDDTO is a title by one catalog's id.
+type externalIDDTO struct {
+	Namespace string `json:"namespace" minLength:"1" maxLength:"40" doc:"The catalog the id is from, such as tmdb"`
+	Value     string `json:"value" minLength:"1" maxLength:"40" doc:"The id in that catalog"`
+}
+
 type libraryCandidateDTO struct {
-	Kind     string    `json:"kind" enum:"movie,series"`
-	TMDBID   string    `json:"tmdbId"`
-	Name     string    `json:"name"`
-	Year     int       `json:"year,omitempty" doc:"Absent when unknown"`
-	Overview string    `json:"overview,omitempty"`
-	Poster   *ImageDTO `json:"poster,omitempty" doc:"Absent when it has none, or while it is still being fetched"`
+	Kind       string        `json:"kind" enum:"movie,series"`
+	ExternalID externalIDDTO `json:"externalId"`
+	Name       string        `json:"name"`
+	Year       int           `json:"year,omitempty" doc:"Absent when unknown"`
+	Overview   string        `json:"overview,omitempty"`
+	Poster     *ImageDTO     `json:"poster,omitempty" doc:"Absent when it has none, or while it is still being fetched"`
 	// The agreement flags say which of the file's facts the candidate shares.
 	NameMatches     bool `json:"nameMatches"`
 	YearMatches     bool `json:"yearMatches"`
@@ -131,7 +137,7 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 		}
 		for _, c := range n.Candidates {
 			dto.Candidates = append(dto.Candidates, libraryCandidateDTO{
-				Kind: c.Kind, TMDBID: c.TMDBID, Name: c.Name, Year: c.Year, Overview: c.Overview,
+				Kind: c.Kind, ExternalID: externalIDDTO{Namespace: c.ID.Namespace, Value: c.ID.Value}, Name: c.Name, Year: c.Year, Overview: c.Overview,
 				Poster:      s.candidatePoster(ctx, n.ID, c.Poster),
 				NameMatches: c.NameMatch, YearMatches: c.YearMatch,
 				// One stored flag: what the files say beyond the name agrees, by kind.
@@ -171,7 +177,7 @@ type libraryItemIDInput struct {
 type linkLibraryItemInput struct {
 	ID   string `path:"id" maxLength:"64"`
 	Body struct {
-		TMDBID string `json:"tmdbId" minLength:"1" maxLength:"20" pattern:"^[0-9]+$" doc:"The TMDB title it is"`
+		ExternalID externalIDDTO `json:"externalId" doc:"The title it is, as a search result or candidate names it"`
 	}
 }
 
@@ -180,7 +186,8 @@ func (s *Server) linkLibraryItem(ctx context.Context, in *linkLibraryItemInput) 
 	if err != nil {
 		return nil, err
 	}
-	return nil, libraryAnswerErr(svc.Link(ctx, in.ID, in.Body.TMDBID))
+	id := store.LibraryID{Namespace: in.Body.ExternalID.Namespace, Value: in.Body.ExternalID.Value}
+	return nil, libraryAnswerErr(svc.Link(ctx, in.ID, id))
 }
 
 func (s *Server) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
@@ -219,11 +226,11 @@ type searchLibraryTitlesInput struct {
 }
 
 type librarySearchHitDTO struct {
-	Kind     string `json:"kind" enum:"movie,series"`
-	TMDBID   string `json:"tmdbId"`
-	Name     string `json:"name"`
-	Year     int    `json:"year,omitempty"`
-	Overview string `json:"overview,omitempty"`
+	Kind       string        `json:"kind" enum:"movie,series"`
+	ExternalID externalIDDTO `json:"externalId"`
+	Name       string        `json:"name"`
+	Year       int           `json:"year,omitempty"`
+	Overview   string        `json:"overview,omitempty"`
 }
 
 type searchLibraryTitlesOutput struct {
@@ -248,7 +255,7 @@ func (s *Server) searchLibraryTitles(ctx context.Context, in *searchLibraryTitle
 	out.Body.Results = make([]librarySearchHitDTO, 0, len(hits))
 	for _, h := range hits {
 		out.Body.Results = append(out.Body.Results, librarySearchHitDTO{
-			Kind: h.Kind, TMDBID: h.TMDBID, Name: h.Name, Year: h.Year, Overview: h.Overview,
+			Kind: h.Kind, ExternalID: externalIDDTO{Namespace: string(h.ID.Namespace), Value: h.ID.Value}, Name: h.Name, Year: h.Year, Overview: h.Overview,
 		})
 	}
 	return out, nil
