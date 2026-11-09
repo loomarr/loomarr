@@ -379,7 +379,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		}
 		prop.Status, prop.ApprovedBy, prop.ApprovedAt = "approved", "admin", now
 		ch := channelstore.Channel{}
-		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
+		ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "ch-"+jobID, jobID, true, "Channel "+jobID, number
 		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
 		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: prop, Channel: ch}); err != nil {
 			t.Fatal(err)
@@ -446,6 +446,13 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The job names its channel, a foreign key (#2793).
+	ch := channelstore.Channel{}
+	ch.ID, ch.Name, ch.Number, ch.FromRequest = "ch-1", "Cartoons", 1, true
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusLive
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
 	jobID, err := workflow.SubmitForChannel(ctx, "ch-1", intent, "suggest", "admin")
 	if err != nil || jobID == first.JobID {
 		t.Fatalf("SubmitForChannel = %q, %v; want a new job", jobID, err)

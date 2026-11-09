@@ -13,8 +13,11 @@ tables:
     columns:
       id: Identifies the channel. Other tables point here.
       intent_ref: >
-        The channel request job (proposal_jobs.id) the channel was created from. Empty for a channel
-        made by hand. No two channels share one.
+        The channel request job (proposal_jobs.id) the channel was created from, while that job is
+        kept; null once the job is purged, and for a channel made by hand. No two channels share one.
+      from_request: >
+        Whether the channel was made from a member's request rather than by hand. Refine and
+        auto-curate re-run that request; it outlives the job intent_ref names.
       name: The channel's display name.
       number: The channel number, which is its position in the guide. Unique.
       grp: The group the channel is listed under in the guide. Empty for none.

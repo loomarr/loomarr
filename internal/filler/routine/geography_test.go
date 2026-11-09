@@ -1,0 +1,84 @@
+package routine
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+)
+
+type retirementFake struct {
+	settled  []records.SettledGeographyClip
+	channels []channelstore.Channel
+	removed  []string
+}
+
+func (f *retirementFake) ListSettledGeographyClips(context.Context) ([]records.SettledGeographyClip, error) {
+	return f.settled, nil
+}
+
+func (f *retirementFake) ListChannels(context.Context) ([]channelstore.Channel, error) {
+	return f.channels, nil
+}
+
+func (f *retirementFake) SetClipsRemoved(_ context.Context, paths []string, _ time.Time) (int, error) {
+	f.removed = append(f.removed, paths...)
+	return len(paths), nil
+}
+
+func channelAt(country, place string) channelstore.Channel {
+	var ch channelstore.Channel
+	ch.Policy.Filler = &schedule.FillerSelection{Geography: &schedule.FillerGeography{Country: country, Place: place}}
+	return ch
+}
+
+// Invented places: "harbor" reaches fcc:1, "lakeside" reaches fcc:3.
+func retirementPolicy(country string) func() pod.Policy {
+	return func() pod.Policy {
+		return pod.Policy{Geography: pod.Geography{Country: country, Place: "harbor"},
+			LocalStations: func(_, place string) map[string]bool {
+				return map[string]map[string]bool{"harbor": {"fcc:1": true}, "lakeside": {"fcc:3": true}}[place]
+			}}
+	}
+}
+
+func TestGeographyRetirementRemovesOnlyWhatNoPlaceCanAir(t *testing.T) {
+	fake := &retirementFake{
+		settled: []records.SettledGeographyClip{
+			{Path: "harbor-news.mp4", Scope: "local", Country: "US", Station: "fcc:1"},
+			{Path: "lakeside-news.mp4", Scope: "local", Country: "US", Station: "fcc:3"},
+			{Path: "faraway-news.mp4", Scope: "local", Country: "US", Station: "fcc:9"},
+			{Path: "us-ad.mp4", Scope: "national", Country: "US"},
+			{Path: "foreign-ad.mp4", Scope: "national", Country: "GB"},
+		},
+		channels: []channelstore.Channel{channelAt("US", "lakeside"), channelAt("", "")},
+	}
+	retire := GeographyRetirement{clips: fake, store: fake, policy: retirementPolicy("US"),
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now}
+	removed, err := retire.Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(fake.removed)
+	if removed != 2 || !slices.Equal(fake.removed, []string{"faraway-news.mp4", "foreign-ad.mp4"}) {
+		t.Fatalf("removed %v; want only the clips no place can air", fake.removed)
+	}
+}
+
+func TestGeographyRetirementNeedsAnInstallationCountry(t *testing.T) {
+	fake := &retirementFake{settled: []records.SettledGeographyClip{
+		{Path: "foreign-ad.mp4", Scope: "national", Country: "GB"},
+	}}
+	retire := GeographyRetirement{clips: fake, store: fake, policy: retirementPolicy(""),
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now}
+	if removed, err := retire.Run(t.Context()); err != nil || removed != 0 || len(fake.removed) != 0 {
+		t.Fatalf("removed %d (%v), %v; want nothing without an installation country", removed, fake.removed, err)
+	}
+}

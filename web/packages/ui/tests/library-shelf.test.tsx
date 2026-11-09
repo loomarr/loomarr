@@ -160,6 +160,20 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("says a tab is empty and offers everything, rather than a blank grid", () => {
+    const { host, props, button, cleanup } = render({ filter: "movie", titles: [] });
+    expect(host.textContent).toContain("No movies yet");
+    act(() => button("Show everything").click());
+    expect(props.onFilterChange).toHaveBeenCalledWith("all");
+    cleanup();
+    const shows = render({ filter: "series", titles: [] });
+    expect(shows.host.textContent).toContain("No shows yet");
+    shows.cleanup();
+    const loading = render({ filter: "movie", titles: [], loading: true });
+    expect(loading.host.textContent).not.toContain("No movies yet");
+    loading.cleanup();
+  });
+
   it("shows the import's progress while new files are read", () => {
     const { host, cleanup } = render({
       status: {

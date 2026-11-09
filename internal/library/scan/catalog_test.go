@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A title's catalog row is whatever the catalog provider declares it fetches, in its order: the
@@ -22,14 +22,14 @@ func TestCatalogKeysFollowTheProvider(t *testing.T) {
 		keys CatalogKeys
 		kind mp.Kind
 		ids  []mp.ExternalID
-		want store.LibraryCatalogKey
+		want librarystore.LibraryCatalogKey
 	}{
-		{"tmdb movie", fakeCatalogKeys, mp.KindMovie, ids, store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000101"}},
-		{"tmdb episode by its tvdb id", fakeCatalogKeys, mp.KindEpisode, ids, store.LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90000102"}},
-		{"imdb movie", imdb, mp.KindMovie, ids, store.LibraryCatalogKey{Provider: "imdb", Kind: "movie", ExternalID: "tt90000101"}},
-		{"kind not fetched", imdb, mp.KindSeries, ids, store.LibraryCatalogKey{}},
-		{"empty id skipped", imdb, mp.KindMovie, []mp.ExternalID{{Namespace: mp.NamespaceIMDB}}, store.LibraryCatalogKey{}},
-		{"no catalog", nil, mp.KindMovie, ids, store.LibraryCatalogKey{}},
+		{"tmdb movie", fakeCatalogKeys, mp.KindMovie, ids, librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000101"}},
+		{"tmdb episode by its tvdb id", fakeCatalogKeys, mp.KindEpisode, ids, librarystore.LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90000102"}},
+		{"imdb movie", imdb, mp.KindMovie, ids, librarystore.LibraryCatalogKey{Provider: "imdb", Kind: "movie", ExternalID: "tt90000101"}},
+		{"kind not fetched", imdb, mp.KindSeries, ids, librarystore.LibraryCatalogKey{}},
+		{"empty id skipped", imdb, mp.KindMovie, []mp.ExternalID{{Namespace: mp.NamespaceIMDB}}, librarystore.LibraryCatalogKey{}},
+		{"no catalog", nil, mp.KindMovie, ids, librarystore.LibraryCatalogKey{}},
 	} {
 		if got := tc.keys.For(tc.kind, tc.ids); got != tc.want {
 			t.Errorf("%s: For = %+v, want %+v", tc.name, got, tc.want)

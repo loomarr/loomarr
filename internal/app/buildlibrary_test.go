@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -39,7 +40,7 @@ func TestBuildLibrary_StartsTheScanner(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, "Golf (2013)", "Golf (2013).mkv"), []byte("not a header"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.AddLibraryRoot(ctx, store.LibraryRootCheck{Path: root, Readable: true}, time.Now()); err != nil {
+			if err := st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: root, Readable: true}, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 

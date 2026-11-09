@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-type libraryVideoFake map[string]store.LibraryStream
+type libraryVideoFake map[string]librarystore.LibraryStream
 
-func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) (store.LibraryStream, bool, error) {
+func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) (librarystore.LibraryStream, bool, error) {
 	v, ok := f[itemID]
 	return v, ok, nil
 }

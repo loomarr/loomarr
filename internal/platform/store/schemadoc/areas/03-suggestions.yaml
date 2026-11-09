@@ -48,8 +48,8 @@ tables:
         The bounded record of the candidate titles a failed run considered and why each was kept or
         dropped, used to explain the failure. Empty when there is none.
       channel_id: >
-        The existing channel a refine or re-curation job changes (channels.id). Empty for a job
-        that creates a new channel.
+        The existing channel a refine or re-curation job changes (channels.id); the job goes with
+        that channel. Null for a job that creates a new channel.
 
   - name: proposal_job_attempts
     about: >

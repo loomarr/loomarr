@@ -24,9 +24,11 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/identity"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/routine"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
@@ -136,8 +138,8 @@ func buildFillerSubsystem(
 	artifactRecoveryCancel()
 
 	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
-	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
-	result.taxonomy = taxonomyEditor{store: st, wake: wake, holidaysChanged: holidaysChanged}
+	wake := operator.NewChannelWake(st, channelService, log)
+	result.taxonomy = operator.NewTaxonomyEditor(st, wake, holidaysChanged)
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
@@ -146,10 +148,10 @@ func buildFillerSubsystem(
 	// folder there is nothing to download into, and the cache lives in memory only.
 	runtimesPath := ""
 	if dir := layout.ClipDir(); dir != "" {
-		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+		runtimesPath = filepath.Join(dir, archiveprovider.RuntimesFile)
 	}
 	providers := fillerSourceProviders(ytDlpPath,
-		cachedArchiveCatalog{Catalog: fetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		archiveprovider.NewCachedCatalog(fetch.NewArchiveDownloader(), archiveprovider.NewRuntimeCache(runtimesPath, log)),
 		// The compilation gate can only hold back a runtime it knows (#1773).
 		func() bool { return !settings.FillerAcquisitionCompilations.Get(set) }, log)
 	result.providers = providers
@@ -167,7 +169,7 @@ func buildFillerSubsystem(
 	}
 
 	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
-	result.preview = podPreviewAdapter{store: st, pods: pods}
+	result.preview = operator.NewPodPreview(st, pods)
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
 		playoutResolver.SetPods(result.preview)
@@ -289,9 +291,10 @@ func buildFillerSubsystem(
 	placePolicy := func() pod.Policy {
 		return pod.Policy{LocalStations: local.Resolve, Geography: set.homeGeography()}
 	}
-	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
-		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
-	registry.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
+	details := routine.NewDetailRunner(enrichmentCoordinator, researchRunner,
+		routine.NewGeographyRetirement(st, st, placePolicy, log, time.Now))
+
+	registry.Add(fillerPipelineJob(routine.NewPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
@@ -355,23 +358,23 @@ func buildFillerSubsystem(
 		if !gaps.Met() {
 			// A short pass also looks for the stations near each place, in the eras it is short of
 			// (#2059 decision 9). Without them it still fetches; it just doesn't look for local.
-			if near, err := nearbyPlaceStations(ctx, st, placePolicy()); err != nil {
+			if near, err := routine.NearbyPlaceStations(ctx, st, placePolicy()); err != nil {
 				log.Warn("filler auto-fetch: nearby stations unavailable; not searching for them", "err", err)
 			} else if len(near) > 0 {
 				if directory, err := stations.Get(ctx); err != nil {
 					log.Warn("filler auto-fetch: broadcast stations unavailable; not searching for them", "err", err)
 				} else {
-					gaps.Stations = nearbyCallSigns(near, gaps.Eras, directory)
+					gaps.Stations = routine.NearbyCallSigns(near, gaps.Eras, directory)
 				}
 			}
 		}
 		return gaps, nil
 	})
-	autoFetch.WithOpenSearch(openArchiveSearch{archive: fetch.NewArchiveDownloader(), channels: st,
-		policy: placePolicy, stations: stations, languages: result.intakeLanguages})
+	autoFetch.WithOpenSearch(routine.NewOpenArchiveSearch(fetch.NewArchiveDownloader(), st,
+		placePolicy, stations, result.intakeLanguages))
 	adapter.autoFetch = autoFetch
 	result.service = adapter
-	registry.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
+	registry.Add(fillerFetchJob(autoFetch, routine.NewLocalCuratedSources(st, placePolicy, log)))
 	log.Info("filler auto-fetch registered", "every", settings.FillerFetchEvery.Get(set),
 		"max_per_run", settings.FillerFetchMaxPerRun.Get(set))
 	return result

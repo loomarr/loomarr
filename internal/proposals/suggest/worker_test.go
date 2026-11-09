@@ -37,6 +37,23 @@ func newStore(t *testing.T) store.Store {
 	return testkit.MigratedSQLiteStore(t)
 }
 
+// mustChannel saves a live channel id for a refine or re-curation to name: a job's channel is a
+// foreign key (#2793).
+func mustChannel(t *testing.T, st store.Store, id string) {
+	t.Helper()
+	ctx := context.Background()
+	existing, err := st.ListChannels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := channelstore.Channel{}
+	ch.ID, ch.Name, ch.Number = id, "Channel "+id, len(existing)+1
+	ch.Strategy, ch.Status, ch.FromRequest = schedule.Sequential, schedule.StatusLive, true
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func idGen() func() string {
 	var n atomic.Int64
 	return func() string { return "id-" + strconv.FormatInt(n.Add(1), 10) }
@@ -575,7 +592,8 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 		},
 		{
 			name: "refine is always admin-reviewed", user: grace, picks: onePick,
-			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
+				mustChannel(t, st, "channel-1")
 				_, err := svc.Refine(ctx, "channel-1", proposals.Intent{Description: "sci-fi", RefineText: "more"}, "grace")
 				return err
 			},
@@ -942,9 +960,6 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			st.override = true
 			st.channel = channelstore.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
 		}},
-		{name: "removed channel", configure: func(st *scopeLookupStore) {
-			st.err = fmt.Errorf("%w: job names channel-gone", channelstore.ErrJobChannelGone)
-		}},
 		{name: "detached channel", configure: func(st *scopeLookupStore) {
 			st.override = true
 			st.channel = channelstore.Channel{Channel: schedule.Channel{
@@ -1052,6 +1067,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			return svc.Submit(ctx, proposals.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"}, "admin")
 		}},
 		{name: "refine", start: func(ctx context.Context, svc *suggest.Service, st store.Store) (string, error) {
+			mustChannel(t, st, "channel-a")
 			return svc.Refine(ctx, "channel-a", proposals.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"}, "admin")
 		}},
 	}
@@ -1347,6 +1363,7 @@ func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	mustChannel(t, st, "ch-1")
 	refineID, err := svc.Refine(ctx, "ch-1", proposals.Intent{Description: "90s action", RefineText: "add more Ansel Brightwater"}, "admin")
 	if err != nil {
 		t.Fatal(err)
@@ -1666,6 +1683,7 @@ func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
 	svc := buildService(t, st, llmMock).
 		WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithProgressEmitter(done)
+	mustChannel(t, st, "channel-1")
 	if _, err := svc.Refine(ctx, "channel-1", proposals.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
 		t.Fatal(err)
 	}

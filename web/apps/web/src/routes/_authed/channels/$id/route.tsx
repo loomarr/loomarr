@@ -1,12 +1,14 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface } from "@loomarr/design-system";
+import { formatProgrammeTitle } from "@loomarr/core/guide";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -51,14 +53,19 @@ const NOW_TICK_MS = 30_000;
 // headerAirLine is the line under the name (the web mock): a red dot and "On now: <title> · Nm
 // left" while a programme airs, a grey dot and "Paused" for a paused channel. The mock draws only
 // those two; any other state shows the page's own air label (Off air, Updating…) on the grey dot.
+//
+// `airing` is the programme as the timeline knows it, so it is named the way every other surface
+// names it (#2748); the now/next entry carries only a title, and stands in until the timeline answers.
 const headerAirLine = (
   air: AirState,
   now: NowNextEntry | undefined,
   nowMs: number,
+  airing?: Pick<GuideAiring, "kind" | "series" | "title">,
 ): { onAir: boolean; text: string } => {
   if (air.dot === "live" && now && !now.gap && now.startMs <= nowMs && nowMs < now.stopMs) {
     const left = Math.max(1, Math.round((now.stopMs - nowMs) / 60_000));
-    return { onAir: true, text: `On now: ${now.title} · ${left}m left` };
+    const title = airing ? formatProgrammeTitle(airing) : now.title;
+    return { onAir: true, text: `On now: ${title} · ${left}m left` };
   }
   return { onAir: false, text: air.label };
 };
@@ -144,6 +151,11 @@ const ChannelDetailLayout = () => {
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
   // The header's "On now: … · Nm left" reads the shared now/next list; the minutes move on a tick.
   const nowNextBody = unwrap(channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } }).data);
+  // The programme itself (its series and title) comes from the channel's timeline, which names it
+  // the way every surface does; the now/next list has only a title.
+  const timelineBody = unwrap(
+    channelsApi.useChannelTimeline(id, undefined, { query: { retry: false, staleTime: 15_000 } }).data,
+  );
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -205,7 +217,10 @@ const ChannelDetailLayout = () => {
   const nowNext = nowNextBody?.channels.find((entry) => entry.channelId === id);
   const air = airStateOf(ch, nowNextBody ? Boolean(nowNext?.now || nowNext?.next) : undefined);
   const onNow = nowNext?.now;
-  const airLine = headerAirLine(air, onNow, nowMs);
+  const airing = timelineBody?.airings.find(
+    (a) => a.kind !== "filler" && a.startMs <= nowMs && nowMs < a.stopMs,
+  );
+  const airLine = headerAirLine(air, onNow, nowMs, airing);
 
   // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
   // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
@@ -269,7 +284,9 @@ const ChannelDetailLayout = () => {
             </span>
           </div>
           <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
-            <span className="font-mono tracking-wide uppercase">Ch</span>
+            <Text as="span" shout textRole="data">
+              Ch
+            </Text>
             {isAdmin ? (
               <ChannelIdentityField
                 label="Channel number"
@@ -369,4 +386,4 @@ const Route = createFileRoute("/_authed/channels/$id")({
   component: ChannelDetailLayout,
 });
 
-export { airStateOf, Route, SECTIONS };
+export { airStateOf, headerAirLine, Route, SECTIONS };

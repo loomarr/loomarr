@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/platform/llm/picker"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -117,7 +118,7 @@ func TestSystemLLM_Status(t *testing.T) {
 
 // Select maps the not-pulled sentinel to 409 (not a 500).
 func TestSystemLLM_SelectNotPulled409(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: system.ErrModelNotPulled}
+	svc := &fakeSystemLLM{selectErr: picker.ErrModelNotPulled}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken, `{"model":"qwen3.5:9b"}`)
 	if resp.StatusCode != http.StatusConflict {
@@ -158,7 +159,7 @@ func TestSystemLLM_SelectHosted(t *testing.T) {
 }
 
 func TestSystemLLM_SelectBadKey401(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: system.ErrKeyInvalid}
+	svc := &fakeSystemLLM{selectErr: picker.ErrKeyInvalid}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"openrouter","model":"x","apiKey":"bad"}`)
@@ -168,7 +169,7 @@ func TestSystemLLM_SelectBadKey401(t *testing.T) {
 }
 
 func TestSystemLLM_SelectInvalidHostedModel422(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: system.ErrInvalidHostedModel}
+	svc := &fakeSystemLLM{selectErr: picker.ErrInvalidHostedModel}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"openrouter","model":"qwen3:8b"}`)
@@ -206,7 +207,7 @@ func TestSystemLLM_SelectCustomWithoutBaseURL422(t *testing.T) {
 }
 
 func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: system.ErrUnknownProvider}
+	svc := &fakeSystemLLM{selectErr: picker.ErrUnknownProvider}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"nope","model":"x"}`)
@@ -217,7 +218,7 @@ func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
 
 // Test endpoint: a bad key is ok=false (200), NOT a 5xx — the UI shows it inline.
 func TestSystemLLM_TestReportsInline(t *testing.T) {
-	svc := &fakeSystemLLM{testErr: system.ErrKeyInvalid}
+	svc := &fakeSystemLLM{testErr: picker.ErrKeyInvalid}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken,
 		`{"provider":"openrouter","apiKey":"bad"}`)

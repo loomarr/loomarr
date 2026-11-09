@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -60,7 +61,7 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 	} {
 		exec(`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms, catalog, series_id)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`, it.id, it.kind, it.id, it.id, it.updated.UnixMilli(), it.catalog,
-			libraryLink(it.series))
+			librarystore.LibraryLink(it.series))
 	}
 
 	// Files: a present one, one missing past the window, and one whose removal waits for a person.
@@ -71,7 +72,7 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 	}{{"/m/present.mkv", "lib-ep", 0, false}, {"/m/gone.mkv", "", old.UnixMilli(), false}, {"/m/held.mkv", "lib-held", old.UnixMilli(), true}} {
 		exec(`INSERT INTO library_files (path, root, size_bytes, modified_ns, seen_at_ms, missing_at_ms, held,
 			inventory_item_id) VALUES (?, '/m', 1, 1, ?, ?, ?, ?)`, f.path, old.UnixMilli(), f.missingMs, f.held,
-			libraryLink(f.item))
+			librarystore.LibraryLink(f.item))
 	}
 	exec(`INSERT INTO library_collections (id, name, created_at_ms, updated_at_ms) VALUES ('c1', 'Kept', 1, 1)`)
 	exec(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position) VALUES ('c1', 'lib-member', 0)`)

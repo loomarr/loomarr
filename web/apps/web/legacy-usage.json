@@ -494,7 +494,7 @@
       "tailwindClasses": 6
     },
     "src/routes/_authed/requests/_tabs.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 18
     },
     "src/routes/_authed/settings/access.tsx": {
       "tailwindClasses": 13

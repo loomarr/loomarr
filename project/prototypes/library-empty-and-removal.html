@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Empty filter and removals — design review</title>
+<!--
+  #2151 review: two states the Library's mock of record (design/library, variant D: plain words,
+  artwork first, amber = the one primary action) doesn't draw. (1) A tab or search with nothing in
+  it: today the grid is simply blank. (2) Whether removing things asks first. A design-review mock;
+  nothing here is built. Tokens are @loomarr/design-system's dark theme. Titles are invented.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --canvas: #0B0C0E; --raised: #131519; --elevated: #1B1E24; --deco: #2A2E37; --control: #666970;
+    --text: #E7EAF0; --muted: #8B93A3; --signal: #FFB020; --ok: #3DD68C; --warn: #F5D90A; --danger: #E5484D;
+    --placeholder: #1B1E24;
+    font-family: Geist, ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5;
+    color: var(--text); background: #08090B;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #08090B; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  p, h1, h2, h3 { margin: 0; }
+
+  /* review bar (not part of the design) */
+  .review { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 14px 24px; background: var(--raised); border-bottom: 1px solid var(--deco); }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .review select { background: var(--elevated); border: 1px solid var(--control); border-radius: 6px; color: var(--text); padding: 6px 10px; font: inherit; }
+  .note { max-width: 980px; margin: 14px auto 0; padding: 0 24px; color: var(--muted); font-size: 13px; }
+  .note b { color: var(--text); font-weight: 500; }
+
+  #frame { position: relative; margin: 20px auto 40px; width: calc(100% - 32px); max-width: 1180px; min-height: 720px; display: flex; background: var(--canvas); border: 1px solid var(--deco); border-radius: 8px; overflow: hidden; }
+  #frame.phone { max-width: 390px; min-height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--raised); flex-direction: column; }
+
+  .rail { width: 200px; flex-shrink: 0; border-right: 1px solid var(--deco); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+  .rail .brand { font-size: 11px; letter-spacing: .12em; font-weight: 600; color: var(--text); padding: 4px 8px 14px; display: flex; gap: 8px; align-items: center; }
+  .rail .brand i { width: 22px; height: 3px; border-radius: 2px; background: linear-gradient(90deg,#E5484D,#FFB020,#3DD68C,#4CC9E8,#D6409F); }
+  .rail a { padding: 6px 8px; border-radius: 6px; }
+  .rail a.on { background: var(--elevated); color: var(--text); }
+  .topbar { display: none; }
+  #frame.phone .rail { display: none; }
+  #frame.phone .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--deco); font-size: 11px; letter-spacing: .12em; font-weight: 600; }
+
+  main { flex: 1; min-width: 0; padding: 22px 28px 40px; display: flex; flex-direction: column; gap: 16px; }
+  #frame.phone main { padding: 16px; }
+  h1 { font-size: 24px; line-height: 30px; font-weight: 650; }
+  .status { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .small { font-size: 13px; color: var(--muted); }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--deco); }
+  .tabs span { padding: 8px 12px; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs span.on { color: var(--text); border-bottom-color: var(--signal); }
+  .field { border: 1px solid var(--control); border-radius: 6px; padding: 8px 12px; color: var(--muted); max-width: 420px; }
+  .field.filled { color: var(--text); }
+
+  .btn { min-height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--control); background: var(--elevated); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; }
+  .btn.primary { background: var(--signal); border-color: var(--signal); color: #0B0C0E; font-weight: 600; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+  .btn.danger-solid { background: var(--danger); border-color: var(--danger); color: #0B0C0E; font-weight: 600; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* StatePanel kind="empty", as the Library's "Dead air" panel draws it */
+  .panel { margin: 32px auto; max-width: 440px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .panel h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+  .panel p { color: var(--muted); }
+
+  .surface { background: var(--raised); border: 1px solid var(--deco); border-radius: 8px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .callout { border-color: #8C7E1A; }
+  .callout h3 { color: var(--warn); font-size: 16px; font-weight: 600; }
+  .member { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--deco); }
+  .member:first-of-type { border-top: 0; }
+  .poster { aspect-ratio: 2 / 3; width: 36px; border-radius: 4px; background: linear-gradient(160deg, var(--tint, #1E2129), var(--placeholder)); border: 1px solid #22252C; flex-shrink: 0; }
+
+  /* Dialog, as the design system's Dialog draws it */
+  .scrim { position: absolute; inset: 0; background: rgba(4,5,6,.72); display: grid; place-items: center; padding: 16px; }
+  .dialog { width: 100%; max-width: 420px; background: var(--elevated); border: 1px solid var(--deco); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .dialog h2 { font-size: 18px; font-weight: 600; }
+  .dialog .actions { justify-content: flex-end; margin-top: 4px; }
+  .option { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--signal); }
+</style>
+
+<div class="review">
+  <strong>Library: empty filter &amp; removals (review)</strong>
+  <label>Screen
+    <select id="screen">
+      <option value="empty-tab">1 · Movies tab, no movies</option>
+      <option value="empty-search">2 · A search that finds nothing (today)</option>
+      <option value="removal">3 · Held removal (today, unchanged)</option>
+      <option value="delete-a">4A · Delete a collection, no dialog (today)</option>
+      <option value="delete-b">4B · Delete a collection, asks first</option>
+    </select>
+  </label>
+  <label>Device
+    <select id="device"><option value="desktop">Desktop 1440</option><option value="phone">Phone 390</option></select>
+  </label>
+</div>
+<p class="note" id="note"></p>
+
+<div id="frame">
+  <nav class="rail" aria-label="Main">
+    <span class="brand"><i></i>LOOMARR</span>
+    <a>Home</a><a>Guide</a><a>Channels</a><a class="on" id="nav-library">Library</a><a>Requests</a><a id="nav-settings">Settings</a>
+  </nav>
+  <div class="topbar"><span>LOOMARR</span><span>☰</span></div>
+  <main id="main"></main>
+</div>
+
+<script>
+const NOTES = {
+  "empty-tab": "<b>Chosen 2026-11-09.</b> A tab with nothing in it drew a blank grid. It gets the empty panel the Library already uses for “Dead air”, worded for the tab, with one way out: back to everything. Shows reads “No shows yet.” the same way.",
+  "empty-search": "<b>Today, unchanged.</b> A search that finds nothing already says so in one line. Shown for comparison: the tab panel above is the same family, larger because the whole tab is empty, not just the search.",
+  "removal": "<b>Today, unchanged — proposed: no dialog.</b> Nothing is removed until the maintainer answers this callout; it already is the “are you sure”. A dialog on top of it would ask twice.",
+  "delete-a": "<b>Option A — rejected.</b> Delete is disabled with the reason while a channel uses the collection; an unused one went at once.",
+  "delete-b": "<b>Option B — chosen 2026-11-09.</b> Delete asks first, naming the collection and saying nothing airs from it: a deleted collection can't be brought back.",
+};
+
+const library = (tab, search, body) => `
+  <h1>Library</h1>
+  <p class="status"><i></i>All caught up · 38 shows · 1,204 episodes</p>
+  <div class="tabs">${["All", "Movies", "Shows", "Collections"].map((t) => `<span class="${t === tab ? "on" : ""}">${t}</span>`).join("")}</div>
+  <div class="field ${search ? "filled" : ""}">${search || "Search your library"}</div>
+  ${body}`;
+
+const editor = () => `
+  <p class="small">‹ Collections</p>
+  <h1>Saturday mornings</h1>
+  <div class="surface">
+    ${["#2A2433", "#1F2A2E", "#2E2A22"].map((tint, i) => `<div class="member"><span class="poster" style="--tint:${tint}"></span>${["Kilo Adventures", "Lima and the Lighthouse", "Mike's Garden"][i]}</div>`).join("")}
+  </div>
+  <p class="small">No channel uses this collection.</p>
+  <div class="actions"><button class="btn primary">Save</button><button class="btn ghost">Cancel</button><button class="btn danger">Delete collection</button></div>`;
+
+const SCREENS = {
+  "empty-tab": () => library("Movies", "", `
+    <div class="panel">
+      <h2>No movies yet</h2>
+      <p>When a movie lands in one of your folders, it shows up here.</p>
+      <button class="btn">Show everything</button>
+    </div>`),
+  "empty-search": () => library("All", "zebra", `<p class="small">Nothing here matches "zebra".</p>`),
+  "removal": () => `
+    <p class="small">Settings ›</p><h1>Library</h1>
+    <div class="surface callout">
+      <h3>214 movies seem to be gone from your Movies folder</h3>
+      <p class="small">We haven't removed anything — if a drive is unplugged, plug it back in.</p>
+      <div class="actions"><button class="btn primary">Check again</button><button class="btn danger">They're gone, remove them</button></div>
+    </div>`,
+  "delete-a": editor,
+  "delete-b": () => editor() + `
+    <div class="scrim">
+      <div class="dialog" role="dialog" aria-labelledby="dlg">
+        <h2 id="dlg">Delete Saturday mornings?</h2>
+        <p class="small">No channel uses it, so nothing stops airing. Its three titles stay in your library.</p>
+        <div class="actions"><button class="btn ghost">Keep it</button><button class="btn danger-solid">Delete</button></div>
+      </div>
+    </div>`,
+};
+
+const params = new URLSearchParams(location.search);
+const screen = document.getElementById("screen");
+const device = document.getElementById("device");
+screen.value = params.get("screen") in SCREENS ? params.get("screen") : "empty-tab";
+device.value = params.get("device") === "phone" ? "phone" : "desktop";
+
+const draw = () => {
+  document.getElementById("main").innerHTML = SCREENS[screen.value]();
+  document.getElementById("note").innerHTML = NOTES[screen.value];
+  document.getElementById("frame").className = device.value === "phone" ? "phone" : "";
+  const settings = screen.value === "removal";
+  document.getElementById("nav-library").className = settings ? "" : "on";
+  document.getElementById("nav-settings").className = settings ? "on" : "";
+  history.replaceState(null, "", `?screen=${screen.value}&device=${device.value}`);
+};
+screen.addEventListener("change", draw);
+device.addEventListener("change", draw);
+draw();
+</script>

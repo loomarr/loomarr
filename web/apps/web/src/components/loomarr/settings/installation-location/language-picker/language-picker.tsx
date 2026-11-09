@@ -38,7 +38,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
           Commercial language
         </label>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase">
+          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
             <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
           </span>
         )}

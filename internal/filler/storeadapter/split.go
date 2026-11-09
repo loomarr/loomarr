@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -35,15 +34,11 @@ type Split struct {
 // NewSplit returns the splitter's store over st. wake may be nil.
 func NewSplit(st records.Store, wake Wake) Split { return Split{st: st, wake: wake} }
 
-func (a Split) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (a Split) GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error) {
 	return Sync{st: a.st}.GetClip(ctx, id)
 }
-func (a Split) ListClips(ctx context.Context) ([]cliplibrary.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
-	if err != nil {
-		return nil, err
-	}
-	return storeClips(clips), nil
+func (a Split) ListClips(ctx context.Context) ([]clipstore.Clip, error) {
+	return a.st.ListClips(ctx, clipstore.ClipFilter{})
 }
 func (a Split) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
 	return a.st.ListClipFingerprints(ctx, algorithm)
@@ -51,8 +46,8 @@ func (a Split) ListClipFingerprints(ctx context.Context, algorithm string) (map[
 func (a Split) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
-func (a Split) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
-	return a.st.UpsertClip(ctx, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+func (a Split) UpsertClip(ctx context.Context, c clipstore.Clip) error {
+	return a.st.UpsertClip(ctx, c)
 }
 func (a Split) RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error {
 	return a.st.RecordFillerEraObservation(ctx, clipHash, era, source, at)

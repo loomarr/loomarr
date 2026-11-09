@@ -162,17 +162,16 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
   the live indicator) goes live; **Start over** seeks to the current programme's start, offered
   only when that start is inside the window.
-- **Preview playbar.** Time-true from fifteen minutes behind to about two hours ahead, from the
-  Guide airings (stills, S/E, rating, synopsis) and each break's pod entries (one tick per spot,
-  with its thumbnail). A pointer hovers it for the preview card; touch opens the right-hand sheet.
+- **The band, not a timeline (#2768).** The chrome is variant H, channel-first: the band names the
+  channel, what is on and what is next, with one progress line. The #2088 preview playbar and its
+  hover cards were replaced; the schedule playbar lives in More.
 - **Station ID.** Every settled tune shows the station-ID card for five seconds, and a break reads
-  `Commercials · <clip title>`, the same rules as [Android TV](#android-tv).
-- **Panels.** Info (`I`: still, synopsis, year, rating, genres, time bar and `Up next`; closes on
-  `Esc` and by itself after eight seconds during playback), Settings (`⚙`: quality Auto plus the
-  ladder's manual rungs, shown as `Auto · 720p`, with audio and subtitles), Playback info (from ⚙,
-  open to everyone: members see rung, resolution, codec, bitrate, buffer and lag; admins also see
-  the encoder, transcode reason and session, and get **Copy stream URL**), Channels (`G`) and
-  Shortcuts (`?`, replacing the always-visible hint line). One sheet is open at a time.
+  the programme's title with `Back in n min`, the same rules as [Android TV](#android-tv).
+- **Panels.** Subtitles and Audio (top row, `C` and `A`), Picture (quality Auto plus the ladder's
+  manual rungs, shown as `Auto · 720p`), Playback details (`I`: the one place technical terms are
+  allowed; members see rung, resolution, codec, bitrate, buffer and lag; admins also see the encoder,
+  transcode reason and session, and get **Copy stream URL**), Info (synopsis, licence and source),
+  Channels and Shortcuts, all behind More except the top row's. One sheet is open at a time.
 - **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
   Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
   (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
@@ -184,9 +183,8 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
-- **Phone.** Portrait keeps the N5 layout (picture on top, panel below) with ⚙ and ⓘ added and the
-  playbar as a `Coming up` filmstrip; landscape is the full-bleed overlay with 44 px targets, tap to
-  show or hide the chrome, and double-tap either side to skip ten seconds.
+- **Phone.** Portrait and landscape wear the same band and keys at phone size; tap shows or hides
+  the chrome. How portrait lays out around a letterboxed picture is open (#2775).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
   `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
   decided then.
