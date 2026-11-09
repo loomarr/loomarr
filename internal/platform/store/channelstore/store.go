@@ -484,10 +484,9 @@ func (s *Store) DeleteChannel(ctx context.Context, id string, expectedRevision i
 	return nil
 }
 
-// ⚠ **`PutChannelIcon`/`GetChannelIcon` were DELETED in V52 phase 8, with the `channel_icons` retired-ok
-// table.** Icon bytes are image-service images (§22): content-addressed on disk, served by
-// /v1/images/{hash} under an honest immutable cache. `PutChannelIcon` had already had no caller retired-ok
-// since phase 5 moved uploads across — it was dead code the whole time the window was open.
+// ⚠ There are no channel-icon byte accessors: icon bytes are image-service images (§22),
+// content-addressed on disk and served by /v1/images/{hash} under an immutable cache. A channel
+// only references its images through `channel_images`.
 
 // ClaimDueChannels runs the dialect-specific channel-claim statement. Selects
 // non-detached channels whose reconcile_deadline is at/before now, up to limit,

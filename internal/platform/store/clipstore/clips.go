@@ -1508,11 +1508,8 @@ func (s *Store) attachTags(ctx context.Context, clips []Clip) error {
 	return rows.Err()
 }
 
-// ⚠ `boolToInt` was here and is DELETED (V38c). Every bool column is BOOLEAN on Postgres now that
-// 00033 rebuilt `clips`, so binding an int is a 42804 — and this helper was how that mistake kept
-// happening: it sat next to correct code, looked like the local idiom, and was copied onto three
-// columns where it was wrong. A helper whose only remaining use is a bug is worth deleting
-// outright rather than leaving for the next person to reach for.
+// ⚠ There is deliberately no bool-to-int helper here. Every bool column is BOOLEAN on Postgres
+// (00033 rebuilt `clips`), so binding an int is a 42804; bind the Go bool directly.
 
 // nullIfEmpty writes "" as SQL NULL.
 //
