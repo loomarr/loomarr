@@ -197,7 +197,8 @@ the database only.
 - **Orphans are collected before expiry,** so an unreferenced expired image is never queued for a
   pointless download.
 - **Attribution:** the TMDB logo, less prominent than Loomarr's branding, with the notice "This
-  product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."
+  product uses the TMDB API but is not endorsed or certified by TMDB." under Settings → About →
+  Data sources, and the same line in the README (#2853).
 - **Connections:** well under TMDB's 20 per IP, with jittered backoff on 429 and 5xx.
 - **Fetch `original` once** and build the ladder locally: one origin request per artwork. `profile`
   sizes use a height token (`h632`), and SVG assets exist only at `original`.
