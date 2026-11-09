@@ -83,8 +83,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		ready:             ready,
 		approver:          opts.Approver,
 		playoutObserver:   opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
-		watermarkPreview: opts.WatermarkPreview,
-		playoutSecret:    opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
+		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
 		playout:         opts.Playout,
 		playoutGuide:    opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
@@ -120,15 +119,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, BackendCheckpoint: opts.BackendCheckpoint,
 		Settings: opts.Settings, Suggest: opts.Suggest, Channels: opts.Channels, Binder: opts.Binder,
 		TunerRescanner: opts.TunerRescanner, Icons: opts.Icons, Playout: opts.Playout, Activity: opts.Activity,
+		Images: opts.Images, WatermarkPreview: opts.WatermarkPreview, Now: opts.Now,
 	}
 	if opts.Images != nil {
 		channelDeps.ImageRecords = srv.imageDTOsByHash
 	}
 	channelsapi.New(channelDeps).Register(humaAPI)
-	// The icon and watermark uploads below still live in this package and write through the same
-	// handlers (the handlers hold no state of their own); they move into api/channels next.
-	srv.channelRoutes = channelsapi.New(channelDeps)
-	srv.registerChannelExtras(humaAPI)
+	srv.registerChannelViews(humaAPI)
 	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
 	playoutapi.New(playoutapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings,

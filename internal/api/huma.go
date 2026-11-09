@@ -120,9 +120,6 @@ type Server struct {
 	// now is an optional request-clock seam for projections whose membership is time-bounded.
 	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
 	now func() time.Time
-	// channelRoutes is the channel resource (api/channels). The icon and watermark uploads still
-	// live here and write through it, so every channel edit shares one set of rules. Set by Router.
-	channelRoutes *channelsapi.Handlers
 	// viewing is who is watching what, from the players' own playlist polls (#1662). Always set
 	// by Router; nil only on the schema-only exporter.
 	viewing *viewing.Tracker
@@ -184,8 +181,6 @@ type Server struct {
 	// playoutCapability supplies the retained encoder probe result without starting a probe.
 	// Unlike live session stats, it remains available while playout is idle.
 	playoutCapability func() playout.Capacity
-	// watermarkPreview draws the channel page's On-screen logo preview (#1659); nil ⇒ 501.
-	watermarkPreview WatermarkPreviewer
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -991,7 +986,7 @@ type Options struct {
 	// perform or await a probe on this observational request path.
 	PlayoutCapability func() playout.Capacity
 	// WatermarkPreview draws a channel's bug for the channel page's preview. Nil ⇒ the route 501s.
-	WatermarkPreview WatermarkPreviewer
+	WatermarkPreview channelsapi.WatermarkPreviewer
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string

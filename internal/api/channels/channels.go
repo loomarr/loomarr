@@ -40,6 +40,40 @@ func (s *Handlers) registerChannels(api huma.API) {
 		Tags:        []string{"channels"},
 	}, httpcore.RoleMember), s.channelIconSuggestions)
 
+	// ⚠ **`channel-icon` (GET /v1/channels/{id}/icon) was RETIRED in V52 phase 8**, with the
+	// `channel_icons` table behind it. A channel's logo is a /v1/images URL now, which Tunarr and retired-ok
+	// the media server fetch unauthenticated exactly as they fetched this — the public-with-no-
+	// credential property moved to the image serve route, where §22 makes visibility a property of
+	// the IMAGE rather than of the route.
+	//
+	// The upload half below survives; only the serving moved.
+
+	// The upload — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
+	// edge, before the handler's own read limit; the handler still checks, because the multipart
+	// header's declared size is a claim, not a measurement.
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "upload-channel-icon", Method: http.MethodPost, Path: "/v1/channels/{id}/icon",
+		Summary: "Upload a channel icon",
+		Description: "Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — " +
+			"SVG is refused because the serve half is public and an SVG can carry script). Ingests the " +
+			"bytes into the image service (§22), points the channel's logo at the content-addressed URL, " +
+			"and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a " +
+			"different image yields a different one, so no cache-bust is needed.",
+		Tags:         []string{"channels"},
+		MaxBodyBytes: maxIconBytes + 1024,
+	}, httpcore.RoleAdmin), s.uploadChannelIcon)
+
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "upload-channel-watermark", Method: http.MethodPost, Path: "/v1/channels/{id}/watermark",
+		Summary: "Upload a custom channel watermark",
+		Description: "Admin only. A PNG or WebP with transparency, under 2 MB, in the `file` field. The image's " +
+			"alpha is the bug's shape. Stores it in the image service (role watermark, original kept) and sets " +
+			"the channel's policy.watermark.image, which wins over the automatic image. Clear it by saving the " +
+			"policy without watermark.image.",
+		Tags:         []string{"channels"},
+		MaxBodyBytes: maxIconBytes + 1024,
+	}, httpcore.RoleAdmin), s.uploadChannelWatermark)
+
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-channel", Method: http.MethodPost, Path: "/v1/channels",
 		Summary: "Create a channel", Description: "Admin only. From an approved proposal or hand-made.",

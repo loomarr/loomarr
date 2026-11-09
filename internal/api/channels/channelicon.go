@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"bytes"
@@ -86,7 +86,7 @@ type uploadIconOutput struct {
 // operation the same rule applies from one place (titles.go), so keeping a second copy would
 // mean two implementations of one rule to keep in step — which is how backupHandler and
 // eventsHandler ended up disagreeing about nil authorizers.
-func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
+func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
@@ -145,7 +145,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	// A logo is channel identity, so this goes through the same edit rules as a PATCH of `logo`
 	// (the `building` tuner-list signal, the due-now deadline, the auto-reconcile that pushes the
 	// icon to Tunarr). Revision 0: link the icon to whatever the channel is now.
-	if err := s.channelRoutes.LinkUpload(ctx, in.ID, "icon", func(ch *channelstore.Channel) error {
+	if err := s.linkUploadToChannel(ctx, in.ID, "icon", func(ch *channelstore.Channel) error {
 		ch.Logo = logo
 		return nil
 	}); err != nil {
@@ -185,7 +185,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 // hands it to Emby, which hands it to a television. WebP would be smaller and is ~97%
 // supported in BROWSERS, which is not the population fetching this. w500 is the top of the
 // icon ladder: small enough to be cheap, large enough not to look soft on a 4K guide grid.
-func (s *Server) channelLogoURL(hash string) string {
+func (s *Handlers) channelLogoURL(hash string) string {
 	return s.images.URLFor(hash, httpcore.ChannelLogoWidth, images.FormatJPEG)
 }
 

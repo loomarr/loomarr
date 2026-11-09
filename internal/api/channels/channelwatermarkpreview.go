@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -48,7 +48,7 @@ const watermarkDrawableHeader = "X-Loomarr-Watermark-Drawable"
 // registerWatermarkPreview serves the preview PNG. Input is refused, never defaulted: an unknown
 // look, colour, holiday or picture fails huma's enum validation (422), a size outside 0-0.15 fails
 // its range (422), and a picture that is not one of the named holiday's own is refused here (422).
-func (s *Server) registerWatermarkPreview(api huma.API) {
+func (s *Handlers) registerWatermarkPreview(api huma.API) {
 	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "preview-channel-watermark", Method: http.MethodGet, Path: "/v1/channels/{id}/watermark/preview",
 		Summary: "Preview the channel's on-screen logo",
@@ -60,7 +60,7 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 		Responses: map[string]*huma.Response{"200": {Description: "The bug PNG",
 			Content: map[string]*huma.MediaType{"image/png": {}}}},
 	}, httpcore.RoleAdmin, func(w http.ResponseWriter, r *http.Request, in *watermarkPreviewInput) {
-		if s.watermarkPreview == nil {
+		if s.watermark == nil {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Preview unavailable", "This server has no logo renderer.")
 			return
 		}
@@ -81,7 +81,7 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 				s.writeProblem(w, r, http.StatusBadRequest, "Holiday needed", "A picture-only preview names its holiday.")
 				return
 			}
-			path, err = s.watermarkPreview.PreviewMotif(r.Context(), in.ID, in.Holiday, in.Picture)
+			path, err = s.watermark.PreviewMotif(r.Context(), in.ID, in.Holiday, in.Picture)
 		} else {
 			change := schedule.WatermarkPolicy{Look: in.Look, Color: in.Color}
 			if in.Size > 0 {
@@ -90,7 +90,7 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 			if in.Picture != "" && in.Holiday != "" {
 				change.Motifs = map[string]string{in.Holiday: in.Picture}
 			}
-			path, drawable, err = s.watermarkPreview.Preview(r.Context(), in.ID, change, in.Holiday)
+			path, drawable, err = s.watermark.Preview(r.Context(), in.ID, change, in.Holiday)
 		}
 		if errors.Is(err, store.ErrNotFound) {
 			s.writeProblem(w, r, http.StatusNotFound, "Channel not found", "")
@@ -145,17 +145,17 @@ type watermarkOptionsOutput struct {
 	Body WatermarkOptions
 }
 
-func (s *Server) registerWatermarkOptions(api huma.API) {
+func (s *Handlers) registerWatermarkOptions(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-channel-watermark-options", Method: http.MethodGet, Path: "/v1/channels/{id}/watermark/options",
 		Summary:     "On-screen logo options for a channel",
 		Description: "Admin only. The name the logo shows when none is set, the channel's era and its colours, and the holidays the logo follows: each one's dates, whether it is in effect today and its pictures.",
 		Tags:        []string{"channels"},
 	}, httpcore.RoleAdmin), func(ctx context.Context, in *httpcore.ChannelIDInput) (*watermarkOptionsOutput, error) {
-		if s.watermarkPreview == nil {
+		if s.watermark == nil {
 			return nil, httpcore.NotImplemented("Logo options unavailable", "This server has no logo renderer.")
 		}
-		opts, err := s.watermarkPreview.Options(ctx, in.ID, s.clock())
+		opts, err := s.watermark.Options(ctx, in.ID, s.clock())
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 		}

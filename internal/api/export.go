@@ -44,7 +44,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	people.New(people.Deps{Log: log}, true).Register(humaAPI)
 	system.New(system.Deps{Log: log}, true).Register(humaAPI)
 	channelsapi.New(channelsapi.Deps{}).Register(humaAPI)
-	srv.registerChannelExtras(humaAPI)
+	srv.registerChannelViews(humaAPI)
 	// Hidden ops — present for register-list parity, absent from the spec (§9.1) — plus the play-url
 	// op and the status projection.
 	playoutapi.New(playoutapi.Deps{Log: log}, true).Register(humaAPI)

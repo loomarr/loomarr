@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ type uploadWatermarkOutput struct {
 	}
 }
 
-func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermarkInput) (*uploadWatermarkOutput, error) {
+func (s *Handlers) uploadChannelWatermark(ctx context.Context, in *uploadWatermarkInput) (*uploadWatermarkOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
@@ -66,7 +66,7 @@ func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermark
 	}
 	// The same edit rules as a PATCH of the policy, so the new bug reaches playout on the
 	// auto-reconcile rather than waiting for the sweep.
-	if err := s.channelRoutes.LinkUpload(ctx, in.ID, "image", func(ch *channelstore.Channel) error {
+	if err := s.linkUploadToChannel(ctx, in.ID, "image", func(ch *channelstore.Channel) error {
 		wm := schedule.WatermarkPolicy{}
 		if ch.Policy.Watermark != nil {
 			wm = *ch.Policy.Watermark

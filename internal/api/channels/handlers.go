@@ -4,11 +4,15 @@ package channels
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -117,6 +121,12 @@ type Deps struct {
 	// ImageRecords resolves image hashes to their records in one deduplicated pass; nil leaves
 	// every logo and suggestion as a plain URL.
 	ImageRecords func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
+	// Images stores the icon and watermark uploads; nil answers those routes 503.
+	Images ImageStore
+	// WatermarkPreview draws the on-screen logo preview and its options; nil answers 501.
+	WatermarkPreview WatermarkPreviewer
+	// Now is the clock the watermark options read; nil is time.Now.
+	Now func() time.Time
 }
 
 // Handlers serves the channel routes.
@@ -134,6 +144,9 @@ type Handlers struct {
 	playout        Stopper
 	activity       *activity.Recorder
 	imageRecords   func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
+	images         ImageStore
+	watermark      WatermarkPreviewer
+	now            func() time.Time
 }
 
 // New returns the channel handlers over d.
@@ -143,13 +156,21 @@ func New(d Deps) *Handlers {
 		backend:  httpcore.Backend{Source: d.BackendCheckpoint, Settings: d.LiveSettings},
 		settings: d.Settings, suggest: d.Suggest, channels: d.Channels, binder: d.Binder,
 		tunerRescanner: d.TunerRescanner, icons: d.Icons, playout: d.Playout, activity: d.Activity,
-		imageRecords: d.ImageRecords,
+		imageRecords: d.ImageRecords, images: d.Images, watermark: d.WatermarkPreview, now: d.Now,
 	}
 }
 
 // Register mounts every channel route on api.
 func (s *Handlers) Register(api huma.API) {
 	s.registerChannels(api)
+	s.registerWatermarkPreview(api)
+	s.registerWatermarkOptions(api)
+}
+
+// ImageStore is the image service the icon and watermark uploads write through (§22).
+type ImageStore interface {
+	Ingest(ctx context.Context, r io.Reader, req images.IngestRequest) (images.Image, error)
+	URLFor(hash string, width int, f images.Format) string
 }
 
 // checkpoint reads the backend checkpoint every channel route judges playability by.
@@ -216,9 +237,15 @@ func (s *Handlers) logoImageResolver(ctx context.Context, logos []string) func(s
 	}
 }
 
-// LinkUpload records an already-stored upload (`what`: "icon", "image") on the channel. The bytes
-// are saved by then, so a failure says so rather than reading as a lost upload. The icon and
-// watermark uploads call it.
-func (s *Handlers) LinkUpload(ctx context.Context, id, what string, change func(*channelstore.Channel) error) error {
-	return s.linkUploadToChannel(ctx, id, what, change)
+// writeProblem sends an RFC 7807 problem+json body from a plain mux handler.
+func (s *Handlers) writeProblem(w http.ResponseWriter, r *http.Request, status int, title, detail string) {
+	httpcore.WriteProblem(s.log, w, r, status, title, detail)
+}
+
+// clock is the time the options route reads the calendar at.
+func (s *Handlers) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }

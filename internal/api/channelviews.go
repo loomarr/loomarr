@@ -8,11 +8,11 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
-// registerChannelExtras mounts the /v1/channels routes whose handlers still live in this package
-// (now/next, upcoming and timeline with the guide; the icon and watermark uploads; the pod, cycle
-// and coverage previews). The channel resource itself is api/channels. Each file that moves out
-// takes its registration with it, and this function disappears with the last one.
-func (s *Server) registerChannelExtras(api huma.API) {
+// registerChannelViews mounts the /v1/channels routes that read the guide and the filler pod
+// preview: now/next, upcoming and timeline, and the pod, cycle and coverage previews. They share
+// the guide, pod and playout plumbing this package still owns; the channel resource itself,
+// its uploads and the watermark preview are api/channels.
+func (s *Server) registerChannelViews(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
 		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.",
@@ -34,42 +34,6 @@ func (s *Server) registerChannelExtras(api huma.API) {
 			"Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).",
 		Tags: []string{"channels"},
 	}, httpcore.RoleMember), s.channelTimeline)
-
-	// ⚠ **`channel-icon` (GET /v1/channels/{id}/icon) was RETIRED in V52 phase 8**, with the
-	// `channel_icons` table behind it. A channel's logo is a /v1/images URL now, which Tunarr and retired-ok
-	// the media server fetch unauthenticated exactly as they fetched this — the public-with-no-
-	// credential property moved to the image serve route, where §22 makes visibility a property of
-	// the IMAGE rather than of the route.
-	//
-	// The upload half below survives; only the serving moved.
-
-	// The upload — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
-	// edge, before the handler's own read limit; the handler still checks, because the multipart
-	// header's declared size is a claim, not a measurement.
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "upload-channel-icon", Method: http.MethodPost, Path: "/v1/channels/{id}/icon",
-		Summary: "Upload a channel icon",
-		Description: "Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — " +
-			"SVG is refused because the serve half is public and an SVG can carry script). Ingests the " +
-			"bytes into the image service (§22), points the channel's logo at the content-addressed URL, " +
-			"and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a " +
-			"different image yields a different one, so no cache-bust is needed.",
-		Tags:         []string{"channels"},
-		MaxBodyBytes: maxIconBytes + 1024,
-	}, httpcore.RoleAdmin), s.uploadChannelIcon)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "upload-channel-watermark", Method: http.MethodPost, Path: "/v1/channels/{id}/watermark",
-		Summary: "Upload a custom channel watermark",
-		Description: "Admin only. A PNG or WebP with transparency, under 2 MB, in the `file` field. The image's " +
-			"alpha is the bug's shape. Stores it in the image service (role watermark, original kept) and sets " +
-			"the channel's policy.watermark.image, which wins over the automatic image. Clear it by saving the " +
-			"policy without watermark.image.",
-		Tags:         []string{"channels"},
-		MaxBodyBytes: maxIconBytes + 1024,
-	}, httpcore.RoleAdmin), s.uploadChannelWatermark)
-	s.registerWatermarkPreview(api)
-	s.registerWatermarkOptions(api)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
