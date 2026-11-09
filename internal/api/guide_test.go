@@ -39,6 +39,7 @@ type guideBody struct {
 		Number       int    `json:"number"`
 		ProgramCount int    `json:"programCount"`
 		PendingCount int    `json:"pendingCount"`
+		Decade       int    `json:"decade"`
 		Airings      []struct {
 			Kind          string        `json:"kind"`
 			Title         string        `json:"title"`
@@ -258,6 +259,37 @@ func TestGuide_RowCarriesReadyAndPendingTitleCounts(t *testing.T) {
 	}
 	if got := body.Channels[0]; got.ProgramCount != 1 || got.PendingCount != 2 {
 		t.Fatalf("counts = %d ready, %d pending; want 1 and 2", got.ProgramCount, got.PendingCount)
+	}
+}
+
+// #2767: a guide row carries the channel's decade so its number block can take the decade's colour;
+// a channel with no single-decade era leaves it out.
+func TestGuide_RowCarriesTheEraDecade(t *testing.T) {
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: &fakeXMLTVGuide{}})
+	srv, st := harness.Server, harness.Store
+	save := func(id string, number int, policy schedule.ChannelPolicy) {
+		t.Helper()
+		if _, err := st.SaveChannel(context.Background(), store.Channel{
+			Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
+			Policy:  policy,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("ch1", 1, schedule.ChannelPolicy{Scope: schedule.ScopePolicy{
+		Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999}),
+	}})
+	save("ch2", 2, schedule.ChannelPolicy{})
+
+	body := getGuide(t, srv, "")
+	if len(body.Channels) != 2 {
+		t.Fatalf("got %d channels, want 2", len(body.Channels))
+	}
+	if got := body.Channels[0].Decade; got != 1990 {
+		t.Fatalf("row 1 decade = %d, want 1990", got)
+	}
+	if got := body.Channels[1].Decade; got != 0 {
+		t.Fatalf("row 2 decade = %d, want 0 (absent)", got)
 	}
 }
 
