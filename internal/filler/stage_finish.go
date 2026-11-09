@@ -12,8 +12,7 @@ import (
 // ⚠ It does no work, and that is its job. Every other rung can be skipped (vision when no model is
 // configured, split when a clip is single), so the ready commit needs one rung that always runs to
 // anchor on: the runner persists this rung as running, and TerminalReady publishes only a ladder
-// whose last record is this rung, done. It replaced the score rung, whose confidence number never
-// controlled readiness and was retired with the column (#2323).
+// whose last record is this rung, done.
 type FinishStage struct{}
 
 // NewFinishStage builds the stage.

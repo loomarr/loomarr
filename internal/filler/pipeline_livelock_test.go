@@ -118,8 +118,8 @@ func TestPipeline_ReadyCommitFailureBacksOffAndYieldsItsSlot(t *testing.T) {
 	}
 }
 
-// A commit that fails once must not leave the failed score record behind: after the backoff the
-// score rung runs again, records done, and the row publishes with a full ordered ladder.
+// A commit that fails once must not leave the failed finish record behind: after the backoff the
+// finish rung runs again, records done, and the row publishes with a full ordered ladder.
 func TestPipeline_ReadyCommitFailingOnceRecoversToReadyAfterBackoff(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "once")

@@ -21,10 +21,8 @@ import (
 // detection quality is a property of the source, measured 69–100%, so nothing
 // enters the catalog unconfirmed).
 //
-// ⚠ "classify each segment" used to sit before dedup and is GONE (§10 V51g). It
-// was one LLM turn per segment — 51 × 7.4s ≈ 377s on a 16m47s reel, against a
-// 120s pass — so the rung could never finish and restarted every two minutes.
-// **Split does not classify.** Its one descriptive exception is a bounded display-name proposal
+// ⚠ **Split does not classify** (§10 V51g): classifying each segment is one LLM turn per segment —
+// 51 × 7.4s ≈ 377s on a 16m47s reel — so the rung could never finish inside its pass. Its one descriptive exception is a bounded display-name proposal
 // grounded in the exact segment's existing vision/transcript observation (§10 V69). Each segment
 // is still spawned as its own clip and reaches `tag` on its own ladder, after `transcribe`; naming
 // has no admission authority.
@@ -257,7 +255,7 @@ type SplitProposal struct {
 	// "compilation … no longer in the catalog" for a clip sitting in the catalog. An operator
 	// could open a 41-segment reel, edit it, and never commit it. It survived because the
 	// splitter's test store keys its map on `Path`, so the fixture answered a question
-	// production's store does not (the same collapsed-key class `conformance_filler.go` records).
+	// production's store does not (the same collapsed-key class `records/conformance_filler_test.go` records).
 	//
 	// ⚠ The CATALOG PATH still comes from the clip row rather than being reconstructed from this
 	// identity. V66 additionally persists `Source` below: that is the exact evidence/playback asset
@@ -348,8 +346,8 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 
 // detectedGap is a gap that remembers WHICH detector found it.
 //
-// ⚠ It exists because that fact used to die one line before it was needed: `triage` did
-// `append(blacks, silences...)`, and from there nothing could tell a boundary both detectors agreed
+// ⚠ It exists because merging the gaps into one list (`append(blacks, silences...)`) would lose
+// which detector found each, and from there nothing could tell a boundary both detectors agreed
 // on from one only a single detector saw. Corroboration is the strongest evidence a cut has — 9 of
 // 12 fades in the measured reel were confirmed by both — so throwing it away is what left the
 // confidence ladder (§10 V34) with nothing to read.
@@ -396,9 +394,9 @@ func boundaryCuts(gaps []detectedGap, durationMs int64) []boundaryCut {
 	out := cuts[:0]
 	for i, c := range cuts {
 		// ⚠ A collision is AGREEMENT too, and this is the non-obvious half. Two separate gaps whose
-		// midpoints clamp onto the same millisecond used to have the second one silently dropped —
-		// which is right for the position and wrong for the evidence, because it discarded a second
-		// detector confirming that very spot.
+		// midpoints clamp onto the same millisecond must not have the second one silently dropped —
+		// that is right for the position and wrong for the evidence, because it would discard a
+		// second detector confirming that very spot.
 		if i > 0 && c.Ms == cuts[i-1].Ms {
 			out[len(out)-1].Src |= c.Src
 			continue

@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// This test pins the production brand dictionary (phraseMappings in fillerenrichment's
+// This test pins the production brand dictionary (phraseMappings in filler/enrichment's
 // deterministic.go: "hp sauce", "tootsie pop") and its "on Five" network rule end to end, so it
 // keeps their real names. A dictionary phrase is the only text that fires a trusted product mapping.
 

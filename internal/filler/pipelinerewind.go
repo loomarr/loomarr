@@ -22,18 +22,9 @@ import (
 // to rewind a stage that then immediately skips itself, which looks exactly like the button doing
 // nothing.
 //
-// ⚠ **NOTHING CALLS THIS YET, and this comment used to claim otherwise.** It described
-// `/reprocess`, `/retag` and `/resplit` as "operator-facing routes ... thin wrappers over this".
-// None of the three exists — not in the router, not in `api/openapi.yaml`, not anywhere in the
-// tree — and `Rewind` has no callers and no tests. The claim cost real time: with 17 compilations
-// stuck at `split`/`review` and `ListPipelineWork` claiming `running` only, this paragraph named
-// the exact escape hatch that would free them, and it was fiction. **Wiring the routes is real
-// work, not a formality** (each needs its `from` stage, the `force` rule for transcode, and an
-// authorization decision), so the honest state is recorded here rather than implied by a comment.
-//
-// ⚠ `Requeue` below is NOT that work. It is the one narrow transition that IS wired — un-park a
-// reel after an operator re-detect — and it deliberately invalidates nothing, because the caller
-// has just replaced the proposal itself.
+// ⚠ `Requeue` below is a different, narrower transition: it un-parks a reel after an operator
+// re-detect, and it deliberately invalidates nothing, because the caller has just replaced the
+// proposal itself.
 
 // RewindStore is the slice of the store `Rewind` invalidates through.
 //

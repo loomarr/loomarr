@@ -161,7 +161,7 @@ func TestPlaybackIntegrityEvaluatorRefusesASecondAnswerForSettledOperation(t *te
 	}
 }
 
-// The subject's own quality-versus-conditioning check lives in internal/filler; this test needs
+// The subject's own quality-versus-conditioning check lives in filler/asset; this test needs
 // the rendered-child media fixture below, which is why it sits here.
 func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *testing.T) {
 	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())

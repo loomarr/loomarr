@@ -97,7 +97,7 @@ func SidecarFetchedMarkForAcquisition(sourceID, acquisitionID string) map[string
 	return mark
 }
 
-// SidecarLoomarrKey is the namespaced key `SidecarFetchedMark` belongs under. Exported for the
+// SidecarLoomarrKey is the namespaced key `SidecarFetchedMarkForAcquisition` belongs under. Exported for the
 // same reason: the downloader writes it, this package reads it.
 func SidecarLoomarrKey() string { return loomarrKey }
 
@@ -266,11 +266,10 @@ type ConditioningEvidence struct {
 //
 // ⚠ **This writes only `*.info.json`** — never the media file beside it.
 //
-// ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
-// V42 made the unqualified version false. The TRANSCODE rung now snapshots the exact source into
-// the retained master tree, builds independently verified evidence and playback derivatives, and
-// may replace only the visible playable name after durable publication. The retained master is
-// not deleted by that replacement.
+// ⚠ That does not mean media files are never touched: the TRANSCODE rung snapshots the exact
+// source into the retained master tree, builds independently verified evidence and playback
+// derivatives, and may replace only the visible playable name after durable publication. The
+// retained master is not deleted by that replacement.
 //
 // The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
 // package-level mutation and retention contracts live with the derivative publisher.

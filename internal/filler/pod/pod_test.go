@@ -63,9 +63,8 @@ func TestAssemble_Deterministic(t *testing.T) {
 // Era + audience matching (§10): exact-era kids ads are chosen; the wrong-audience
 // (late_night) and wrong-decade (1985) clips are NOT in an exact match.
 func TestAssemble_EraAudienceMatch(t *testing.T) {
-	// ⚠ No `EraStrict` (retired-ok) needed to make this exact — and that flag never was what made it exact.
-	// `fillCommercials` takes the TIGHTEST non-empty pool, so as long as the catalog has 1992 kids
-	// ads the exact rung wins on its own. The flag only ever removed the rung BELOW this one.
+	// ⚠ Nothing special is needed to make this exact: `fillCommercials` takes the TIGHTEST
+	// non-empty pool, so as long as the catalog has 1992 kids ads the exact rung wins on its own.
 	p := pod.Assemble(sampleCatalog(), kidsWindow(1), pod.Policy{}, nil)
 	if p.MatchLevel != pod.MatchExact {
 		t.Fatalf("expected exact match, got %s", p.MatchLevel)

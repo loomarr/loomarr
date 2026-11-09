@@ -81,10 +81,10 @@ func New(cfg Config) *Provider {
 	return p
 }
 
-// ID implements sourceprovider.Provider.
+// ID implements source.Provider.
 func (*Provider) ID() source.ID { return ID }
 
-// Describe implements sourceprovider.Provider.
+// Describe implements source.Provider.
 func (*Provider) Describe() source.Description {
 	return source.Description{
 		Label: "Archive.org", AddressHint: "https://archive.org/details/collection", Fetched: true,
@@ -115,13 +115,13 @@ var (
 	archiveSlug = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9_-]*[_-][a-z0-9_-]+$`)
 )
 
-// Recognizes implements sourceprovider.Recognizer.
+// Recognizes implements source.Recognizer.
 func (*Provider) Recognizes(input string) bool {
 	input = strings.TrimSpace(input)
 	return archiveURL.MatchString(input) || archiveSlug.MatchString(input)
 }
 
-// SourceURL implements sourceprovider.Linker: a stored identifier is a collection's details page.
+// SourceURL implements source.Linker: a stored identifier is a collection's details page.
 func (*Provider) SourceURL(address string) string {
 	v := strings.TrimSpace(address)
 	if v == "" {
@@ -133,7 +133,7 @@ func (*Provider) SourceURL(address string) string {
 	return "https://archive.org/details/" + url.PathEscape(v)
 }
 
-// EmbedURL implements sourceprovider.Linker: an item's details page plays in archive.org's embed.
+// EmbedURL implements source.Linker: an item's details page plays in archive.org's embed.
 func (*Provider) EmbedURL(itemURL string) string {
 	u, err := url.Parse(itemURL)
 	if err != nil || strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") != "archive.org" {
@@ -146,17 +146,17 @@ func (*Provider) EmbedURL(itemURL string) string {
 	return "https://archive.org/embed/" + url.PathEscape(parts[1]) + "?autoplay=1"
 }
 
-// Suggest implements sourceprovider.Finder.
+// Suggest implements source.Finder.
 func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]source.Suggestion, error) {
 	return p.finder.Suggest(ctx, query, limit)
 }
 
-// Resolve implements sourceprovider.Finder.
+// Resolve implements source.Finder.
 func (p *Provider) Resolve(ctx context.Context, input string) (source.Suggestion, error) {
 	return p.finder.Resolve(ctx, input)
 }
 
-// Address implements sourceprovider.Addresser: it pulls the collection identifier out of whatever
+// Address implements source.Addresser: it pulls the collection identifier out of whatever
 // an operator pasted.
 //
 // Three spellings are accepted because all three are things people actually paste: a bare
@@ -204,7 +204,7 @@ func (p *Provider) List(ctx context.Context, src source.Source, req source.ListR
 		return source.Listing{}, err
 	}
 	if p.runtimes != nil && p.runtimes() {
-		// Archive.org throttles per-item metadata (clipfetch.Enrich: ~25 items in 15–25 s),
+		// Archive.org throttles per-item metadata (fetch.ArchiveDownloader.Enrich: ~25 items in 15–25 s),
 		// so reading runtimes is bounded per source, and never to more than half the time
 		// left before the caller's deadline: a planned pull walks up to 12 sources inside one
 		// 90 s deadline, and runtimes must never be what makes it fail. Per item and
@@ -235,7 +235,7 @@ func (p *Provider) List(ctx context.Context, src source.Source, req source.ListR
 	return out, nil
 }
 
-// Search implements sourceprovider.Searcher: it finds items inside one collection.
+// Search implements source.Searcher: it finds items inside one collection.
 func (p *Provider) Search(ctx context.Context, src source.Source, query string, limit int) ([]source.Item, error) {
 	res, err := p.catalog.SearchCollection(ctx, src.URI, query, limit)
 	if err != nil {

@@ -135,12 +135,11 @@ func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 // not a normally airable advert; split determines whether it contains many adverts or one long
 // infomercial.
 //
-// ⚠ **Moving this mark to probe is a real behaviour change, and a deliberate one.** Until V51b
-// `is_composite` was set only by split `Confirm`, so a 16-minute recording was AIRABLE until
-// somebody split it — the exact bug §10 V45 describes. Setting it at measurement time makes the
-// default-off `IncludeComposites` filter exclude it immediately, so the worst case is a long
-// recording sitting out of rotation until its cuts are reviewed, rather than sixteen minutes of
-// unrelated adverts airing as one break.
+// ⚠ **`is_composite` is set here, at measurement time, and that is deliberate.** Setting it only
+// when split `Confirm` runs would leave a 16-minute recording AIRABLE until somebody split it —
+// the exact bug §10 V45 describes. At probe time the default-off `IncludeComposites` filter
+// excludes it immediately, so the worst case is a long recording sitting out of rotation until
+// its cuts are reviewed, rather than sixteen minutes of unrelated adverts airing as one break.
 func (s *ProbeStage) looksComposite(c cliplibrary.StoreClip) bool {
 	if c.IsComposite {
 		return true // already marked; nothing to re-measure

@@ -23,9 +23,6 @@ package filler
 // ⚠ It stays small on purpose. `language = ”` and `transcript = ”` are not concepts the store
 // should learn: they are the "not yet checked" sentinels of individual pipeline rungs, and pushing
 // them down would make the store's filter grow a clause per stage.
-//
-// (It lived in `languagejob.go` until V51b retired that job. The type outlived it because the
-// store adapters and the split stage read through it.)
 type ClipQuery struct {
 	// IncludeHeld covers clips still awaiting review. A held clip is a fine candidate for most
 	// work: knowing a clip's language, transcript or tags BEFORE a human looks is strictly more

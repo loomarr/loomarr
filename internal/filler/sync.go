@@ -28,10 +28,9 @@ import (
 // `/v1/filler/sync` triggers it; a periodic sync runs alongside the reconciler
 // (FILLER_SYNC_EVERY, §15).
 //
-// It previously synced FROM the Tunarr `local` filler source, with clip identity
-// being the Tunarr program uuid. See Clip for why that could not serve internal
-// playout (a uuid is not a playable input) and why the dependency ran the wrong
-// way (no Tunarr ⇒ no catalog ⇒ no commercials, on a service §9.1 makes optional).
+// Clip identity is the content hash, not a Tunarr program uuid: a uuid is not a playable input for
+// internal playout, and a catalog that depends on Tunarr (no Tunarr ⇒ no catalog ⇒ no
+// commercials) would make an optional service (§9.1) mandatory.
 
 // Store is the slice of the store the sync needs.
 type Store interface {
@@ -50,7 +49,7 @@ type AcquisitionManifestStore interface {
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 }
 
-// Syncer reconciles the clip catalog against the Tunarr `local` filler source.
+// Syncer reconciles the clip catalog against the scanned clip folder and registered sources.
 type Syncer struct {
 	source cliplibrary.FillerSource
 	store  Store
@@ -299,14 +298,15 @@ type SyncResult struct {
 	Inferior  int // files skipped as known inferior copies of an ad already in the catalog
 }
 
-// Sync ensures the Tunarr local source exists, then reconciles the catalog (§10):
-//   - upsert every scanned clip, PRESERVING loomarr-owned tags (era/audience/
-//     category/ai) on clips we already know — Tunarr only owns id/name/duration/
-//     kind-hint;
-//   - prune clips no longer in the source (identity = Tunarr program uuid).
+// Sync registers the clip folder with Tunarr where one is configured (best-effort), then
+// reconciles the catalog against the scan (§10):
+//   - upsert every scanned clip, PRESERVING loomarr-owned tags (era/audience/category/ai) on
+//     clips we already know — the scan only owns identity, location, name and duration;
+//   - prune clips no longer on disk (identity = content hash), unless the listing was incomplete
+//     (see guardPrune).
 //
-// Duration always comes from Tunarr's scan. Idempotent: a no-change re-sync makes
-// no tag edits.
+// Duration always comes from Loomarr's own ffprobe scan. Idempotent: a no-change re-sync makes no
+// tag edits.
 func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Checked BEFORE the FILLER_DIR check and before any filesystem work: a switched-off
 	// source must not scan, and must not report a configuration problem it does not have.
@@ -704,7 +704,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 
 // warnQuarantined reports a claimed file that stays out of the catalog. Sync revisits the same
 // file every pass, so the warning is logged when the file first lands here or its reason changes,
-// not on every pass — one stuck artifact used to write the same line every two minutes.
+// not on every pass — one stuck artifact would otherwise write the same line every two minutes.
 func (s *Syncer) warnQuarantined(clipPath string, err error) {
 	s.quarantined.Warn(s.log, clipPath, err.Error(), "filler acquisition artifact remains quarantined",
 		"clip", clipPath, "err", err)
@@ -999,7 +999,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc cliplibrary.RawClip, existing c
 // and Kind were identical. `Thumbnail` had the same latent bug and had simply never been exercised,
 // because a clip's still was always generated on the same pass that first inserted it.
 //
-// The rule for anything added later: if `syncClips` assigns it from `rc`, compare it here.
+// The rule for anything added later: if `Sync` assigns it from `rc`, compare it here.
 func serverFieldsUnchanged(a, b clips.Clip) bool {
 	// ⚠ NameSource is compared with Name: an unchanged name whose provenance the scan has just
 	// learned (a row migration 00134 left 'unknown') must still be written, or it stays unknown.

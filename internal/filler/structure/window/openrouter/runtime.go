@@ -37,7 +37,7 @@ type CertifiedRuntimeConfig struct {
 	MediaRoot    string
 	EvidenceRoot string
 	FFmpegPath   string
-	// CutFamily is the family this host cuts on now (fillerstructuremedia.CutFamily). It is asked
+	// CutFamily is the family this host cuts on now (cut.CutFamily). It is asked
 	// per source because a host's encoder settles after boot.
 	CutFamily     func() encode.Family
 	Ledger        Ledger

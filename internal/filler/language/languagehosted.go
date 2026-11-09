@@ -79,7 +79,7 @@ func (h *Hosted) DetectLanguage(ctx context.Context, file string, startMs, endMs
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	// Shared with the local whisper backend (`extractSpanWAV`): both feed a model that requires
+	// Shared with the local whisper backend (`tools.ExtractSpanWAV`): both feed a model that requires
 	// 16 kHz mono, so the extraction is the same job whoever runs the inference.
 	wav := tools.SpanWAVPath(dir)
 	if err := tools.ExtractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {

@@ -443,8 +443,8 @@ func (s stubTunarr) LocalClipIDsByName(context.Context) (map[string]string, erro
 	return s.ids, s.err
 }
 
-// THE POINT OF THE CHANGE: no Tunarr still yields a full catalog. Previously clips were
-// discovered BY asking Tunarr, so an internal-playout install with no Tunarr had no commercials.
+// No Tunarr still yields a full catalog: clips are discovered by the scan, not by asking Tunarr, so
+// an internal-playout install with no Tunarr still has commercials.
 func TestDirSource_NoTunarrStillProducesAFullCatalog(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ad1.mp4")

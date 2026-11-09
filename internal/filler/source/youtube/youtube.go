@@ -66,10 +66,10 @@ func YtDlp(e *fetch.YouTubeEnumerator) Enumerator {
 	}
 }
 
-// ID implements sourceprovider.Provider.
+// ID implements source.Provider.
 func (*Provider) ID() source.ID { return ID }
 
-// Describe implements sourceprovider.Provider.
+// Describe implements source.Provider.
 func (*Provider) Describe() source.Description {
 	return source.Description{
 		Label: "YouTube", AddressHint: "https://www.youtube.com/@channel/videos", Fetched: true,
@@ -107,17 +107,17 @@ var (
 	youtubeVideoID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
-// Recognizes implements sourceprovider.Recognizer.
+// Recognizes implements source.Recognizer.
 func (*Provider) Recognizes(input string) bool {
 	input = strings.TrimSpace(input)
 	return youtubeURL.MatchString(input) || youtubeHandle.MatchString(input) ||
 		youtubeChannelID.MatchString(input) || youtubePlaylistID.MatchString(input)
 }
 
-// SourceURL implements sourceprovider.Linker: a registered source is stored as its URL.
+// SourceURL implements source.Linker: a registered source is stored as its URL.
 func (*Provider) SourceURL(address string) string { return strings.TrimSpace(address) }
 
-// EmbedURL implements sourceprovider.Linker: a watch URL plays in the privacy-enhanced embed.
+// EmbedURL implements source.Linker: a watch URL plays in the privacy-enhanced embed.
 func (*Provider) EmbedURL(itemURL string) string {
 	u, err := url.Parse(itemURL)
 	if err != nil || strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") != "youtube.com" {
@@ -137,7 +137,7 @@ func (p *Provider) WithFinder(finder source.Finder) *Provider {
 	return p
 }
 
-// Suggest implements sourceprovider.Finder.
+// Suggest implements source.Finder.
 func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]source.Suggestion, error) {
 	if p.finder == nil {
 		return nil, fmt.Errorf("%w: yt-dlp is unavailable", acquisition.ErrSourceProvider)
@@ -145,7 +145,7 @@ func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]sour
 	return p.finder.Suggest(ctx, query, limit)
 }
 
-// Resolve implements sourceprovider.Finder.
+// Resolve implements source.Finder.
 func (p *Provider) Resolve(ctx context.Context, input string) (source.Suggestion, error) {
 	if p.finder == nil {
 		return source.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", acquisition.ErrSourceProvider)
@@ -153,10 +153,10 @@ func (p *Provider) Resolve(ctx context.Context, input string) (source.Suggestion
 	return p.finder.Resolve(ctx, input)
 }
 
-// Address implements sourceprovider.Addresser: it validates a playlist or channel URL for
+// Address implements source.Addresser: it validates a playlist or channel URL for
 // registration and returns the canonical URL to store, or "" if it is not one.
 //
-// It is deliberately stricter than clipfetch.KindForURL, which defaults an unknown host to YouTube
+// It is deliberately stricter than fetch.KindForURL, which defaults an unknown host to YouTube
 // because yt-dlp handles the widest set of sites. That default is right for an ingest, where an
 // admin pastes one URL deliberately and watches it work. It is wrong here: a registered source
 // persists and is fetched unattended, so a typo'd host would become a permanent row that can never

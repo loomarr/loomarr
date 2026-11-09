@@ -503,8 +503,8 @@ func (d *DefectFloor) measureClip(ctx context.Context, c clips.Clip) (defects.Re
 
 // defectCandidate is a clip that may air as an ad of its own once admitted. A composite is a
 // recorded break and is judged through its segments; an unplayable clip has no picture to judge.
-// A held clip is not yet placed: the score rung, last in the conveyor, classifies it, so until then
-// it reads as not playable and that says nothing about it.
+// A held clip is not yet placed: the ready commit, last in the conveyor, sets its placement, so
+// until then it reads as not playable and that says nothing about it.
 func defectCandidate(c clips.Clip) bool {
 	return !c.IsComposite && c.RemovedAt.IsZero() && (c.Held || c.Placement != clips.PlacementNotPlayable)
 }

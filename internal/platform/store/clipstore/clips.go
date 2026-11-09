@@ -1792,8 +1792,8 @@ func (s *Store) SetClipTranscript(ctx context.Context, path, transcript string, 
 // the persisted transcript); the vision pass grounds one in the on-screen text. Both are legitimate
 // writers of `brand`, and each writes only what it is entitled to.
 //
-// The caller has already applied the grounding rule (validateTags keeps a brand only when it
-// appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
+// The caller has already applied the grounding rule (a brand is kept only when it appears
+// literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
 // and vision writers it sits beside and unlike the hash-keyed classification update — the job carries the
 // path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
 // other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.

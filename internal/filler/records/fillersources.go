@@ -194,16 +194,15 @@ func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Dura
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
 // pull plan and be handed to the ingest job.
 //
-// ⚠ **This invariant used to be implicit and became false when the table flattened (V37).**
-// Before, `filler_sources` held only operator-registered remotes, so "every row here is
-// fetchable" was true by construction and both pull paths filtered on `Enabled` alone. Migration
-// 00029 seeds the config-backed singletons (`folder`, `library`) into the same table, and those
-// are SCANNED, not fetched — the folder has no URL to download from and its `uri` is empty.
+// ⚠ **Not every row in `filler_sources` is fetchable (V37).** Migration 00029 seeds the
+// config-backed singletons (`folder`, `library`) into the same table as the operator-registered
+// remotes, and those are SCANNED, not fetched — the folder has no URL to download from and its
+// `uri` is empty.
 //
-// Without this, a pull plan included a folder row and approval handed `Ingest` an empty string:
-// a fetch of nothing, enqueued as real work. Caught by the existing pull tests, which is why the
-// check lives on the domain type rather than being re-derived at each call site — there are two
-// (propose and the approve-time re-check) and they must not disagree about what is fetchable.
+// Filtering on `Enabled` alone would put a folder row in a pull plan and hand `Ingest` an empty
+// string on approval: a fetch of nothing, enqueued as real work. The check lives on the domain
+// type rather than being re-derived at each call site because there are two (propose and the
+// approve-time re-check) and they must not disagree about what is fetchable.
 func (f FillerSource) Fetchable() bool {
 	switch f.Kind {
 	case "folder", "library":

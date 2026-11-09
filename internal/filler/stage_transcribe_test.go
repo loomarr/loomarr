@@ -20,10 +20,8 @@ import (
 // not apply, an already-transcribed clip does not apply, and a wordless clip is recorded once so
 // it is never re-run.
 //
-// ⚠ **Ported from `transcribejob_test.go` when V51b retired the sweep.** `BoundsOnePass` went with
-// it: the bound is now `filler.pipeline.max_whisper`, enforced by the runner and tested against
-// the runner in `pipeline_test.go`. Asserting it here would be testing a constant this file no
-// longer owns.
+// ⚠ The per-pass bound is `filler.pipeline.max_whisper`, enforced by the runner and tested against
+// the runner in `pipeline_test.go`, not here.
 
 // fakeTranscribeStore records what the rung wrote without a database.
 type fakeTranscribeStore struct {
@@ -81,7 +79,7 @@ func utter(text string) tools.TranscriptSegment {
 //
 // ⚠ Hash is DERIVED from the path rather than equal to it. A fixture that sets the two to the same
 // string cannot tell a hash-keyed call from a path-keyed one, which is how two shipped bugs
-// survived their own tests (see conformance_filler.go).
+// survived their own tests (see records/conformance_filler_test.go).
 func transcribeClip(path, transcript string) cliplibrary.StoreClip {
 	return cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,

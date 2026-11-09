@@ -20,7 +20,7 @@ import (
 // sweeps.
 //
 // ⚠ **Sequential, one clip at a time, and that is a design choice rather than a simplification.**
-// Whisper is ~341s per clip under QEMU (measured, recorded in transcribejob.go) and ffmpeg
+// Whisper is ~341s per clip under QEMU (measured; see stage_transcribe.go) and ffmpeg
 // competes with playout for the GPU (§8.1's eviction note, §9.1's cost-aware admission), so a
 // worker pool would turn a catalog import into a live-channel outage. It is also what makes the
 // SSE story work: at most one clip is running, so "forty clips × eight stages" never arrives at
@@ -474,8 +474,8 @@ func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error
 // ⚠ **Enrolled at `probe/queued`, with NO derived backfill**, and that is the deliberate
 // simplification. The obvious alternative — infer each stage's state from what the clip already
 // carries (`Language != ""` ⇒ language done, `VisibleText != ""` ⇒ vision done, …) — is guesswork about
-// work done by code that no longer exists, cannot be tested against a fresh install, and has one
-// silent failure mode per row.
+// work done by earlier versions of the pipeline, cannot be tested against a fresh install, and
+// has one silent failure mode per row.
 //
 // It costs nothing to skip, because each stage's `Applies` reads the clip's own state: a clip that
 // already has a transcript skips `transcribe` on its own say-so. So re-enrolment is cheap where
@@ -952,9 +952,8 @@ func (p *Pipeline) onFailure(row *pipelinestate.ClipPipeline, err error) bool {
 // progressThrottle is the database-write throttle for ONE stage run (§10).
 //
 // ⚠ **`lastWritten` is the last percent actually PERSISTED, and keeping it distinct from
-// `row.Progress` is the entire point of this type.** The throttle used to compare against
-// `row.Progress`, which the skipped-write branch also advances — so the baseline moved with every
-// sample. ffmpeg reports about once a second, making `percent` perpetually `lastWritten + 1`, so
+// `row.Progress` is the entire point of this type.** Comparing against `row.Progress` would not
+// work: the skipped-write branch also advances it, so the baseline would move with every sample. ffmpeg reports about once a second, making `percent` perpetually `lastWritten + 1`, so
 // `percent >= lastWritten + 10` was never satisfied and a long transcode persisted NOTHING between
 // 0 and 100. The bug is invisible from the UI, which is fed by the SSE publish that always fires;
 // it only shows up as a reload mid-transcode snapping back to 0%.
@@ -1009,11 +1008,10 @@ func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeli
 	}
 
 	// ⚠ **`NoMeasurement` is a STATE, not a small percentage, so it bypasses the throttle
-	// entirely.** It used to be dropped here by a blanket `percent < 0` guard, which left the row
-	// at the 0 the runner initialised it with — and a persisted 0 renders as a bar frozen at zero,
-	// the fabricated-progress claim §10 explicitly forbids. `tag` and `vision` both report it, so
-	// every run of either stage showed a false 0% bar. It fires once per stage, so always writing
-	// it costs one row update, not a write per sample.
+	// entirely.** Dropping it with a blanket `percent < 0` guard would leave the row at the 0 the
+	// runner initialised it with — and a persisted 0 renders as a bar frozen at zero, the
+	// fabricated-progress claim §10 explicitly forbids. `tag` and `vision` both report it. It fires
+	// once per stage, so always writing it costs one row update, not a write per sample.
 	if percent == pipelinestate.NoMeasurement {
 		row.Progress = pipelinestate.NoMeasurement
 		p.writeProgress(ctx, row, clip, t, percent)
