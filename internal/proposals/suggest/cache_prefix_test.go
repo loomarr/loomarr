@@ -17,7 +17,7 @@ import (
 // repair — must carry the same tools bytes; finalization is enforced by tool_choice none.
 func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *testing.T) {
 	meaning := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(""),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
@@ -63,7 +63,7 @@ func canCallTools(opts llm.ChatOptions) bool {
 // drops the tools, so the reserved input budget of a hosted run does not grow by the tool schema.
 func TestSuggest_HostedProviderFinalizationStillDropsTools(t *testing.T) {
 	meaning := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)

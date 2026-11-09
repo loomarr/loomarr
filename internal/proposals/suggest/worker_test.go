@@ -123,8 +123,8 @@ func TestWorker_UndurableFailureWriteLogsAtErrorAndStaleAtInfo(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newStore(t)
-			model := testkit.NewLLM()
-			model.Errors = []error{errors.New("model down"), errors.New("model down"), errors.New("model down")}
+			model := testkit.NewLLM(t)
+			model.Errors = []error{errors.New("model down")}
 			lib := marigoldLibrary()
 			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 			sug := suggest.New(model, catalog.New(lib, tm), tm, 10)
@@ -220,7 +220,7 @@ func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (
 func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
+	svc := buildService(t, st, testkit.NewLLM(t))
 	intent := proposals.Intent{Description: "90s action"}
 
 	id1, err := svc.Submit(ctx, intent, "alice")
@@ -281,7 +281,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
+	svc := buildService(t, st, testkit.NewLLM(t))
 	upper := proposals.Intent{Description: "Use https://example.com/RosterA for this programming block"}
 	lower := proposals.Intent{Description: "Use https://example.com/rostera for this programming block"}
 
@@ -327,7 +327,7 @@ func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T
 func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
+	svc := buildService(t, st, testkit.NewLLM(t))
 	sourceID, err := svc.Submit(ctx, proposals.Intent{Description: "kettle kids"}, "alice")
 	if err != nil {
 		t.Fatal(err)
@@ -369,7 +369,7 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
+	svc := buildService(t, st, testkit.NewLLM(t))
 	intent := proposals.Intent{Description: "obscure intent"}
 
 	id1, _ := svc.Submit(ctx, intent, "alice")
@@ -393,7 +393,7 @@ func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
 // (submitted) — persisted, so it survives a restart (§8).
 func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	st := newStore(t)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -444,7 +444,7 @@ func (submittedNotifier) ProposalDenied(context.Context, proposalstore.Proposal)
 func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 	st := newStore(t)
 	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
-	svc := buildService(t, st, testkit.NewLLM(
+	svc := buildService(t, st, testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)).WithProposalNotifier(notifier)
@@ -471,7 +471,7 @@ func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
-	svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier)
+	svc := buildService(t, st, testkit.NewLLM(t)).WithProposalNotifier(notifier)
 	intent := proposals.Intent{Description: "90s action"}
 
 	source, err := svc.Submit(ctx, intent, "alice")
@@ -605,7 +605,7 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 				curator = &recordingCurator{}
 			}
 			approver := accept.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
-			svc := buildService(t, st, testkit.NewLLM(
+			svc := buildService(t, st, testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(tt.picks),
 			)).WithProposalNotifier(notifier).
@@ -647,7 +647,7 @@ func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			}
 			notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 4)}
 			approver := accept.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
-			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
+			svc := buildService(t, st, testkit.NewLLM(t)).WithProposalNotifier(notifier).
 				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 			built := proposals.Proposal{
 				ChannelName: "Marigold",
@@ -675,7 +675,7 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
 	// The first empty, no-tool answer receives the bounded grounding retry; a second
 	// explicit empty answer proves the retry exhausted and preserves the typed failure.
-	svc := buildServiceWith(t, st, flow, testkit.NewLLM(
+	svc := buildServiceWith(t, st, flow, testkit.NewLLM(t,
 		finalResponseWithNone(`{"picks":[]}`),
 		finalResponseWithNone(`{"picks":[]}`),
 	))
@@ -726,7 +726,7 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 	}{
 		{
 			name: "accepted grounded proposal",
-			model: testkit.NewLLM(
+			model: testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			),
@@ -739,7 +739,7 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 		},
 		{
 			name: "empty retrieval abstains and rejects grounding",
-			model: testkit.NewLLM(
+			model: testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "definitely absent"}),
 				finalResponseWithNone(`{"picks":[]}`),
 				finalResponseWithNone(`{"picks":[]}`),
@@ -805,7 +805,7 @@ func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T
 	st := newStore(t)
 	recorder := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	terminal := newDoneEmitter()
-	svc := buildService(t, st, testkit.NewLLM(
+	svc := buildService(t, st, testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
@@ -834,7 +834,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
+			sug := suggest.New(testkit.NewLLM(t), catalog.New(lib, tm), tm, 10).
 				WithFeedback(failingFeedbackSource{err: cause})
 			terminal := newDoneEmitter()
 			svc := suggest.NewService(st, flow, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -877,7 +877,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		"":          {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
 		"channel-a": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 	}}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -991,7 +991,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
+			llmMock := testkit.NewLLM(t) // fails closed before inference: no script, so any model call errors
 			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
 				"":                  {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
 				"channel-unrelated": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
@@ -1063,7 +1063,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 				"":          {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
 				"channel-a": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 			}}
-			llmMock := testkit.NewLLM(
+			llmMock := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			)
@@ -1113,11 +1113,11 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 // OTHER jobs (§8 — one hung call can't starve the queue).
 func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	st := newStore(t)
-	// The first turn surfaces grounded candidates; the second hangs. This proves
+	// The first turn surfaces grounded candidates; the second hangs (the Delay set below outlasts
+	// the timeout, so the call ends on its context before it reads the script). This proves
 	// timeout normalization preserves safe facts gathered before generation ended.
-	slow := testkit.NewLLM(
+	slow := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
-		finalResponseWithNone(`{"channelName":"Late","picks":[]}`),
 	)
 	slow.OnChat = func() {
 		if slow.Calls == 1 {
@@ -1213,7 +1213,7 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	base := newStore(t)
 	st := newLifecycleErrorStore(base)
 	st.failureErr = errors.New("write unavailable")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		finalResponseWithNone(`{"picks":[]}`),
 		finalResponseWithNone(`{"picks":[]}`),
 	)
@@ -1252,7 +1252,7 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	base := newStore(t)
 	st := newLifecycleErrorStore(base)
 	st.successErr = proposalstore.ErrJobNotRunning
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -1338,7 +1338,7 @@ func TestIntentHash_DistinguishesRefine(t *testing.T) {
 func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
+	svc := buildService(t, st, testkit.NewLLM(t))
 
 	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orig", Kind: "suggest", Status: "done",
@@ -1472,7 +1472,7 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -1559,7 +1559,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -1601,7 +1601,7 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -1656,7 +1656,7 @@ func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
 	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)

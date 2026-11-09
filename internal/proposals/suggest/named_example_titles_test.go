@@ -109,7 +109,7 @@ func TestSuggest_ExampleTitlesInRequestAreAnchored(t *testing.T) {
 		return catalog.Candidate{}
 	}
 	kite := byName("Kite over the Harbour")
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Atlas Finch", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(kite.TMDBID)+`","name":"Kite over the Harbour"}]}`, meaning),
 	)
@@ -144,7 +144,7 @@ func TestSuggest_LikeAsVerbNamesNoExample(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "description", 20, 25, 1980, 1989)
 	corpus := namedTitlesCorpus()
 	tinkerlings := corpus.Candidates[3]
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "The Tinkerlings", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(tinkerlings.TMDBID)+`","name":"The Tinkerlings"}]}`, meaning),
 	)
@@ -192,7 +192,7 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 					robots = c
 				}
 			}
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": tc.meaning}),
 				finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(robots.TMDBID)+`","name":"Pocket Robots 5"}]}`, tc.meaning),
 			)
@@ -246,7 +246,7 @@ func TestSuggest_ExampleTitleSurvivesTrailingParenthetical(t *testing.T) {
 	description := "A Sunday-afternoon channel of 1980s adventure movies like Atlas Finch and The Tinkerlings (v3-1)"
 	meaning := fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989)
 	corpus := namedTitlesCorpus()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002016","name":"Pocket Robots 5"}]}`, meaning),
 	)
@@ -271,10 +271,10 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
 	corpus := namedTitlesCorpus()
 	responses := []llm.Response{catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning})}
-	for range 6 {
+	for range 3 { // every unusable final the suggester asks for before it falls back to the anchors
 		responses = append(responses, llm.Response{Content: "I could not decide."})
 	}
-	s := suggest.New(testkit.NewLLM(responses...), catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(testkit.NewLLM(t, responses...), catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +290,7 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 func TestSuggest_ExampleAnchorSurvivesEmptyPicks(t *testing.T) {
 	description := "A channel of 1980s adventure movies such as The Tinkerlings"
 	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[]}`, meaning),
 	)

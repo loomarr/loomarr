@@ -30,7 +30,7 @@ func (r *siteRecorder) Chat(ctx context.Context, m []llm.Message, o llm.ChatOpti
 }
 
 func TestSuggest_LLMCallsNameTheirCallSite(t *testing.T) {
-	rec := &siteRecorder{Provider: testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`), finalResponseWithNone(`{"picks":[]}`))}
+	rec := &siteRecorder{Provider: testkit.NewLLM(t, finalResponseWithNone(`{"picks":[]}`), finalResponseWithNone(`{"picks":[]}`))}
 	lib := catalogfixture.NewScriptedLibrary()
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 	sug := suggest.New(rec, catalog.New(lib, tm), tm, 10)

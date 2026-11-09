@@ -64,15 +64,16 @@ func TestV8SemanticProductionPlannerAndSchedule(t *testing.T) {
 			}
 			responses := []llm.Response{testkit.ToolCallResponse("catalog_search", v8WireArguments(t, arguments))}
 			wantCalls := 2
-			if family == "date-repair" {
-				responses = append(responses, testkit.FinalResponse(`{"picks":`))
+			switch family {
+			case "date-repair":
+				responses = append(responses, testkit.FinalResponse(`{"picks":`), testkit.FinalResponse(string(final)))
 				wantCalls++
+			case "date-same-axis-conflict":
+				wantCalls = 1 // the conflict ends the run at the tool call, before any final
+			default:
+				responses = append(responses, testkit.FinalResponse(string(final)))
 			}
-			responses = append(responses, testkit.FinalResponse(string(final)))
-			if family == "date-same-axis-conflict" {
-				wantCalls = 1
-			}
-			provider := testkit.NewLLM(responses...)
+			provider := testkit.NewLLM(t, responses...)
 			generator, observer, err := NewEmbeddedCertificationGenerator(provider)
 			if err != nil {
 				t.Fatal(err)
@@ -141,7 +142,7 @@ func TestV8SemanticIndexedAnchorRejectedBeforeDiscoveryAndRepaired(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			provider := testkit.NewLLM(tool(bad), tool(good), testkit.FinalResponse(string(final)))
+			provider := testkit.NewLLM(t, tool(bad), tool(good), testkit.FinalResponse(string(final)))
 			generator, observer, err := NewEmbeddedCertificationGenerator(provider)
 			if err != nil {
 				t.Fatal(err)

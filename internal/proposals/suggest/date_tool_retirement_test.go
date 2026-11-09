@@ -12,7 +12,7 @@ import (
 
 func TestSuggest_RetiredEraCannotBeProjectedAway(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"media_type": "series", "network": "Kestrel One", "era": "1990s", "dateMeaning": dateMeaningNone(),
 		}),

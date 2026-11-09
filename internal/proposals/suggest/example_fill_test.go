@@ -118,7 +118,7 @@ func pickJSON(corpus *catalogfixture.Corpus, names ...string) string {
 func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "back", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
@@ -165,7 +165,7 @@ func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 		return out, nil
 	}
 	none := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Tessaline", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Tessaline", "Aetherion"), none),
 	)
@@ -194,7 +194,7 @@ func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
 	leaked := "<tool_call>\n<function=catalog_search>\n<parameter=input>\n" +
 		`{"dateMeaning": {"anchors": [], "axes": [], "kind": "none"}, "media_type": "movie", "query": "Gloomwings"}` +
 		"\n</parameter>\n</function>\n</tool_call>"
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 		llm.Response{Content: leaked},
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
@@ -218,7 +218,7 @@ func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
 func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(`{"picks":[]}`, none),
 	)
@@ -245,10 +245,9 @@ func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 		t.Run(phrase, func(t *testing.T) {
 			corpus := exampleFillCorpus()
 			none := dateMeaningNone()
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Fogcatchers", "Gusto"), none),
-				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 			)
 			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 			proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies " + phrase + " Back to the Lighthouse and Gloomwings for a family night"})
@@ -267,7 +266,7 @@ func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 	)
@@ -295,7 +294,7 @@ func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) 
 func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings"), none),
 	)
@@ -315,8 +314,8 @@ func TestSuggest_TitlesWithoutModeAreACollectionLookupNotADeadEnd(t *testing.T) 
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	call := catalogSearchResponse(map[string]any{"media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none})
-	model := testkit.NewLLM(
-		call, call, call, call, call, call, call,
+	model := testkit.NewLLM(t,
+		call,
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)

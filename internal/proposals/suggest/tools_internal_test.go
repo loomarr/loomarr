@@ -19,7 +19,7 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 		{MediaType: provision.Series, Name: "Mudpuddles", Year: 2020, TMDBID: 90009001},
 		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
 	}}
-	s := New(testkit.NewLLM(
+	s := New(testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"mode": "collection", "media_type": "series",
 			"titles": []any{map[string]any{"name": "The Mudpuddles", "year": float64(1989)}}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},

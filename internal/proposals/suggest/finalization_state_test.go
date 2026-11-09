@@ -28,7 +28,7 @@ func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
+			model := testkit.NewLLM(t, testkit.FinalResponse(""), testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 			references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
 			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			const prefix = "This is the reference intent-interpretation phase."
@@ -82,7 +82,7 @@ func TestSuggest_FinalizationCarriesAcceptedMeaningThroughRepair(t *testing.T) {
 			intent.Description = "1990s action films"
 		}
 		t.Run(name, func(t *testing.T) {
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 				testkit.FinalResponse(""),
 				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),

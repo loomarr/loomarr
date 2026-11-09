@@ -31,7 +31,7 @@ func TestSuggestHoldsTheInteractiveGateForItsRun(t *testing.T) {
 		MediaType: provision.Series, TMDBID: 90021502, TVDBID: 90269680, Name: "Murmur Bay", Year: 2013, InLibrary: true,
 	}}}
 	gate := &llm.InteractiveGate{}
-	model := &gateObservingLLM{gate: gate, LLM: testkit.NewLLM(testkit.FinalResponse(
+	model := &gateObservingLLM{gate: gate, LLM: testkit.NewLLM(t, testkit.FinalResponse(
 		`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))}
 	s := New(model, catalog.New(nil, corpus), nil, 3).WithInteractiveGate(gate)
 	if _, err := s.Suggest(context.Background(), proposals.Intent{Description: "mysteries"}); err != nil {

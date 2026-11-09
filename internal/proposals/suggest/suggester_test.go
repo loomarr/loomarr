@@ -195,7 +195,7 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	// Turn 1: the model searches (grounding it to real results). Turn 2: it
 	// returns a mix — one REAL id it saw (90000100, Quiet Engines) and one FABRICATED id
 	// (90077777, never surfaced by any tool).
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "quiet"}),
 		finalResponseWithNone(`{"rationale":"90s action","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
@@ -297,7 +297,7 @@ func TestSuggest_EmptyCatalogResultRetainsToolForAlternateSearch(t *testing.T) {
 
 func TestSuggest_RecoversCoherentNetworkRouteFromProviderPopulatedOptionalFields(t *testing.T) {
 	meaning := fixtureDateMeaning("series_premiere", "description", 2, 7, 1990, 1999)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"query": "QFUN", "media_type": "series", "genres": []any{"Comedy", "Family"},
 			"cast": []any{"Marisol Quint"}, "creators": []any{"Bram Tolliver"},
@@ -358,10 +358,10 @@ func TestSuggest_StopsAfterAlternateEmptyCatalogSearches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// The extra turns reproduce the live Qwen behavior: without an adapter
-			// terminal after the alternate empty search, the model keeps calling
-			// catalog_search until the structural budget is exhausted.
-			model := testkit.NewLLM(tt.first, tt.second, tt.first, tt.second, tt.first, tt.second)
+			// Live Qwen keeps calling catalog_search after the alternate empty search until the
+			// structural budget runs out; the script holds only the two searches, so a third
+			// model call fails as unscripted and the call count below catches it.
+			model := testkit.NewLLM(t, tt.first, tt.second)
 			s := suggest.New(model, catalog.New(nil, nil), nil, 10)
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: tt.description})
 			var failure *suggest.Failure
@@ -381,10 +381,9 @@ func TestSuggest_StopsAfterAlternateEmptyCatalogSearches(t *testing.T) {
 
 func TestSuggest_EmptyRetrievalLimitSurvivesGroundingRetry(t *testing.T) {
 	emptySearch := catalogSearchResponse(map[string]any{"query": "definitely absent"})
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		emptySearch,
 		finalResponseWithNone(`{"picks":[]}`),
-		emptySearch,
 		emptySearch,
 	)
 	s := suggest.New(model, catalog.New(nil, nil), nil, 10)
@@ -400,7 +399,7 @@ func TestSuggest_EmptyRetrievalLimitSurvivesGroundingRetry(t *testing.T) {
 
 func TestSuggest_EmptyRetrievalLimitDoesNotDiscardAdjacentGrounding(t *testing.T) {
 	emptySearch := catalogSearchResponse(map[string]any{"query": "definitely absent"})
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		emptySearch,
 		emptySearch,
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -427,7 +426,7 @@ func traceHas(trace proposals.DecisionTrace, key, disposition, reason string) bo
 }
 
 func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
-	llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`))
+	llmMock := testkit.NewLLM(t, finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`))
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), proposals.Intent{
 		Description: "science fiction",
 		Adjacent:    []proposals.AdjacentContext{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Year: 1999, Votes: 3}},
@@ -448,7 +447,7 @@ func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
 }
 
 func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "definitely absent"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -465,7 +464,7 @@ func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
 }
 
 func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "definitely absent"}),
 		finalResponseWithNone(`{"picks":[]}`),
 		finalResponseWithNone(`{"picks":[]}`),
@@ -481,11 +480,9 @@ func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
 }
 
 func TestSuggest_RetrievalFailureIsNotReportedAsEmpty(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	// The context is already cancelled: the model's one search is the only turn that runs.
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
-		finalResponseWithNone(`{"picks":[]}`),
-		catalogSearchResponse(map[string]any{"query": "marigold"}),
-		finalResponseWithNone(`{"picks":[]}`),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -508,7 +505,7 @@ func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
 	// it, then have TMDB reject it. Simplest: pick Quiet Engines (90000100, exists) vs a search
 	// that surfaces nothing fabricated — so here we assert the *exists* path runs
 	// by confirming a known-good acquisition passes and is present.
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "lemon tree"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}]}`),
 	)
@@ -532,7 +529,7 @@ func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) 
 	mt.AddKeywordMovie(90002401, "Snowbound Reunion", 2021, []int{35, 10751},
 		"Estranged siblings reunite during Christmas week.", "Christmas")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"keywords": []any{"Christmas"}, "media_type": "movie",
 		}),
@@ -565,7 +562,7 @@ func TestSuggest_AHolidayTheCountryDoesNotKeepIsNotExclusive(t *testing.T) {
 	mt.AddKeywordMovie(90002402, "Gravy Boat", 2019, []int{35},
 		"A family survives the long weekend.", "Thanksgiving")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"keywords": []any{"Thanksgiving"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002402","name":"Gravy Boat","confidence":0.9}],
 			"policy":{"seasonal":{"mode":"exclusive","holidays":["thanksgiving"]}}}`),
@@ -593,7 +590,7 @@ func TestSuggest_AnExclusiveChannelKeepsTheHolidaysTheCountryKeeps(t *testing.T)
 	mt.AddKeywordMovie(90002403, "Snow and Gravy", 2018, []int{35},
 		"Two holidays, one kitchen.", "Christmas")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"keywords": []any{"Christmas"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002403","name":"Snow and Gravy","confidence":0.9}]}`),
 	)
@@ -619,7 +616,7 @@ func TestSuggest_PromptListsTheHolidaysTheCountryKeeps(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002404, "Sparks Over Lewes", 2015, []int{18}, "A town lights up.", "Bonfire")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"keywords": []any{"Bonfire"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002404","name":"Sparks Over Lewes","confidence":0.9}]}`),
 	)
@@ -648,7 +645,7 @@ func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "action"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90005011","name":"Hard Ledger"}],"policy":{"audience":{"ceiling":"PG-13"}}}`),
 	)
@@ -673,7 +670,7 @@ func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "family"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90005012","name":"Very Scary Night"}]}`),
 	)
@@ -699,7 +696,7 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids","seasonMin":1,"seasonMax":10}]}`),
 	)
@@ -728,7 +725,7 @@ func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 	), catalog.New(lib, tm), tm, 10)
@@ -753,7 +750,7 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids","seasonMin":1,"seasonMax":10}]}`),
 	)
@@ -779,7 +776,7 @@ func TestSuggest_CuratedCueDoesNotMatchInsideAnotherWord(t *testing.T) {
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "concerts"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Great Concerts"}]}`),
 	), catalog.New(lib, tm), tm, 10)
@@ -822,7 +819,7 @@ func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
 			})
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			s := suggest.New(testkit.NewLLM(
+			s := suggest.New(testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 			), catalog.New(lib, tm), tm, 10)
@@ -844,7 +841,7 @@ func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 	), catalog.New(lib, tm), tm, 10)
@@ -866,7 +863,7 @@ func TestSuggest_AnUnkeptHolidayStillSelectsItsEpisodes(t *testing.T) {
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 	), catalog.New(lib, tm), tm, 10).
@@ -891,7 +888,7 @@ func TestSuggest_TheModelsExclusivePolicyIsHeldToTheCountry(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002405, "Long Weekend Pie", 2017, []int{35}, "A family dinner goes sideways.", "Family")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"keywords": []any{"Family"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002405","name":"Long Weekend Pie","confidence":0.9}],
 			"policy":{"seasonal":{"mode":"exclusive","holidays":["Thanksgiving"]}}}`),
@@ -946,7 +943,7 @@ func TestSuggest_NamedHolidayEpisodeSelectionUsesAffirmativeWholePhrases(t *test
 				Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			s := suggest.New(testkit.NewLLM(
+			s := suggest.New(testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 			), catalog.New(lib, tm), tm, 10)
@@ -972,7 +969,7 @@ func TestSuggest_GenericHolidaySeriesSelectsBuiltInHolidayEpisodes(t *testing.T)
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 	), catalog.New(lib, tm), tm, 10)
@@ -993,7 +990,7 @@ func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}],`+
 			`"policy":{"seasonal":{"mode":"exclusive","holidays":["christmas"]}}}`),
@@ -1014,7 +1011,7 @@ func TestSuggest_UndeclaredSeasonalCueKeepsCompleteEpisodes(t *testing.T) {
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
 	), catalog.New(lib, tm), tm, 10)
@@ -1036,7 +1033,7 @@ func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}],"policy":{
 			"seasonal":{"mode":"auto"},
@@ -1071,7 +1068,7 @@ func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity
 // may nevertheless emit parallel calls; execute only the first so one turn cannot
 // multiply catalog work, context, and hosted cost outside maxToolRounds.
 func TestSuggest_ExecutesOnlyFirstToolCallFromParallelResponse(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		llm.Response{ToolCalls: []llm.ToolCall{
 			{ID: "quiet", Name: "catalog_search", Arguments: map[string]any{"query": "quiet", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}},
 			{ID: "rock", Name: "catalog_search", Arguments: map[string]any{"query": "lemon tree"}},
@@ -1093,7 +1090,7 @@ func TestSuggest_ExecutesOnlyFirstToolCallFromParallelResponse(t *testing.T) {
 // A tool call whose arguments the provider could not decode is answered with that error, so the model
 // can resend it; it is not run as an argument-free search.
 func TestSuggest_MalformedToolArgumentsAreAnsweredWithTheError(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		llm.Response{ToolCalls: []llm.ToolCall{{
 			ID: "bad", Name: "catalog_search", Arguments: map[string]any{},
 			ArgumentsError: "tool arguments are not a valid JSON object: unexpected end of JSON input",
@@ -1119,7 +1116,7 @@ func TestSuggest_MalformedToolArgumentsAreAnsweredWithTheError(t *testing.T) {
 // the catalog. Give that specific failure one bounded grounding retry rather
 // than persisting a misleading no-results outcome.
 func TestSuggest_RetriesOnceWhenModelNeverSearches(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		finalResponseWithNone(`{"picks":[]}`),
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -1150,7 +1147,7 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"rationale":"A family-comedy block.",
 			"picks":[{
@@ -1229,7 +1226,7 @@ func TestSuggest_NamedSourceAmbiguitySurvivesModelDiscoveryFilters(t *testing.T)
 			if tt.meaning != nil {
 				finalResponse = finalResponseWithDateMeaning(final, tt.meaning)
 			}
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(tt.arguments),
 				finalResponse,
 			)
@@ -1276,7 +1273,7 @@ func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 	mt.AddSeries(90000540, "Grand Oak Hotel", 1987, []int{35, 10751}, "A widowed father raises his family with help from relatives and friends.")
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel","year":1987}]
 		}`)),
@@ -1309,7 +1306,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithDateMeaning(`{
+		testkit.NewLLM(t, finalResponseWithDateMeaning(`{
 			"channelName":"Friday Night",
 			"picks":[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel","year":1987}]
 		}`, fixtureDateMeaning("series_premiere", "description", 0, 5, 1980, 1989))),
@@ -1330,7 +1327,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 func TestSuggest_GroundsIndependentToolFreeNamesConcurrently(t *testing.T) {
 	lib := &concurrentTitleLibrary{ready: make(chan struct{})}
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[
 				{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel"},
@@ -1400,7 +1397,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 			lib := catalogfixture.NewScriptedLibrary()
 			lib.SetSearchItems(tt.items...)
 			s := suggest.New(
-				testkit.NewLLM(finalResponseWithNone(`{"channelName":"Friday Night","picks":`+tt.picks+`}`)),
+				testkit.NewLLM(t, finalResponseWithNone(`{"channelName":"Friday Night","picks":`+tt.picks+`}`)),
 				catalog.New(lib, nil),
 				nil,
 				10,
@@ -1428,7 +1425,7 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 		catalogfixture.SearchStub{Terms: []string{"quasar"}, LibraryItemID: "9", Name: "Quasar Quartet", Type: "Series", TVDBID: 90000769},
 	)
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[
 				{"mediaType":"movie","key":"movie:tmdb:90090001","name":"Grand Oak Hotel"},
@@ -1473,7 +1470,7 @@ func TestSuggest_ToolFreeNameGroundingHonoursNever(t *testing.T) {
 		"": {{Target: "series:tvdb:90000762", Action: suggest.FeedbackNever}},
 	}}
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[
 				{"mediaType":"series","key":"series:tmdb:90090001","name":"Grand Oak Hotel"},
@@ -1497,7 +1494,7 @@ func TestSuggest_ToolFreeNameGroundingHonoursNever(t *testing.T) {
 func TestSuggest_ToolFreeNameGroundingPropagatesCallerDeadline(t *testing.T) {
 	lib := &concurrentTitleLibrary{ready: make(chan struct{})}
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{
+		testkit.NewLLM(t, finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel"}]
 		}`)),
@@ -1544,7 +1541,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 				}`, fixtureDateMeaning("series_premiere", "era", 0, len([]rune(intent.Era)), 1980, 1989))
 			}
 			s := suggest.New(
-				testkit.NewLLM(response),
+				testkit.NewLLM(t, response),
 				catalog.New(lib, nil),
 				nil,
 				10,
@@ -1570,7 +1567,7 @@ func TestGrounding_AcquisitionRatingEnrichedFromTMDB(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	mt.SetRating(provision.Movie, 90000101, "PG-13") // Lemon Tree Heist, an acquisition (not in library)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(testkit.NewLLM(
+	s := suggest.New(testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "lemon tree"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}]}`),
 	), catalog.New(lib, tm), tm, 10).WithRatings(tm)
@@ -1591,7 +1588,7 @@ func TestGrounding_AcquisitionRatingEnrichedFromTMDB(t *testing.T) {
 // In-library picks go to the lineup, not acquisitions (§8 classification).
 func TestGrounding_InLibraryPickBecomesLineup(t *testing.T) {
 	// "marigold" is in the library (tmdb 90000603). The model picks it.
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -1616,7 +1613,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	// One Action discovery surfaces BOTH Quiet Engines (90000100) and Lemon Tree Heist (90000101); with
 	// cap=1 the second becomes an alternate without violating the rule that a
 	// non-empty result ends retrieval.
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"genres": []any{"Action"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
@@ -1645,7 +1642,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 }
 
 func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"genres": []any{"Drama"}}),
 		finalResponseWithNone(`{"picks":[
 			{"mediaType":"series","key":"series:tmdb:90000200","name":"Alpha Series"},
@@ -1682,7 +1679,7 @@ func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 // Deterministic scoring: same inputs → identical scores; overall in [0,1].
 func TestScoring_Deterministic(t *testing.T) {
 	mk := func() *testkit.LLM {
-		return testkit.NewLLM(
+		return testkit.NewLLM(t,
 			catalogSearchResponse(map[string]any{"query": "marigold"}),
 			finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 		)
@@ -1738,7 +1735,7 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 // T0.3: a malformed final turn is repaired — the suggester re-asks and succeeds on
 // the corrected JSON rather than failing outright.
 func TestSuggest_RepairsMalformedJSON(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`not json at all, sorry`),                                                                   // malformed → triggers repair
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`), // repaired
@@ -1773,7 +1770,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		for i := range responses {
 			responses[i] = testkit.ToolCallResponse("unsupported", nil)
 		}
-		_, err := buildSuggester(t, testkit.NewLLM(responses...)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
+		_, err := buildSuggester(t, testkit.NewLLM(t, responses...)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
 		terminal(t, err, proposals.TerminalInvalidToolCalls)
 	})
 	t.Run("six malformed catalog calls are invalid", func(t *testing.T) {
@@ -1789,7 +1786,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		for _, args := range arguments {
 			responses = append(responses, catalogSearchResponse(args))
 		}
-		model := testkit.NewLLM(responses...)
+		model := testkit.NewLLM(t, responses...)
 		_, err := buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
 		terminal(t, err, proposals.TerminalInvalidToolCalls)
 		if model.Calls != len(arguments) {
@@ -1801,23 +1798,23 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		for range 5 {
 			responses = append(responses, testkit.ToolCallResponse("unsupported", nil))
 		}
-		_, err := buildSuggester(t, testkit.NewLLM(responses...)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
+		_, err := buildSuggester(t, testkit.NewLLM(t, responses...)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
 		terminal(t, err, suggest.FailureBudgetExhausted)
 	})
 	t.Run("malformed final JSON stays separate", func(t *testing.T) {
-		_, err := buildSuggester(t, testkit.NewLLM(
+		_, err := buildSuggester(t, testkit.NewLLM(t,
 			finalResponseWithNone("not json"), finalResponseWithNone("still not json"), finalResponseWithNone("again not json"),
 		)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
 		terminal(t, err, proposals.TerminalMalformedExhausted)
 	})
 	t.Run("provider deadline", func(t *testing.T) {
-		model := testkit.NewLLM()
+		model := testkit.NewLLM(t)
 		model.Errors = []error{context.DeadlineExceeded}
 		_, err := buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
 		terminal(t, err, proposals.TerminalProviderTimeout)
 	})
 	t.Run("caller cancellation with provider cancellation is not provider timeout", func(t *testing.T) {
-		model := testkit.NewLLM()
+		model := testkit.NewLLM(t)
 		model.Errors = []error{context.Canceled}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1831,7 +1828,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		}
 	})
 	t.Run("caller cancellation survives a concurrent provider error", func(t *testing.T) {
-		model := testkit.NewLLM()
+		model := testkit.NewLLM(t)
 		model.Errors = []error{errors.New("provider disconnected")}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1847,7 +1844,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 }
 
 func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
-	model := testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
+	model := testkit.NewLLM(t) // no script: any model call fails
 	prop, err := buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{
 		Description: "science fiction", MustInclude: []string{"  Marigold   Protocol "}, MustExclude: []string{"marigold protocol"},
 	})
@@ -1859,7 +1856,7 @@ func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
 		t.Fatalf("conflict ran inference or produced proposal: calls=%d proposal=%+v", model.Calls, prop)
 	}
 
-	model = testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
+	model = testkit.NewLLM(t, finalResponseWithNone(`{"picks":[]}`))
 	prop, err = buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{
 		Description: "action thrillers", MustInclude: []string{"Quiet Engines"}, MustExclude: []string{"Quiet Engines Returns"},
 	})
@@ -1870,13 +1867,13 @@ func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
 
 func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T) {
 	intent := proposals.Intent{Description: "Use https://lineups.example/friday"}
-	model := testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
+	model := testkit.NewLLM(t, finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 	_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: errors.New("page unavailable")}).Suggest(context.Background(), intent)
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalReferenceUnreadable || model.Calls != 1 {
 		t.Fatalf("read failure = %#v, calls=%d", err, model.Calls)
 	}
-	model = testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
+	model = testkit.NewLLM(t, finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 	_, err = buildSuggester(t, model).Suggest(context.Background(), intent)
 	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalRetrievalFailure || model.Calls != 1 {
 		t.Fatalf("missing resolver = %#v, calls=%d", err, model.Calls)
@@ -1886,7 +1883,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 	lib.Err = errors.New("library unavailable") // the shared adapter now reports a local catalog failure.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	model = testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
+	model = testkit.NewLLM(t, finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 	_, err = suggest.New(model, catalog.New(lib, tm), tm, 10).
 		WithReferences(&testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}).
 		Suggest(context.Background(), intent)
@@ -1894,7 +1891,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 		t.Fatalf("catalog failure after successful reference read = %#v, calls=%d", err, model.Calls)
 	}
 	t.Run("wrapped lookup cancellation is not page unreadable", func(t *testing.T) {
-		model := testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
+		model := testkit.NewLLM(t, finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 		_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: fmt.Errorf("lookup interrupted: %w", context.Canceled)}).Suggest(context.Background(), intent)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("error = %v, want cancellation", err)
@@ -1904,7 +1901,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 		}
 	})
 	t.Run("caller cancellation survives concurrent lookup error", func(t *testing.T) {
-		model := testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
+		model := testkit.NewLLM(t, finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: errors.New("resolver connection reset")}).Suggest(ctx, intent)
@@ -1920,7 +1917,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 // T0.4: a run that grounds NOTHING (every pick fabricated) returns
 // ErrNoGroundedTitles — a clear failure, not a silent empty success.
 func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		// Every id here is fabricated (never surfaced) → all dropped → empty.
 		finalResponseWithNone(`{"picks":[
@@ -1960,7 +1957,7 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 			)
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
 				finalResponseWithNone(`{"picks":[
 					{"mediaType":"series","key":"series:tvdb:90091001","name":"Orbital Detectives"},
@@ -1988,7 +1985,7 @@ func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(
 		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 90091001,
 	})
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:90091001","name":"Orbital Detectives"}]}`)),
+		testkit.NewLLM(t, finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:90091001","name":"Orbital Detectives"}]}`)),
 		catalog.New(lib, nil), nil, 10,
 	)
 
@@ -2031,7 +2028,7 @@ func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			model := testkit.NewLLM(tc.responses...)
+			model := testkit.NewLLM(t, tc.responses...)
 			s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			var failure *suggest.Failure
@@ -2069,7 +2066,7 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 			})
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": tc.query, "media_type": "movie"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90091001","name":"`+tc.name+`"}]}`),
 			)
@@ -2091,7 +2088,7 @@ func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T)
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "comedy", "media_type": "series"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90091002","name":"The Understudies"}]}`),
 	)
@@ -2114,7 +2111,7 @@ func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
 	})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Marigold Protocol", "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
@@ -2140,7 +2137,7 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	meaning := fixtureDateMeaning("series_airing", "era", 0, len("1990s"), 1990, 1999)
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit", "Banished Comedy", "Forbidden Family"}, "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"rationale":"both definitely aired throughout the decade","picks":[
 			{"mediaType":"series","key":"series:tvdb:90091001","name":"Orbital Detectives","rationale":"a famous block member"},
@@ -2196,7 +2193,7 @@ func TestSuggest_RequiredDescriptionMembersSurviveEmptyModelSelection(t *testing
 			"Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues",
 		},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"mode": "collection", "media_type": "series",
 			"titles":      []any{"Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues"},
@@ -2233,7 +2230,7 @@ func TestSuggest_SoftDescriptionExampleRemainsOptional(t *testing.T) {
 	references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 		URL: "https://example.test/qfun", Title: "QFUN", TitleAnchors: []string{"Grand Oak Hotel"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"mode": "collection", "media_type": "series", "titles": []any{"Grand Oak Hotel"},
 		}),
@@ -2268,7 +2265,7 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 			{"mediaType":"series","key":"series:tvdb:90092002","name":"Beta Steps"},
 			{"mediaType":"series","key":"series:tvdb:90092003","name":"Alpha Lodge Reboot"}
 		]}`
-	model := testkit.NewLLM(finalResponseWithDateMeaning(referenceFinal, meaning), finalResponseWithDateMeaning(referenceFinal, meaning))
+	model := testkit.NewLLM(t, finalResponseWithDateMeaning(referenceFinal, meaning), finalResponseWithDateMeaning(referenceFinal, meaning))
 	s := suggest.New(model, catalog.New(lib, tm), tm, 10).
 		WithReferences(references)
 
@@ -2317,7 +2314,7 @@ func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
 		{"mediaType":"series","key":"series:tvdb:90092001","name":"Alpha Lodge"},
 		{"mediaType":"series","key":"series:tvdb:90092002","name":"Beta Steps"}
 	],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
-	model := testkit.NewLLM(finalResponseWithNone(referenceFinal), finalResponseWithNone(referenceFinal))
+	model := testkit.NewLLM(t, finalResponseWithNone(referenceFinal), finalResponseWithNone(referenceFinal))
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 	s := suggest.New(model, catalog.New(lib, tm), tm, 10).WithReferences(references)
 
@@ -2342,7 +2339,7 @@ func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T)
 		catalogfixture.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "grand-oak-hotel", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762, Genres: []string{"Comedy", "Family"}},
 		catalogfixture.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "crumb-street-bakery", Name: "Crumb Street Bakery", Type: "Series", Year: 1989, TVDBID: 90000767, Genres: []string{"Comedy", "Family"}},
 	)
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "family comedy"}),
 		finalResponseWithNone(`{"rationale":"warm 90s family comedies","picks":[
 		{"mediaType":"series","key":"series:tvdb:90000762","name":"Grand Oak Hotel"},
@@ -2374,7 +2371,7 @@ func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T)
 // the surfaced map exactly like keyword search.
 func TestSuggest_DiscoversByGenre(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "era", 0, 5, 1990, 1999)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		// The model discovers action/sci-fi titles (Quiet Engines 90000100, Lemon Tree Heist 90000101,
 		// Marigold Protocol 90000603 all carry genre 28 in the mock) instead of guessing titles.
 		catalogSearchResponse(map[string]any{
@@ -2414,7 +2411,7 @@ func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
 	mt.SetDiscoveryEvidence(provision.Movie, 90000101, "en", []string{"US"}, 136, 7.4, 1200)
 	mt.SetDiscoveryEvidence(provision.Movie, 90000603, "en", []string{"GB"}, 136, 8.7, 20_000)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"genres":            []any{"Action"},
 			"media_type":        "movie",
@@ -2448,7 +2445,7 @@ func TestSuggest_RejectsKnownCountryAndGenreContradictions(t *testing.T) {
 	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		return []catalog.Candidate{fogbound, murmurBay, rivetAndRye}, nil
 	}}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"genres": []any{"Mystery"}, "media_type": "series", "origin_country": "gb"}),
 		finalResponseWithNone(`{"picks":[
 			{"mediaType":"series","key":"series:tmdb:90003001","name":"Fogbound Parish"},
@@ -2486,7 +2483,7 @@ func TestSuggest_PreservesDirectIncludeInOrdinaryTheme(t *testing.T) {
 			return []catalog.Candidate{generic}, nil
 		}
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"genres": []any{"Comedy", "Family"}, "media_type": "series", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"series","key":"series:tmdb:90002501","name":"Robo-Rabbits of Zone Nine"}]}`, meaning),
 	)
@@ -2512,7 +2509,7 @@ func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
 	mt.AddPerson(90000560, "Odile Marchbank")
 	mt.SetMoviePeople(90000100, []int{90000031}, []int{90000560})
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"media_type": "movie", "cast": []any{"Ansel Brightwater"}, "creators": []any{"Odile Marchbank"},
 		}),
@@ -2539,7 +2536,7 @@ func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
 			mt.AddNetwork(90000049, "Harbor Nine", "US")
 			mt.SetSeriesNetwork(90001396, 90000049)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			llmMock := testkit.NewLLM(
+			llmMock := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"media_type": "series", "network": "Harbor Nine"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90001396","name":"Copperline Foundry"}]}`),
 			)
@@ -2561,7 +2558,7 @@ func TestSuggest_MalformedDiscoveryQualifierDoesNotBroadenOrReachTMDB(t *testing
 	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{
 			"genres": []any{"Action"}, "origin_country": "United Kingdom",
 		}),
@@ -2590,7 +2587,7 @@ func TestSuggest_MalformedDiscoveryQualifierDoesNotBroadenOrReachTMDB(t *testing
 // mock — so a correct action lineup now scores themeFit > 0 (was ~0 before).
 func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "era", 0, 5, 1990, 1999)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"genres": []any{"Action"}, "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"rationale":"90s action","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
@@ -2637,7 +2634,7 @@ func captureProgress(ctx context.Context, out *[]frame) context.Context {
 // "Searching the library" for the entire run — including every model turn, which is
 // where a slow run actually spends its time. This test pins the label to the work.
 func TestProgress_PhasesTrackTheToolLoop(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "quiet"}),
 		finalResponseWithNone(`{"rationale":"90s action","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"}
@@ -2678,7 +2675,7 @@ func TestProgress_ReasoningIsReportedBeforeTheModelTurn(t *testing.T) {
 	var got []frame
 	var atCall [][]frame
 
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "quiet"}),
 		finalResponseWithNone(`{"rationale":"x","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"}
@@ -2726,7 +2723,7 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
 		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Midnight Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA"},
 	)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
 		finalResponseWithNone(`{"rationale":"cartoons","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toons"},
@@ -2760,7 +2757,7 @@ func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
 		// No OfficialRating at all — the media server simply has none for it.
 		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Mystery Toons", Type: "Movie", Year: 1993, TMDBID: 90005005, Genres: []string{"Animation"}},
 	)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
 		finalResponseWithNone(`{"rationale":"cartoons","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toons"},
@@ -2788,7 +2785,7 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
 	})
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"rationale":"bright cartoons","picks":[
 			{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"},
@@ -2842,7 +2839,7 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 	lib.SetSearchItems(
 		catalogfixture.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-1", Name: "Iron Lullaby", Type: "Movie", Year: 1988, TMDBID: 90005010, Genres: []string{"Action"}, OfficialRating: "R"},
 	)
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "action"}),
 		finalResponseWithNone(`{"rationale":"80s action","picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90005010","name":"Iron Lullaby"}
@@ -2877,7 +2874,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	meaning := fixtureDateMeaning("series_airing", "era", 0, len("1990s"), 1990, 1999)
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		// Explicit members are pre-grounded before inference, so the FIRST actual
 		// model tool response can surface an unrelated neighbor without requiring a
 		// forbidden second successful tool call.
@@ -2929,7 +2926,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 }
 
 func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"rationale":"Perfectly matches the whole request","picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol","rationale":"asdf xqz 999 are all satisfied"}]}`),
 	)
@@ -2951,7 +2948,7 @@ func TestSuggest_ExplicitPGMaximumAndUnratedExclusionReachReview(t *testing.T) {
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	model := testkit.NewLLM(catalogSearchResponse(map[string]any{"query": "family"}), finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90006001","name":"Family Night"},{"mediaType":"movie","key":"movie:tmdb:90006002","name":"Harder Night"},{"mediaType":"movie","key":"movie:tmdb:90006003","name":"Unknown Night"}]}`))
+	model := testkit.NewLLM(t, catalogSearchResponse(map[string]any{"query": "family"}), finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90006001","name":"Family Night"},{"mediaType":"movie","key":"movie:tmdb:90006002","name":"Harder Night"},{"mediaType":"movie","key":"movie:tmdb:90006003","name":"Unknown Night"}]}`))
 	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 	p, err := s.Suggest(context.Background(), proposals.Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."})
 	if err != nil {
