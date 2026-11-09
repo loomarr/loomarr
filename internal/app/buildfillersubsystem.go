@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/capability"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
@@ -94,7 +95,7 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
-	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
+	result.research = capability.NewWebSettings(st, set, metricRecorder)
 	result.intakeLanguages = intakeLanguages(st, set)
 	result.defects = defectfloor.NewDefectReports(storeadapter.NewDefects(st), time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
@@ -180,10 +181,10 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", settings.FillerSyncEvery.Get(set))
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
+	judgeVision := capability.NewHotVision(set, mainSelection(set), log, metricRecorder)
 	defectTools := buildFillerMediaTools(set, metricRecorder)
 	defectJudge := defectfloor.NewVisionDefectJudge(judgeVision, defectTools,
-		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
+		capability.NewJudgeLedger(st, set, newID), judgeVision.DefectJudgeEndpoint, time.Now, log)
 	defectFloor := defectfloor.NewDefectFloor(
 		storeadapter.NewDefects(st), cliplibrary.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
@@ -197,30 +198,30 @@ func buildFillerSubsystem(
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
 		defectFloor.CheckReplacement, interactiveLLM)
 	stations := station.NewLazy(st.ListBroadcastStations)
-	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
+	enrichmentSignals := capability.NewEnrichmentSignals(st, layout.FS(), stations)
 	enrichmentRunner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
+		storeadapter.NewEnrichment(st),
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	)
 	enrichmentCoordinator := enrichment.NewCoordinator(
-		enrichmentRunner, fillerEnrichmentRepository{st: st},
+		enrichmentRunner, storeadapter.NewEnrichment(st),
 		func() enrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	).WithCapabilities(
 		enrichment.NewCapabilityRunner(
-			enrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
+			enrichment.CapabilityTranscript, storeadapter.NewEnrichment(st),
 			func() enrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
-			fillerMediaExecutor{store: st, transcript: transcribeStage,
-				kind: enrichment.CapabilityTranscript}.Run,
+			capability.NewTranscriptExecutor(st, transcribeStage).
+				Run,
 			func() int { return settings.FillerPipelineMaxWhisper.Get(set) }, time.Now,
 		),
 		enrichment.NewCapabilityRunner(
-			enrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
+			enrichment.CapabilityVision, storeadapter.NewEnrichment(st),
 			func() enrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
-			fillerMediaExecutor{store: st, vision: visionStage,
-				kind: enrichment.CapabilityVision}.Run,
+			capability.NewVisionExecutor(st, visionStage).
+				Run,
 			func() int { return settings.FillerPipelineMaxVision.Get(set) }, time.Now,
 		),
 	)
@@ -269,8 +270,8 @@ func buildFillerSubsystem(
 			})
 			researcher := research.New(retriever, selection.Provider, selection.ProviderName,
 				selection.Model, time.Now).WithFallback(web).WithStations(stations.ResolveDuring(log))
-			researchRunner = research.NewRunner(fillerResearchRepository{st: st}, researcher,
-				fillerResearchSignals{files: layout.FS()}.Load,
+			researchRunner = research.NewRunner(storeadapter.NewResearch(st), researcher,
+				capability.NewResearchSignals(layout.FS()).Load,
 				func() int {
 					structuredEnabled := settings.FillerResearchWikidataEnabled.Get(set) ||
 						settings.FillerResearchWikipediaEnabled.Get(set) ||
