@@ -599,8 +599,7 @@
       "tailwindClasses": 8
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 159,
-      "legacyUi": 1
+      "tailwindClasses": 157
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
       "tailwindClasses": 3

@@ -14,7 +14,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
@@ -298,18 +297,14 @@ const TasksPage = () => {
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                <Button
+                                <Action
+                                  icon={jobOpen ? "rowCollapse" : "rowExpand"}
+                                  layout="icon"
+                                  onPress={() => toggleJob(job.name)}
                                   variant="ghost"
-                                  size="icon"
-                                  aria-label={`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
-                                  onClick={() => toggleJob(job.name)}
                                 >
-                                  {jobOpen ? (
-                                    <ChevronDown className="size-4" />
-                                  ) : (
-                                    <ChevronRight className="size-4" />
-                                  )}
-                                </Button>
+                                  {`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
+                                </Action>
                               </td>
                             </tr>
                             {jobOpen && (
