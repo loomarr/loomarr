@@ -5,8 +5,8 @@
 // freshness signal, the due-now reconcile deadline, the UpdatedAt stamp, validation, the
 // optimistic revision, the internal-playout lifecycle, and the best-effort reconcile.
 //
-// Proposal approval is NOT here: it plans its channel write through `binder` inside the approval
-// transaction. This package borrows binder's answers (lineup, policy, number in use, id scheme)
+// Proposal approval is NOT here: it plans its channel write through the approval package's Binder
+// inside the approval transaction. This package borrows the Binder's answers (lineup, policy, number in use, id scheme)
 // so the two paths cannot disagree about them.
 package edit
 

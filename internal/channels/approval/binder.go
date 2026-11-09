@@ -3,9 +3,9 @@
 // refine. Local persistence belongs to the approval transaction; codec measurement
 // and backend reconciliation run only after that transaction commits.
 //
-// binder is deliberately neutral: it imports store/schedule/proposals/suggest/channels, but
-// nothing in those packages imports binder back, so nothing new is coupled to it.
-// Consumers (internal/api, internal/proposals/suggest) declare the narrow interface they
+// approval is deliberately neutral: it imports the store, schedule, proposals/accept and
+// provision packages, but nothing in those imports it back, so nothing new is coupled to it.
+// Consumers (internal/api, internal/proposals/accept) declare the narrow interface they
 // need and take a *Binder as a structural implementation — dependency inversion,
 // not a shared concrete dependency.
 package approval
@@ -102,8 +102,8 @@ func New(st Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binde
 	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
 
-// WithActivity attaches the durable recorder. Chained rather than added to New's signature so
-// every existing caller and test keeps compiling — the same nil-means-skip idiom `rec`/`codec` use.
+// WithActivity attaches the durable recorder. Chained rather than added to New's signature,
+// with the same nil-means-skip idiom `rec`/`codec` use.
 func (b *Binder) WithActivity(a ActivityRecorder) *Binder { b.acts = a; return b }
 
 // WithChannelNumbers lets numbering see Tunarr's occupied numbers as well as Loomarr's own.
@@ -271,35 +271,20 @@ func (b *Binder) channelForJob(ctx context.Context, jobID string) (channelstore.
 	return ch, nil
 }
 
-// nextFreeChannelNumber returns the lowest unused positive channel number, so an
-// operator never has to pick one to get on air (§7). Channel counts here are
-// household-scale, so a scan is cheaper and clearer than tracking a counter.
-// ⚠ **"Free" means free on BOTH sides — Loomarr's store AND Tunarr** (§9 V54). Consulting only the
-// store is how an approved channel got number 1 while Tunarr already had a channel there: the
-// create then failed with `500` and an empty body, permanently, and the operator saw nothing but
-// "Creating". Tunarr accumulates channels an earlier install or a reset database left behind, so
-// "my store has no channel 1" says nothing about whether 1 is usable.
-//
-// ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
-// store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
-// renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
 // NumberInUse reports whether a channel number is already taken — by one of Loomarr's own
 // channels, or by a channel that exists only in TUNARR.
 //
-// ⚠ **There is deliberately no `exceptChannelID` escape.** The first cut had one, so a no-op
-// renumber onto a channel's own number would not self-conflict. It cannot work: Tunarr's channel
-// list is a bare `map[int]bool` with no identity, so excluding a Loomarr row does nothing about
-// the same number appearing on the Tunarr side — which it always does for a live channel,
-// because Loomarr pushed it there. The parameter answered correctly for the store and wrongly
+// ⚠ **There is deliberately no `exceptChannelID` escape.** Tunarr's channel list is a bare
+// `map[int]bool` with no identity, so excluding a Loomarr row would do nothing about the same
+// number appearing on the Tunarr side — which it always does for a live channel, because
+// Loomarr pushed it there. Such a parameter would answer correctly for the store and wrongly
 // for Tunarr, which is worse than not offering it. Callers must not ask about a number a channel
-// already holds; `channeledit` only runs this check when the number actually changes.
+// already holds; `edit` only runs this check when the number actually changes.
 //
-// ⚠ **This exists because §258 fixed numbering in ONE of the two places that assign a number.**
-// `nextFreeChannelNumber` (the approve path) unions both sources; `api.createChannel` — where an
-// operator TYPES a number — checked only `GetChannelByNumber`, so a number Tunarr already held
-// was accepted with a 201 and then renumbered underneath the operator by the reconcile (§9 V54).
-// A conflict with a Loomarr channel got a clean 409 from the same handler; the two answers
-// disagreed for no reason a user could see.
+// ⚠ **This exists so both places that assign a number agree.** `nextFreeChannelNumber` (the
+// approve path) unions both sources, and a number an operator TYPES must be checked against both
+// too: otherwise a number Tunarr already held is accepted and then renumbered underneath the
+// operator by the reconcile (§9 V54), while a conflict with a Loomarr channel gets a clean 409.
 //
 // ⚠ Best-effort on the Tunarr side, matching `nextFreeChannelNumber`: an unreachable Tunarr
 // reports NOT-in-use rather than propagating an error. Refusing to create a channel because
@@ -327,6 +312,19 @@ func (b *Binder) NumberInUse(ctx context.Context, number int) (bool, error) {
 	return taken[number], nil
 }
 
+// nextFreeChannelNumber returns the lowest unused positive channel number, so an
+// operator never has to pick one to get on air (§7). Channel counts here are
+// household-scale, so a scan is cheaper and clearer than tracking a counter.
+//
+// ⚠ **"Free" means free on BOTH sides — Loomarr's store AND Tunarr** (§9 V54). Consulting only the
+// store is how an approved channel got number 1 while Tunarr already had a channel there: the
+// create then failed with `500` and an empty body, permanently, and the operator saw nothing but
+// "Creating". Tunarr accumulates channels an earlier install or a reset database left behind, so
+// "my store has no channel 1" says nothing about whether 1 is usable.
+//
+// ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
+// store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
+// renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
 func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	all, err := b.store.ListChannels(ctx)
 	if err != nil {
