@@ -9,9 +9,8 @@ import "sort"
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
 // into one directory per area, the directory is the area and this table goes. Most areas already
 // have their directory (media, channels, proposals, playout, filler, people, platform); still
-// directly under internal/ are the library area's catalog, metadataprovider, provision,
-// provisionbackstop, requester and library itself, the edge area is the two directories api and
-// app, and the test area's demolibrary, eval, integration, testkit, library/tmdb/tmdbstandin and
+// directly under internal/ are the library area's catalog, metadataprovider, provision and
+// library itself, the edge area is the two directories api and app, and the test area's demolibrary, eval, integration, testkit, library/tmdb/tmdbstandin and
 // platform/store/storetest sit outside any single directory.
 type area struct {
 	Name        string
@@ -38,7 +37,7 @@ var areas = []area{
 			"decide which source's facts about a file win.",
 		Packages: []string{
 			"library", "library/arrhook", "library/scan", "library/inventory", "library/tmdb", "catalog",
-			"provision", "provisionbackstop", "requester",
+			"provision", "library/provisionbackstop", "library/requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
 			"metadataprovider/tmdb",
@@ -259,7 +258,7 @@ var flows = []flow{
 			"(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
 			"`platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
 			"channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a " +
-			"`provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. " +
+			"`provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. " +
 			"`channels/schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +
