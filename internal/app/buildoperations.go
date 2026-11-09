@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/people"
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/app/nownext"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
@@ -376,16 +377,16 @@ func buildGuide(
 	if st == nil {
 		return nil
 	}
-	var internalGuide broadcastReader
+	var internalGuide nownext.BroadcastReader
 	if playoutResolver != nil {
 		internalGuide = playoutResolver
 	}
-	return nowNextRouter{
-		tunarr: guideAdapter{
+	return guideReader{router: nownext.New(nownext.Config{
+		Tunarr: guideAdapter{
 			tunarr: tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
 		},
-		internal: internalGuide, channels: st, appliedBackend: appliedBackend, window: 2 * time.Hour,
-	}
+		Internal: internalGuide, Channels: st, AppliedBackend: appliedBackend, Window: 2 * time.Hour,
+	})}
 }
 
 func buildSettings(
