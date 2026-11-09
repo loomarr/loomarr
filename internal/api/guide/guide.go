@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -182,7 +182,7 @@ const (
 // Falls back to the compiled default when settings are unwired (unit tests) or the value is
 // nonsensical: a zero or negative retention would pin the guide to "now" and leave the grid
 // unable to show the programme currently airing, which needs its real start.
-func (s *Server) guideLookback() time.Duration {
+func (s *Handlers) guideLookback() time.Duration {
 	if s.liveSettings == nil {
 		return guideMaxLookback
 	}
@@ -196,7 +196,7 @@ func (s *Server) guideLookback() time.Duration {
 //
 // Read-only and visible to any authenticated user: the guide is viewer-facing (§8.1), the same
 // posture as the Overview strip it supersedes.
-func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput, error) {
+func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutput, error) {
 	out := &guideOutput{}
 	out.Body.Channels = []GuideChannelTimeline{}
 
@@ -478,7 +478,7 @@ func guideAiringOf(channelID string, b playout.Broadcast) GuideAiring {
 }
 
 // registerGuide mounts /v1/guide (§12, V13b).
-func (s *Server) registerGuide(api huma.API) {
+func (s *Handlers) registerGuide(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-guide", Method: http.MethodGet, Path: "/v1/guide",
 		Summary: "Every channel's timeline over a window",

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/api/system"
@@ -63,7 +64,7 @@ type operationsBuild struct {
 	restart                  system.RestartService
 	bootConfig               *config.Config
 	auth                     authBuild
-	guide                    api.GuideReader
+	guide                    guideapi.GuideReader
 	settings                 api.SettingsService
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string
@@ -384,7 +385,7 @@ func buildGuide(
 	playoutResolver *playoutresolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	metricRecorder *metrics.Recorder,
-) api.GuideReader {
+) guideapi.GuideReader {
 	if st == nil {
 		return nil
 	}

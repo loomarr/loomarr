@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"net/http"
@@ -12,7 +12,7 @@ import (
 // preview: now/next, upcoming and timeline, and the pod, cycle and coverage previews. They share
 // the guide, pod and playout plumbing this package still owns; the channel resource itself,
 // its uploads and the watermark preview are api/channels.
-func (s *Server) registerChannelViews(api huma.API) {
+func (s *Handlers) registerChannelViews(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
 		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.",

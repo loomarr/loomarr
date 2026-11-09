@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 //
 // An image still being fetched has no bytes and is left off, like a title with none: the player
 // draws its plain card rather than a broken one.
-func (s *Server) attachTitleArt(ctx context.Context, rows ...[]GuideAiring) {
+func (s *Handlers) attachTitleArt(ctx context.Context, rows ...[]GuideAiring) {
 	if s.store == nil || s.images == nil {
 		return
 	}

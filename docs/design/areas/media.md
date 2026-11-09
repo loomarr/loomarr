@@ -23,7 +23,7 @@ One area of the [package map](../package-map.md#start-here).
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, each family's encoder flags and rate control, and the parser for ffmpeg's `-progress` stream.
 - **`media/header`** · 3 importers · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
-- **`media/images`** · 6 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
+- **`media/images`** · 7 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
   One pipeline every image in Loomarr travels (§22).
 - **`media/images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).

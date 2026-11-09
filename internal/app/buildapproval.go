@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -25,7 +25,7 @@ type approvalBuild struct {
 
 func buildApproval(
 	st store.Store,
-	channelService api.ChannelService,
+	channelService guideapi.ChannelService,
 	playoutResolver *playoutresolve.Resolver,
 	activityRecorder *activity.Recorder,
 	channelNumbers approval.NumberSource,

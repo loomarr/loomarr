@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 
 // registerProgramming mounts the programming authoring surface's read endpoints (§6.6/§8.1,
 // P6): the BE-authoritative rule vocabulary, and the whole-definition draft preview.
-func (s *Server) registerProgramming(api huma.API) {
+func (s *Handlers) registerProgramming(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-programming-vocabulary", Method: http.MethodGet, Path: "/v1/programming/vocabulary",
 		Summary:     "The closed rule authoring vocabulary",
@@ -47,7 +47,7 @@ type programmingVocabularyOutput struct {
 
 // getProgrammingVocabulary serves the closed authoring vocabulary (§6.6) so the rules editor
 // stops hand-mirroring presets.go. Pure + read-only.
-func (s *Server) getProgrammingVocabulary(context.Context, *struct{}) (*programmingVocabularyOutput, error) {
+func (s *Handlers) getProgrammingVocabulary(context.Context, *struct{}) (*programmingVocabularyOutput, error) {
 	return &programmingVocabularyOutput{Body: schedule.BuildVocabulary(s.holidayCalendar())}, nil
 }
 
@@ -110,7 +110,7 @@ func excludedToDTO(r schedule.ExclusionReport) ExcludedDTO {
 // previewChannelProgramming is the whole-definition draft preview (P6): cycle slots + break
 // pool for an unsaved {lineup?, policy?}, through the same code paths as reconcile so the
 // preview can't disagree with what applying the draft would ship. Read-only.
-func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgrammingInput) (*previewProgrammingOutput, error) {
+func (s *Handlers) previewChannelProgramming(ctx context.Context, in *previewProgrammingInput) (*previewProgrammingOutput, error) {
 	if s.channels == nil {
 		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
 	}
@@ -269,7 +269,7 @@ const programmingChangesCap = 100
 // previewChannelProgrammingChanges is the change list: the upcoming slots where an unsaved draft
 // airs something different from the saved channel (#1877). Same draft, validation and
 // authorization as programming/preview; the comparison is the engine's (ScheduleDiffDraft).
-func (s *Server) previewChannelProgrammingChanges(ctx context.Context, in *previewProgrammingChangesInput) (*previewProgrammingChangesOutput, error) {
+func (s *Handlers) previewChannelProgrammingChanges(ctx context.Context, in *previewProgrammingChangesInput) (*previewProgrammingChangesOutput, error) {
 	if s.channels == nil {
 		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
 	}

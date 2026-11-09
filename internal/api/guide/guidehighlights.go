@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"cmp"
@@ -198,7 +198,7 @@ func runHighlight(ch channelAirings, run []playout.Broadcast) (highlightPick, bo
 	return highlightPick{}, false
 }
 
-func (s *Server) registerGuideHighlights(api huma.API) {
+func (s *Handlers) registerGuideHighlights(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "guide-highlights", Method: http.MethodGet, Path: "/v1/guide/highlights",
 		Summary: "Tonight's highlights across every channel",
@@ -237,7 +237,7 @@ type guideHighlightsOutput struct {
 	}
 }
 
-func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) (*guideHighlightsOutput, error) {
+func (s *Handlers) guideHighlights(ctx context.Context, in *guideHighlightsInput) (*guideHighlightsOutput, error) {
 	out := &guideHighlightsOutput{}
 	out.Body.Highlights = []guideHighlightDTO{}
 	now := time.Now()

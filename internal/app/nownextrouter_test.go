@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -373,40 +373,40 @@ type stubGuide struct {
 	onUpcoming func(string)
 }
 
-func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
-	return map[string]api.ChannelNowNext{
-		"tun1":    {Now: &api.NowNextEntry{Title: s.now}},
-		"tun-tun": {Now: &api.NowNextEntry{Title: s.now}},
-		"tun-int": {Now: &api.NowNextEntry{Title: s.now}},
+func (s stubGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
+	return map[string]guideapi.ChannelNowNext{
+		"tun1":    {Now: &guideapi.NowNextEntry{Title: s.now}},
+		"tun-tun": {Now: &guideapi.NowNextEntry{Title: s.now}},
+		"tun-int": {Now: &guideapi.NowNextEntry{Title: s.now}},
 	}, nil
 }
 
-func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]api.NowNextEntry, error) {
+func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]guideapi.NowNextEntry, error) {
 	if s.onUpcoming != nil {
 		s.onUpcoming(id)
 	}
-	return []api.NowNextEntry{{Title: s.now}}, nil
+	return []guideapi.NowNextEntry{{Title: s.now}}, nil
 }
 
 type countingGuide struct{ calls int }
 
-func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	c.calls++
-	return map[string]api.ChannelNowNext{}, nil
+	return map[string]guideapi.ChannelNowNext{}, nil
 }
 
-func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]guideapi.NowNextEntry, error) {
 	c.calls++
 	return nil, nil
 }
 
 type failingGuide struct{}
 
-func (failingGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+func (failingGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	return nil, errors.New("tunarr is down")
 }
 
-func (failingGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+func (failingGuide) Upcoming(context.Context, string, time.Time, int) ([]guideapi.NowNextEntry, error) {
 	return nil, errors.New("tunarr is down")
 }
 

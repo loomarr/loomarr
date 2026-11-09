@@ -20,7 +20,7 @@ One area of the [package map](../package-map.md#start-here).
   How filler decides what to fetch and keeps the record of it: the intent a source is searched with, the plan that selects candidates, the durable download manifests and their repair, the per-pass Fetcher, and the gates that keep a compilation or an unlisted source out.
 - **`filler/asset`** · 11 importers · → `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor`
   The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
-- **`filler/cliplibrary`** · 12 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
+- **`filler/cliplibrary`** · 13 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
   On-disk clip library: the clip folder's layout, the one intake route every clip takes into it, the folder and library scans that find clips, the names derived for them, and the thumbnail and preview artwork rendered from them.
 - **`filler/clips`** · 14 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.

@@ -17,6 +17,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -1942,15 +1943,15 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 
 // fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byChannel map[string]api.ChannelNowNext
-	upcoming  map[string][]api.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	byChannel map[string]guideapi.ChannelNowNext
+	upcoming  map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
 }
 
-func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	return f.byChannel, nil
 }
 
-func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]api.NowNextEntry, error) {
+func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]guideapi.NowNextEntry, error) {
 	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
@@ -1982,9 +1983,9 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]api.ChannelNowNext{
-			"ch-live": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
-			"ch-new":  {Now: &api.NowNextEntry{Title: "Internal Now"}},
+		Guide: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
+			"ch-live": {Now: &guideapi.NowNextEntry{Title: "On Now"}, Next: &guideapi.NowNextEntry{Title: "Up Next", Gap: true}},
+			"ch-new":  {Now: &guideapi.NowNextEntry{Title: "Internal Now"}},
 		}},
 	})
 	srv := httptest.NewServer(h)
@@ -1995,7 +1996,7 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		t.Fatalf("now-next → %d; a 404 means it routed to get-channel with id=now-next", resp.StatusCode)
 	}
 	var body struct {
-		Channels []api.ChannelNowNext `json:"channels"`
+		Channels []guideapi.ChannelNowNext `json:"channels"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 
@@ -2024,7 +2025,7 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]api.NowNextEntry{
+		Guide: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
 			"ch-internal": {{Title: "Playing locally"}},
 		}},
 	})
@@ -2036,7 +2037,7 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 		t.Fatalf("upcoming for internal-only channel → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Upcoming []api.NowNextEntry `json:"upcoming"`
+		Upcoming []guideapi.NowNextEntry `json:"upcoming"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

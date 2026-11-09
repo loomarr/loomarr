@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -67,7 +67,7 @@ const timelineThumbConcurrency = 8
 
 // resolveTimelineThumbs is the shared Guide/Watch artwork batch. Results are keyed by programme
 // identity so callers can project them back onto repeated airings without another provider call.
-func (s *Server) resolveTimelineThumbs(
+func (s *Handlers) resolveTimelineThumbs(
 	ctx context.Context, requested []timelineThumbKey,
 ) map[timelineThumbKey]timelineThumbResult {
 	resolved := make(map[timelineThumbKey]timelineThumbResult)
@@ -128,7 +128,7 @@ type timelineOutput struct {
 // channelTimeline is registered inside registerChannels (channels.go), alongside channel-upcoming —
 // it is a channel read surface, and grouping it there keeps the register-list parity simple (no new
 // register* function to track in api.go/export.go).
-func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timelineOutput, error) {
+func (s *Handlers) channelTimeline(ctx context.Context, in *upcomingInput) (*timelineOutput, error) {
 	out := &timelineOutput{}
 	out.Body.Airings = []GuideAiring{}
 	out.Body.ServerNowMs = time.Now().UnixMilli()
@@ -212,7 +212,7 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 // PreviewAtMany over the break blocks, then the member-readable pool projection (viewer names, no
 // paths — #1980/#1988). It is best-effort: no assembler or a failed preview leaves the breaks
 // without a pod, and the strip still renders.
-func (s *Server) attachTimelinePods(
+func (s *Handlers) attachTimelinePods(
 	ctx context.Context, channelID string, bs []playout.Broadcast, airings []GuideAiring,
 ) {
 	if s.pods == nil {
@@ -251,7 +251,7 @@ type podEntryRef struct{ airing, entry int }
 // hover loop) with ONE ListClips call for every distinct clip on the strip. Best-effort: a failed
 // lookup logs and leaves the stills absent. The result is keyed by entry so the caller can project
 // it back after its single image-record pass.
-func (s *Server) podStillHashes(ctx context.Context, airings []GuideAiring) map[podEntryRef]string {
+func (s *Handlers) podStillHashes(ctx context.Context, airings []GuideAiring) map[podEntryRef]string {
 	if s.images == nil {
 		return nil
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -117,8 +118,8 @@ func (f *slowGuideThumbs) ThumbFor(_ context.Context, key string, season, episod
 
 type guideHarnessConfig struct {
 	Guide          playoutapi.PlayoutGuide
-	Pods           api.PodPreviewer
-	TimelineThumbs api.TimelineThumbResolver
+	Pods           guideapi.PodPreviewer
+	TimelineThumbs guideapi.TimelineThumbResolver
 	Images         api.ImageService
 	Timezone       string
 	RetentionHours int

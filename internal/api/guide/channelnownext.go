@@ -1,4 +1,4 @@
-package api
+package guide
 
 import (
 	"context"
@@ -45,7 +45,7 @@ type nowNextOutput struct {
 // channelsNowNext answers the Channels LIST in one routed call. The guide is keyed by Loomarr
 // channel id, so internal-only channels do not need a remote identity to appear. A channel with
 // no generated guide simply has no entry — an empty guide is "nothing to show", not a failure.
-func (s *Server) channelsNowNext(ctx context.Context, _ *struct{}) (*nowNextOutput, error) {
+func (s *Handlers) channelsNowNext(ctx context.Context, _ *struct{}) (*nowNextOutput, error) {
 	out := &nowNextOutput{}
 	out.Body.Channels = []ChannelNowNext{}
 	if s.guide == nil {
@@ -84,7 +84,7 @@ type upcomingOutput struct {
 // airing now followed by the next few, routed to the backend that streams it. Any authenticated
 // user may read it (the guide is viewer-facing, §8.1). A channel with no guide yet returns an
 // empty list, not an error — the strip shows "nothing scheduled" rather than blanking the page.
-func (s *Server) channelUpcoming(ctx context.Context, in *upcomingInput) (*upcomingOutput, error) {
+func (s *Handlers) channelUpcoming(ctx context.Context, in *upcomingInput) (*upcomingOutput, error) {
 	out := &upcomingOutput{}
 	out.Body.Upcoming = []NowNextEntry{}
 

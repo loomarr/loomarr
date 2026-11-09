@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -48,7 +49,7 @@ type suggestionBuild struct {
 	icons            channelsapi.IconService
 	images           *images.Service
 	imageFetcher     *images.Fetcher
-	timelineThumbs   api.TimelineThumbResolver
+	timelineThumbs   guideapi.TimelineThumbResolver
 }
 
 func buildSuggestions(
@@ -64,7 +65,7 @@ func buildSuggestions(
 	log *slog.Logger,
 	libraryClient *library.Client,
 	tmdbClient *tmdb.Client,
-	channelService api.ChannelService,
+	channelService guideapi.ChannelService,
 	approver *accept.Approver,
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,

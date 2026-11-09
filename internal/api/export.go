@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -45,13 +46,10 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	people.New(people.Deps{Log: log}, true).Register(humaAPI)
 	system.New(system.Deps{Log: log}, true).Register(humaAPI)
 	channelsapi.New(channelsapi.Deps{}).Register(humaAPI)
-	srv.registerChannelViews(humaAPI)
 	// Hidden ops — present for register-list parity, absent from the spec (§9.1) — plus the play-url
 	// op and the status projection.
 	playoutapi.New(playoutapi.Deps{Log: log}, true).Register(humaAPI)
-	srv.registerGuide(humaAPI)
-	srv.registerProgramming(humaAPI)
-	srv.registerHolidays(humaAPI)
+	guideapi.New(guideapi.Deps{}).Register(humaAPI)
 	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
