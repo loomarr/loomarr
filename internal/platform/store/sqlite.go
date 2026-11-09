@@ -25,14 +25,6 @@ func init() {
 		})
 }
 
-// lower is expr folded to lower case in every script, on either backend.
-func (s *sqlStore) lower(expr string) string {
-	if s.dialect == DialectSQLite {
-		return "unicode_lower(" + expr + ")"
-	}
-	return "LOWER(" + expr + ")"
-}
-
 // SQLite claim: a guarded UPDATE that leases the due rows by pushing their
 // deadline to ?1 (now+lease), so they aren't re-claimed until the reconciler
 // acts or the lease lapses. A single instance is assumed (§5), so the UPDATE's

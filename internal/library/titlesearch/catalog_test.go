@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -180,7 +180,7 @@ func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit(t *testing.T) {
 	titles := make(libraryTitlesFake, 24)
 	for i := range titles {
-		titles[i] = store.LibraryTitle{
+		titles[i] = librarystore.LibraryTitle{
 			ID: fmt.Sprintf("owned-%02d", i), Kind: "movie", Name: fmt.Sprintf("Archive Pick %02d", i),
 			IDs: tmdbIDs(strconv.Itoa(90_010_000 + i)),
 		}

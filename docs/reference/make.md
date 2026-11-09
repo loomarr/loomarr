@@ -94,7 +94,6 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make channel-recommend-cert-dry-run` |  | emit the provider-free recommendation certification contract; no inference |
 | `make channel-recommend-diagnostic` |  | diagnose recommendation JSON transport on the disjoint development corpus; explicit, inference-spending, non-CI |
 | `make channel-recommend-compare` |  | compare channel-recommendation scorecards without inference |
-| `make library-parity` |  | compare the file scanner with the media server's catalog (#2151 gate); needs LOOMARR_PARITY_DB, LIBRARY_URL/TOKEN |
 | `make eval-planner-compare` |  | compare two or more frozen planner scorecards without inference |
 | `make planner-reference-host` |  | bind one planner scorecard to exact local artifact and reference-host evidence; no inference |
 | `make eval-matrix` |  | explicitly certify local + OpenRouter generation sequentially (manual, resource-heavy) |

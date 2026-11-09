@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -21,7 +22,7 @@ import (
 // makes one thing non-negotiable about anything ladder-shaped: it must consume the SAME pools
 // assembly does, never a second copy that agrees today. These tests are what keeps that true.
 
-func newPoolAdapter(t *testing.T, clips []clips.Clip, chans []channelstore.Channel) (podPreviewAdapter, store.Store) {
+func newPoolAdapter(t *testing.T, clips []clips.Clip, chans []channelstore.Channel) (operator.PodPreview, store.Store) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -43,7 +44,7 @@ func newPoolAdapter(t *testing.T, clips []clips.Clip, chans []channelstore.Chann
 		}
 	}
 	pods := pod.NewAdapter(storeadapter.NewCatalog(st), nil, nil, slog.New(slog.DiscardHandler))
-	return podPreviewAdapter{store: st, pods: pods}, st
+	return operator.NewPodPreview(st, pods), st
 }
 
 func liveChannel(id, name string, number, era int) channelstore.Channel {
@@ -121,7 +122,7 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 	without, _ := newPoolAdapter(t, []clips.Clip{commercial("1992/toys.mp4", 1992, clips.Kids)}, chans)
 	with, _ := newPoolAdapter(t, []clips.Clip{commercial("1992/toys.mp4", 1992, clips.Kids), ident}, chans)
 	for _, tc := range []struct {
-		a         podPreviewAdapter
+		a         operator.PodPreview
 		bookends  int
 		roleGapTo int
 	}{{without, 0, 2}, {with, 1, 0}} {

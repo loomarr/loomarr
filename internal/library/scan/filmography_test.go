@@ -8,7 +8,7 @@ import (
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 type fakeFilmCatalog struct {
@@ -39,13 +39,13 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 	ctx := context.Background()
 	st := openStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	film := store.LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Credits: []store.LibraryCredit{
-		{Name: "The Director", Role: "director", ID: store.LibraryID{Namespace: "tmdb", Value: "90004003"}},
+	film := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Credits: []librarystore.LibraryCredit{
+		{Name: "The Director", Role: "director", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90004003"}},
 		{Name: "Pen Name", Role: "writer"},
 		// A person another catalog knows has no filmography in this one.
-		{Name: "Other Director", Role: "director", ID: store.LibraryID{Namespace: "imdb", Value: "nm90004005"}},
+		{Name: "Other Director", Role: "director", ID: librarystore.LibraryID{Namespace: "imdb", Value: "nm90004005"}},
 	}}
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{film}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{film}, at); err != nil {
 		t.Fatal(err)
 	}
 	catalog := &fakeFilmCatalog{err: errors.New("tmdb: 503")}
@@ -82,14 +82,14 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 	if !slices.Equal(catalog.asked, []string{"90004003"}) {
 		t.Fatalf("asked %v over two ticks, want the director once, then kept until the refresh", catalog.asked)
 	}
-	due, err := st.DueLibraryFilmographies(ctx, store.LibraryFilmographyDue{
+	due, err := st.DueLibraryFilmographies(ctx, librarystore.LibraryFilmographyDue{
 		Namespace: "tmdb", Now: f.now(), StaleBefore: f.now().Add(time.Minute), Limit: 10})
 	if err != nil || len(due) != 1 || due[0].ID != "tmdb:90004003" {
 		t.Fatalf("due a month on = %+v, %v; want the director, whose filmography was saved", due, err)
 	}
 
 	film.Credits = nil
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{film}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{film}, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Tick(ctx); err != nil {

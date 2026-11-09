@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -58,7 +59,7 @@ func TestHolidaySnapshotKeepsTheLastGoodHolidays(t *testing.T) {
 func TestTaxonomyEditorReloadsHolidaysAfterASeasonalEdit(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	snap := newHolidaySnapshot(st, slog.New(slog.DiscardHandler))
-	editor := taxonomyEditor{store: st, holidaysChanged: snap.Reload}
+	editor := operator.NewTaxonomyEditor(st, nil, snap.Reload)
 	harvest := taxonomy.Taxon{Slug: "harvest-fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}
 	if _, err := editor.Apply(t.Context(), clipstore.TaxonomyEdit{Create: true, Taxon: harvest}); err != nil {
 		t.Fatal(err)

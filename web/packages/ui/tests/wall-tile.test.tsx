@@ -70,6 +70,37 @@ describe("WallTile", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it("names who is watching in a pill, and reads the full words on the compact tile", async () => {
+    await mount(
+      <WallTile art={null} channelName="Coast 90s" number="07" title="Coastline" watchers={["Sam", "Jo"]} />,
+    );
+    expect(doc.body.textContent).toContain("Sam, Jo watching");
+    doc.body.replaceChildren();
+    await mount(
+      <WallTile
+        art={null}
+        channelName="Coast 90s"
+        compact
+        number="07"
+        title="Coastline"
+        watchers={["Sam", "Jo"]}
+      />,
+    );
+    expect(doc.body.textContent).toContain("S J");
+    expect(doc.body.textContent).toContain("Sam, Jo watching");
+  });
+
+  it("shows no pill without watchers, and the last-tuned tile keeps its own pill", async () => {
+    await mount(<WallTile art={null} channelName="Coast 90s" number="07" title="Coastline" />);
+    expect(doc.body.textContent).not.toContain("watching");
+    doc.body.replaceChildren();
+    await mount(
+      <WallTile art={null} channelName="Coast 90s" last number="07" title="Coastline" watchers={["Sam"]} />,
+    );
+    expect(doc.body.textContent).toContain("You were here");
+    expect(doc.body.textContent).not.toContain("watching");
+  });
+
   it("renders as the given link", async () => {
     await mount(
       <WallTile
@@ -121,5 +152,24 @@ describe("WallTile", () => {
     await mount(<WallTile art={null} channelName="A" compact last number="03" title="T" />);
     expect(doc.body.textContent).toContain("Last");
     expect(doc.body.textContent).not.toContain("You were here");
+  });
+});
+
+describe("WallTile in the light theme", () => {
+  it("keeps its words in the dark scope, light on the scrim, as the player does", async () => {
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <LoomarrProvider theme="light">
+          <WallTile art={null} channelName="Coast 90s" number="07" title="Coastline Mysteries" />
+        </LoomarrProvider>,
+      );
+    });
+    const title = doc.body.querySelector("h3") as Node;
+    let scope: Node | null = title;
+    while (scope && !(scope.getAttribute("class") ?? "").includes("t_dark")) scope = scope.parentElement;
+    expect(scope).not.toBeNull();
   });
 });

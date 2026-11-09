@@ -18,11 +18,6 @@ const (
 	BroadcastCodecHEVC = channelstore.BroadcastCodecHEVC
 )
 
-// ErrJobChannelGone reports a refine or re-curation job whose channel was removed before the job's
-// proposal could be approved. It is channelstore.ErrJobChannelGone, the same value under a second
-// name, so errors.Is matches either.
-var ErrJobChannelGone = channelstore.ErrJobChannelGone
-
 // ErrChannelConflict reports that a channel write lost a uniqueness race. It is
 // channelstore.ErrChannelConflict, the same value under a second name.
 var ErrChannelConflict = channelstore.ErrChannelConflict

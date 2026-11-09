@@ -13,7 +13,7 @@ import (
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // builder turns one root's walked files into inventory snapshots for one pass.
@@ -46,7 +46,7 @@ type seriesSeen struct {
 
 	// order is the household's answer for which order its files follow, read once a pass.
 	orderOnce sync.Once
-	order     store.LibraryEpisodeOrder
+	order     librarystore.LibraryEpisodeOrder
 	answered  bool
 	// ordersWanted is whether the pass has asked for its catalog's other orders yet.
 	ordersWanted bool
@@ -55,14 +55,14 @@ type seriesSeen struct {
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
 // store's LibraryProjection); its artwork and its set's record are asked for here.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
-	var set store.LibraryCatalogKey
+	var set librarystore.LibraryCatalogKey
 	if listed := readOriginExtension(snapshot.Observation.Extension).Listed; listed != nil {
 		set = listed.Set
 	}
 	b.artwork(ctx, id, snapshot.Observation.Facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
-		if err := b.im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
+		if err := b.im.Catalog.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{set}); err != nil {
 			b.im.log().Warn("library scan: set record not asked for", "catalog", set.String(), "err", err)
 		}
 	}
@@ -71,12 +71,12 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 // match is what said which title resolved is: the source of its highest-ranked catalog id (a
 // collection's id alone says nothing), with that source's page for it. Identity is picked in rank
 // order, so the first such id is the deciding one.
-func match(resolved precedence.Resolved, records []mp.Record) store.LibraryMatch {
+func match(resolved precedence.Resolved, records []mp.Record) librarystore.LibraryMatch {
 	for _, id := range resolved.IDs {
 		if !id.Value.Namespace.Grounds() || id.Value.Value == "" {
 			continue
 		}
-		m := store.LibraryMatch{Basis: string(id.From.Basis), App: string(id.From.Provider)}
+		m := librarystore.LibraryMatch{Basis: string(id.From.Basis), App: string(id.From.Provider)}
 		for _, rec := range records {
 			if rec.Source == id.From && rec.Page != "" {
 				m.Page = rec.Page
@@ -85,11 +85,11 @@ func match(resolved precedence.Resolved, records []mp.Record) store.LibraryMatch
 		}
 		return m
 	}
-	return store.LibraryMatch{}
+	return librarystore.LibraryMatch{}
 }
 
-func libraryOrigin(o inventory.OriginKey) store.LibraryOrigin {
-	return store.LibraryOrigin{Authority: string(o.Authority), Key: o.ExternalItemID}
+func libraryOrigin(o inventory.OriginKey) librarystore.LibraryOrigin {
+	return librarystore.LibraryOrigin{Authority: string(o.Authority), Key: o.ExternalItemID}
 }
 
 // artwork hands the title's resolved poster, fanart and clear logo, or none of each, to the image
@@ -288,11 +288,11 @@ func withFurtherIDs(ids []inventory.ExternalID, further []mp.Record) []inventory
 // resolution is what one title resolves to.
 type resolution struct {
 	resolved precedence.Resolved
-	match    store.LibraryMatch
+	match    librarystore.LibraryMatch
 	// catalog is the catalog row its details come from, cached or not; zero for none.
-	catalog store.LibraryCatalogKey
+	catalog librarystore.LibraryCatalogKey
 	// set is a movie's ready-made set, as the catalog row it is fetched by; zero for none.
-	set store.LibraryCatalogKey
+	set librarystore.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.

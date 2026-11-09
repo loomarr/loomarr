@@ -17,13 +17,13 @@ One area of the [package map](../package-map.md#start-here).
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`media/creative`** · 8 importers
   Decides whether two filler clips are the same advert (#2033).
-- **`media/defects`** · 9 importers
+- **`media/defects`** · 10 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`media/encode`** · 10 importers · → `platform/config`
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, each family's encoder flags and rate control, and the parser for ffmpeg's `-progress` stream.
 - **`media/header`** · 3 importers · → `library/inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
-- **`media/images`** · 7 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
+- **`media/images`** · 8 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
   One pipeline every image in Loomarr travels (§22).
 - **`media/images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).

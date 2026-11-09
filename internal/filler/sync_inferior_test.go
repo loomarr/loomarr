@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type inferiorCopies map[string]bool
@@ -40,7 +41,7 @@ func TestSync_NeverCataloguesOrFilesAKnownInferiorCopy(t *testing.T) {
 		raw(leftover, "Burger Barn (copy)", clips.Commercial, 30_000, 0),
 	}}
 	st := newMemStore()
-	st.clips[leftover] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: leftover, Path: "le/ft/" + leftover + ".mp4"}}
+	st.clips[leftover] = clipstore.Clip{Clip: clips.Clip{Hash: leftover, Path: "le/ft/" + leftover + ".mp4"}}
 	syncer := filler.NewSyncer(source, st, testLayout(dir, watch), time.Now, discardLog()).
 		WithInferiorCopies(inferiorCopies{leftover: true, arrivalHash: true})
 

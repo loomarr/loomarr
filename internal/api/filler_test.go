@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -236,7 +237,7 @@ func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[stri
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	return "job-1", nil
@@ -244,7 +245,7 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 
 func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	for _, item := range items {
 		f.sourceItems = append(f.sourceItems, acquisition.AcquisitionTarget{
@@ -261,7 +262,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []ac
 	f.pullMu.Lock()
 	defer f.pullMu.Unlock()
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	if f.ingestPullErr != nil {
 		return "", f.ingestPullErr
@@ -282,7 +283,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []ac
 // wrong for a release — a double that collapsed them could not have caught it.
 func (f *fakeFiller) IngestAsked(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	f.asked = append(f.asked, urls...)
@@ -299,7 +300,7 @@ type fakeSplitCall struct {
 
 func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	if f.splitUnavailable {
-		return "", fillerapi.ErrSplitUnavailable
+		return "", operator.ErrSplitUnavailable
 	}
 	if f.splitNotFound {
 		return "", store.ErrNotFound

@@ -44,6 +44,27 @@ const LastWatched: Story = {
   args: { art: <Still hue={28} />, detail: "S1 E12 · 9 min left", last: true, progressPercent: 60 },
 };
 
+// An admin sees who is watching, by name, in the top-right corner (#2785).
+const Watched: Story = { args: { ...OnAir.args, watchers: ["Sam", "Jo"] } };
+const WatchedCompact: Story = {
+  args: {
+    art: <Still hue={142} />,
+    channelName: "Nature Hour",
+    compact: true,
+    detail: "41m left",
+    number: "12",
+    watchers: ["Sam", "Jo"],
+  },
+  decorators: [
+    (Story) => (
+      <div style={{ maxWidth: 180 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+const LightWatched: Story = { ...Watched, globals: { theme: "light" } };
+
 // A channel still downloading its titles is dimmer and says so.
 const FillingUp: Story = {
   args: {
@@ -85,8 +106,13 @@ const Decade1970: Story = { args: { ...OnAir.args, decade: 1970 } };
 const Decade1980: Story = { args: { ...OnAir.args, decade: 1980 } };
 const Decade1990: Story = { args: { ...OnAir.args, decade: 1990 } };
 
-// Every decade and none side by side. The decade colours are the same in both themes; the tile has
-// no light story because its words over the picture take the theme's foreground.
+// The light theme (#3178): the words over the picture are light on the scrim, as in the dark theme.
+const LightOnAir: Story = { ...OnAir, globals: { theme: "light" } };
+const LightLastWatched: Story = { ...LastWatched, globals: { theme: "light" } };
+const LightFillingUp: Story = { ...FillingUp, globals: { theme: "light" } };
+const LightCompact: Story = { ...Compact, globals: { theme: "light" } };
+
+// Every decade and none side by side. The decade colours are the same in both themes.
 const Decades: Story = {
   render: (args) => (
     <div style={{ display: "grid", gap: 12 }}>
@@ -104,4 +130,21 @@ const Decades: Story = {
 };
 
 export default meta;
-export { Compact, CompactLast, Decade1970, Decade1980, Decade1990, Decades, FillingUp, LastWatched, OnAir };
+export {
+  Compact,
+  CompactLast,
+  Decade1970,
+  Decade1980,
+  Decade1990,
+  Decades,
+  FillingUp,
+  LastWatched,
+  LightCompact,
+  LightFillingUp,
+  LightLastWatched,
+  LightOnAir,
+  LightWatched,
+  OnAir,
+  Watched,
+  WatchedCompact,
+};

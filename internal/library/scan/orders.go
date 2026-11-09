@@ -5,13 +5,13 @@ import (
 	"errors"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // OrderNeed is a show whose episodes keep their files' names and numbers until the household says
 // which order its files follow (#2151 decision 53).
 type OrderNeed struct {
-	store.LibraryOrderNeed
+	librarystore.LibraryOrderNeed
 	// Choices are the catalog's own seasons, then its other orders in the catalog's order. Empty
 	// while the show's record isn't cached.
 	Choices []OrderChoice
@@ -20,7 +20,7 @@ type OrderNeed struct {
 // OrderChoice is one order a show's files may follow.
 type OrderChoice struct {
 	// Choice is OrderByCatalog (the catalog's own seasons) or OrderByOrder (Order, by its id).
-	Choice store.LibraryOrderChoice
+	Choice librarystore.LibraryOrderChoice
 	Order  mp.EpisodeOrder
 	// Seasons is its layout: how many episodes each season has. Nil while an order's layout
 	// hasn't been fetched yet.
@@ -52,10 +52,10 @@ func (l *Library) OrderNeeds(ctx context.Context) ([]OrderNeed, error) {
 		if ok {
 			d := series.Descriptive
 			need.Choices = append(need.Choices, OrderChoice{
-				Choice: store.OrderByCatalog, Seasons: d.Seasons, Fits: fitsDisk(d.Seasons, n.Last),
+				Choice: librarystore.OrderByCatalog, Seasons: d.Seasons, Fits: fitsDisk(d.Seasons, n.Last),
 			})
 			for _, o := range d.Orders {
-				choice := OrderChoice{Choice: store.OrderByOrder, Order: o}
+				choice := OrderChoice{Choice: librarystore.OrderByOrder, Order: o}
 				layout, ok, err := l.record(ctx, orderKey(n.Catalog, o.ID))
 				if err != nil {
 					return nil, err
@@ -74,18 +74,18 @@ func (l *Library) OrderNeeds(ctx context.Context) ([]OrderNeed, error) {
 
 // ChooseOrder answers which order a show's files follow: the catalog's own seasons, one of its
 // other orders (orderID), or the files. Its episodes are written again with the answer.
-func (l *Library) ChooseOrder(ctx context.Context, seriesID string, choice store.LibraryOrderChoice, orderID string) error {
+func (l *Library) ChooseOrder(ctx context.Context, seriesID string, choice librarystore.LibraryOrderChoice, orderID string) error {
 	if l.Orders == nil {
 		return ErrNotAnswerable
 	}
-	if (choice == store.OrderByOrder) != (orderID != "") {
-		return store.ErrBadEpisodeOrder
+	if (choice == librarystore.OrderByOrder) != (orderID != "") {
+		return librarystore.ErrBadEpisodeOrder
 	}
 	kind, origin, err := l.origin(ctx, seriesID)
 	if err != nil {
 		return err
 	}
-	page, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Kind: kind, IDs: []string{seriesID}})
+	page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: kind, IDs: []string{seriesID}})
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (l *Library) ChooseOrder(ctx context.Context, seriesID string, choice store
 		return ErrNotAnswerable
 	}
 	series := page.Items[0].Catalog
-	if choice == store.OrderByOrder {
+	if choice == librarystore.OrderByOrder {
 		rec, ok, err := l.record(ctx, series)
 		if err != nil {
 			return err
@@ -108,7 +108,7 @@ func (l *Library) ChooseOrder(ctx context.Context, seriesID string, choice store
 			return ErrUnknownOrder
 		}
 	}
-	if err := l.Orders.SaveLibraryEpisodeOrder(ctx, store.LibraryEpisodeOrder{
+	if err := l.Orders.SaveLibraryEpisodeOrder(ctx, librarystore.LibraryEpisodeOrder{
 		Series: series, Choice: choice, OrderID: orderID, AnsweredAt: l.now(),
 	}); err != nil {
 		return err
@@ -118,6 +118,6 @@ func (l *Library) ChooseOrder(ctx context.Context, seriesID string, choice store
 
 // orderKey is the catalog row one of a show's other episode orders is fetched by, from the
 // catalog the show's own row came from.
-func orderKey(series store.LibraryCatalogKey, orderID string) store.LibraryCatalogKey {
-	return store.LibraryCatalogKey{Provider: series.Provider, Kind: string(mp.KindEpisodeOrder), ExternalID: orderID}
+func orderKey(series librarystore.LibraryCatalogKey, orderID string) librarystore.LibraryCatalogKey {
+	return librarystore.LibraryCatalogKey{Provider: series.Provider, Kind: string(mp.KindEpisodeOrder), ExternalID: orderID}
 }

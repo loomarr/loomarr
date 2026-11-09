@@ -28,7 +28,7 @@ func (a Identity) ListIdentityClips(ctx context.Context) ([]identity.IdentityCli
 	}
 	out := make([]identity.IdentityClip, len(clips))
 	for i, c := range clips {
-		out[i] = identity.IdentityClip{StoreClip: StoreClip(c), CreatedAt: c.CreatedAt}
+		out[i] = identity.IdentityClip{Clip: c}
 		if r, ok := records[c.Hash]; ok {
 			out[i].Defects = &r.Assessment
 		}

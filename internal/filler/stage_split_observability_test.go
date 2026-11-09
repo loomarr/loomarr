@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // capture returns a logger writing to a buffer, and the buffer.
@@ -40,7 +40,7 @@ func TestGround_WarnsWhenItReadEveryCutAndLearnedNothing(t *testing.T) {
 	})
 
 	segs := twoSegments()
-	pass := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	pass := s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if pass.Looked != 2 {
 		t.Fatalf("looked = %d, want 2 — the premise is that every call SUCCEEDED", pass.Looked)
@@ -68,7 +68,7 @@ func TestGround_DoesNotWarnWhenItLearnedSomething(t *testing.T) {
 		Budget: func() int { return 10 },
 	})
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
 
 	if out := buf.String(); strings.Contains(out, "learned nothing") {
 		t.Errorf("warned about a pass that grounded both segments:\n%s", out)
@@ -95,7 +95,7 @@ func TestGround_SaysWhyItDidNotRun(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			log, buf := capture()
-			tc.stage(log).ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
+			tc.stage(log).ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
 			if !strings.Contains(buf.String(), tc.want) {
 				t.Errorf("log does not say %q:\n%s", tc.want, buf.String())
 			}
@@ -112,7 +112,7 @@ func TestGround_ReportsAProviderRefusal(t *testing.T) {
 		Budget: func() int { return 10 },
 	})
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, twoSegments())
 
 	out := buf.String()
 	if !strings.Contains(out, "provider refused") {

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/header"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A header an older reader left is read once more by this one. Until then the file keeps its
@@ -47,7 +47,7 @@ func TestAnOlderReadersHeaderIsReadAgain(t *testing.T) {
 	if versions[1] != 1 || versions[header.Version] != 1 {
 		t.Fatalf("readers = %v, want one file read again and one still waiting", versions)
 	}
-	page, err := h.st.ListLibraryItems(t.Context(), store.LibraryItemQuery{})
+	page, err := h.st.ListLibraryItems(t.Context(), librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

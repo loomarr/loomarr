@@ -217,6 +217,11 @@ type Warmer interface {
 // failure. This is a third outcome, so it gets its own name.
 var ErrNothingToWarm = errors.New("llm: no model configured to warm")
 
+// DefaultOllamaBase is where a local Ollama lives when nothing says otherwise. Shared by the
+// probes and pulls and by the filler vision endpoint (§10 V54a) so they cannot drift onto
+// different ports.
+const DefaultOllamaBase = "http://localhost:11434"
+
 // NewProvider builds the configured provider (§8). url is the base (Ollama
 // baseURL, or the OpenAI-compatible base ending in /v1); key is used only by the
 // openai provider, the OpenAI-compatible client that also reaches hosted
