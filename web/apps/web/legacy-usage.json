@@ -186,8 +186,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 106,
-      "legacyUi": 1
+      "tailwindClasses": 106
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
       "tailwindClasses": 65
@@ -357,8 +356,7 @@
       "legacyUi": 2
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 85,
-      "legacyUi": 2
+      "tailwindClasses": 85
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 144
@@ -509,8 +507,7 @@
       "tailwindClasses": 73
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
-      "tailwindClasses": 23,
-      "legacyUi": 2
+      "tailwindClasses": 21
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
       "tailwindClasses": 38
