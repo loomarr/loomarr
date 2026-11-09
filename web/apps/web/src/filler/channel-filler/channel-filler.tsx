@@ -13,13 +13,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Disclosure,
   Field,
   Surface,
 } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { type ComponentProps, useEffect, useState } from "react";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
@@ -423,9 +423,8 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         />
       </section>
 
-      <CollapsibleSection
-        size="compact"
-        title="Specific clips (advanced)"
+      <Disclosure
+        label="Specific clips (advanced)"
         description={`${
           pinned.length + excluded.length === 0
             ? "None set."
@@ -454,7 +453,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             excludeIds={pinned}
           />
         </div>
-      </CollapsibleSection>
+      </Disclosure>
 
       {/* The live break — the ground-truth preview of the current draft. */}
       <section className="border-border bg-card flex flex-col gap-2 rounded-lg border p-5">
