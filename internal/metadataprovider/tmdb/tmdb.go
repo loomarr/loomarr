@@ -568,7 +568,11 @@ type wireSeries struct {
 	// EpisodeGroups are the other orderings TMDB knows; nil when the answer did not carry them.
 	EpisodeGroups *struct {
 		Results []struct {
-			ID string `json:"id"`
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			Type         int    `json:"type"`
+			EpisodeCount int    `json:"episode_count"`
+			GroupCount   int    `json:"group_count"`
 		} `json:"results"`
 	} `json:"episode_groups"`
 	Keywords struct {
@@ -580,6 +584,12 @@ type wireSeries struct {
 			Rating  string `json:"rating"`
 		} `json:"results"`
 	} `json:"content_ratings"`
+}
+
+// orderKinds are TMDB's episode group types; an unknown one leaves the kind empty.
+var orderKinds = map[int]mp.OrderKind{
+	1: mp.OrderAired, 2: mp.OrderAbsolute, 3: mp.OrderDVD, 4: mp.OrderDigital,
+	5: mp.OrderStory, 6: mp.OrderProduction, 7: mp.OrderTV,
 }
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
@@ -631,8 +641,13 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 		}
 	}
 	if s.EpisodeGroups != nil {
-		n := len(s.EpisodeGroups.Results)
-		rec.Descriptive.Orderings = &n
+		rec.Descriptive.Orders = []mp.EpisodeOrder{}
+		for _, g := range s.EpisodeGroups.Results {
+			rec.Descriptive.Orders = append(rec.Descriptive.Orders, mp.EpisodeOrder{
+				ID: g.ID, Name: strings.TrimSpace(g.Name), Kind: orderKinds[g.Type],
+				Seasons: g.GroupCount, Episodes: g.EpisodeCount,
+			})
+		}
 	}
 	if len(s.EpisodeRuntime) > 0 && s.EpisodeRuntime[0] > 0 {
 		rec.Descriptive.Runtime = time.Duration(s.EpisodeRuntime[0]) * time.Minute
