@@ -252,6 +252,12 @@ func TestClipStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/clipstore")
 }
 
+// internal/platform/store/crashstore is the crash-report cluster (the client_crash_reports table). It
+// builds on the storedb kernel in the same direction as the two clusters above, and store embeds it.
+func TestCrashStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/crashstore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the
