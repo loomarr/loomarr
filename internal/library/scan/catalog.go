@@ -19,6 +19,8 @@ type CatalogStore interface {
 // AnswerStore is the maintainer's Needs you answers the walk reads (#2151 step 11).
 type AnswerStore interface {
 	LibraryAnswerFor(ctx context.Context, origin store.LibraryOrigin) (store.LibraryAnswer, bool, error)
+	// LibraryEpisodeOrderFor is which order a show's files follow, by its catalog row (decision 53).
+	LibraryEpisodeOrderFor(ctx context.Context, series store.LibraryCatalogKey) (store.LibraryEpisodeOrder, bool, error)
 }
 
 // linkRecord is the answer for a movie or series nothing else grounded, as a record: the catalog

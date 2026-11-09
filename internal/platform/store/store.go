@@ -767,6 +767,7 @@ type Store interface {
 	NotificationStore
 	DiagnosticStore
 	ClientCrashStore
+	TableRowStore
 	SettingStore
 	SecretProtectionStore
 	CountStore
@@ -782,6 +783,7 @@ type Store interface {
 	LibraryProjection
 	LibraryCatalogStore
 	LibraryNeedsStore
+	LibraryEpisodeOrderStore
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryIDMapStore

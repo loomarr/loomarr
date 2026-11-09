@@ -38,6 +38,7 @@ type libraryStore interface {
 	store.LibraryProjection
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
+	store.LibraryEpisodeOrderStore
 	store.LibraryCollectionStore
 	store.LibraryPeopleStore
 	store.LibraryIDMapStore

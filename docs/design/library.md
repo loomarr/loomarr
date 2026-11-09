@@ -370,8 +370,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
   (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
   records lack, that kind's version goes up, and its older records are fetched again with the
-  titles never fetched, not at the refresh. Series are at version 1, which counts their episode
-  orderings (decision 53). A record that changed forgets the identity digest of
+  titles never fetched, not at the refresh. Series are at version 5, which lists their other
+  episode orders by name, kind and size (decision 53). A record that changed forgets the identity digest of
   its titles' present files (a series' episodes too) and passes over their folders, so they are
   written again with it. A title TMDB does not know is cached empty until the refresh. A failed
   fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
@@ -388,8 +388,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
   count for that season. A pass identifies every file before writing any, so each series knows
   its seasons on disk, and each series is resolved once and shared by its episodes. A series
-  record cached before it carried its orderings fails the check until its refresh. Episodes that
-  fail it keep their files' details; Needs you for them is 14b-5c. The identity digest carries a write
+  record that doesn't say which orders it has is not checked. Episodes that fail the check keep
+  their files' details and are marked `unnumbered`, which puts their show in Needs you
+  (`LibraryOrderNeeds`), and TMDB's other orders are asked for (`tmdb:episode_order:<group id>`:
+  the order's episodes numbered as it numbers them, and its season sizes, so Needs you can say
+  which order fits the disk). The household's answer, kept by the show's catalog row in
+  `library_episode_orders`, then decides: TMDB's own seasons (`catalog`), one of its other orders
+  (`order`, each episode taking that order's entry for its season and number), or the files
+  (`files`, which stops asking). The mock is `project/prototypes/library-episode-order.html`.
+  The identity digest carries a write
   version; raising it
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.

@@ -60,10 +60,10 @@ describe("AutomaticDownloadsForm", () => {
     expect(screen.getByText(/Uses your defaults: every 6 hours/)).toBeVisible();
     expect(screen.queryByLabelText("Source check interval")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Use a different schedule" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Use a different schedule" }));
 
-    expect(screen.getByRole("combobox", { name: "Source check schedule" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Source check schedule/ })).toBeVisible();
     expect(screen.getByLabelText("Clips per source check")).toHaveValue("10");
   });
 
@@ -71,10 +71,10 @@ describe("AutomaticDownloadsForm", () => {
     const updateSource = vi.fn();
     render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource }} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Use a different schedule" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Source check schedule" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Use a different schedule" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Source check schedule/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Clips per source check"), { target: { value: "3" } });
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
@@ -90,8 +90,8 @@ describe("AutomaticDownloadsForm", () => {
     const updateSource = vi.fn();
     render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource }} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Never download automatically" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
 
     expect(updateSource).toHaveBeenCalledWith(
@@ -107,8 +107,8 @@ describe("AutomaticDownloadsForm", () => {
     );
     render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource }} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Never download automatically" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Schedule rejected.");
@@ -122,8 +122,8 @@ describe("AutomaticDownloadsForm", () => {
     const save = screen.getByRole("button", { name: "Save automatic downloads" });
     expect(save).toBeDisabled();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Never download automatically" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     expect(save).toBeEnabled();
 
     await userEvent.click(save);
@@ -133,12 +133,12 @@ describe("AutomaticDownloadsForm", () => {
 
   it("has nothing to save after changing a setting back", async () => {
     render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource: vi.fn() }} />);
-    const trigger = screen.getByRole("combobox", { name: "Automatic downloads for this source" });
+    const trigger = () => screen.getByRole("button", { name: /^Automatic downloads for this source/ });
 
-    await userEvent.click(trigger);
-    await userEvent.click(await screen.findByRole("option", { name: "Never download automatically" }));
-    await userEvent.click(trigger);
-    await userEvent.click(await screen.findByRole("option", { name: "Use automatic-download defaults" }));
+    await userEvent.click(trigger());
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
+    await userEvent.click(trigger());
+    await userEvent.click(await screen.findByRole("radio", { name: "Use automatic-download defaults" }));
 
     expect(screen.getByRole("button", { name: "Save automatic downloads" })).toBeDisabled();
   });

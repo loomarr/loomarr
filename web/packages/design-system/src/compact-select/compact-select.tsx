@@ -11,6 +11,7 @@ const CompactSelect = <Value extends string>({
   label,
   onValueChange,
   options,
+  readOnly,
   value,
 }: CompactSelectProps<Value>) => {
   const [open, setOpen] = useState(false);
@@ -18,7 +19,7 @@ const CompactSelect = <Value extends string>({
     <SelectControl
       appearance="field"
       density={density}
-      disabled={disabled}
+      disabled={disabled || readOnly}
       label={label}
       onOpenChange={setOpen}
       onValueChange={onValueChange}

@@ -163,15 +163,15 @@ const EventDetail = ({
           </p>
         </div>
         <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
-          <Button
+          <Action
+            icon={copied ? "success" : "copy"}
+            layout="icon"
+            onPress={copyLog}
+            style={{ flexShrink: 0 }}
             variant="ghost"
-            size="icon"
-            className="shrink-0"
-            aria-label={copied ? "Copied log details" : "Copy log details"}
-            onClick={copyLog}
           >
-            {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-          </Button>
+            {copied ? "Copied log details" : "Copy log details"}
+          </Action>
         </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">

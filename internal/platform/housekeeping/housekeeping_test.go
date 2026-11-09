@@ -33,6 +33,8 @@ type retentionStore struct {
 	recipientsBefore   time.Time
 	titlesBefore       time.Time
 	catalogAt          time.Time
+	tableRowsAt        time.Time
+	tableRowsBefore    time.Time
 }
 
 type retentionDiagnostics struct {
@@ -99,6 +101,10 @@ func (s *retentionStore) PurgeExpiredSessions(context.Context, time.Time) (int, 
 	s.sessionsCalled = true
 	return 0, nil
 }
+func (s *retentionStore) RecordTableRows(_ context.Context, at, before time.Time) (int, error) {
+	s.tableRowsAt, s.tableRowsBefore = at, before
+	return 0, nil
+}
 func (s *retentionStore) MaintainQualityLedger(_ context.Context, at time.Time) error {
 	s.qualityAt = at
 	return s.qualityErr
@@ -157,6 +163,10 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if !store.catalogAt.Equal(now) {
 		t.Fatalf("catalog purge time = %v, want %v", store.catalogAt, now)
+	}
+	// Table row counts (#2793): recorded each night, kept for 400 days.
+	if want := now.Add(-400 * 24 * time.Hour); !store.tableRowsAt.Equal(now) || !store.tableRowsBefore.Equal(want) {
+		t.Fatalf("table rows recorded at %v keeping since %v, want %v and %v", store.tableRowsAt, store.tableRowsBefore, now, want)
 	}
 }
 

@@ -1,9 +1,9 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import {
   canVisitDestination,
+  cardTitle,
   destinationForOwner,
   SETTINGS_DESTINATIONS,
-  SETTINGS_TASK_GROUPS,
   type SettingsDestination,
 } from "../settings-destinations";
 
@@ -22,9 +22,7 @@ interface FindSettingsInput {
 
 const normalize = (value: string): string => value.toLocaleLowerCase().trim().replace(/\s+/g, " ");
 
-const groupLabel = (destination: SettingsDestination): string =>
-  SETTINGS_TASK_GROUPS.find((group) => group.id === destination.group)?.label ??
-  (destination.group === "advanced" ? "Advanced" : "Settings");
+const groupLabel = (destination: SettingsDestination): string => cardTitle(destination.card);
 
 const scoreFields = (
   query: string,
