@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -26,41 +27,41 @@ func (s *Server) registerDeviceAuth(api huma.API) {
 	// RolePublic because this IS the credential handshake: requiring a session to reach the route
 	// that grants one would make it useless. Nothing is granted here — the response is a pending
 	// code that only a signed-in human can turn into access.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-start", Method: http.MethodPost, Path: "/v1/auth/device/start",
 		Summary: "Begin pairing a device", Tags: []string{"auth"},
-	}, RolePublic), s.handleDeviceStart)
+	}, httpcore.RolePublic), s.handleDeviceStart)
 
 	// Also public, and also grants nothing on its own: the caller must already hold the 256-bit
 	// device code minted above, and the pairing must have been approved by a human.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-poll", Method: http.MethodPost, Path: "/v1/auth/device/poll",
 		Summary: "Exchange an approved pairing for a device token", Tags: []string{"auth"},
-	}, RolePublic), s.handleDevicePoll)
+	}, httpcore.RolePublic), s.handleDevicePoll)
 
 	// The human half. RoleMember, and the approving user's identity is what the device inherits —
 	// which is why this cannot be public: approval is the moment authority is delegated.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-approve", Method: http.MethodPost, Path: "/v1/auth/device/approve",
 		Summary: "Approve a device's pairing code", Tags: []string{"auth"},
-	}, RoleMember), s.handleDeviceApprove)
+	}, httpcore.RoleMember), s.handleDeviceApprove)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-list", Method: http.MethodGet, Path: "/v1/auth/devices",
 		Summary: "List this user's paired devices", Tags: []string{"auth"},
-	}, RoleMember), s.handleDeviceList)
+	}, httpcore.RoleMember), s.handleDeviceList)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-revoke", Method: http.MethodDelete, Path: "/v1/auth/devices/{id}",
 		Summary: "Revoke one paired device", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.handleDeviceRevoke)
+	}, httpcore.RoleMember), s.handleDeviceRevoke)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-revoke-current", Method: http.MethodDelete, Path: "/v1/auth/device",
 		Summary: "Revoke the paired device making this request", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.handleCurrentDeviceRevoke)
+	}, httpcore.RoleMember), s.handleCurrentDeviceRevoke)
 }
 
 type deviceStartInput struct {
@@ -86,12 +87,12 @@ type deviceStartOutput struct {
 const pollInterval = 5
 
 func (s *Server) handleDeviceStart(ctx context.Context, in *deviceStartInput) (*deviceStartOutput, error) {
-	r := requestFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
 	// Keyed on IP alone: there is no user yet, and the thing being limited is the minting of
 	// pairings. Without this an attacker could farm codes to raise the odds that a guess at the
 	// approve endpoint lands on a live one.
-	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("start|"+s.clientIP(r)) {
-		return nil, errTooManyRequests("Too many pairing attempts",
+	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("start|"+s.origin.ClientIP(r)) {
+		return nil, httpcore.TooManyRequests("Too many pairing attempts",
 			"Too many devices have started pairing from this address. Wait a moment and try again.")
 	}
 	name := in.Body.DeviceName
@@ -134,7 +135,7 @@ func (s *Server) handleDevicePoll(ctx context.Context, in *devicePollInput) (*de
 			// like a failure and send the TV back to the start screen every few seconds.
 			return nil, huma.Error428PreconditionRequired("Waiting for approval")
 		case errors.Is(err, store.ErrNotFound):
-			return nil, errNotFound("Pairing not found",
+			return nil, httpcore.NotFound("Pairing not found",
 				"That pairing has expired or was already completed. Start again on the device.")
 		default:
 			return nil, err
@@ -159,26 +160,26 @@ type deviceApproveOutput struct {
 }
 
 func (s *Server) handleDeviceApprove(ctx context.Context, in *deviceApproveInput) (*deviceApproveOutput, error) {
-	r := requestFrom(ctx)
-	user, ok := userFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Sign-in required", "Sign in before approving a device.")
+		return nil, httpcore.Unauthorized("Sign-in required", "Sign in before approving a device.")
 	}
 	// ⚠ THE guess-guard for this feature. The user code is deliberately short so a human can read it
 	// off a screen and type it, which means its safety comes from a narrow window plus a bounded
 	// number of attempts — not from length. Keyed per user so one account cannot grind codes, and
 	// per IP so a pool of accounts cannot either.
-	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("approve|"+user.ID+"|"+s.clientIP(r)) {
-		return nil, errTooManyRequests("Too many attempts",
+	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("approve|"+user.ID+"|"+s.origin.ClientIP(r)) {
+		return nil, httpcore.TooManyRequests("Too many attempts",
 			"Too many pairing codes tried. Wait a moment and try again.")
 	}
 	pairing, err := s.devices.Pending(ctx, in.Body.UserCode)
 	if err != nil {
-		return nil, errNotFound("Code not found",
+		return nil, httpcore.NotFound("Code not found",
 			"That code is wrong or has expired. Check the code on your device and try again.")
 	}
 	if err := s.devices.Approve(ctx, in.Body.UserCode, user.ID); err != nil {
-		return nil, errNotFound("Code not found",
+		return nil, httpcore.NotFound("Code not found",
 			"That code is wrong or has expired. Check the code on your device and try again.")
 	}
 	out := &deviceApproveOutput{}
@@ -205,9 +206,9 @@ type deviceDTO struct {
 }
 
 func (s *Server) handleDeviceList(ctx context.Context, _ *struct{}) (*deviceListOutput, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Sign-in required", "Sign in to see your devices.")
+		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to see your devices.")
 	}
 	devices, err := s.devices.ListFor(ctx, user.ID)
 	if err != nil {
@@ -231,9 +232,9 @@ type deviceRevokeInput struct {
 }
 
 func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) (*struct{}, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Sign-in required", "Sign in to revoke a device.")
+		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to revoke a device.")
 	}
 	// Ownership is enforced in the store's WHERE clause, so a caller passing someone else's device
 	// id gets the same 404 as a caller passing a made-up one — no probing for which ids exist.
@@ -242,26 +243,26 @@ func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) 
 		return nil, err
 	}
 	if !revoked {
-		return nil, errNotFound("Device not found", "That device is already gone.")
+		return nil, httpcore.NotFound("Device not found", "That device is already gone.")
 	}
 	return nil, nil
 }
 
 func (s *Server) handleCurrentDeviceRevoke(ctx context.Context, _ *struct{}) (*struct{}, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Paired device required", "Only a paired device can disconnect itself.")
+		return nil, httpcore.Unauthorized("Paired device required", "Only a paired device can disconnect itself.")
 	}
-	deviceID, ok := deviceIDFrom(ctx)
+	deviceID, ok := httpcore.DeviceIDFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Paired device required", "Only a paired device can disconnect itself.")
+		return nil, httpcore.Unauthorized("Paired device required", "Only a paired device can disconnect itself.")
 	}
 	revoked, err := s.devices.Revoke(ctx, deviceID, user.ID)
 	if err != nil {
 		return nil, err
 	}
 	if !revoked {
-		return nil, errUnauthorized("Device disconnected", "This paired device is already disconnected.")
+		return nil, httpcore.Unauthorized("Device disconnected", "This paired device is already disconnected.")
 	}
 	return nil, nil
 }

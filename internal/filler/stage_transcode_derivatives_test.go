@@ -11,13 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t *testing.T) {
 	out, measurements, stored, childHash, err := runEvidenceBoundConditioning(t, 30_000)
-	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue || measurements != 2 || stored.oldHash != childHash {
 		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
 	}
 }
@@ -41,13 +44,13 @@ func TestTranscodeStage_ConditionedChildTakesTheMeasuredContainerLength(t *testi
 				t.Fatal(err)
 			}
 			if !tc.publishes {
-				if out.Verdict != VerdictReview || stored.oldHash != "" {
+				if out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 					t.Fatalf("probed %d ms against a 30000 ms container = %+v, replaced=%q; want held for review",
 						tc.probedMs, out, stored.oldHash)
 				}
 				return
 			}
-			if out.Verdict != VerdictContinue || stored.clip.DurationMs != 30_000 {
+			if out.Verdict != pipelinestate.VerdictContinue || stored.clip.DurationMs != 30_000 {
 				t.Fatalf("probed %d ms = %+v, duration %d; want published at the measured 30000 ms",
 					tc.probedMs, out, stored.clip.DurationMs)
 			}
@@ -62,7 +65,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	if err := os.WriteFile(parentSource, []byte("parent source master bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	parentSourceHash, err := ClipID(parentSource)
+	parentSourceHash, err := asset.ClipID(parentSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +108,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
 	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash,
-		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -296,12 +299,12 @@ func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !tc.refused {
-				if out.Verdict != VerdictContinue {
+				if out.Verdict != pipelinestate.VerdictContinue {
 					t.Fatalf("correctable clip = %+v, want it to continue", out)
 				}
 				return
 			}
-			if out.Verdict != VerdictReject || out.Reason != ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
+			if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
 				t.Fatalf("too-quiet clip = %+v, want rejected too_quiet with its measurement", out)
 			}
 			if stored.oldHash != "" {
@@ -385,7 +388,7 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 		t.Fatal("legacy playback without evidence did not re-enter the rung")
 	}
 	out, err := stage.Run(context.Background(), clip)
-	if err != nil || out.Verdict != VerdictContinue {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("backfill result = %+v, %v", out, err)
 	}
 	got, err := os.ReadFile(full)
@@ -416,20 +419,20 @@ func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
 			}
 
 			full := derivativeAssetPath(t, dir, clip, role)
-			beforeSparse, err := ClipID(full)
+			beforeSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeFull, size, err := FileSHA256(full)
+			beforeFull, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
 			mutateDerivativeMiddleByte(t, full, size)
-			afterSparse, err := ClipID(full)
+			afterSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			afterFull, afterSize, err := FileSHA256(full)
+			afterFull, afterSize, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -510,7 +513,7 @@ func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testi
 			}
 			clip = out.Clip
 			full := derivativeAssetPath(t, dir, clip, role)
-			_, size, err := FileSHA256(full)
+			_, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -642,7 +645,7 @@ func derivativeAssetPath(t *testing.T, dir string, clip StoreClip, role MediaAss
 
 func mutateDerivativeMiddleByte(t *testing.T, path string, size int64) {
 	t.Helper()
-	if size <= 2*hashWindow {
+	if size <= 2*asset.HashWindow {
 		t.Fatalf("derivative is %d bytes; need more than two sparse-hash windows", size)
 	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0)

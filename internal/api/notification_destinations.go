@@ -8,46 +8,47 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 func (s *Server) registerNotificationDestinations(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-provider-types-list", Method: http.MethodGet,
 		Path: "/v1/notifications/provider-types", Summary: "List notification provider types",
 		Description: "Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationProviderTypesList)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.notificationProviderTypesList)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-list", Method: http.MethodGet,
 		Path: "/v1/notifications/providers", Summary: "List notification providers",
 		Description: "Returns the configured provider list with safe field values, write-only secret status, selected events, and delivery health.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationsList)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.notificationDestinationsList)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-create", Method: http.MethodPost,
 		Path: "/v1/notifications/providers", Summary: "Add a notification provider",
 		Description: "Adds one provider from its server-defined settings and selected events. Sensitive fields are classified and stored by the server and remain write-only.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusCreated,
-	}, RoleMember), s.notificationDestinationCreate)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.notificationDestinationCreate)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-update", Method: http.MethodPut,
 		Path: "/v1/notifications/providers/{id}", Summary: "Update a notification provider",
 		Description: "Omitting a sensitive setting preserves it; sending that field with an empty value clears it.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationUpdate)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.notificationDestinationUpdate)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-delete", Method: http.MethodDelete,
 		Path: "/v1/notifications/providers/{id}", Summary: "Delete a notification provider",
 		Description: "Queued attempts suppress at execution when their destination no longer exists. Browser Push may include this browser's endpoint in the request body; the response says whether the client should unsubscribe that local subscription.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationDelete)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.notificationDestinationDelete)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-test", Method: http.MethodPost,
 		Path: "/v1/notifications/providers/{id}/test", Summary: "Queue a notification provider test",
 		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
-	}, RoleMember), s.notificationDestinationTest)
+	}, httpcore.RoleMember), s.notificationDestinationTest)
 }
 
 type NotificationProviderFieldOptionDTO struct {
@@ -90,7 +91,7 @@ func (s *Server) notificationProviderTypesList(
 	definitions := notifications.ProviderDefinitions()
 	out.Body.Providers = make([]NotificationProviderTypeDTO, 0, len(definitions))
 	for _, definition := range definitions {
-		if roleFrom(ctx) != RoleAdmin && !definition.MemberOwned {
+		if httpcore.RoleFrom(ctx) != httpcore.RoleAdmin && !definition.MemberOwned {
 			continue
 		}
 		provider := NotificationProviderTypeDTO{
@@ -202,7 +203,7 @@ func (s *Server) notificationDestinationsList(
 	_ *struct{},
 ) (*notificationDestinationsListOutput, error) {
 	if s.notificationDestinations == nil {
-		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	summaries, err := s.notificationDestinations.List(ctx, notificationPrincipal(ctx))
 	if err != nil {
@@ -221,7 +222,7 @@ func (s *Server) notificationDestinationCreate(
 	in *notificationDestinationCreateInput,
 ) (*notificationDestinationCreateOutput, error) {
 	if s.notificationDestinations == nil {
-		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	principal := notificationPrincipal(ctx)
 	scope := notifications.ScopeInstallation
@@ -248,7 +249,7 @@ func (s *Server) notificationDestinationUpdate(
 	in *notificationDestinationUpdateInput,
 ) (*notificationDestinationUpdateOutput, error) {
 	if s.notificationDestinations == nil {
-		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	summary, err := s.notificationDestinations.Update(ctx, notificationPrincipal(ctx), in.ID, notifications.DestinationUpdateCommand{
 		Label:  in.Body.Label,
@@ -265,7 +266,7 @@ func (s *Server) notificationDestinationDelete(
 	in *notificationDestinationDeleteInput,
 ) (*notificationDestinationDeleteOutput, error) {
 	if s.notificationDestinations == nil {
-		return nil, errNotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Notification destinations unavailable", "Destination management isn't available in this Loomarr process.")
 	}
 	currentBrowserEndpoint := ""
 	if in.Body != nil {
@@ -290,7 +291,7 @@ func (s *Server) notificationDestinationTest(
 	in *notificationDestinationTestInput,
 ) (*notificationDestinationTestOutput, error) {
 	if s.notificationDestinations == nil {
-		return nil, errNotImplemented("Notification destinations unavailable", "Destination testing isn't available in this Loomarr process.")
+		return nil, httpcore.NotImplemented("Notification destinations unavailable", "Destination testing isn't available in this Loomarr process.")
 	}
 	result, err := s.notificationDestinations.Test(ctx, notificationPrincipal(ctx), in.ID, in.Body.RequestID)
 	if err != nil {
@@ -304,8 +305,8 @@ func (s *Server) notificationDestinationTest(
 }
 
 func notificationPrincipal(ctx context.Context) notifications.Principal {
-	principal := notifications.Principal{Administrator: roleFrom(ctx) == RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	principal := notifications.Principal{Administrator: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		principal.PersonID = user.ID
 	}
 	return principal
@@ -343,14 +344,14 @@ func notificationDestinationDTO(summary notifications.DestinationSummary) Notifi
 func notificationDestinationError(err error) error {
 	switch {
 	case errors.Is(err, notifications.ErrForbidden):
-		return apiErr(http.StatusForbidden, "Notification destination unavailable", "You can manage only installation destinations allowed for your role and personal destinations owned by your account.")
+		return httpcore.Problem(http.StatusForbidden, "Notification destination unavailable", "You can manage only installation destinations allowed for your role and personal destinations owned by your account.")
 	case errors.Is(err, notifications.ErrNotFound):
-		return errNotFound("Notification destination not found", "That notification destination doesn't exist or has already been deleted.")
+		return httpcore.NotFound("Notification destination not found", "That notification destination doesn't exist or has already been deleted.")
 	case errors.Is(err, notifications.ErrMeansUnavailable):
-		return errUnprocessable("Notification provider unavailable", "That provider cannot be enabled until its adapter is available and fully configured.")
+		return httpcore.Unprocessable("Notification provider unavailable", "That provider cannot be enabled until its adapter is available and fully configured.")
 	case errors.Is(err, notifications.ErrConflict):
-		return apiErr(http.StatusConflict, "Notification provider conflicts with an existing destination", "This browser subscription is already assigned to another provider row.")
+		return httpcore.Problem(http.StatusConflict, "Notification provider conflicts with an existing destination", "This browser subscription is already assigned to another provider row.")
 	default:
-		return errUnprocessable("Notification destination is invalid", "Check the provider, audience, selected events, and required configuration, then try again.")
+		return httpcore.Unprocessable("Notification destination is invalid", "Check the provider, audience, selected events, and required configuration, then try again.")
 	}
 }

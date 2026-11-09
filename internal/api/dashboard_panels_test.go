@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
@@ -19,7 +20,7 @@ func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
 	opts.Store = st
-	opts.Auth = api.NewTokenAuthorizer(adminToken)
+	opts.Auth = httpcore.NewTokenAuthorizer(adminToken)
 	opts.Log = slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)

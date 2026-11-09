@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -103,11 +106,11 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if err := os.WriteFile(sourceFull, []byte("reviewed child source bytes "+fixtureSuffix), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			sourceHash, err := filler.ClipID(sourceFull)
+			sourceHash, err := asset.ClipID(sourceFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -127,9 +130,9 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 					t.Fatal(err)
 				}
 			}
-			if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: sourceHash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-				Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+			if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+				ClipHash: sourceHash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+				Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +177,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				if source, err := st.GetClip(ctx, sourceHash); err != nil || source.Hash != sourceHash {
 					t.Fatalf("transaction failure lost source evidence: %+v, %v", source, err)
 				}
-				if pipeline, found, err := st.GetClipPipeline(ctx, sourceHash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+				if pipeline, found, err := st.GetClipPipeline(ctx, sourceHash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 					t.Fatalf("transaction failure lost source reference: %+v, found=%v, err=%v", pipeline, found, err)
 				}
 			}
@@ -207,7 +210,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			}
 			restarted := newStage(fillerPipelineClipAdapter{st})
 			result, err := restarted.Run(ctx, filler.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
-			if err != nil || result.Verdict != filler.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
+			if err != nil || result.Verdict != pipelinestate.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
 				t.Fatalf("restart result = %+v, %v; want committed target %s", result, err, crashStore.target.Hash)
 			}
 			if _, err := st.GetClip(ctx, sourceHash); !errors.Is(err, store.ErrNotFound) {
@@ -255,9 +258,9 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		func() float64 { return -23 }, time.Now)
 	parentPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{parentProbe, parentTranscode},
 		filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionRunning,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionRunning,
 		NextRun:     time.Now().UTC(), EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -285,9 +288,9 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -303,8 +306,8 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	transcode.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measured = append(measured, req)
 		if len(measured) == 1 {
-			parentID, parentErr := filler.ClipID(req.ParentPath)
-			beforeSourceHash, _ = filler.ClipID(req.Path)
+			parentID, parentErr := asset.ClipID(req.ParentPath)
+			beforeSourceHash, _ = asset.ClipID(req.Path)
 			measuredParentBound = parentErr == nil && parentID == compHash
 			measurement := journeyConditioningMeasurement(-28.4)
 			measurement.Cuts[0].Intended = req.IntendedCuts[0]
@@ -323,7 +326,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	app := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,
 	}
-	segments := append([]filler.SplitSegment(nil), proposal.Segments...)
+	segments := append([]split.Segment(nil), proposal.Segments...)
 	segments[0].Era = 1994
 	segments[0].Tags = []string{"toys"}
 	if err := app.ConfirmSplit(ctx, proposal.ID, segments); err != nil {
@@ -347,7 +350,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("conditioned child = %+v", child)
 	}
 	row, found, err := st.GetClipPipeline(ctx, child.Hash)
-	if err != nil || !found || row.Disposition != filler.DispositionReady || child.Held ||
+	if err != nil || !found || row.Disposition != pipelinestate.DispositionReady || child.Held ||
 		child.Placement != filler.PlacementBreakBody {
 		t.Fatalf("child readiness = row:%+v found:%v held:%v placement:%q err:%v, want Ready break body",
 			row, found, child.Held, child.Placement, err)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -459,7 +460,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if err := os.WriteFile(temporary, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(temporary)
+	clipHash, err := asset.ClipID(temporary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +474,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if err := os.Rename(temporary, media); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(media)
+	digest, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,11 +520,11 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 	if err := os.WriteFile(media, []byte("substituted bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(media)
+	clipHash, err := asset.ClipID(media)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, size, err := filler.FileSHA256(media)
+	_, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +688,7 @@ func TestSync_CatalogRebuildRestoresConditioningParentFromSidecar(t *testing.T) 
 	if err := os.WriteFile(media, []byte("reviewed child bytes that survive a catalog rebuild"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(media)
+	childHash, err := asset.ClipID(media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -734,11 +735,11 @@ func TestSync_EmptyCatalogRebuildMarksConditioningParentCompositeInEitherScanOrd
 			if err := os.WriteFile(childFull, []byte("reviewed child bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			childHash, err := filler.ClipID(childFull)
+			childHash, err := asset.ClipID(childFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -786,7 +787,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -799,7 +800,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			if err := os.WriteFile(childFull, []byte("conditioned child bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			childHash, err := filler.ClipID(childFull)
+			childHash, err := asset.ClipID(childFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -896,7 +897,7 @@ func TestSync_MalformedConditioningLineageCannotBecomeAnAirableTopLevelClip(t *t
 	if err := os.WriteFile(childFull, []byte("damaged lineage child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,7 +922,7 @@ func TestSync_BlankConditioningLineageCannotBecomeAnAirableTopLevelClip(t *testi
 	if err := os.WriteFile(childFull, []byte("blank lineage child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -946,7 +947,7 @@ func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *te
 	if err := os.WriteFile(childFull, []byte("transformed child without conditioning facts"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1003,7 +1004,7 @@ func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t
 			if !tc.conditioned && sidecarState != filler.SidecarValid {
 				t.Fatalf("ordinary top-level mezzanine state = %v, want valid", sidecarState)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1049,7 +1050,7 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 			if _, state := filler.ReadSidecarTagsState(media); state != tc.wantState {
 				t.Fatalf("sidecar state = %v, want %v", state, tc.wantState)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1092,7 +1093,7 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
 				t.Fatalf("sidecar state = %v, want invalid when %s is omitted", state, omitted)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1322,7 +1323,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := filler.ClipID(probeFile)
+	actual, err := asset.ClipID(probeFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1366,7 +1367,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Errorf("stale media still exists: %v", err)
 	}
 	newFull := filepath.Join(dir, filepath.FromSlash(wantRel))
-	if id, err := filler.ClipID(newFull); err != nil || id != actual {
+	if id, err := asset.ClipID(newFull); err != nil || id != actual {
 		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
 	}
 	tags, ok := filler.ReadSidecarTags(newFull)
@@ -1398,7 +1399,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := filler.ClipID(probeFile)
+	actual, err := asset.ClipID(probeFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1446,7 +1447,7 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 		if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		id, err := filler.ClipID(probe)
+		id, err := asset.ClipID(probe)
 		if err != nil {
 			t.Fatal(err)
 		}

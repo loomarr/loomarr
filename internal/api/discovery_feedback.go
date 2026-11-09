@@ -9,24 +9,25 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func (s *Server) registerDiscoveryFeedback(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "record-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback",
 		Summary: "Record explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
-	}, RoleAdmin), s.recordDiscoveryFeedback)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.recordDiscoveryFeedback)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-discovery-feedback", Method: http.MethodGet, Path: "/v1/discovery/feedback",
 		Summary: "List effective explicit discovery feedback", Tags: []string{"discovery"},
-	}, RoleMember), s.listDiscoveryFeedback)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.listDiscoveryFeedback)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "clear-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback/clear",
 		Summary: "Clear explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
-	}, RoleAdmin), s.clearDiscoveryFeedback)
+	}, httpcore.RoleAdmin), s.clearDiscoveryFeedback)
 }
 
 type discoveryFeedbackBody struct {
@@ -75,21 +76,21 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope channeldatas
 	target provision.Key, action channeldatastore.FeedbackAction, reason string,
 ) (*discoveryFeedbackOutput, error) {
 	if s.store == nil {
-		return nil, errFeatureNotConfigured("Discovery feedback unavailable", "The persistence service is not configured.")
+		return nil, httpcore.FeatureNotConfigured("Discovery feedback unavailable", "The persistence service is not configured.")
 	}
 	if !validFeedbackRequest(scope, scopeID, target) {
-		return nil, errBadRequest("Invalid discovery feedback", "Choose household scope or a specific channel and a grounded movie or series.")
+		return nil, httpcore.BadRequest("Invalid discovery feedback", "Choose household scope or a specific channel and a grounded movie or series.")
 	}
-	actor := userIDFromHuma(ctx)
+	actor := httpcore.UserIDFrom(ctx)
 	if actor == "" {
 		actor = "api-token"
 	}
-	feedback := channeldatastore.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(newRequestID(), "req_"),
+	feedback := channeldatastore.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(httpcore.NewRequestID(), "req_"),
 		ActorID: actor, Scope: scope, ScopeID: scopeID, Target: target, Action: action,
 		Reason: strings.TrimSpace(reason), CreatedAt: time.Now().UTC()}
 	if err := s.store.AppendDiscoveryFeedback(ctx, feedback); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+			return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 		}
 		return nil, err
 	}
@@ -98,7 +99,7 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope channeldatas
 
 func (s *Server) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFeedbackInput) (*listDiscoveryFeedbackOutput, error) {
 	if s.store == nil || !validFeedbackScope(in.Scope, in.ScopeID) {
-		return nil, errBadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
+		return nil, httpcore.BadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
 	}
 	household, err := s.store.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {

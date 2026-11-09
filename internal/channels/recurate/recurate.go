@@ -7,7 +7,7 @@
 //   - Curator: the channel-scoped auto-curate GRANT. Given a freshly-produced re-curation
 //     proposal, it approves it because the CHANNEL opted in (schedule.AutoCurate), after
 //     filtering the proposal's net-new acquisitions to those clearing the quality bar and the
-//     title cap. It approves through the ONE suggest.Approver implementation (audit
+//     title cap. It approves through the ONE accept.Approver implementation (audit
 //     "auto-curate") — never a raw `wanted` write. Wired into the suggest worker as its
 //     ChannelAutoCurator, so a re-curation proposal flows through the same persist→approve→bind
 //     pipeline every other proposal does.
@@ -24,7 +24,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -57,18 +58,18 @@ type CuratorStore interface {
 // Curator is the channel-scoped auto-curate grant (§8.2). It approves a re-curation proposal
 // only when its channel opted in, and only for acquisitions clearing the quality bar within the
 // title cap — everything else is dropped from the proposal before approval, so an over-bar or
-// over-cap title is never requested. It is the auto-curate analogue of suggest.AutoApprover,
+// over-cap title is never requested. It is the auto-curate analogue of accept.AutoApprover,
 // but authorized by the channel, not a user, and bounded by quality/cap, not a user quota.
 type Curator struct {
 	store      CuratorStore
-	approver   *suggest.Approver
+	approver   *accept.Approver
 	thresholds Thresholds
 	log        *slog.Logger
 	now        func() time.Time
 }
 
 // NewCurator wires the grant.
-func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log *slog.Logger) *Curator {
+func NewCurator(st CuratorStore, approver *accept.Approver, th Thresholds, log *slog.Logger) *Curator {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -79,24 +80,24 @@ func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log 
 // (approved, reason) so the worker can log why a proposal stayed in the queue. The gate is
 // closed by default: any channel that is not opted in, not found, or a proposal that isn't a
 // re-curation of an auto-curate channel simply gets Reason and stays `submitted` for an admin.
-func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decision, error) {
+func (c *Curator) Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error) {
 	if c == nil || p.JobID == "" {
-		return suggest.Decision{Reason: "not a re-curation proposal"}, nil
+		return proposals.AutoDecision{Reason: "not a re-curation proposal"}, nil
 	}
 	ch, err := c.channelForJob(ctx, p.JobID)
 	if err != nil {
 		// An unreadable channel is not a reason to auto-approve. Fail CLOSED (this gate spends
 		// on acquisitions): the proposal waits for an admin, the safe direction.
-		return suggest.Decision{Reason: "channel unavailable"}, nil
+		return proposals.AutoDecision{Reason: "channel unavailable"}, nil
 	}
 	if ch.ID == "" || ch.Policy.AutoCurate == nil {
-		return suggest.Decision{Reason: "channel not opted into auto-curate"}, nil
+		return proposals.AutoDecision{Reason: "channel not opted into auto-curate"}, nil
 	}
 	// A paused/detached channel is not being managed — don't grow it unattended. Every other
 	// state (live/building/DRIFTED) is managed and curatable — drifted is a transient reconcile
 	// state, not a hands-off one (mirrors runner.eligible's deny-list).
 	if !ch.Status.Reconcilable() {
-		return suggest.Decision{Reason: "channel paused or detached"}, nil
+		return proposals.AutoDecision{Reason: "channel paused or detached"}, nil
 	}
 
 	minScore := effectiveMinScore(ctx, ch.Policy.AutoCurate, c.thresholds)
@@ -110,14 +111,14 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	if err != nil {
 		// Keep is an explicit operator promise. If its state cannot be read, do not
 		// guess which titles are retirable; leave the proposal for manual review.
-		return suggest.Decision{Reason: "discovery feedback unavailable"}, nil
+		return proposals.AutoDecision{Reason: "discovery feedback unavailable"}, nil
 	}
 	// Retirement ranks titles by how long they have gone without airing, so the airing history
 	// is required input. Like the keep feedback above, an unreadable history fails closed: no
 	// guess about what is stale, the proposal waits for a person.
 	lastAired, err := c.store.LastAiredByKey(ctx, ch.ID)
 	if err != nil {
-		return suggest.Decision{Reason: "airing history unavailable"}, nil
+		return proposals.AutoDecision{Reason: "airing history unavailable"}, nil
 	}
 	res := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
 	filtered := res.Proposal
@@ -137,11 +138,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// ApprovalEdit, which models a human's choices at the gate. Different things, deliberately
 	// not conflated.
 	if c.approver == nil {
-		return suggest.Decision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
+		return proposals.AutoDecision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
 	}
-	approval, err := c.approver.Approve(ctx, filtered, nil, suggest.AutoCuratedBy)
+	approval, err := c.approver.Approve(ctx, filtered, nil, accept.AutoCuratedBy)
 	if err != nil {
-		return suggest.Decision{Reason: "approval failed"}, err
+		return proposals.AutoDecision{Reason: "approval failed"}, err
 	}
 	c.log.Info("auto-curated a channel",
 		"channel", ch.ID, "enqueued", approval.Enqueued,
@@ -166,7 +167,7 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 			"channel", ch.ID, "retired", r.Out, "retired_confidence", r.OutScore,
 			"replaced_by", r.In, "replacement_confidence", r.InScore)
 	}
-	return suggest.Decision{Approved: true, Enqueued: approval.Enqueued}, nil
+	return proposals.AutoDecision{Approved: true, Enqueued: approval.Enqueued}, nil
 }
 
 type discoveryFeedbackReader interface {

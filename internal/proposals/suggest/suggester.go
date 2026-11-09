@@ -254,7 +254,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	defer s.interactive.Begin()()
 	intent := Intent{Intent: request}
 	if conflictingConstraints(intent) {
-		trace := proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}
+		trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalConstraintsConflict}
 		return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errors.New("suggestion constraints conflict"))
 	}
 	// A tool call receives Intent by value, but this map deliberately shares the
@@ -286,7 +286,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	// an id the tool never returned. Threaded across the tool loop AND repair
 	// re-asks, so grounding holds even when the final JSON is retried.
 	surfaced := map[provision.Key]catalog.Candidate{}
-	trace := proposals.DecisionTrace{Version: DecisionTraceVersion}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion}
 	temp := groundedTemp
 
 	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
@@ -355,11 +355,11 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, &intent, feedback, &finalizationOnly, &emptyRetrievals, &acceptedMeaning, &sources, ledger, continuation)
 		if err != nil {
 			if errors.Is(err, errDateSemanticsUnclear) {
-				trace.Terminal = TerminalDateSemanticsUnclear
+				trace.Terminal = proposals.TerminalDateSemanticsUnclear
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
 			}
 			if errors.Is(err, errDateConstraintsConflict) {
-				trace.Terminal = TerminalConstraintsConflict
+				trace.Terminal = proposals.TerminalConstraintsConflict
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
 			}
 			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
@@ -372,14 +372,14 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			meaning, meaningErr := validateIntentDateMeaning(intent, out.DateMeaning)
 			if meaningErr != nil {
 				if acceptedMeaning == nil && isDateMeaningConflict(meaningErr) {
-					trace.Terminal = TerminalConstraintsConflict
+					trace.Terminal = proposals.TerminalConstraintsConflict
 					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateConstraintsConflict)
 				}
 				perr = meaningErr
 			} else if acceptedMeaning != nil && !acceptedMeaning.Equal(meaning) {
 				perr = errors.New("dateMeaning does not match accepted tool interpretation")
 			} else if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
-				trace.Terminal = TerminalDateSemanticsUnclear
+				trace.Terminal = proposals.TerminalDateSemanticsUnclear
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateSemanticsUnclear)
 			} else {
 				acceptedMeaning = &meaning
@@ -388,7 +388,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 		if perr == nil {
 			if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) && !sources.hasReference && !intent.networkDiscoveryComplete {
 				if groundingRetried {
-					trace.Terminal = TerminalInvalidToolCalls
+					trace.Terminal = proposals.TerminalInvalidToolCalls
 					return proposals.Proposal{}, NewFailure(FailureProvider, trace, errors.New("network programming-identity request requires a usable network discovery"))
 				}
 				groundingRetried = true
@@ -403,16 +403,16 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			}
 			sourceResult, sourceErr := s.initializeSources(ctx, &intent, *acceptedMeaning, &sources)
 			if sourceErr != nil {
-				terminal := TerminalRetrievalFailure
+				terminal := proposals.TerminalRetrievalFailure
 				code := FailureProvider
 				if errors.Is(sourceErr, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 					sourceErr = errors.Join(sourceErr, ctx.Err())
 				} else {
 					var readErr *referenceReadError
 					if errors.As(sourceErr, &readErr) {
-						terminal, code = TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
+						terminal, code = proposals.TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
 					} else if errors.Is(sourceErr, ErrNoGroundedTitles) {
-						terminal, code = ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
+						terminal, code = proposals.ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
 					}
 				}
 				trace.Terminal = terminal
@@ -442,7 +442,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
-					trace.Terminal = TerminalRetrievalFailure
+					trace.Terminal = proposals.TerminalRetrievalFailure
 					return proposals.Proposal{}, NewFailure(FailureProvider, trace, err)
 				}
 				if len(out.Picks) == 0 {
@@ -461,7 +461,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			if buildErr != nil {
 				if errors.Is(buildErr, ErrNoGroundedTitles) {
 					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
-						trace.Terminal = TerminalNamedSetUnproven
+						trace.Terminal = proposals.TerminalNamedSetUnproven
 					} else if trace.Terminal == "" {
 						trace.Terminal = FailureSelectionEmpty
 					}
@@ -475,7 +475,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
 				return prop, fallbackErr
 			}
-			trace.Terminal = TerminalMalformedExhausted
+			trace.Terminal = proposals.TerminalMalformedExhausted
 			return proposals.Proposal{}, NewFailure(FailureProvider, trace, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr))
 		}
 		// Nudge the model to fix its output, and turn the temperature down further
@@ -571,10 +571,10 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", cause))
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
-				trace.Terminal = TerminalProviderTimeout
+				trace.Terminal = proposals.TerminalProviderTimeout
 				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 			}
-			trace.Terminal = TerminalProviderFailure
+			trace.Terminal = proposals.TerminalProviderFailure
 			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
 		// Some OpenAI-compatible models can repeat a tool call from conversation
@@ -612,7 +612,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 						extra = len(prepared.queries) - 1
 					}
 					if !ledger.reserve(extra) {
-						rankedTrace = proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}
+						rankedTrace = proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: FailureBudgetExhausted}
 						result = `{"error":"suggestion budget exhausted"}`
 					} else {
 						if *acceptedMeaning == nil {
@@ -626,7 +626,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 						}
 						sourceResult, sourceErr := s.initializeSources(ctx, intent, *meaning, sources)
 						if sourceErr != nil {
-							trace.Terminal = TerminalRetrievalFailure
+							trace.Terminal = proposals.TerminalRetrievalFailure
 							return "", NewFailure(FailureProvider, *trace, sourceErr)
 						}
 						for _, candidates := range [][]catalog.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
@@ -643,7 +643,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					trace.Terminal = FailureBudgetExhausted
 					return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion budget exhausted"))
 				}
-				if rankedTrace.Terminal == TerminalConstraintsConflict {
+				if rankedTrace.Terminal == proposals.TerminalConstraintsConflict {
 					return "", errDateConstraintsConflict
 				}
 				if meaning != nil && meaning.DateMeaning().Kind == DateMeaningAmbiguous {
@@ -691,10 +691,10 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				if len(cands) > 0 || referenceGrounded {
 					*finalizationOnly = true
 					finalizing = true
-				} else if rankedTrace.Terminal == ReasonRetrievalEmpty {
+				} else if rankedTrace.Terminal == proposals.ReasonRetrievalEmpty {
 					*emptyRetrievals++
 					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {
-						trace.Terminal = ReasonRetrievalEmpty
+						trace.Terminal = proposals.ReasonRetrievalEmpty
 						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, ErrNoGroundedTitles)
 					}
 				}
@@ -710,7 +710,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 	}
 	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
 	if invalidRounds == maxToolRounds {
-		trace.Terminal = TerminalInvalidToolCalls
+		trace.Terminal = proposals.TerminalInvalidToolCalls
 	} else {
 		trace.Terminal = FailureBudgetExhausted
 	}

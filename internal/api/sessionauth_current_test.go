@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 func TestSessionAuthorizerCurrentObservesAPITokenRotation(t *testing.T) {
@@ -18,14 +20,14 @@ func TestSessionAuthorizerCurrentObservesAPITokenRotation(t *testing.T) {
 		r.Header.Set("Authorization", "Bearer "+value)
 		return r
 	}
-	if got := a.Authorize(request("first-token")); got != RoleAdmin {
+	if got := a.Authorize(request("first-token")); got != httpcore.RoleAdmin {
 		t.Fatalf("initial bearer role = %q, want admin", got)
 	}
 	token = "rotated-token"
-	if got := a.Authorize(request("first-token")); got != RoleAnonymous {
+	if got := a.Authorize(request("first-token")); got != httpcore.RoleAnonymous {
 		t.Fatalf("old bearer after rotation role = %q, want anonymous", got)
 	}
-	if got := a.Authorize(request("rotated-token")); got != RoleAdmin {
+	if got := a.Authorize(request("rotated-token")); got != httpcore.RoleAdmin {
 		t.Fatalf("rotated bearer role = %q, want admin", got)
 	}
 }
@@ -36,7 +38,7 @@ func TestSessionAuthorizerCurrentFailsBearerClosedOnReadError(t *testing.T) {
 	})
 	r := httptest.NewRequest(http.MethodGet, "/v1/settings", nil)
 	r.Header.Set("Authorization", "Bearer would-match")
-	if got := a.Authorize(r); got != RoleAnonymous {
+	if got := a.Authorize(r); got != httpcore.RoleAnonymous {
 		t.Fatalf("bearer role with unavailable durable token = %q, want anonymous", got)
 	}
 }

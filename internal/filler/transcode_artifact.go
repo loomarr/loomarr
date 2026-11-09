@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -25,22 +26,22 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 		Parent: filepath.Join(stageDir, "parent"+filepath.Ext(parent)),
 	}
 	cleanup := func() { _ = os.Remove(out.Source); _ = os.Remove(out.Parent) }
-	if err := snapshotOwnedFile(ctx, source, out.Source); err != nil {
+	if err := asset.SnapshotOwnedFile(ctx, source, out.Source); err != nil {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source could not be snapshotted")
 	}
-	if err := snapshotOwnedFile(ctx, parent, out.Parent); err != nil {
+	if err := asset.SnapshotOwnedFile(ctx, parent, out.Parent); err != nil {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning parent could not be snapshotted")
 	}
-	sourceID, sourceErr := ClipID(out.Source)
-	parentID, parentErr := ClipID(out.Parent)
+	sourceID, sourceErr := asset.ClipID(out.Source)
+	parentID, parentErr := asset.ClipID(out.Parent)
 	if sourceErr != nil || parentErr != nil || sourceID != sourceHash || parentID != parentHash {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent bytes do not match catalog identity")
 	}
-	sourceEqual, sourceErr := exactFileBytesEqual(ctx, source, out.Source, tools.ConditioningMaxSnapshotBytes)
-	parentEqual, parentErr := exactFileBytesEqual(ctx, parent, out.Parent, tools.ConditioningMaxSnapshotBytes)
+	sourceEqual, sourceErr := asset.ExactFileBytesEqual(ctx, source, out.Source, tools.ConditioningMaxSnapshotBytes)
+	parentEqual, parentErr := asset.ExactFileBytesEqual(ctx, parent, out.Parent, tools.ConditioningMaxSnapshotBytes)
 	if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent snapshot is not exact")
@@ -51,11 +52,11 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 // validateRecoveredTranscode proves an existing canonical artifact is the exact output and restart
 // record from this attempt. Sparse catalog identity alone is never recovery authority.
 func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *ConditioningLineage, evidence *ConditioningEvidence, quality MediaQuality, assets *MediaAssetManifest) error {
-	publishedID, err := ClipID(published)
+	publishedID, err := asset.ClipID(published)
 	if err != nil || publishedID != expectedHash {
 		return errors.New("existing transformed artifact bytes do not match their identity")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, published, tools.ConditioningMaxSnapshotBytes)
+	equal, err := asset.ExactFileBytesEqual(ctx, staged, published, tools.ConditioningMaxSnapshotBytes)
 	if err != nil || !equal {
 		return errors.New("existing transformed artifact bytes do not exactly match the staged output")
 	}

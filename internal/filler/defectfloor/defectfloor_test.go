@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -111,11 +113,11 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	fresh := clip("fresh", 1988, nil)
 	// A held clip reads as not playable until the score rung, last in the conveyor, places it.
 	held := clip("held", 2012, func(c *DefectClip) {
-		c.Held, c.Stage, c.Placement = true, filler.StageDefects, filler.PlacementNotPlayable
+		c.Held, c.Stage, c.Placement = true, pipelinestate.StageDefects, filler.PlacementNotPlayable
 	})
 	// Held short of the rung: its bytes may not be the ones that air, or it may be a whole break.
 	early := clip("early", 2012, func(c *DefectClip) {
-		c.Held, c.Stage, c.Placement = true, filler.StageTranscode, filler.PlacementNotPlayable
+		c.Held, c.Stage, c.Placement = true, pipelinestate.StageTranscode, filler.PlacementNotPlayable
 	})
 	current := clip("current", 1988, nil)
 	recorrected := clip("re-dated", 2015, nil) // judged as 1988 before an operator fixed its era
@@ -215,7 +217,7 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 		if err := os.WriteFile(src, []byte(name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		hash, err := filler.ClipID(src)
+		hash, err := asset.ClipID(src)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -324,7 +326,7 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 		return c
 	}
 	admitted, waiting := clip("an admitted ad", false), clip("an ad still at the defects rung", true)
-	waiting.Stage = filler.StageDefects
+	waiting.Stage = pipelinestate.StageDefects
 	// Listed as admitted, then held by an operator's rewind while the pass was judging.
 	rewound := clip("an ad rewound mid-pass", false)
 	st := &defectMemStore{clips: []DefectClip{admitted, waiting, rewound}, records: map[string]DefectRecord{},

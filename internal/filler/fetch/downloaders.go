@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -607,11 +608,11 @@ func inspectOutput(path string) (digest string, size int64, clipHash string, err
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return "", 0, "", fmt.Errorf("downloaded output %s is not a regular file", path)
 	}
-	digest, size, err = filler.FileSHA256(path)
+	digest, size, err = asset.FileSHA256(path)
 	if err != nil {
 		return "", 0, "", err
 	}
-	clipHash, err = filler.ClipID(path)
+	clipHash, err = asset.ClipID(path)
 	if err != nil {
 		return "", 0, "", err
 	}

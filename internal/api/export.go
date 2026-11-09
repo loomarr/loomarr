@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // ExportOpenAPI builds the API's operation definitions and returns the OpenAPI
@@ -139,7 +140,7 @@ func OperationsMissingARole() ([]string, error) {
 			if op == nil {
 				continue
 			}
-			if _, ok := op.Metadata[roleMetaKey]; !ok {
+			if _, ok := op.Metadata[httpcore.RoleMetaKey]; !ok {
 				missing = append(missing, fmt.Sprintf("%s %s (%s)", method, path, op.OperationID))
 			}
 		}

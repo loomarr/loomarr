@@ -251,7 +251,7 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 	if len(want) != 0 {
 		t.Fatalf("missing requested title ids %v from %+v", want, items)
 	}
-	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(prop.Trace); err != nil {
 		t.Fatalf("preserved required-title trace is not persistable: %v; trace=%+v", err, prop.Trace)
 	}
 }
@@ -361,7 +361,7 @@ func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("fallback items = %+v, want every independently grounded required title", items)
 	}
-	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(prop.Trace); err != nil {
 		t.Fatalf("fallback trace is not persistable: %v; trace=%+v", err, prop.Trace)
 	}
 }

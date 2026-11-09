@@ -34,6 +34,8 @@ interface LibraryTitleEpisode {
   /** The last episode a multi-episode file holds. */
   end?: number;
   ready: boolean;
+  /** Named and numbered by its file until the show's episode order is said (#2151 decision 53). */
+  fromFile?: boolean;
 }
 
 interface LibraryTitleSeason {
@@ -92,6 +94,8 @@ interface LibraryTitleProps {
   onForget: () => Promise<void>;
   /** Remove extra copy: moves the file at path to the trash; rejects when it couldn't. */
   onRemoveExtra: (path: string) => Promise<void>;
+  /** Choose: opens Needs you, where the show's episode order is said; absent hides the hint. */
+  onChooseOrder?: () => void;
 }
 
 export type {

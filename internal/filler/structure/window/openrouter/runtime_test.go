@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -77,7 +77,7 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = runtime.Assess(t.Context(), filler.StructureAssessmentSource{Source: filler.SplitSourceAsset{
+	_, err = runtime.Assess(t.Context(), split.AssessmentSource{Source: split.SourceAsset{
 		SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("a", 64), Bytes: 1_000,
 		DurationMs: authority.MinimumSourceDurationMS - 1,
 	}})
@@ -116,9 +116,9 @@ func TestCertifiedRuntimeCutsOnlyOnTheCertifiedFamily(t *testing.T) {
 	}
 	preparer := &capturedRuntimePreparer{err: errors.New("media preflight failed")}
 	runtime.preparer = preparer
-	input := filler.StructureAssessmentSource{
-		Source: filler.SplitSourceAsset{
-			Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+	input := split.AssessmentSource{
+		Source: split.SourceAsset{
+			Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
 			Bytes: 1_000, DurationMs: authority.MaximumSourceDurationMS, Path: "source.mp4",
 		},
 		FullPath: filepath.Join(sourceRoot, "source.mp4"),
@@ -151,7 +151,7 @@ type capturedRuntimePreparer struct {
 	err      error
 }
 
-func (p *capturedRuntimePreparer) PrepareWindows(context.Context, filler.StructureAssessmentSource, window.Plan) (assessment.StructureAssessmentWindowMediaSet, error) {
+func (p *capturedRuntimePreparer) PrepareWindows(context.Context, split.AssessmentSource, window.Plan) (assessment.StructureAssessmentWindowMediaSet, error) {
 	p.calls++
 	return p.prepared, p.err
 }
@@ -175,9 +175,9 @@ func TestCertifiedRuntimePreflightsMediaBeforeProviderMetadata(t *testing.T) {
 	}
 	preparer := &capturedRuntimePreparer{err: errors.New("media preflight failed")}
 	runtime.preparer = preparer
-	_, err = runtime.Assess(t.Context(), filler.StructureAssessmentSource{
-		Source: filler.SplitSourceAsset{
-			Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+	_, err = runtime.Assess(t.Context(), split.AssessmentSource{
+		Source: split.SourceAsset{
+			Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
 			Bytes: 1_000, DurationMs: authority.MaximumSourceDurationMS, Path: "source.mp4",
 		},
 		FullPath: filepath.Join(sourceRoot, "source.mp4"),
@@ -216,13 +216,13 @@ func TestCertifiedRuntimeChecksReviewedMediaEnvelopeBeforeProviderMetadata(t *te
 	}
 }
 
-func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS int64) (filler.StructureAssessmentSource, assessment.StructureAssessmentWindowMediaSet) {
+func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS int64) (split.AssessmentSource, assessment.StructureAssessmentWindowMediaSet) {
 	t.Helper()
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+	source := split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
 		Bytes: 1_000, DurationMs: durationMS, Path: "source.mp4",
 	}
-	input := filler.StructureAssessmentSource{Source: source, FullPath: filepath.Join(sourceRoot, source.Path)}
+	input := split.AssessmentSource{Source: source, FullPath: filepath.Join(sourceRoot, source.Path)}
 	plan, err := window.NewPlan(structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: durationMS}, cut.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)

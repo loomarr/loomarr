@@ -5,20 +5,21 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestAcquisitionOutcomeFromUsesPipelineLifecycle(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	rows := []filler.ClipPipeline{
-		{Status: filler.StatusQueued, Disposition: filler.DispositionRunning},
-		{Status: filler.StatusRunning, Disposition: filler.DispositionRunning},
-		{Status: filler.StatusFailed, Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{Status: filler.StatusDone, Disposition: filler.DispositionReview},
-		{Status: filler.StatusDone, Disposition: filler.DispositionReady},
-		{Status: filler.StatusDone, Disposition: filler.DispositionComplete},
-		{Status: filler.StatusFailed, Disposition: filler.DispositionRejected},
-		{Status: filler.StatusDone, Disposition: filler.DispositionDismissed},
+	rows := []pipelinestate.ClipPipeline{
+		{Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionRunning},
+		{Status: pipelinestate.StatusRunning, Disposition: pipelinestate.DispositionRunning},
+		{Status: pipelinestate.StatusFailed, Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReview},
+		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady},
+		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionComplete},
+		{Status: pipelinestate.StatusFailed, Disposition: pipelinestate.DispositionRejected},
+		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionDismissed},
 	}
 	want := filler.AcquisitionOutcome{
 		Enrolled: 8, Preparing: 3, NeedsDecision: 1, Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1,

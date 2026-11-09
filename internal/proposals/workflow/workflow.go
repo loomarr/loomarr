@@ -393,29 +393,29 @@ func isFailureCode(code FailureCode) bool {
 }
 
 func failureDetails(code FailureCode, trace proposals.DecisionTrace) (FailureReason, RecoveryAction, string, string) {
-	if suggest.ValidateDecisionTrace(trace) == nil {
+	if proposals.ValidateDecisionTrace(trace) == nil {
 		switch trace.Terminal {
-		case suggest.TerminalRetrievalFailure:
+		case proposals.TerminalRetrievalFailure:
 			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."
-		case suggest.TerminalReferenceUnreadable:
+		case proposals.TerminalReferenceUnreadable:
 			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."
-		case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
+		case proposals.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
 			return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "We couldn't find any titles that fit this description.", "Try a broader description or name a few shows or movies you like."
-		case suggest.TerminalNamedSetUnproven:
+		case proposals.TerminalNamedSetUnproven:
 			return FailureReasonNamedSetUnproven, RecoveryActionProvideExamples, "We couldn't confirm which titles belong in this lineup.", "Name a few shows or movies you expect to see, then try again."
-		case suggest.TerminalConstraintsConflict:
+		case proposals.TerminalConstraintsConflict:
 			return FailureReasonConstraintsConflict, RecoveryActionResolveConstraints, "Some of your choices conflict with each other.", "Review the era, required titles, and excluded titles, then try again."
-		case suggest.TerminalDateSemanticsUnclear:
+		case proposals.TerminalDateSemanticsUnclear:
 			return FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates, "We couldn't tell which years you meant.", "Add a decade or year range, then try again."
-		case suggest.TerminalInvalidToolCalls:
+		case proposals.TerminalInvalidToolCalls:
 			return FailureReasonInvalidToolCalls, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
-		case suggest.TerminalProviderTimeout:
+		case proposals.TerminalProviderTimeout:
 			return FailureReasonProviderTimeout, RecoveryActionRetryLater, "The search took too long to finish.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
-		case suggest.TerminalProviderFailure:
+		case proposals.TerminalProviderFailure:
 			return FailureReasonProviderUnavailable, RecoveryActionRetryLater, "Channel suggestions aren't available right now.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
-		case suggest.TerminalMalformedExhausted:
+		case proposals.TerminalMalformedExhausted:
 			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr couldn't finish the suggestions.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
-		case suggest.TerminalGenerationFailure:
+		case proposals.TerminalGenerationFailure:
 			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't finish this channel.", "Try again later."
 		case suggest.FailureBudgetExhausted:
 			if trace.SurfacedTotal > 0 {
@@ -437,7 +437,7 @@ func failureDetails(code FailureCode, trace proposals.DecisionTrace) (FailureRea
 // decision trace. Persisted traces retain their full evidence for workers and
 // evaluations; callers of Journey and API projections must use this copy.
 func PublicFailureTrace(trace proposals.DecisionTrace) proposals.DecisionTrace {
-	if suggest.ValidateDecisionTrace(trace) != nil || !publicTerminal(trace.Terminal) {
+	if proposals.ValidateDecisionTrace(trace) != nil || !publicTerminal(trace.Terminal) {
 		return proposals.DecisionTrace{}
 	}
 	return proposals.DecisionTrace{Version: trace.Version, SurfacedTotal: trace.SurfacedTotal, RecordedTotal: trace.RecordedTotal, Truncated: trace.Truncated, Terminal: trace.Terminal}
@@ -445,7 +445,7 @@ func PublicFailureTrace(trace proposals.DecisionTrace) proposals.DecisionTrace {
 
 func publicTerminal(terminal string) bool {
 	switch terminal {
-	case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty, suggest.FailureBudgetExhausted, suggest.TerminalProviderFailure, suggest.TerminalRetrievalFailure, suggest.TerminalReferenceUnreadable, suggest.TerminalGenerationFailure, suggest.TerminalMalformedExhausted, suggest.TerminalNamedSetUnproven, suggest.TerminalConstraintsConflict, suggest.TerminalDateSemanticsUnclear, suggest.TerminalInvalidToolCalls, suggest.TerminalProviderTimeout:
+	case proposals.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty, suggest.FailureBudgetExhausted, proposals.TerminalProviderFailure, proposals.TerminalRetrievalFailure, proposals.TerminalReferenceUnreadable, proposals.TerminalGenerationFailure, proposals.TerminalMalformedExhausted, proposals.TerminalNamedSetUnproven, proposals.TerminalConstraintsConflict, proposals.TerminalDateSemanticsUnclear, proposals.TerminalInvalidToolCalls, proposals.TerminalProviderTimeout:
 		return true
 	default:
 		return false

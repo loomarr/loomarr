@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestSegmentScreeningStageAppliesOnlyToMaterializedChildren(t *testing.T) {
@@ -24,14 +25,14 @@ func TestSegmentScreeningStageHoldsChildWhenRuntimeOrReleaseIsUnavailable(t *tes
 	clip, _, root := renderedChildStageFixture(t)
 	stage := NewSegmentScreeningStage(nil, nil, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != filler.VerdictReview || out.Note == "" {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Note == "" {
 		t.Fatalf("missing runtime did not hold child: out=%+v err=%v", out, err)
 	}
 
 	runtime, _, _ := screeningStageRuntime(t, ScreenPass)
 	stage = NewSegmentScreeningStage(runtime, nil, root)
 	out, err = stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != filler.VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
 		t.Fatalf("missing release did not hold passing child: out=%+v err=%v", out, err)
 	}
 	tags, state := filler.ReadSidecarTagsState(filepath.Join(root, filepath.FromSlash(clip.Path)))
@@ -45,7 +46,7 @@ func TestSegmentScreeningStageMapsClosedRejectWithoutPublishingRestrictedDetail(
 	runtime, _, _ := screeningStageRuntime(t, ScreenReject)
 	stage := NewSegmentScreeningStage(runtime, nil, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != filler.VerdictReject || out.Reason != filler.ReasonScreening ||
+	if err != nil || out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonScreening ||
 		out.Detail != "rendered child rejected by spoken_safety" {
 		t.Fatalf("closed reject was not preserved: out=%+v err=%v", out, err)
 	}
@@ -62,7 +63,7 @@ func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *t
 	}
 	stage := NewSegmentScreeningStage(runtime, certification, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != filler.VerdictContinue {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("certified four-axis child did not continue: out=%+v err=%v", out, err)
 	}
 }
@@ -74,7 +75,7 @@ func TestSegmentScreeningStageTurnsOperationalFailureIntoReview(t *testing.T) {
 	evaluator.err = errors.New("private provider response")
 	stage := NewSegmentScreeningStage(runtime, nil, root)
 	out, err := stage.Run(context.Background(), clip)
-	if err != nil || out.Verdict != filler.VerdictReview || out.Note != "a rendered-child screening authority is unavailable" {
+	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Note != "a rendered-child screening authority is unavailable" {
 		t.Fatalf("operational failure escaped fail-closed translation: out=%+v err=%v", out, err)
 	}
 }

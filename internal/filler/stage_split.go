@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
@@ -70,7 +72,7 @@ type SplitStage struct {
 type StructureRuntime struct {
 	// Decisioner independently assesses the complete retained source once. nil leaves detector
 	// structure in place and makes no provider request.
-	Decisioner CompleteTimelineStructureDecisioner
+	Decisioner split.CompleteTimelineDecisioner
 	// Materialization verifies the only gate that can materialize held children. A nil policy
 	// holds the proposal; compatibility is never application authority.
 	Materialization *StructureMaterializationPolicy
@@ -152,7 +154,7 @@ func (s *SplitStage) currentStructureRuntime() StructureRuntime {
 // The implementation owns derivative extraction, request limits, strict decoding, and evidence
 // attribution; the caller knows only that an exact unresolved span may gain one role observation.
 type SegmentRoleEscalator interface {
-	EscalateRole(context.Context, SplitSourceAsset, string, SplitSegment, time.Time) (*StructureRoleEvidence, error)
+	EscalateRole(context.Context, split.SourceAsset, string, split.Segment, time.Time) (*split.RoleEvidence, error)
 }
 
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
@@ -190,7 +192,7 @@ type TaxaLister interface {
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source SplitSourceAsset, segs []SplitSegment) groundPass {
+func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source split.SourceAsset, segs []split.Segment) groundPass {
 	if s.vision == nil {
 		return s.groundAt(ctx, c, "", source, segs)
 	}
@@ -202,7 +204,7 @@ func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source S
 	return s.groundAt(ctx, c, file, source, segs)
 }
 
-func countPendingGrounding(segs []SplitSegment) int {
+func countPendingGrounding(segs []split.Segment) int {
 	n := 0
 	for i := range segs {
 		if !segs[i].Looked {
@@ -212,7 +214,7 @@ func countPendingGrounding(segs []SplitSegment) int {
 	return n
 }
 
-func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source SplitSourceAsset, segs []SplitSegment) groundPass {
+func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
 	pending := func() int {
 		return countPendingGrounding(segs)
 	}
@@ -256,7 +258,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		if segs[i].Looked {
 			continue // ⚠ THE RESUME: an earlier pass already spent a look on this one.
 		}
-		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
+		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, split.VisionKeyframes)
 		if err != nil || len(frames) == 0 {
 			segs[i].Looked, looked = true, looked+1
 			noFrames++
@@ -308,7 +310,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 			unreadable++
 		}
 		v := groundVisionTags(out, forest)
-		var roleEvidence *StructureRoleEvidence
+		var roleEvidence *split.RoleEvidence
 		var roleErr error
 		if parsed {
 			roleEvidence, roleErr = structureRoleEvidenceFromVision(source, segs[i], splitVisionPromptVersion, prompt, frames, resp, out, s.structureAssessedAt())
@@ -366,8 +368,8 @@ type groundTally struct {
 	providerErr                                                            error
 }
 
-func (s *SplitStage) escalateSegmentRole(ctx context.Context, source SplitSourceAsset, file string, segment SplitSegment) (*StructureRoleEvidence, bool, error) {
-	if s.vision == nil || s.vision.RoleEscalator == nil || source.validate() != nil {
+func (s *SplitStage) escalateSegmentRole(ctx context.Context, source split.SourceAsset, file string, segment split.Segment) (*split.RoleEvidence, bool, error) {
+	if s.vision == nil || s.vision.RoleEscalator == nil || source.Validate() != nil {
 		return nil, false, nil
 	}
 	evidence, err := s.vision.RoleEscalator.EscalateRole(ctx, source, file, segment, s.structureAssessedAt())
@@ -439,7 +441,7 @@ func (s *SplitStage) pendingFor(ctx context.Context, hash string) (*SplitProposa
 }
 
 // countPending counts segments the grounder has never looked at.
-func countPending(segs []SplitSegment) int {
+func countPending(segs []split.Segment) int {
 	n := 0
 	for i := range segs {
 		if !segs[i].Looked {
@@ -468,8 +470,8 @@ type splitDiscards struct {
 
 // discardDeterministic removes outcomes that cannot become useful new clips. Ambiguous or
 // unsplittable spans remain for review; known duplicates and below-floor fragments do not.
-func discardDeterministic(segs []SplitSegment, minClipDuration time.Duration) ([]SplitSegment, splitDiscards) {
-	kept := make([]SplitSegment, 0, len(segs))
+func discardDeterministic(segs []split.Segment, minClipDuration time.Duration) ([]split.Segment, splitDiscards) {
+	kept := make([]split.Segment, 0, len(segs))
 	var discarded splitDiscards
 	for _, seg := range segs {
 		if seg.DupOf != "" {
@@ -500,8 +502,8 @@ func discardNote(d splitDiscards) string {
 	}
 }
 
-func (s *SplitStage) ID() StageID     { return StageSplit }
-func (s *SplitStage) Cost() StageCost { return CostSplit }
+func (s *SplitStage) ID() pipelinestate.StageID { return pipelinestate.StageSplit }
+func (s *SplitStage) Cost() StageCost           { return CostSplit }
 
 // Applies to a composite, and nothing else.
 //
@@ -556,14 +558,14 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}
 		p = &prepared
 		if pending > 0 {
-			return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+			return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 				"prepared previews for %d of %d clips", len(p.Segments)-pending, len(p.Segments))}, nil
 		}
 	}
 	if p.StructureDecision == nil && rt.Decisioner != nil {
 		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, rt.Decisioner)
 		if errors.Is(assessErr, ErrProposalGone) {
-			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 		}
 		if assessErr != nil {
 			// An assessment outage or invalid runtime result says nothing about the source or
@@ -575,7 +577,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 				return StageResult{}, assessErr
 			}
 			return StageResult{
-				Verdict: VerdictReview,
+				Verdict: pipelinestate.VerdictReview,
 				Note:    "the complete-timeline assessment could not be completed; review the split proposal",
 			}, nil
 		}
@@ -607,7 +609,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if note == "" {
 			note = "no usable adverts remained"
 		}
-		return StageResult{Verdict: VerdictContinue, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictContinue, Note: note}, nil
 	}
 
 	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54).
@@ -620,7 +622,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		case errors.Is(rerr, ErrProposalGone):
 			// Confirmed or rejected under us while we were grounding. Nothing to write and nothing
 			// to decide — the clip's disposition is already someone else's answer.
-			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 		case rerr != nil:
 			return StageResult{}, rerr
 		}
@@ -633,7 +635,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// pass achieved something (`Looked > 0`), which is what guarantees termination: every look
 	// marks a segment, so `Pending` strictly decreases and the reel reaches a verdict.
 	if pass.Pending > 0 && pass.Looked > 0 {
-		return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+		return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 			"looked at %d of %d cuts so far", len(p.Segments)-pass.Pending, len(p.Segments))}, nil
 	}
 
@@ -656,7 +658,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if len(part.Hold) > 0 {
 			if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 				if errors.Is(err, ErrProposalGone) {
-					return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+					return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 				}
 				return StageResult{}, err
 			}
@@ -665,7 +667,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if d := discardNote(discarded); d != "" {
 			note += "; " + d
 		}
-		return StageResult{Verdict: VerdictReview, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
 	}
 	if len(part.Confirm) == 0 {
 		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
@@ -685,11 +687,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// ConfirmSome; the all-held path previously returned before writing them anywhere.
 		if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 			if errors.Is(err, ErrProposalGone) {
-				return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+				return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 			}
 			return StageResult{}, err
 		}
-		return StageResult{Verdict: VerdictReview, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
 	}
 
 	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the
@@ -709,7 +711,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// someone reasons from when deciding whether a reel can be recovered.
 		return StageResult{}, err
 	}
-	reportProgress(ctx, StageSplit, 100)
+	reportProgress(ctx, pipelinestate.StageSplit, 100)
 
 	// ⚠ The segments are SPAWNED, so each one is enrolled at `probe` and runs the whole ladder for
 	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival. Before
@@ -728,16 +730,16 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// never be told the five exist.
 	if len(part.Hold) > 0 {
 		return StageResult{
-			Verdict: VerdictReview,
+			Verdict: pipelinestate.VerdictReview,
 			Spawned: spawned,
 			Note: fmt.Sprintf("%s; %s to review (%s)", note,
 				pluralizeCuts(len(part.Hold)), part.Verdict()),
 		}, nil
 	}
-	return StageResult{Verdict: VerdictContinue, Spawned: spawned, Note: note}, nil
+	return StageResult{Verdict: pipelinestate.VerdictContinue, Spawned: spawned, Note: note}, nil
 }
 
-func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []SplitSegment) error {
+func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []split.Segment) error {
 	_, err := s.splitter.Reground(ctx, proposalID, held)
 	return err
 }

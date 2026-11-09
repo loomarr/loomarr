@@ -60,11 +60,9 @@ func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	}
 	orders := 0
 	if l.Orders != nil {
-		waiting, err := l.Orders.LibraryOrderNeeds(ctx)
-		if err != nil {
+		if orders, err = l.Orders.LibraryOrderNeedCount(ctx); err != nil {
 			return 0, err
 		}
-		orders = len(waiting)
 	}
 	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
 	return len(needs) + orders + problems.Total, err

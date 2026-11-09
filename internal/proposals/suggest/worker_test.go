@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -440,7 +441,7 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 	}{
 		{
 			name: "auto-curated recurate that is approved", user: grace, picks: onePick,
-			curator: &recordingCurator{decision: suggest.Decision{Approved: true}},
+			curator: &recordingCurator{decision: proposals.AutoDecision{Approved: true}},
 			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
 				if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
 					ID: "channel-recurate", Number: 72, Name: "Recurate Channel", Status: schedule.StatusLive, IntentRef: "job-origin",
@@ -524,12 +525,12 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			if curator == nil {
 				curator = &recordingCurator{}
 			}
-			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
+			approver := accept.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
 			svc := buildService(t, st, testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(tt.picks),
 			)).WithProposalNotifier(notifier).
-				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 				WithAutoCurate(curator).
 				WithProgressEmitter(done)
 			if err := tt.start(ctx, svc, st); err != nil {
@@ -566,9 +567,9 @@ func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 				t.Fatal(err)
 			}
 			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
-			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
+			approver := accept.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
 			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
-				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
+				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 			built := proposals.Proposal{
 				ChannelName: "Marigold",
 				Lineup:      []proposals.ProposalItem{{MediaType: "movie", Name: "Marigold Protocol", Year: 1999, TMDBID: 90000603, InLibrary: true}},
@@ -778,7 +779,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			if err := json.Unmarshal([]byte(job.FailureTraceJSON), &trace); err != nil {
 				t.Fatalf("context failure trace = %q: %v", job.FailureTraceJSON, err)
 			}
-			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure {
+			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure {
 				t.Fatalf("context failure was not normalized: code=%q trace=%+v", job.FailureCode, trace)
 			}
 		})
@@ -1075,7 +1076,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	if err := json.Unmarshal([]byte(j.FailureTraceJSON), &trace); err != nil {
 		t.Fatalf("timeout failure trace = %q: %v", j.FailureTraceJSON, err)
 	}
-	if trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure || len(trace.Candidates) == 0 {
+	if trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure || len(trace.Candidates) == 0 {
 		t.Fatalf("timeout failure trace did not preserve bounded candidate facts: %+v", trace)
 	}
 }
@@ -1328,7 +1329,7 @@ func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 
 type recordingCurator struct {
 	calls    int
-	decision suggest.Decision
+	decision proposals.AutoDecision
 	err      error
 }
 
@@ -1375,7 +1376,7 @@ func waitForDoneEvent(t *testing.T, e *doneEmitter) {
 	}
 }
 
-func (c *recordingCurator) Consider(context.Context, store.Proposal) (suggest.Decision, error) {
+func (c *recordingCurator) Consider(context.Context, store.Proposal) (proposals.AutoDecision, error) {
 	c.calls++
 	return c.decision, c.err
 }
@@ -1398,10 +1399,10 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	curator := &recordingCurator{decision: suggest.Decision{Approved: true}}
+	approver := accept.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: proposals.AutoDecision{Approved: true}}
 	done := newDoneEmitter()
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
@@ -1485,10 +1486,10 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	curator := &recordingCurator{decision: suggest.Decision{Reason: "below auto-curate quality bar"}}
+	approver := accept.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: proposals.AutoDecision{Reason: "below auto-curate quality bar"}}
 	done := newDoneEmitter()
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
@@ -1527,8 +1528,8 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	approver := accept.NewApprover(st, channels, time.Now)
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 
 	jobID, err := svc.Submit(ctx, proposals.Intent{Description: "sci-fi"}, "grace")
@@ -1581,10 +1582,10 @@ func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
+	approver := accept.NewApprover(st, channels, time.Now)
 	done := newDoneEmitter()
 	svc := buildService(t, st, llmMock).
-		WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithProgressEmitter(done)
 	if _, err := svc.Refine(ctx, "channel-1", proposals.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
 		t.Fatal(err)

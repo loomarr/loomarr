@@ -5,35 +5,39 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestIncomingPreparationDTOStates(t *testing.T) {
 	now := time.Date(2026, time.September, 17, 12, 0, 0, 0, time.UTC)
-	base := filler.ClipPipeline{
+	base := pipelinestate.ClipPipeline{
 		PreparationAttempt: 2, PreparationStartedAt: now.Add(-time.Minute),
-		PreparationStartReason: filler.PreparationStartedByEnrollment, PreparationProgress: 42,
-		Disposition: filler.DispositionRunning, Status: filler.StatusRunning, UpdatedAt: now,
+		PreparationStartReason: pipelinestate.PreparationStartedByEnrollment, PreparationProgress: 42,
+		Disposition: pipelinestate.DispositionRunning, Status: pipelinestate.StatusRunning, UpdatedAt: now,
 	}
 	tests := []struct {
 		name     string
-		edit     func(*filler.ClipPipeline)
+		edit     func(*pipelinestate.ClipPipeline)
 		estimate filler.ReadyEstimate
 		state    string
 		percent  *int
 	}{
-		{name: "estimating", edit: func(*filler.ClipPipeline) {}, state: "estimating", percent: intPointer(42)},
-		{name: "estimated", edit: func(*filler.ClipPipeline) {}, estimate: filler.ReadyEstimate{Lower: time.Minute, Upper: 3 * time.Minute}, state: "estimated", percent: intPointer(42)},
-		{name: "retrying", edit: func(row *filler.ClipPipeline) { row.Status = filler.StatusFailed; row.NextRun = now.Add(time.Minute) }, state: "retrying", percent: intPointer(42)},
-		{name: "waiting", edit: func(row *filler.ClipPipeline) { row.Disposition = filler.DispositionReview }, state: "waiting", percent: intPointer(42)},
-		{name: "restarted", edit: func(row *filler.ClipPipeline) {
-			row.PreparationStartReason = filler.PreparationStartedByRestart
+		{name: "estimating", edit: func(*pipelinestate.ClipPipeline) {}, state: "estimating", percent: intPointer(42)},
+		{name: "estimated", edit: func(*pipelinestate.ClipPipeline) {}, estimate: filler.ReadyEstimate{Lower: time.Minute, Upper: 3 * time.Minute}, state: "estimated", percent: intPointer(42)},
+		{name: "retrying", edit: func(row *pipelinestate.ClipPipeline) {
+			row.Status = pipelinestate.StatusFailed
+			row.NextRun = now.Add(time.Minute)
+		}, state: "retrying", percent: intPointer(42)},
+		{name: "waiting", edit: func(row *pipelinestate.ClipPipeline) { row.Disposition = pipelinestate.DispositionReview }, state: "waiting", percent: intPointer(42)},
+		{name: "restarted", edit: func(row *pipelinestate.ClipPipeline) {
+			row.PreparationStartReason = pipelinestate.PreparationStartedByRestart
 			row.PreparationProgress = 0
 		}, state: "restarted", percent: intPointer(0)},
-		{name: "ready", edit: func(row *filler.ClipPipeline) {
-			row.Disposition = filler.DispositionReady
+		{name: "ready", edit: func(row *pipelinestate.ClipPipeline) {
+			row.Disposition = pipelinestate.DispositionReady
 			row.PreparationProgress = 91
 		}, state: "ready", percent: intPointer(100)},
-		{name: "unavailable", edit: func(row *filler.ClipPipeline) { row.PreparationAttempt = 0; row.PreparationProgress = -1 }, state: "unavailable"},
+		{name: "unavailable", edit: func(row *pipelinestate.ClipPipeline) { row.PreparationAttempt = 0; row.PreparationProgress = -1 }, state: "unavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

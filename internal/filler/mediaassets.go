@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 const (
-	MediaAssetRootName        = ".loomarr-media"
 	mediaMasterDirName        = "masters"
-	mediaEvidenceDirName      = "evidence"
 	mediaAssetManifestVersion = 1
 )
 
@@ -72,7 +72,7 @@ func (m MediaAssetManifest) validate() error {
 		return err
 	}
 	if m.Evidence != nil {
-		if err := validateMediaDerivative(*m.Evidence, MediaAssetEvidence, mediaEvidenceDirName, m.SourceMaster.SHA256); err != nil {
+		if err := validateMediaDerivative(*m.Evidence, MediaAssetEvidence, split.MediaEvidenceDirName, m.SourceMaster.SHA256); err != nil {
 			return err
 		}
 	}
@@ -88,7 +88,7 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	if err := validateMediaAssetIdentity(derivative.Asset, role, tree); err != nil {
 		return err
 	}
-	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
+	if derivative.InputSHA256 != inputSHA256 || !split.IsContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
 		return fmt.Errorf("%s derivative lineage is incomplete", role)
 	}
 	wantRecipeRole := tools.DerivativeEvidence
@@ -124,7 +124,7 @@ func (m MediaAssetManifest) validateReuseFiles(ctx context.Context, clipDir, pla
 		return err
 	}
 	if m.Evidence != nil {
-		if err := validateMediaAssetFile(ctx, clipDir, m.Evidence.Asset, MediaAssetEvidence, mediaEvidenceDirName); err != nil {
+		if err := validateMediaAssetFile(ctx, clipDir, m.Evidence.Asset, MediaAssetEvidence, split.MediaEvidenceDirName); err != nil {
 			return err
 		}
 	}
@@ -152,55 +152,55 @@ func (m MediaAssetManifest) validateReuseFiles(ctx context.Context, clipDir, pla
 	return nil
 }
 
-func validateMediaAssetFile(ctx context.Context, clipDir string, asset MediaAssetIdentity, role MediaAssetRole, tree string) error {
+func validateMediaAssetFile(ctx context.Context, clipDir string, identity MediaAssetIdentity, role MediaAssetRole, tree string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if !filepath.IsAbs(clipDir) {
 		return fmt.Errorf("%s derivative root is not absolute", role)
 	}
-	if err := validateMediaAssetIdentity(asset, role, tree); err != nil {
+	if err := validateMediaAssetIdentity(identity, role, tree); err != nil {
 		return err
 	}
-	full := filepath.Join(clipDir, filepath.FromSlash(asset.Path))
+	full := filepath.Join(clipDir, filepath.FromSlash(identity.Path))
 	info, err := os.Lstat(full)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != asset.Bytes {
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != identity.Bytes {
 		return fmt.Errorf("%s derivative bytes do not match the manifest", role)
 	}
 	resolvedRoot, rootErr := filepath.EvalSymlinks(clipDir)
 	resolvedFull, fileErr := filepath.EvalSymlinks(full)
 	resolvedInfo, statErr := os.Stat(resolvedFull)
 	if rootErr != nil || fileErr != nil || statErr != nil || !os.SameFile(info, resolvedInfo) ||
-		resolvedFull == resolvedRoot || !pathContains(resolvedRoot, resolvedFull) {
+		resolvedFull == resolvedRoot || !split.PathContains(resolvedRoot, resolvedFull) {
 		return fmt.Errorf("%s derivative path escapes the filler root", role)
 	}
-	digest, size, err := FileSHA256(resolvedFull)
-	if err != nil || digest != asset.SHA256 || size != asset.Bytes {
+	digest, size, err := asset.FileSHA256(resolvedFull)
+	if err != nil || digest != identity.SHA256 || size != identity.Bytes {
 		return fmt.Errorf("%s derivative bytes do not match the manifest", role)
 	}
-	sparse, err := ClipID(resolvedFull)
-	if err != nil || sparse != asset.ClipHash {
+	sparse, err := asset.ClipID(resolvedFull)
+	if err != nil || sparse != identity.ClipHash {
 		return fmt.Errorf("%s derivative sparse identity does not match the manifest", role)
 	}
 	return ctx.Err()
 }
 
 func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, tree string) error {
-	if asset.Role != role || !isContentHash(asset.SHA256) || !isContentHash(asset.ClipHash) || asset.Bytes <= 0 {
+	if asset.Role != role || !split.IsContentHash(asset.SHA256) || !split.IsContentHash(asset.ClipHash) || asset.Bytes <= 0 {
 		return fmt.Errorf("%s media asset identity is invalid", role)
 	}
 	clean := filepath.Clean(filepath.FromSlash(asset.Path))
-	if filepath.IsAbs(clean) || !manifestRelativePath(clean) {
+	if filepath.IsAbs(clean) || !split.IsRelativePath(clean) {
 		return fmt.Errorf("%s media asset path is outside the filler root", role)
 	}
 	if tree == "" {
-		if pathContains(MediaAssetRootName, clean) {
+		if split.PathContains(split.MediaAssetRootName, clean) {
 			return fmt.Errorf("%s media asset path is hidden rather than playable", role)
 		}
 		return nil
 	}
-	wantPrefix := filepath.Join(MediaAssetRootName, tree)
-	if clean == wantPrefix || !pathContains(wantPrefix, clean) {
+	wantPrefix := filepath.Join(split.MediaAssetRootName, tree)
+	if clean == wantPrefix || !split.PathContains(wantPrefix, clean) {
 		return fmt.Errorf("%s media asset path is outside its hidden tree", role)
 	}
 	return nil
@@ -213,11 +213,11 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
-	if clipDir == "" || !filepath.IsAbs(clipDir) || !filepath.IsAbs(sourcePath) || !isContentHash(clipHash) {
+	if clipDir == "" || !filepath.IsAbs(clipDir) || !filepath.IsAbs(sourcePath) || !split.IsContentHash(clipHash) {
 		return MediaAssetIdentity{}, errors.New("preserve source master: absolute roots and a content hash are required")
 	}
 	rel, err := filepath.Rel(clipDir, sourcePath)
-	if err != nil || !manifestRelativePath(rel) {
+	if err != nil || !split.IsRelativePath(rel) {
 		return MediaAssetIdentity{}, errors.New("preserve source master: source is outside the filler root")
 	}
 	info, err := os.Lstat(sourcePath)
@@ -228,7 +228,7 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 		return MediaAssetIdentity{}, errors.New("preserve source master: source is not a non-empty regular file")
 	}
 
-	stageDir := filepath.Join(clipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(clipDir, split.MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: create staging directory: %w", err)
 	}
@@ -244,7 +244,7 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 	_ = os.Remove(stagePath)
 	defer func() { _ = os.Remove(stagePath) }()
 	writeCtx, finishStorage := storage.Monitor(ctx, stagePath)
-	if err := snapshotOwnedFile(writeCtx, sourcePath, stagePath); err != nil {
+	if err := asset.SnapshotOwnedFile(writeCtx, sourcePath, stagePath); err != nil {
 		if storageErr := finishStorage(); storageErr != nil {
 			return MediaAssetIdentity{}, storageErr
 		}
@@ -253,19 +253,19 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 	if err := finishStorage(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
-	digest, size, err := FileSHA256(stagePath)
+	digest, size, err := asset.FileSHA256(stagePath)
 	if err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: digest snapshot: %w", err)
 	}
 	if err := storage.Record(ctx, size); err != nil {
 		return MediaAssetIdentity{}, err
 	}
-	snapshotClipHash, err := ClipID(stagePath)
+	snapshotClipHash, err := asset.ClipID(stagePath)
 	if err != nil || snapshotClipHash != clipHash {
 		return MediaAssetIdentity{}, errors.New("preserve source master: snapshot does not match catalog identity")
 	}
 	ext := retainedMediaExtension(sourcePath)
-	relMaster := filepath.ToSlash(filepath.Join(MediaAssetRootName, mediaMasterDirName, digest[:2], digest[2:4], digest+ext))
+	relMaster := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, mediaMasterDirName, digest[:2], digest[2:4], digest+ext))
 	masterPath := filepath.Join(clipDir, filepath.FromSlash(relMaster))
 	if err := os.MkdirAll(filepath.Dir(masterPath), 0o755); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: create master directory: %w", err)
@@ -304,20 +304,20 @@ func retainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash str
 	if err := tags.MediaAssets.validate(); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("resolve source master: %w", err)
 	}
-	asset := tags.MediaAssets.SourceMaster
-	masterPath := filepath.Join(clipDir, filepath.FromSlash(asset.Path))
-	digest, size, err := FileSHA256(masterPath)
-	if err != nil || digest != asset.SHA256 || size != asset.Bytes {
+	master := tags.MediaAssets.SourceMaster
+	masterPath := filepath.Join(clipDir, filepath.FromSlash(master.Path))
+	digest, size, err := asset.FileSHA256(masterPath)
+	if err != nil || digest != master.SHA256 || size != master.Bytes {
 		return MediaAssetIdentity{}, errors.New("resolve source master: retained bytes do not match the manifest")
 	}
-	masterClipHash, err := ClipID(masterPath)
-	if err != nil || masterClipHash != asset.ClipHash {
+	masterClipHash, err := asset.ClipID(masterPath)
+	if err != nil || masterClipHash != master.ClipHash {
 		return MediaAssetIdentity{}, errors.New("resolve source master: retained sparse identity does not match the manifest")
 	}
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
-	return asset, nil
+	return master, nil
 }
 
 func publishRetainedMaster(ctx context.Context, staged, target, digest string, size int64) error {
@@ -327,11 +327,11 @@ func publishRetainedMaster(ctx context.Context, staged, target, digest string, s
 	} else if !errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("preserve source master: publish: %w", err)
 	}
-	existingDigest, existingSize, digestErr := FileSHA256(target)
+	existingDigest, existingSize, digestErr := asset.FileSHA256(target)
 	if digestErr != nil || existingDigest != digest || existingSize != size {
 		return errors.New("preserve source master: existing content-addressed master does not match")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, target, tools.ConditioningMaxSnapshotBytes)
+	equal, err := asset.ExactFileBytesEqual(ctx, staged, target, tools.ConditioningMaxSnapshotBytes)
 	if err != nil || !equal {
 		return errors.New("preserve source master: existing content-addressed master does not match exact bytes")
 	}

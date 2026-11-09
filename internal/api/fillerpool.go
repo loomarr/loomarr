@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
@@ -55,7 +56,7 @@ type fillerPoolOutput struct {
 // already read.
 func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking catalog health.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking catalog health.")
 	}
 
 	report, err := s.pods.Pool(ctx)

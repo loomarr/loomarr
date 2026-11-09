@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -38,6 +39,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -125,13 +127,13 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 
 	log := slog.New(slog.DiscardHandler)
 	chBinder := approval.New(st, engine, nil, log)
-	approver := suggest.NewApprover(st, chBinder, clock)
+	approver := accept.NewApprover(st, chBinder, clock)
 	// engine (*channels.Engine) satisfies approval.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly

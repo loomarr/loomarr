@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // blackGaps tags plain intervals as black-detected — the shape most of these tests want, since
@@ -13,7 +15,7 @@ import (
 func blackGaps(in ...Interval) []detectedGap {
 	out := make([]detectedGap, 0, len(in))
 	for _, g := range in {
-		out = append(out, detectedGap{Interval: g, Src: srcBlack})
+		out = append(out, detectedGap{Interval: g, Src: split.SrcBlack})
 	}
 	return out
 }
@@ -69,7 +71,7 @@ func TestSegmentsFromBoundaries_NoGapsIsOneWholeSegment(t *testing.T) {
 	if len(segs) != 1 || segs[0].StartMs != 0 || segs[0].EndMs != 149_000 {
 		t.Fatalf("no-gap file = %+v, want one whole-file segment", segs)
 	}
-	if !segs[0].overlong() {
+	if !overlong(segs[0]) {
 		t.Error("a 149s whole-file segment must be over-long (rescue-bound)")
 	}
 }
@@ -180,7 +182,7 @@ func TestValidateConfirmedSegments_RefusesAnOperatorCutUnderTheCatalogFloor(t *t
 	// ⚠ An 8s hand-drawn cut used to be written, spawned, and THEN rejected `too_short` by the
 	// probe rung — a silent downstream loss the operator never connected to their edit.
 	dur := int64(90_000)
-	segs := []SplitSegment{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 38_000}}
+	segs := []split.Segment{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 38_000}}
 
 	err := validateConfirmedSegments(segs, dur, newSegmentFloor(10*time.Second))
 	if err == nil {
@@ -289,19 +291,19 @@ func TestSliceTranscript(t *testing.T) {
 
 func TestValidateConfirmedSegments(t *testing.T) {
 	dur := int64(90_000)
-	ok := []SplitSegment{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}}
+	ok := []split.Segment{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}}
 	if err := validateConfirmedSegments(ok, dur, newSegmentFloor(0)); err != nil {
 		t.Errorf("valid cut list rejected: %v", err)
 	}
-	overlap := []SplitSegment{{StartMs: 0, EndMs: 31000}, {StartMs: 30000, EndMs: 60000}}
+	overlap := []split.Segment{{StartMs: 0, EndMs: 31000}, {StartMs: 30000, EndMs: 60000}}
 	if err := validateConfirmedSegments(overlap, dur, newSegmentFloor(0)); err == nil {
 		t.Error("overlapping cut list accepted — two clips would share seconds")
 	}
-	outside := []SplitSegment{{StartMs: 0, EndMs: 91_000}}
+	outside := []split.Segment{{StartMs: 0, EndMs: 91_000}}
 	if err := validateConfirmedSegments(outside, dur, newSegmentFloor(0)); err == nil {
 		t.Error("segment past the clip end accepted")
 	}
-	sliver := []SplitSegment{{StartMs: 0, EndMs: 1000}}
+	sliver := []split.Segment{{StartMs: 0, EndMs: 1000}}
 	if err := validateConfirmedSegments(sliver, dur, newSegmentFloor(0)); err == nil {
 		t.Error("sub-minimum segment accepted")
 	}

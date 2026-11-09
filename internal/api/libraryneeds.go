@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -22,42 +23,42 @@ import (
 const libraryCandidateImageOwner = "library_candidate"
 
 func (s *Server) registerLibraryNeeds(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryNeeds", Method: http.MethodGet, Path: "/v1/library/needs",
 		Summary:     "Titles that need you",
 		Description: "Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryNeeds)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.listLibraryNeeds)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "linkLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/link",
 		Summary:     "Say which title this is",
 		Description: "Links a title to a TMDB title. Its files are read again with it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.linkLibraryItem)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.linkLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "ignoreLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/ignore",
 		Summary:     "Ignore a title",
 		Description: "Says a title isn't one: it leaves the library and Needs you.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.ignoreLibraryItem)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.ignoreLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unanswerLibraryItem", Method: http.MethodDelete, Path: "/v1/library/items/{id}/answer",
 		Summary:     "Take back an answer",
 		Description: "Undoes a link or an ignore. A title nothing else identifies needs you again.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.unanswerLibraryItem)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.unanswerLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "chooseLibraryEpisodeOrder", Method: http.MethodPost, Path: "/v1/library/items/{id}/episode-order",
 		Summary:     "Say which order a show's episodes are in",
 		Description: "TMDB's own seasons, one of its other orders, or the names and numbers in the files. Its episodes are read again with it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.chooseLibraryEpisodeOrder)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.chooseLibraryEpisodeOrder)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "searchLibraryTitles", Method: http.MethodGet, Path: "/v1/library/search",
 		Summary:     "Search TMDB for a title",
 		Description: "For picking a different title. 503 when TMDB isn't set up.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.searchLibraryTitles)
+	}, httpcore.RoleAdmin), s.searchLibraryTitles)
 }
 
 // externalIDDTO is a title by one catalog's id.
@@ -149,15 +150,15 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 	}
 	needs, err := svc.Needs(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
 	problems, err := svc.Problems(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
 	orders, err := svc.OrderNeeds(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
 	summaries := make([]store.LibraryItemSummary, 0, len(needs)+len(orders)+len(problems))
 	for _, n := range needs {
@@ -310,16 +311,16 @@ func libraryAnswerErr(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, store.ErrNotFound):
-		return apiErr(http.StatusNotFound, "Not in the library", "This title isn't in your media folders.")
+		return httpcore.Problem(http.StatusNotFound, "Not in the library", "This title isn't in your media folders.")
 	case errors.Is(err, scan.ErrNotAnswerable):
-		return apiErr(http.StatusConflict, "Loomarr didn't find this title itself",
+		return httpcore.Problem(http.StatusConflict, "Loomarr didn't find this title itself",
 			"Only titles Loomarr found in your media folders can be answered here.")
 	case errors.Is(err, store.ErrBadEpisodeOrder):
-		return apiErr(http.StatusBadRequest, "Pick one order", "Name an order only when you choose one of TMDB's other orders.")
+		return httpcore.Problem(http.StatusBadRequest, "Pick one order", "Name an order only when you choose one of TMDB's other orders.")
 	case errors.Is(err, scan.ErrUnknownOrder):
-		return apiErr(http.StatusConflict, "TMDB no longer lists that order", "Reload Needs you and choose again.")
+		return httpcore.Problem(http.StatusConflict, "TMDB no longer lists that order", "Reload Needs you and choose again.")
 	default:
-		return apiErrWithCause(http.StatusInternalServerError, "Couldn't save your answer", "Try again in a moment.", err)
+		return httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save your answer", "Try again in a moment.", err)
 	}
 }
 
@@ -349,10 +350,10 @@ func (s *Server) searchLibraryTitles(ctx context.Context, in *searchLibraryTitle
 	}
 	hits, err := svc.SearchTitles(ctx, in.Query, in.Kind)
 	if errors.Is(err, scan.ErrNoCatalog) {
-		return nil, apiErr(http.StatusServiceUnavailable, "TMDB isn't set up", "Add a TMDB key in Settings to search for titles.")
+		return nil, httpcore.Problem(http.StatusServiceUnavailable, "TMDB isn't set up", "Add a TMDB key in Settings to search for titles.")
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't search TMDB", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't search TMDB", "Try again in a moment.", err)
 	}
 	out := &searchLibraryTitlesOutput{}
 	out.Body.Results = make([]librarySearchHitDTO, 0, len(hits))

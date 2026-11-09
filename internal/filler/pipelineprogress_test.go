@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The §10 database progress throttle, driven through the REAL runner.
@@ -22,7 +24,7 @@ import (
 
 type progMemStore struct {
 	clips map[string]StoreClip
-	rows  map[string]ClipPipeline
+	rows  map[string]pipelinestate.ClipPipeline
 	// writes counts persisted rows, which is the property under test — the throttle governs how
 	// often a row reaches the store, and nothing else observes it.
 	writes int
@@ -34,14 +36,14 @@ func newProgMemStore(hash string) *progMemStore {
 			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
 			Role: Unclassified, Source: "test-source", Held: true,
 		}}},
-		rows: map[string]ClipPipeline{hash: {
-			ClipHash: hash, Stage: StageProbe, Status: StatusQueued, Disposition: DispositionRunning,
+		rows: map[string]pipelinestate.ClipPipeline{hash: {
+			ClipHash: hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionRunning,
 		}},
 	}
 }
 
-func (m *progMemStore) ListPipelineWork(_ context.Context, _ time.Time, _ int) ([]ClipPipeline, error) {
-	var out []ClipPipeline
+func (m *progMemStore) ListPipelineWork(_ context.Context, _ time.Time, _ int) ([]pipelinestate.ClipPipeline, error) {
+	var out []pipelinestate.ClipPipeline
 	for _, r := range m.rows {
 		if !r.Disposition.Terminal() {
 			out = append(out, r)
@@ -50,8 +52,8 @@ func (m *progMemStore) ListPipelineWork(_ context.Context, _ time.Time, _ int) (
 	return out, nil
 }
 
-func (m *progMemStore) PipelineOverview(_ context.Context, at time.Time) (PipelineOverview, error) {
-	rows := make([]ClipPipeline, 0, len(m.rows))
+func (m *progMemStore) PipelineOverview(_ context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
+	rows := make([]pipelinestate.ClipPipeline, 0, len(m.rows))
 	for _, row := range m.rows {
 		rows = append(rows, row)
 	}
@@ -60,19 +62,19 @@ func (m *progMemStore) PipelineOverview(_ context.Context, at time.Time) (Pipeli
 func (m *progMemStore) ListClipsWithoutPipeline(context.Context, int) ([]StoreClip, error) {
 	return nil, nil
 }
-func (m *progMemStore) GetClipPipeline(_ context.Context, h string) (ClipPipeline, bool, error) {
+func (m *progMemStore) GetClipPipeline(_ context.Context, h string) (pipelinestate.ClipPipeline, bool, error) {
 	r, ok := m.rows[h]
 	return r, ok, nil
 }
-func (m *progMemStore) ListClipPipelines(context.Context, PipelineFilter) ([]ClipPipeline, error) {
+func (m *progMemStore) ListClipPipelines(context.Context, pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
 	return nil, nil
 }
-func (m *progMemStore) UpsertClipPipeline(_ context.Context, p ClipPipeline) error {
+func (m *progMemStore) UpsertClipPipeline(_ context.Context, p pipelinestate.ClipPipeline) error {
 	m.rows[p.ClipHash] = p
 	m.writes++
 	return nil
 }
-func (m *progMemStore) RetryClipPipeline(_ context.Context, _ ClipPipeline, p ClipPipeline, restore bool) error {
+func (m *progMemStore) RetryClipPipeline(_ context.Context, _ pipelinestate.ClipPipeline, p pipelinestate.ClipPipeline, restore bool) error {
 	m.rows[p.ClipHash] = p
 	if restore {
 		c := m.clips[p.ClipHash]
@@ -103,7 +105,7 @@ func (m *progMemStore) CommitFillerReady(_ context.Context, commit ReadyCommit) 
 // reportingStage is a rung that emits a scripted progress script, the way transcode emits ffmpeg's
 // and the way `tag`/`vision` emit NoMeasurement.
 type reportingStage struct {
-	id      StageID
+	id      pipelinestate.StageID
 	samples []int
 	// tick advances the shared clock before each sample, modelling real elapsed time between
 	// ffmpeg's ~1Hz reports.
@@ -111,8 +113,8 @@ type reportingStage struct {
 	after func()
 }
 
-func (s *reportingStage) ID() StageID     { return s.id }
-func (s *reportingStage) Cost() StageCost { return CostCheap }
+func (s *reportingStage) ID() pipelinestate.StageID { return s.id }
+func (s *reportingStage) Cost() StageCost           { return CostCheap }
 func (s *reportingStage) Applies(context.Context, StoreClip) (bool, string) {
 	return true, ""
 }
@@ -126,25 +128,25 @@ func (s *reportingStage) Run(ctx context.Context, _ StoreClip) (StageResult, err
 	if s.after != nil {
 		s.after()
 	}
-	return StageResult{Verdict: VerdictContinue}, nil
+	return StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }
 
 // passStage is a rung that does nothing, so the ladder can complete around the one under test.
-type passStage struct{ id StageID }
+type passStage struct{ id pipelinestate.StageID }
 
-func (s passStage) ID() StageID     { return s.id }
-func (s passStage) Cost() StageCost { return CostCheap }
+func (s passStage) ID() pipelinestate.StageID { return s.id }
+func (s passStage) Cost() StageCost           { return CostCheap }
 func (s passStage) Applies(context.Context, StoreClip) (bool, string) {
 	return true, ""
 }
 func (s passStage) Run(context.Context, StoreClip) (StageResult, error) {
-	return StageResult{Verdict: VerdictContinue}, nil
+	return StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }
 
 // ladderWith returns a full ladder with `st` substituted for its own rung.
 func ladderWith(st Stage) []Stage {
 	var out []Stage
-	for _, id := range StageOrder {
+	for _, id := range pipelinestate.StageOrder {
 		if id == st.ID() {
 			out = append(out, st)
 			continue
@@ -181,7 +183,7 @@ func TestProgress_NoMeasurementReachesTheStoredRow(t *testing.T) {
 	// Captured mid-stage: the ladder completes, so the final row has moved on. What matters is the
 	// value the row carried WHILE the unmeasurable stage was running.
 	var during int
-	stage := &reportingStage{id: StageProbe, samples: []int{NoMeasurement}}
+	stage := &reportingStage{id: pipelinestate.StageProbe, samples: []int{NoMeasurement}}
 	stage.after = func() { during = st.rows["c1"].Progress }
 
 	p := NewPipeline(st, st, ladderWith(stage), DefaultBudget(), nil, clock.now, nil)
@@ -216,7 +218,7 @@ func TestProgress_ACrawlingStagePersistsOnTheTimeHalf(t *testing.T) {
 	}
 	var writesDuring int
 	stage := &reportingStage{
-		id:      StageProbe,
+		id:      pipelinestate.StageProbe,
 		samples: samples,
 		tick:    func() { clock.add(time.Second) },
 	}
@@ -243,7 +245,7 @@ func TestProgress_SkippedWritesDoNotMoveTheBaseline(t *testing.T) {
 	// 1..9 must not write (under 10 points from the persisted 0); 10 must.
 	samples := []int{1, 2, 3, 4, 5, 6, 7, 8, 9}
 	var beforeTen, afterTen int
-	stage := &reportingStage{id: StageProbe, samples: samples}
+	stage := &reportingStage{id: pipelinestate.StageProbe, samples: samples}
 	stage.after = func() { beforeTen = st.writes }
 
 	p := NewPipeline(st, st, ladderWith(stage), DefaultBudget(), nil, clock.now, nil)
@@ -253,7 +255,7 @@ func TestProgress_SkippedWritesDoNotMoveTheBaseline(t *testing.T) {
 
 	// Re-run with the tenth sample appended, so the two counts differ by exactly the write it earns.
 	st2 := newProgMemStore("c2")
-	stage2 := &reportingStage{id: StageProbe, samples: append(append([]int{}, samples...), 10)}
+	stage2 := &reportingStage{id: pipelinestate.StageProbe, samples: append(append([]int{}, samples...), 10)}
 	stage2.after = func() { afterTen = st2.writes }
 	p2 := NewPipeline(st2, st2, ladderWith(stage2), DefaultBudget(), nil, newProgClock().now, nil)
 	if _, err := p2.RunOnce(context.Background()); err != nil {
@@ -274,10 +276,10 @@ func TestProgress_EverySamplePublishesEvenWhenItDoesNotWrite(t *testing.T) {
 	st := newProgMemStore("c1")
 
 	var published int
-	notify := func(ClipPipeline, StoreClip) { published++ }
+	notify := func(pipelinestate.ClipPipeline, StoreClip) { published++ }
 
 	samples := []int{1, 2, 3, 4, 5}
-	stage := &reportingStage{id: StageProbe, samples: samples}
+	stage := &reportingStage{id: pipelinestate.StageProbe, samples: samples}
 	var publishedDuring, writesDuring int
 	stage.after = func() { publishedDuring, writesDuring = published, st.writes }
 

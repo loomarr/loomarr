@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
@@ -29,7 +30,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := structureDecisionArtifact(t, proposal.Source, 30_000, false)
-	assessment, err := filler.ProjectConfirmedStructureDecision(proposal.Source, proposal.Structure, artifact)
+	assessment, err := split.ProjectConfirmedDecision(proposal.Source, proposal.Structure, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		t.Fatalf("spawned=%v", spawned)
 	}
 	wantKinds := []filler.Role{filler.Commercial, filler.Interstitial}
-	wantRoles := []filler.StructureSegmentRole{filler.SegmentRoleCommercial, filler.SegmentRolePromo}
+	wantRoles := []split.Role{split.RoleCommercial, split.RolePromo}
 	for index, childHash := range spawned {
 		child, found, err := store.GetClip(t.Context(), childHash)
 		if err != nil || !found {

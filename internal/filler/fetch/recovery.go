@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // ArtifactRecoveryStore is the persistence slice needed to resume staged publication.
@@ -222,7 +223,7 @@ func verifyManifestFile(path string, artifact filler.AcquisitionArtifact) error 
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return errors.New("media is symlinked or not a regular file")
 	}
-	digest, size, err := filler.FileSHA256(path)
+	digest, size, err := asset.FileSHA256(path)
 	if err != nil {
 		return err
 	}

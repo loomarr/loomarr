@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -25,7 +26,7 @@ import (
 // registerChannelPlayURL mounts the play-url op. Split from registerChannels only so the Watch
 // surface's routes live beside their handler; it is called from the same Register sweep.
 func (s *Server) registerChannelPlayURL(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-play-url", Method: http.MethodPost, Path: "/v1/channels/{id}/play-url",
 		Summary: "Mint a signed URL to watch this channel in the browser",
 		Description: "Any signed-in user. Returns a short-lived, signed HLS URL the in-app player (or a native app) " +
@@ -33,9 +34,9 @@ func (s *Server) registerChannelPlayURL(api huma.API) {
 			"this channel and expires; request a fresh one when it lapses. `quality` picks a per-viewer tier " +
 			"(auto/720p/480p) — the only per-viewer control, since one encoder serves every viewer of a channel.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.channelPlayURL)
+	}, httpcore.RoleMember), s.channelPlayURL)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-tracks", Method: http.MethodGet, Path: "/v1/channels/{id}/tracks",
 		Summary: "Audio and subtitle tracks of what's airing now",
 		Description: "Any signed-in user. The audio and subtitle tracks the CURRENTLY-AIRING programme actually " +
@@ -43,7 +44,7 @@ func (s *Server) registerChannelPlayURL(api huma.API) {
 			"airing file), not a fixed list and not a setting, so the choices are real. Best-effort: an empty list when " +
 			"nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.channelTracks)
+	}, httpcore.RoleMember), s.channelTracks)
 }
 
 type playURLInput struct {
@@ -89,22 +90,22 @@ func playRefusal(ch store.Channel, checkpoint BackendCheckpoint) error {
 	if !playsInternallyAt(ch, checkpoint) {
 		// That stream lives in Tunarr, reached through the media server, not here. Say so rather
 		// than mint a URL whose segments would 404, so the UI can point at the right client.
-		return errConflict(
+		return httpcore.Conflict(
 			"This channel isn't streamed by Loomarr",
 			"Tunarr streams this channel — watch it in your media server. In-app playback is available "+
 				"only for channels Loomarr plays out itself (Settings → Playout).")
 	}
 	switch ch.Status {
 	case schedule.StatusPaused:
-		return errConflict("This channel is paused",
+		return httpcore.Conflict("This channel is paused",
 			"Nothing airs on a paused channel. Resume it from Channels to watch it here.")
 	case schedule.StatusDetached:
-		return errConflict("This channel was removed",
+		return httpcore.Conflict("This channel was removed",
 			"Loomarr no longer manages this channel, so it can't be watched here.")
 	default:
 		// StatusEmpty: the sweep keeps reconciling it, so it goes live on its own once a program
 		// can air.
-		return errConflict("Getting this channel ready",
+		return httpcore.Conflict("Getting this channel ready",
 			"Nothing can air on this channel yet. Loomarr keeps checking, and the channel starts "+
 				"as soon as a program is ready.")
 	}
@@ -117,7 +118,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -131,7 +132,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	// with the key another replica just rotated away.
 	playoutToken, err := s.currentPlayoutToken(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusServiceUnavailable,
+		return nil, httpcore.ProblemWithCause(http.StatusServiceUnavailable,
 			"Playout state unavailable",
 			"Loomarr couldn't read the current playout credential. Try again in a moment.", err)
 	}
@@ -144,7 +145,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 		// The RELATIVE URL fails only when the signature can't be minted (no playout token) —
 		// which means playout is genuinely unconfigured. The web player can use the relative URL
 		// even with no public_url set, so the wall is keyed on the signature, not the base.
-		return nil, errServiceUnavailable(
+		return nil, httpcore.ServiceUnavailable(
 			"Playout isn't configured",
 			"Loomarr's playout secret isn't set up yet, so channels can't be watched.")
 	}
@@ -199,7 +200,7 @@ type channelTracksOutput struct {
 
 func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channelTracksOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -217,7 +218,7 @@ func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channe
 
 	tracks, err := s.playoutResolver.Tracks(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		// A resolve error that isn't "not found" (a Tunarr/library hiccup) must not blank the
 		// Watch tab: degrade to empty, exactly like the probe-failure path inside Tracks.

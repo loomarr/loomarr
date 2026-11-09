@@ -5,11 +5,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
@@ -19,21 +19,21 @@ func (s *Server) registerAuth(api huma.API) {
 	if s.login == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "login", Method: http.MethodPost, Path: "/v1/auth/login",
 		Summary: "Sign in with media-server credentials", Tags: []string{"auth"},
-	}, RolePublic), s.handleLogin)
+	}, httpcore.RolePublic), s.handleLogin)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "logout", Method: http.MethodPost, Path: "/v1/auth/logout",
 		Summary: "End the current session", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RolePublic), s.handleLogout)
+	}, httpcore.RolePublic), s.handleLogout)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "me", Method: http.MethodGet, Path: "/v1/auth/me",
 		Summary: "Current user, role, and quotas", Tags: []string{"auth"},
-	}, RoleMember), s.handleMe)
+	}, httpcore.RoleMember), s.handleMe)
 
 	// Dev login (§11) — mounted ONLY when the server was started with
 	// LOOMARR_DEV_LOGIN=1. Not registering is the gate: an install without the flag
@@ -48,10 +48,10 @@ func (s *Server) registerAuth(api huma.API) {
 		// RolePublic because it IS the credential — requiring a session to reach the route
 		// that issues one would make it useless. The gate is that it is not registered at
 		// all unless LOOMARR_DEV_LOGIN=1 (§11), which is a stronger guarantee than a role.
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "dev-login", Method: http.MethodPost, Path: "/v1/auth/dev-login",
 			Summary: "Sign in as an admin without a credential (development only)", Tags: []string{"auth"},
-		}, RolePublic), s.handleDevLogin)
+		}, httpcore.RolePublic), s.handleDevLogin)
 	}
 }
 
@@ -85,18 +85,18 @@ type meOutput struct {
 }
 
 func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
-	r := requestFrom(ctx)
-	rateKey := s.clientIP(r) + "|" + in.Body.Username
+	r := httpcore.RequestFrom(ctx)
+	rateKey := s.origin.ClientIP(r) + "|" + in.Body.Username
 	token, expires, u, err := s.login.Login(ctx, in.Body.Username, in.Body.Password, rateKey)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrRateLimited):
 			// Rate-limited attempts are their own signal (HTTP 429); don't fold
 			// them into the credential success/failure ratio.
-			return nil, errTooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
+			return nil, httpcore.TooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			s.metrics.LoginResult(false)
-			return nil, errUnauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
+			return nil, httpcore.Unauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
 		default:
 			return nil, err
 		}
@@ -119,13 +119,13 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 // guessing, and there is no credential here to guess. The protection is that the
 // route does not exist unless an operator deliberately turned it on.
 func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, error) {
-	r := requestFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
 	token, expires, u, err := s.login.DevLogin(ctx)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			// No admin row to borrow. Dev login never CREATES one (§11) — that would
 			// turn a credential shortcut into a provisioning path.
-			return nil, errUnauthorized("No admin to sign in as",
+			return nil, httpcore.Unauthorized("No admin to sign in as",
 				"Dev login borrows an existing admin account, and this install has none. Create one through the setup wizard first.")
 		}
 		return nil, err
@@ -147,7 +147,7 @@ type logoutOutput struct {
 }
 
 func (s *Server) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, error) {
-	r := requestFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" && s.sessions != nil {
 		_ = s.sessions.Revoke(ctx, c.Value)
 	}
@@ -160,9 +160,9 @@ func (s *Server) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, 
 type meOnlyOutput struct{ Body meBody }
 
 func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, error) {
-	u, ok := userFrom(ctx)
+	u, ok := httpcore.UserFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Not signed in", "You need to sign in to view this.")
+		return nil, httpcore.Unauthorized("Not signed in", "You need to sign in to view this.")
 	}
 	return &meOnlyOutput{Body: meBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove,
@@ -173,54 +173,5 @@ func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, erro
 // sessionCookie builds the session cookie: HttpOnly, SameSite=Strict, Secure per
 // COOKIE_SECURE (§11).
 func (s *Server) sessionCookie(r *http.Request, token string, expires time.Time) http.Cookie {
-	return http.Cookie{
-		Name:     auth.CookieName,
-		Value:    token,
-		Path:     "/",
-		Expires:  expires,
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   s.secureCookie(r),
-	}
-}
-
-// secureCookie decides the Secure flag from COOKIE_SECURE (§11): auto honors
-// direct TLS or X-Forwarded-Proto=https; true/false force it.
-func (s *Server) secureCookie(r *http.Request) bool {
-	switch strings.ToLower(s.cookieSecure) {
-	case "true":
-		return true
-	case "false":
-		return false
-	default: // auto
-		// X-Forwarded-Proto is honored only behind a trusted proxy (§11). A direct client
-		// could otherwise send `X-Forwarded-Proto: http` to keep its OWN cookie non-Secure;
-		// that only weakens the sender's session, but the header is not trustworthy input
-		// unless a proxy sets it, so it rides the same gate as the rate-limit IP.
-		if s.trustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-			return true
-		}
-		return r.TLS != nil
-	}
-}
-
-// clientIP returns the address the login rate-limiter keys on. X-Forwarded-For is honored
-// only when `security.trust_proxy` is set (§11): without a proxy, the socket peer is the real
-// client and the header is attacker-controlled, so trusting it would let a direct client rotate
-// XFF per request and defeat the per-IP throttle. Behind a proxy the peer is the proxy, so the
-// first forwarded hop is the real client and trusting it is correct — and correct only there.
-func (s *Server) clientIP(r *http.Request) string {
-	if s.trustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if i := strings.IndexByte(xff, ','); i >= 0 {
-				return strings.TrimSpace(xff[:i])
-			}
-			return strings.TrimSpace(xff)
-		}
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	return host
+	return s.origin.Cookie(r, auth.CookieName, token, "/", http.SameSiteStrictMode, expires)
 }

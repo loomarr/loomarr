@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -103,24 +104,24 @@ type ProposalJourneyChannelDTO struct {
 }
 
 func (s *Server) registerProposalJourneys(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-proposal-jobs", Method: http.MethodGet, Path: "/v1/proposal-jobs",
 		Summary:     "List authoritative First-channel Journeys",
 		Description: "Lists bounded Proposal Job journeys newest-first, including queued, running, and failed requests with no Proposal. Members are always caller-scoped; admins may inspect all or request mine=true.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleMember), s.listProposalJourneys)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.listProposalJourneys)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-proposal-job", Method: http.MethodGet, Path: "/v1/proposal-jobs/{jobId}",
 		Summary:     "Get the authoritative First-channel Journey",
 		Description: "Restores one versioned Proposal Job, bounded Attempt history, safe failure, Proposal, intent-bound Channel, milestone, and server-authorized actions. Members may read only their own Job; admins may read any.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleMember), s.getProposalJourney)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleMember), s.getProposalJourney)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revise-proposal-job", Method: http.MethodPost, Path: "/v1/proposal-jobs/{jobId}/revise",
 		Summary:     "Revise the pending proposal for a First-channel Journey",
 		Description: "Admin only. Keeps the current submitted proposal visible while its replacement runs; success supersedes it atomically and failure leaves it approvable.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleAdmin), s.reviseProposalJourney)
+	}, httpcore.RoleAdmin), s.reviseProposalJourney)
 }
 
 type proposalJourneyListInput struct {
@@ -138,24 +139,24 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	journeys, err := s.proposalWorkflow.List(ctx, viewer, workflow.ListOptions{
 		Mine: in.Mine, Milestone: workflow.Milestone(in.Status),
 	})
 	if errors.Is(err, workflow.ErrInvalidState) {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't restore channel requests",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't restore channel requests",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
 			"Loomarr couldn't restore your channel requests. Try again in a moment.", err)
 	}
 	names, err := s.journeyPersonNames(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
 			"Loomarr couldn't restore your channel requests. Try again in a moment.", err)
 	}
 	out := &proposalJourneyListOutput{}
@@ -200,24 +201,24 @@ func (s *Server) reviseProposalJourney(
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err
 	}
-	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	err := s.proposalWorkflow.Revise(ctx, viewer, in.JobID, in.Body)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return nil, errNotFound("Channel request not found", "That channel request doesn't exist or has expired.")
+		return nil, httpcore.NotFound("Channel request not found", "That channel request doesn't exist or has expired.")
 	case errors.Is(err, workflow.ErrForbidden):
-		return nil, apiErr(http.StatusForbidden, "Channel request unavailable",
+		return nil, httpcore.Problem(http.StatusForbidden, "Channel request unavailable",
 			"You can only revise channel requests submitted by your account.")
 	case errors.Is(err, workflow.ErrNotRevisable):
-		return nil, errConflict("Suggestions changed", "Reload the channel request before editing it again.")
+		return nil, httpcore.Conflict("Suggestions changed", "Reload the channel request before editing it again.")
 	case errors.Is(err, workflow.ErrInvalidState):
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
 			"Your current suggestions are unchanged. Try again in a moment.", err)
 	}
 	out := &reviseProposalJourneyOutput{}
@@ -229,27 +230,27 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	journey, err := s.proposalWorkflow.Inspect(ctx, viewer, in.JobID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return nil, errNotFound("Channel request not found", "That channel request doesn't exist or has expired.")
+		return nil, httpcore.NotFound("Channel request not found", "That channel request doesn't exist or has expired.")
 	case errors.Is(err, workflow.ErrForbidden):
-		return nil, apiErr(http.StatusForbidden, "Channel request unavailable",
+		return nil, httpcore.Problem(http.StatusForbidden, "Channel request unavailable",
 			"You can only view channel requests submitted by your account.")
 	case errors.Is(err, workflow.ErrInvalidState):
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't restore the channel request",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't restore the channel request",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
 			"Loomarr couldn't restore this channel request. Try again in a moment.", err)
 	}
 	names, err := s.journeyPersonNames(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
 			"Loomarr couldn't restore this channel request. Try again in a moment.", err)
 	}
 	dto := proposalJourneyDTO(journey, names)

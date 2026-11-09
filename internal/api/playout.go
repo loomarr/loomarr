@@ -15,6 +15,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -224,7 +225,7 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	canTune, err := s.canTuneInternally(r.Context(), channelID)
 	if err != nil {
 		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
-		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+		s.writeProblem(w, r, httpcore.StatusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
 			"Something went wrong reading the channel.")
 		return
 	}
@@ -360,7 +361,7 @@ func (s *Server) tunerHandler(w http.ResponseWriter, r *http.Request) {
 	channels, err := s.playoutChannels(r.Context())
 	if err != nil {
 		s.log.Warn("playout: tuner list failed", "err", err)
-		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't build the channel list",
+		s.writeProblem(w, r, httpcore.StatusFromError(err, http.StatusInternalServerError), "Couldn't build the channel list",
 			"Something went wrong reading your channels.")
 		return
 	}
@@ -471,7 +472,7 @@ func (s *Server) checkpoint(ctx context.Context) (BackendCheckpoint, error) {
 	if s.backendCheckpoint != nil {
 		checkpoint, err := s.backendCheckpoint(ctx)
 		if err != nil {
-			return BackendCheckpoint{}, apiErrWithCause(http.StatusServiceUnavailable,
+			return BackendCheckpoint{}, httpcore.ProblemWithCause(http.StatusServiceUnavailable,
 				"Playout state unavailable",
 				"Loomarr couldn't read the current playout state. Try again in a moment.", err)
 		}
@@ -523,7 +524,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	canTune, err := s.canPlayInApp(r.Context(), channelID)
 	if err != nil {
 		s.log.Warn("playout: channel eligibility failed", "channel", channelID, "err", err)
-		s.writeProblem(w, r, statusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
+		s.writeProblem(w, r, httpcore.StatusFromError(err, http.StatusInternalServerError), "Couldn't start the channel",
 			"Something went wrong reading the channel.")
 		return
 	}
@@ -756,19 +757,19 @@ func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
 // and stream; this only changes how they are mounted, guarded and described.
 func (s *Server) registerPlayout(api huma.API) {
 	// The tuner list + XMLTV the media server registers.
-	streamOp[struct{}](s, api, bytesResponse(huma.Operation{
+	streamOp[struct{}](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-tuner", Method: http.MethodGet, Path: "/v1/playout/tuner.m3u",
 		Summary: "Playout tuner M3U (device-authed)", Tags: []string{"playout"},
 	}, "The M3U tuner list a media server registers as a Live TV source.",
 		"application/vnd.apple.mpegurl"), s.tunerHandler)
 	// The XMLTV listings (playoutguide.go). Without it a channel tunes with an empty EPG.
-	streamOp[struct{}](s, api, bytesResponse(huma.Operation{
+	streamOp[struct{}](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-guide", Method: http.MethodGet, Path: "/v1/playout/guide.xml",
 		Summary: "Playout XMLTV guide (device-authed)", Tags: []string{"playout"},
 	}, "XMLTV listings for every internally-played channel.", "application/xml"), s.guideHandler)
 
 	// The continuous MPEG-TS a TV/media server plays.
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
+	streamOp[playoutChannelInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-stream", Method: http.MethodGet, Path: "/v1/playout/stream/{id}",
 		Summary: "Channel MPEG-TS stream (device-authed)", Tags: []string{"playout"},
 	}, "A continuous transport stream of whatever the channel is playing now.",
@@ -776,7 +777,7 @@ func (s *Server) registerPlayout(api huma.API) {
 
 	// The latest still frame of a channel, for the switch overlay (still.go in playout). Authed like
 	// the HLS routes, so the play-url's signature covers it.
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
+	streamOp[playoutChannelInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",
 		Summary: "Channel latest still frame (signed-URL authed)", Tags: []string{"playout"},
 	}, "One frame of what the channel airs now: a warm channel's newest segment (at most one segment old), "+
@@ -790,7 +791,7 @@ func (s *Server) registerPlayout(api huma.API) {
 	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
 	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
 	// that works across every player + the browser.
-	hlsMaster := bytesResponse(huma.Operation{
+	hlsMaster := httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-hls-master", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/master.m3u8",
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "The HLS master playlist for the in-app and native players.",
@@ -802,7 +803,7 @@ func (s *Server) registerPlayout(api huma.API) {
 	// Two content types because this one route genuinely serves both: `{asset}` is a segment
 	// (video/mp2t) or the media playlist beside the master (vnd.apple.mpegurl), decided by the
 	// filename asked for — see hlsAssetHandler.
-	streamOp[playoutAssetInput](s, api, bytesResponse(huma.Operation{
+	streamOp[playoutAssetInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-hls-asset", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/{asset}",
 		Summary: "Channel HLS segment or media playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "A segment, or the media playlist beside the master.",
@@ -844,7 +845,7 @@ func streamOp[I any](s *Server, api huma.API, op huma.Operation, body func(http.
 	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
 	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
 	// session layer, guarded by the playout layer — the correct two-layer split (§11).
-	rawOp[I](api, op, RolePublic, body, s.playoutAuthMiddleware)
+	httpcore.RawOp[I](api, op, httpcore.RolePublic, body, s.playoutAuthMiddleware)
 }
 
 // playoutAuthMiddleware is the ONE authorization point for playout streaming routes — the device

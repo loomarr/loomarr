@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -82,7 +83,7 @@ func TestTakeIn_FilesUnderTheHashAndKeepsTheOriginalName(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
 	src := writeClip(t, watch, "Crunchlings 1993.mp4", 4096, 7)
 
-	want, err := ClipID(src)
+	want, err := asset.ClipID(src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +478,7 @@ func TestTakeIn_AliasedNestedWatchUsesClipTraversalSpelling(t *testing.T) {
 func TestTakeIn_NeverDeletesWhenSourceAndDestinationAreTheSameFile(t *testing.T) {
 	clips := filepath.Join(t.TempDir(), "clips")
 	candidate := writeClip(t, t.TempDir(), "candidate.mp4", 4096, 36)
-	id, err := ClipID(candidate)
+	id, err := asset.ClipID(candidate)
 	if err != nil {
 		t.Fatal(err)
 	}

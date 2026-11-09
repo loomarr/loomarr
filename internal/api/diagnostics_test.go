@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -61,17 +62,17 @@ func (f clientDiagnosticServiceFunc) Ingest(
 
 type diagnosticUserAuthorizer struct{}
 
-func (diagnosticUserAuthorizer) Authorize(r *http.Request) api.Role {
+func (diagnosticUserAuthorizer) Authorize(r *http.Request) httpcore.Role {
 	role, _ := diagnosticUserAuthorizer{}.AuthorizeUser(r)
 	return role
 }
 
-func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *identitystore.User) {
+func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
 	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != memberToken {
-		return api.RoleAnonymous, nil
+		return httpcore.RoleAnonymous, nil
 	}
 	user := identitystore.User{ID: "member_1", Name: "Viewer", Role: identitystore.RoleMember}
-	return api.RoleMember, &user
+	return httpcore.RoleMember, &user
 }
 
 func (f diagnosticEventServiceFunc) Query(
@@ -193,7 +194,7 @@ func TestCurrentHealthIsAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 
 	agentHandler := api.Router(log, api.Options{
-		Auth: api.NewTokenAuthorizer("agent-token"), Log: log, StartupReports: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, StartupReports: service,
 	})
 	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
 	request.Header.Set("Authorization", "Bearer agent-token")
@@ -281,7 +282,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		t.Fatalf("NDJSON event = %+v, want JSON item %+v", ndjsonEvent, wantPage.Items[0])
 	}
 	agentHandler := api.Router(log, api.Options{
-		Auth: api.NewTokenAuthorizer("agent-token"), Log: log, DiagnosticEvents: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, DiagnosticEvents: service,
 	})
 	agent := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events", nil)
 	agent.Header.Set("Authorization", "Bearer agent-token")
@@ -446,7 +447,7 @@ func TestClientDiagnosticsDeriveAPITokenIdentityAndMapModuleErrors(t *testing.T)
 	})
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: api.NewTokenAuthorizer("agent-token"), Log: log, ClientDiagnostics: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, ClientDiagnostics: service,
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
 		"source":"android_tv","clientVersion":"0.1.0","platform":"shield_tv",

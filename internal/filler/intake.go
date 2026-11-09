@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -110,7 +111,7 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 		}
 	}
 	for _, src := range entries {
-		id, err := ClipID(src)
+		id, err := asset.ClipID(src)
 		if err != nil {
 			// Left where it is: a file being written as we look at it is the common case, and
 			// the next pass will find it complete.

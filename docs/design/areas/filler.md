@@ -8,33 +8,37 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **media** · 17 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **media** · 19 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **platform** · 15 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
 - **channels** · 1 import — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
-- **`filler`** · 11 importers · → `filler/clips`, `filler/language`, `filler/pod`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 10 importers · → `filler/asset`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
-- **`filler/clips`** · 5 importers
+- **`filler/asset`** · 4 importers · → `media/tools`
+  The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
+- **`filler/clips`** · 6 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`filler/defectfloor`** · 2 importers · → `filler`, `media/creative`, `media/defects`, `platform/llm`
+- **`filler/defectfloor`** · 2 importers · → `filler`, `filler/pipelinestate`, `media/creative`, `media/defects`, `platform/llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/media/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`filler/enrichment`** · 3 importers · → `filler/station`, `filler/taxonomy`, `platform/llm`
   Owns progressive descriptive understanding for filler clips.
-- **`filler/fetch`** · 3 importers · → `filler`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
+- **`filler/fetch`** · 3 importers · → `filler`, `filler/asset`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`filler/language`** · 5 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
+- **`filler/pipelinestate`** · 6 importers
+  Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
 - **`filler/pod`** · 6 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
-- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
+- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 4 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`filler/screening`** · 2 importers · → `filler`, `filler/structure/assessment`, `media/tools`
+- **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`filler/source`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
@@ -42,17 +46,19 @@ One area of the [package map](../package-map.md#start-here).
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`filler/source/youtube`** · 1 importer · → `filler`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
+- **`filler/split`** · 7 importers · → `filler/clips`, `filler/structure`, `media/tools`
+  The filler source-structure planner and the split model it plans over: the exact source asset, the proposed segments, the detector checkpoint, and the deterministic reduction of independent observations into one complete-timeline assessment.
 - **`filler/station`** · 5 importers · → `filler/location`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
-- **`filler/structure`** · 6 importers
+- **`filler/structure`** · 7 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
-- **`filler/structure/assessment`** · 2 importers · → `filler`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
+- **`filler/structure/assessment`** · 2 importers · → `filler`, `filler/asset`, `filler/split`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
 - **`filler/structure/cut`** · 4 importers · → `filler/structure`, `media/encode`, `media/tools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`filler/structure/window`** · 5 importers · → `filler/structure`, `filler/structure/cut`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`filler/structure/window/openrouter`** · 1 importer · → `filler`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `media/encode`, `platform/httpx`, `platform/openroutercatalog`, `platform/openroutermedia`
+- **`filler/structure/window/openrouter`** · 1 importer · → `filler/split`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `media/encode`, `platform/httpx`, `platform/openroutercatalog`, `platform/openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`filler/taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.

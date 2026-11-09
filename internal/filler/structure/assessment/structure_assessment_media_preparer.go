@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -46,16 +48,16 @@ func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath
 		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, profile: profile, probe: filler.FFprobeNextTo(ffmpegPath),
 		identify: tools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
-		snapshot: filler.SnapshotOwnedFile,
+		snapshot: asset.SnapshotOwnedFile,
 	}, nil
 }
 
-func validateStructureAssessmentSourceSnapshot(path string, source filler.SplitSourceAsset) error {
-	digest, size, err := filler.FileSHA256(path)
+func validateStructureAssessmentSourceSnapshot(path string, source split.SourceAsset) error {
+	digest, size, err := asset.FileSHA256(path)
 	if err != nil || digest != source.SHA256 || size != source.Bytes {
 		return errors.New("structure assessment source bytes do not match authority")
 	}
-	sparse, err := filler.ClipID(path)
+	sparse, err := asset.ClipID(path)
 	if err != nil || sparse != source.ClipHash {
 		return errors.New("structure assessment source sparse identity does not match authority")
 	}

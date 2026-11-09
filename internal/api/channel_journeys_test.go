@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -68,7 +68,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
+		Approver: accept.NewApprover(st, b, channeljourney.Clock),
 	}))
 	t.Cleanup(srv.Close)
 	if err := createProposalWithJob(st, ctx, store.Proposal{
@@ -144,7 +144,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
 				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-				Approver: suggest.NewApprover(st, b, func() time.Time { return now }),
+				Approver: accept.NewApprover(st, b, func() time.Time { return now }),
 			}))
 			t.Cleanup(srv.Close)
 			// An entirely acquisition-dependent sparse library must not appear live.

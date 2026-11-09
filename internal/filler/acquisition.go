@@ -3,6 +3,8 @@ package filler
 import (
 	"sort"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // AcquisitionTrigger says who started a filler download. It is intentionally about the
@@ -129,7 +131,7 @@ type AcquisitionGapYield struct {
 // gap. A clip is a download's when its hash is the artifact's clip hash or when it was split out
 // of that clip (parents maps a split child's hash to its compilation's). Unsteered downloads and
 // clips with no artifact (dropped by hand, pre-manifest) yield no row.
-func AcquisitionGapYieldFrom(artifacts []AcquisitionArtifact, rows []ClipPipeline, parents map[string]string, at time.Time) []AcquisitionGapYield {
+func AcquisitionGapYieldFrom(artifacts []AcquisitionArtifact, rows []pipelinestate.ClipPipeline, parents map[string]string, at time.Time) []AcquisitionGapYield {
 	byGap := map[string]*AcquisitionGapYield{}
 	gapOfClip := map[string]string{}
 	for _, artifact := range artifacts {
@@ -149,7 +151,7 @@ func AcquisitionGapYieldFrom(artifacts []AcquisitionArtifact, rows []ClipPipelin
 	if len(byGap) == 0 {
 		return nil
 	}
-	attributed := map[string][]ClipPipeline{}
+	attributed := map[string][]pipelinestate.ClipPipeline{}
 	for _, row := range rows {
 		gap, ok := gapOfClip[row.ClipHash]
 		if !ok {
@@ -170,22 +172,22 @@ func AcquisitionGapYieldFrom(artifacts []AcquisitionArtifact, rows []ClipPipelin
 
 // AcquisitionOutcomeFrom projects pipeline rows through the same Lifecycle classifier used by
 // Incoming and run telemetry. This is the only ownership mapping for acquisition results.
-func AcquisitionOutcomeFrom(rows []ClipPipeline, at time.Time) AcquisitionOutcome {
+func AcquisitionOutcomeFrom(rows []pipelinestate.ClipPipeline, at time.Time) AcquisitionOutcome {
 	var out AcquisitionOutcome
 	for _, row := range rows {
 		out.Enrolled++
 		switch row.Lifecycle(at).State {
-		case LifecycleRunnable, LifecycleInProgress, LifecycleScheduled:
+		case pipelinestate.LifecycleRunnable, pipelinestate.LifecycleInProgress, pipelinestate.LifecycleScheduled:
 			out.Preparing++
-		case LifecycleNeedsDecision:
+		case pipelinestate.LifecycleNeedsDecision:
 			out.NeedsDecision++
-		case LifecycleReady:
+		case pipelinestate.LifecycleReady:
 			out.Ready++
-		case LifecycleComplete:
+		case pipelinestate.LifecycleComplete:
 			out.Complete++
-		case LifecycleRejected:
+		case pipelinestate.LifecycleRejected:
 			out.Rejected++
-		case LifecycleDismissed:
+		case pipelinestate.LifecycleDismissed:
 			out.Dismissed++
 		}
 	}

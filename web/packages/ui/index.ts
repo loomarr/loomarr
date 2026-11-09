@@ -94,6 +94,7 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
   LibraryScan,
