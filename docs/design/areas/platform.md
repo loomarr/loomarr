@@ -23,7 +23,7 @@ One area of the [package map](../package-map.md#start-here).
   Carries the version stamped into the binary at build time.
 - **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`platform/diagnostics`** · 10 importers · → `platform/storagegovernor`
+- **`platform/diagnostics`** · 11 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
@@ -61,7 +61,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
 - **`platform/store/channeldatastore`** · 5 importers · → `platform/store/storedb`, `provision`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
-- **`platform/store/channelstore`** · 12 importers · → `channels/schedule`, `platform/store/storedb`
+- **`platform/store/channelstore`** · 13 importers · → `channels/schedule`, `platform/store/storedb`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
 - **`platform/store/clipstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
