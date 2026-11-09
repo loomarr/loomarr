@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"io/fs"
+	"sync"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/header"
@@ -25,7 +26,12 @@ func TestAnOlderReadersHeaderIsReadAgain(t *testing.T) {
 	// This reader; the share stops answering after one header.
 	h.im.readerVersion = 0
 	read := h.im.Header
+	// The header stage reads several files at once: the check and the read are one step, or two
+	// workers both see "one read so far" and both read.
+	var gate sync.Mutex
 	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		gate.Lock()
+		defer gate.Unlock()
 		if h.reads.Load() >= 3 {
 			h.reads.Add(1)
 			return header.Header{}, fs.ErrNotExist
