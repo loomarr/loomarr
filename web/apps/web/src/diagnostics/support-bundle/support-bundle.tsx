@@ -13,12 +13,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Field,
   LoadingStrip,
   Toggle,
 } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { Settings2, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useAppForm } from "@/lib/app-form";
 
 type Range = "1h" | "6h" | "24h";
 const RANGE_MS: Record<Range, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
@@ -27,6 +28,21 @@ const RANGE_OPTIONS: { label: string; value: Range }[] = [
   { label: "Last 6 hours", value: "6h" },
   { label: "Last 24 hours", value: "24h" },
 ];
+
+const EVIDENCE_TYPES = [
+  ["Application and player logs", "events"],
+  ["Process details", "processes"],
+  ["Process output", "processOutput"],
+] as const;
+
+const CORRELATION_FIELDS = [
+  ["Request id", "requestId"],
+  ["Playback session", "playbackSessionId"],
+  ["Channel", "channelId"],
+  ["Schedule block", "scheduleBlockId"],
+  ["Job", "jobId"],
+  ["Process run", "processRunId"],
+] as const;
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -63,27 +79,48 @@ const SupportBundle = ({
   >;
 }) => {
   const [open, setOpen] = useState(false);
-  const [range, setRange] = useState<Range>(initialRange);
-  const [events, setEvents] = useState(true);
-  const [processes, setProcesses] = useState(true);
-  const [processOutput, setProcessOutput] = useState(true);
-  const [fields, setFields] = useState(correlations);
   const [preview, setPreview] = useState<BundlePreview>();
   const [busy, setBusy] = useState<"preview" | "download">();
   const [error, setError] = useState<string>();
 
-  // The window ends when the request is made, so a dialog left open still reports recent evidence.
-  const selectionNow = useCallback((): BundleSelection => {
-    const to = Date.now();
-    return { from: to - RANGE_MS[range], to, events, processes, processOutput, ...fields };
-  }, [events, fields, processOutput, processes, range]);
+  const form = useAppForm({
+    defaultValues: {
+      range: initialRange,
+      events: true,
+      processes: true,
+      processOutput: true,
+      requestId: correlations.requestId ?? "",
+      playbackSessionId: correlations.playbackSessionId ?? "",
+      channelId: correlations.channelId ?? "",
+      scheduleBlockId: correlations.scheduleBlockId ?? "",
+      jobId: correlations.jobId ?? "",
+      processRunId: correlations.processRunId ?? "",
+    },
+  });
+  const values = useStore(form.store, (state) => state.values);
+  const { events, processes, processOutput } = values;
 
+  // The window ends when the request is made, so a dialog left open still reports recent evidence.
+  const selectionNow = (): BundleSelection => {
+    const to = Date.now();
+    const { range, ...rest } = form.state.values;
+    return {
+      from: to - RANGE_MS[range],
+      to,
+      ...rest,
+      ...Object.fromEntries(CORRELATION_FIELDS.map(([, key]) => [key, rest[key] || undefined])),
+    };
+  };
+
+  // Any change to the selection retires the review it was made against.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `values` is the trigger, not an input
   useEffect(() => {
+    setPreview(undefined);
+    setError(undefined);
     if (!open || (!events && !processes && !processOutput)) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setBusy("preview");
-      setError(undefined);
       void previewDiagnosticSupportBundle(selectionNow(), { signal: controller.signal })
         .then((response) => {
           if (response.status === 200) setPreview(response.data);
@@ -101,12 +138,7 @@ const SupportBundle = ({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [events, open, processOutput, processes, selectionNow]);
-
-  const invalidate = () => {
-    setPreview(undefined);
-    setError(undefined);
-  };
+  }, [open, values]);
 
   const download = async () => {
     setBusy("download");
@@ -138,27 +170,12 @@ const SupportBundle = ({
     }
   };
 
-  const updateCategory = (kind: "events" | "processes" | "output", checked: boolean) => {
-    if (kind === "events") setEvents(checked);
-    if (kind === "processes") {
-      setProcesses(checked);
-      if (!checked) setProcessOutput(false);
-    }
-    if (kind === "output") {
-      setProcessOutput(checked);
-      if (checked) setProcesses(true);
-    }
-    invalidate();
+  // Process output is the output of a process, so it never outlives its process details.
+  const updateCategory = (kind: "events" | "processes" | "processOutput", checked: boolean) => {
+    form.setFieldValue(kind, checked);
+    if (kind === "processes" && !checked) form.setFieldValue("processOutput", false);
+    if (kind === "processOutput" && checked) form.setFieldValue("processes", true);
   };
-
-  const correlationFields = [
-    ["Request id", "requestId"],
-    ["Playback session", "playbackSessionId"],
-    ["Channel", "channelId"],
-    ["Schedule block", "scheduleBlockId"],
-    ["Job", "jobId"],
-    ["Process run", "processRunId"],
-  ] as const;
 
   const counts = preview?.manifest.counts;
   const warnings = [...new Set((preview?.manifest.truncationReasons ?? []).map(truncationLabel))];
@@ -200,16 +217,17 @@ const SupportBundle = ({
                     {processOutput ? " and retained output" : ""}.
                   </p>
                 </div>
-                <CompactSelect
-                  label="Troubleshooting report time window"
-                  onValueChange={(value) => {
-                    setRange(value as Range);
-                    invalidate();
-                  }}
-                  options={RANGE_OPTIONS}
-                  value={range}
-                  width={160}
-                />
+                <form.Field name="range">
+                  {(field) => (
+                    <CompactSelect
+                      label="Troubleshooting report time window"
+                      onValueChange={(value) => field.handleChange(value as Range)}
+                      options={RANGE_OPTIONS}
+                      value={field.state.value}
+                      width={160}
+                    />
+                  )}
+                </form.Field>
               </div>
               <div className="border-success/30 bg-success/5 mt-4 flex items-start gap-2 rounded-md border p-3">
                 <ShieldCheck className="text-lock mt-0.5 size-4 shrink-0" aria-hidden />
@@ -272,18 +290,12 @@ const SupportBundle = ({
                 <fieldset>
                   <legend className="mb-2 text-sm font-medium">Evidence types</legend>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    {[
-                      ["Application and player logs", "events", events],
-                      ["Process details", "processes", processes],
-                      ["Process output", "output", processOutput],
-                    ].map(([label, kind, checked]) => (
-                      <div key={String(kind)} className="border-border rounded-md border px-3">
+                    {EVIDENCE_TYPES.map(([label, kind]) => (
+                      <div key={kind} className="border-border rounded-md border px-3">
                         <Toggle
-                          label={String(label)}
-                          checked={Boolean(checked)}
-                          onCheckedChange={(next) =>
-                            updateCategory(kind as "events" | "processes" | "output", next)
-                          }
+                          label={label}
+                          checked={values[kind]}
+                          onCheckedChange={(next) => updateCategory(kind, next)}
                         />
                       </div>
                     ))}
@@ -292,19 +304,10 @@ const SupportBundle = ({
                 <div>
                   <h4 className="mb-2 text-sm font-medium">Exact identifiers</h4>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {correlationFields.map(([label, key]) => (
-                      <Field
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        key={key}
-                        label={label}
-                        maxLength={128}
-                        onChangeText={(text) => {
-                          setFields((current) => ({ ...current, [key]: text || undefined }));
-                          invalidate();
-                        }}
-                        value={fields[key] ?? ""}
-                      />
+                    {CORRELATION_FIELDS.map(([label, key]) => (
+                      <form.AppField key={key} name={key}>
+                        {(field) => <field.TextField label={label} maxLength={128} />}
+                      </form.AppField>
                     ))}
                   </div>
                 </div>
