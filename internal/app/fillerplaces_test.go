@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -61,7 +62,7 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eras := []filler.EraRange{{From: 1980, To: 1999}}
+	eras := []pod.EraRange{{From: 1980, To: 1999}}
 	for title, want := range map[string]string{
 		"WAAA-TV station ID 1984": "WAAA",
 		"WBBB-TV station ID 1990": "WBBB",
@@ -88,12 +89,12 @@ func TestNearbyCallSignsAreThoseHeldDuringTheEraGaps(t *testing.T) {
 	near := map[string]bool{"fcc:1": true, "fcc:2": true, "fcc:404": true}
 	for _, c := range []struct {
 		name string
-		eras []filler.EraRange
+		eras []pod.EraRange
 		want []string
 	}{
-		{"before the change", []filler.EraRange{{From: 1980, To: 1986}}, []string{"WAAA", "WCCC"}},
-		{"after it", []filler.EraRange{{From: 1990, To: 1999}}, []string{"WBBB", "WCCC"}},
-		{"across it", []filler.EraRange{{From: 1985, To: 1989}}, []string{"WAAA", "WBBB", "WCCC"}},
+		{"before the change", []pod.EraRange{{From: 1980, To: 1986}}, []string{"WAAA", "WCCC"}},
+		{"after it", []pod.EraRange{{From: 1990, To: 1999}}, []string{"WBBB", "WCCC"}},
+		{"across it", []pod.EraRange{{From: 1985, To: 1989}}, []string{"WAAA", "WBBB", "WCCC"}},
 		{"no era gap", nil, []string{"WAAA", "WBBB", "WCCC"}},
 	} {
 		if got := nearbyCallSigns(near, c.eras, directory); !slices.Equal(got, c.want) {

@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -86,7 +87,7 @@ type previewPodsOutput struct {
 // ⚠ **They ship together because they were describing two different selections.** The coverage
 // meter read the SAVED policy while the timeline directly beneath it rendered the DRAFT — so
 // during an edit the page showed a meter for one selection above a pod for another, with nothing
-// saying so. One response, one selection, computed from the same `filler.Selection`.
+// saying so. One response, one selection, computed from the same `pod.Selection`.
 type previewDraftPodsOutput struct {
 	Body struct {
 		PodPoolDTO
@@ -171,7 +172,7 @@ type channelCoverageOutput struct {
 // ⚠ **The whole point is that this cannot disagree with what airs.** The v2 mock's meter
 // claims to come "from the same ladder reconcile uses" and does not — it recomputes its
 // buckets inline, with five mutually inconsistent era/audience predicates. Here the answer
-// comes from `filler.Coverage`, which calls the same `candidatePools` that `Assemble` calls,
+// comes from `pod.Coverage`, which calls the same `candidatePools` that `Assemble` calls,
 // through the same `SelectionForChannel` derivation the previews use. A meter that says
 // "exact" while breaks resolve at "audience" is a confident wrong answer about why a channel
 // sounds the way it does, which is worse than no meter.
@@ -199,7 +200,7 @@ func (s *Server) channelFillerCoverage(ctx context.Context, in *previewPodsInput
 
 // coverageDTO renders a coverage report. Shared by the saved-coverage endpoint and the DRAFT
 // preview (V51f) so the two cannot describe the same ladder differently.
-func coverageDTO(report filler.CoverageReport) CoverageDTO {
+func coverageDTO(report pod.CoverageReport) CoverageDTO {
 	// Non-nil even when empty: a JSON `null` here would make every consumer guard before
 	// iterating, and "no rungs" is a real answer (an unconfigured catalog), not a missing one.
 	rungs := make([]CoverageRungDTO, 0, len(report.Rungs))
@@ -220,7 +221,7 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		},
 		Language:             report.Language,
 		UndeterminedLanguage: report.UndeterminedLanguage,
-		DefaultRoles:         filler.DefaultRoles(),
+		DefaultRoles:         pod.DefaultRoles(),
 	}
 }
 
@@ -440,7 +441,7 @@ func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
 }
 
 // podToPreviewOutput renders the saved pod for the member-readable preview (GET).
-func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
+func podToPreviewOutput(pod pod.Pod) *previewPodsOutput {
 	return &previewPodsOutput{Body: viewerPoolDTO(pod)}
 }
 
@@ -448,7 +449,7 @@ func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
 // catalogue name that came from the filename is sent as "" (#1988, filler.ViewerName) and the
 // file's location not at all (#1980). Clients address clips by hash. The admin draft sandbox
 // keeps the filename an operator searches by.
-func viewerPoolDTO(pod filler.Pod) PodPoolDTO {
+func viewerPoolDTO(pod pod.Pod) PodPoolDTO {
 	dto := podToPoolDTO(pod)
 	for i := range dto.Entries {
 		dto.Entries[i].Name = filler.ViewerName(pod.Entries[i].Name, pod.Entries[i].NameSource)
@@ -459,7 +460,7 @@ func viewerPoolDTO(pod filler.Pod) PodPoolDTO {
 
 // podToPoolDTO maps an assembled pod to its DTO. Shared by the pods endpoints and the
 // programming/preview endpoint (which embeds the pool alongside the cycle slots).
-func podToPoolDTO(pod filler.Pod) PodPoolDTO {
+func podToPoolDTO(pod pod.Pod) PodPoolDTO {
 	// Always a slice, never null: an empty catalog is a normal state the UI renders as
 	// "no clips yet", and a null here would make the FE guard a case that isn't an error.
 	entries := make([]PodEntryDTO, 0, len(pod.Entries))
@@ -559,7 +560,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 // commercial spacing exactly as the saved channel does. It used to stop at the filler selection,
 // which assembled draft previews with the install's break length and spacing while the channel
 // aired its own.
-func fillerSelectionToDomain(f schedule.FillerSelection, policy schedule.ChannelPolicy, lineup []schedule.LineupEntry) filler.Selection {
+func fillerSelectionToDomain(f schedule.FillerSelection, policy schedule.ChannelPolicy, lineup []schedule.LineupEntry) pod.Selection {
 	policy.Filler = &f
 	return channels.SelectionForPolicy(policy, lineup)
 }

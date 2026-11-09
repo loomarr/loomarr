@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -24,20 +25,20 @@ import (
 
 // PullPlanRowDTO is one exact remote item a pull would acquire.
 type PullPlanRowDTO struct {
-	CandidateID  string           `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
-	SourceID     string           `json:"sourceId" doc:"The registered collection this item came from"`
-	Provider     string           `json:"provider,omitempty"`
-	RemoteID     string           `json:"remoteId,omitempty"`
-	URL          string           `json:"url,omitempty" doc:"Exact remote item URL; absent only on historical source-level pulls"`
-	License      string           `json:"license,omitempty" doc:"Provider/source-declared rights evidence; empty means unknown"`
-	ObservedYear int              `json:"observedYear,omitempty" doc:"Weak remote observation; never grounded clip era"`
-	PublishedAt  string           `json:"publishedAt,omitempty" doc:"Provider publication/upload date; never clip era"`
-	DurationMS   int              `json:"durationMs,omitempty"`
-	Height       int              `json:"height,omitempty"`
-	Geography    filler.Geography `json:"geography,omitempty"`
-	Tag          string           `json:"tag" doc:"Short label for the row's chip (an era, an audience)"`
-	Name         string           `json:"name"`
-	Why          string           `json:"why" doc:"Why THIS source is in the plan"`
+	CandidateID  string        `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
+	SourceID     string        `json:"sourceId" doc:"The registered collection this item came from"`
+	Provider     string        `json:"provider,omitempty"`
+	RemoteID     string        `json:"remoteId,omitempty"`
+	URL          string        `json:"url,omitempty" doc:"Exact remote item URL; absent only on historical source-level pulls"`
+	License      string        `json:"license,omitempty" doc:"Provider/source-declared rights evidence; empty means unknown"`
+	ObservedYear int           `json:"observedYear,omitempty" doc:"Weak remote observation; never grounded clip era"`
+	PublishedAt  string        `json:"publishedAt,omitempty" doc:"Provider publication/upload date; never clip era"`
+	DurationMS   int           `json:"durationMs,omitempty"`
+	Height       int           `json:"height,omitempty"`
+	Geography    pod.Geography `json:"geography,omitempty"`
+	Tag          string        `json:"tag" doc:"Short label for the row's chip (an era, an audience)"`
+	Name         string        `json:"name"`
+	Why          string        `json:"why" doc:"Why THIS source is in the plan"`
 	// ⚠ An estimate, never a promise: what a source yields depends on what is still there,
 	// what deduplicates against the catalog, and what the splitter makes of a compilation.
 	EstimateClips int  `json:"estimateClips" doc:"Expected clips from this row. An ESTIMATE — render it as one."`
@@ -195,11 +196,11 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	return out, nil
 }
 
-func (s *Server) fillerHomeGeography() filler.Geography {
+func (s *Server) fillerHomeGeography() pod.Geography {
 	if s.liveSettings == nil {
-		return filler.Geography{}
+		return pod.Geography{}
 	}
-	return filler.Geography{
+	return pod.Geography{
 		Country:  settings.FillerHomeCountry.Get(s.liveSettings),
 		Place:    settings.FillerHomePlace.Get(s.liveSettings),
 		Fallback: settings.FillerRegionFallback.Joined(s.liveSettings),

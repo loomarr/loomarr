@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -179,34 +180,34 @@ type storePods struct {
 	hashes []string
 }
 
-func (p *storePods) PreviewAt(ctx context.Context, _ string, _ filler.BreakSlot) (filler.Pod, error) {
+func (p *storePods) PreviewAt(ctx context.Context, _ string, _ pod.BreakSlot) (pod.Pod, error) {
 	return p.pod(ctx)
 }
 
-func (p *storePods) PreviewAtMany(ctx context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
-	pod, err := p.pod(ctx)
+func (p *storePods) PreviewAtMany(ctx context.Context, _ string, slots []pod.BreakSlot) ([]pod.Pod, error) {
+	brk, err := p.pod(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Pod, len(slots))
+	out := make([]pod.Pod, len(slots))
 	for i := range out {
-		out[i] = pod
+		out[i] = brk
 	}
 	return out, nil
 }
 
-func (p *storePods) pod(ctx context.Context) (filler.Pod, error) {
-	pod := filler.Pod{MatchLevel: filler.MatchExact}
+func (p *storePods) pod(ctx context.Context) (pod.Pod, error) {
+	brk := pod.Pod{MatchLevel: pod.MatchExact}
 	for _, h := range p.hashes {
 		c, err := p.st.GetClip(ctx, h)
 		if err != nil {
-			return filler.Pod{}, err
+			return pod.Pod{}, err
 		}
-		pod.Entries = append(pod.Entries, filler.PodEntry{Hash: c.Hash, Name: c.Name, NameSource: c.NameSource,
+		brk.Entries = append(brk.Entries, pod.Entry{Hash: c.Hash, Name: c.Name, NameSource: c.NameSource,
 			Role: c.Role, DurationMs: c.DurationMs})
-		pod.TotalMs += c.DurationMs
+		brk.TotalMs += c.DurationMs
 	}
-	return pod, nil
+	return brk, nil
 }
 
 // A member watching a break sees the name an admin gave a filename-named clip (#1990), through

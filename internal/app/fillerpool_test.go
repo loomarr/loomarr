@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -38,7 +39,7 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 			t.Fatal(err)
 		}
 	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, nil, slog.New(slog.DiscardHandler))
+	pods := pod.NewAdapter(clipCatalogAdapter{st: st}, nil, nil, slog.New(slog.DiscardHandler))
 	return podPreviewAdapter{store: st, pods: pods}, st
 }
 
@@ -125,7 +126,7 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		roles := filler.CoverageGapsFrom(report, filler.PoolTargets{}, 2026).Roles
+		roles := filler.CoverageGapsFrom(report, pod.PoolTargets{}, 2026).Roles
 		if report.Bookends != tc.bookends || len(roles) != tc.roleGapTo {
 			t.Fatalf("bookends = %d, role gaps = %v; want %d and %d roles", report.Bookends,
 				roles, tc.bookends, tc.roleGapTo)
@@ -161,10 +162,10 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 	// that stops exercising the sort fails here instead of silently going quiet.
 	want := []struct {
 		id    string
-		level filler.MatchLevel
+		level pod.MatchLevel
 	}{
 		// Nothing from the 1930s exists, so this one falls to any-audience — the worse rung.
-		{"ch-30s", filler.MatchAudience},
+		{"ch-30s", pod.MatchAudience},
 		// ⚠ **This was `MatchWidened`, and the change IS the V51f fix — visible in a fixture that
 		// had encoded the right answer all along.** `liveChannel` builds a scope era of
 		// `{From: 1990, To: 1999}`, a real decade. The old code read `.From` and threw the rest
@@ -174,7 +175,7 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 		// matches. With both bounds honoured, 1992 and 1994 are inside 1990–1999 and the rung is
 		// `exact`. The two channels still land on different rungs, so the worst-first ordering
 		// this test exists to check is still exercised.
-		{"ch-90s", filler.MatchExact},
+		{"ch-90s", pod.MatchExact},
 	}
 	if len(report.Channels) != len(want) {
 		t.Fatalf("want %d channels, got %d", len(want), len(report.Channels))

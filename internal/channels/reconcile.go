@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
@@ -620,14 +621,14 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // Exported so the §12 pod PREVIEW derives the selection identically. If preview computed
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
-func SelectionForChannel(ch store.Channel) filler.Selection {
+func SelectionForChannel(ch store.Channel) pod.Selection {
 	return SelectionForPolicy(ch.Policy, ch.Lineup)
 }
 
 // SelectionForPolicy is SelectionForChannel for a policy that is not (yet) the saved one — a draft.
 // It carries everything the saved path does, break length and commercial spacing included, so a
 // draft preview cannot assemble with the install defaults while the channel airs its own.
-func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntry) filler.Selection {
+func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntry) pod.Selection {
 	sel := SelectionFrom(pol.Filler, pol.Scope, schedule.DeriveFiller(pol, lineup))
 	if pol.BreakDuration != nil {
 		sel.BreakDurationMs = pol.BreakDuration.Std().Milliseconds()
@@ -699,7 +700,7 @@ func (e *Engine) naturalBreaksFor(ctx context.Context, pol schedule.ChannelPolic
 }
 
 // BreakDurationFor resolves the per-channel break length against the live global setting, through
-// filler.ResolveBreakDurationMs — the same rule the pod is assembled to. An invalid (zero or
+// pod.ResolveBreakDurationMs — the same rule the pod is assembled to. An invalid (zero or
 // sub-30s) value falls to the next level, ending at the documented 2m default; disabling belongs
 // exclusively to BreaksPerHour.
 func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Duration {
@@ -707,7 +708,7 @@ func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Dur
 	if pol.BreakDuration != nil {
 		channelMs = pol.BreakDuration.Std().Milliseconds()
 	}
-	return time.Duration(filler.ResolveBreakDurationMs(channelMs, global.Milliseconds())) * time.Millisecond
+	return time.Duration(pod.ResolveBreakDurationMs(channelMs, global.Milliseconds())) * time.Millisecond
 }
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.
@@ -724,8 +725,8 @@ func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Dur
 // `derived` is what the channel's programming implies (schedule.DeriveFiller). It fills ONLY what
 // the operator left unset — an explicit audience or era, including an explicit "any" era, is never
 // overridden — and is applied live so channels created before it existed benefit too.
-func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, derived schedule.DerivedFiller) filler.Selection {
-	sel := filler.Selection{}
+func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, derived schedule.DerivedFiller) pod.Selection {
+	sel := pod.Selection{}
 	inheritEra := true
 	if f != nil {
 		sel.Audience = filler.Audience(f.Audience)
@@ -734,7 +735,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 		sel.Pinned = append([]string(nil), f.Pinned...)
 		sel.Excluded = append([]string(nil), f.Excluded...)
 		if f.Geography != nil {
-			sel.Geography = filler.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
+			sel.Geography = pod.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
 		}
 		sel.Language = language.Normalize(f.Language)
 		if f.Era != nil {
@@ -745,7 +746,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 			// very next derivation and a channel with a programming era had no way to say "draw
 			// from the whole catalog". Same pattern as `AutoCurate`, for the same reason.
 			inheritEra = false
-			sel.Era = filler.EraRange{From: f.Era.From, To: f.Era.To}
+			sel.Era = pod.EraRange{From: f.Era.From, To: f.Era.To}
 		} else if len(f.EraWindows) > 0 {
 			inheritEra = false
 			sel.EraWindows = rangesToFiller(f.EraWindows)
@@ -755,11 +756,11 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	// create — so an existing channel benefits, and a channel whose scope later changes follows.
 	if inheritEra {
 		if era, windows := scope.FillerEra(); era != nil {
-			sel.Era = filler.EraRange{From: era.From, To: era.To}
+			sel.Era = pod.EraRange{From: era.From, To: era.To}
 		} else if len(windows) > 0 {
 			sel.EraWindows = rangesToFiller(windows)
 		} else if derived.Era != nil {
-			sel.Era = filler.EraRange{From: derived.Era.From, To: derived.Era.To}
+			sel.Era = pod.EraRange{From: derived.Era.From, To: derived.Era.To}
 		}
 	}
 	// ⚠ An empty audience is "operator said nothing" — the string has no explicit-any value, and
@@ -771,12 +772,12 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	return sel
 }
 
-func rangesToFiller(ranges []schedule.Range) []filler.EraRange {
-	out := make([]filler.EraRange, len(ranges))
+func rangesToFiller(ranges []schedule.Range) []pod.EraRange {
+	out := make([]pod.EraRange, len(ranges))
 	for i, r := range ranges {
-		out[i] = filler.EraRange{From: r.From, To: r.To}
+		out[i] = pod.EraRange{From: r.From, To: r.To}
 	}
-	return filler.NormalizeEraWindows(out)
+	return pod.NormalizeEraWindows(out)
 }
 
 // PodSeed derives a deterministic pod seed from the channel id (§10 seeded-
@@ -793,7 +794,7 @@ func PodSeed(channelID string) int64 {
 }
 
 // PodSeedAt derives the seed for the break STARTING AT a specific instant — what
-// filler.Window has always documented ("channel + window start") and what real television
+// pod.Window has always documented ("channel + window start") and what real television
 // does: consecutive breaks do not replay the same three adverts.
 //
 // PodSeed (channel-only) remains for the two callers that legitimately want ONE pool per

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func candidate(source, id string, year, height int, license string) filler.AcquisitionCandidate {
@@ -116,9 +117,9 @@ func TestPlanAcquisition_ExplainsPriorStateAndDuplicates(t *testing.T) {
 }
 
 func TestDefaultAcquisitionIntent_NamesTheCoverageProjection(t *testing.T) {
-	intent := filler.DefaultAcquisitionIntent(filler.PoolReport{Channels: []filler.ChannelCoverage{{
-		Name: "Saturday Mornings", Report: filler.CoverageReport{Level: filler.MatchBumperCard},
-	}}}, filler.Geography{Country: "us", Place: "5128581"})
+	intent := filler.DefaultAcquisitionIntent(pod.PoolReport{Channels: []pod.ChannelCoverage{{
+		Name: "Saturday Mornings", Report: pod.CoverageReport{Level: pod.MatchBumperCard},
+	}}}, pod.Geography{Country: "us", Place: "5128581"})
 	if intent.CatalogReason != "Improve filler coverage for Saturday Mornings; its current match level is bumper_card." {
 		t.Fatalf("reason = %q", intent.CatalogReason)
 	}

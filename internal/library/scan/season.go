@@ -40,10 +40,7 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	case answered && answer.Choice == store.OrderByFiles:
 		return res
 	case answered && answer.Choice == store.OrderByOrder:
-		// An order is fetched from the catalog the series' own row came from (CatalogKeys.For).
-		res.catalog = store.LibraryCatalogKey{
-			Provider: series.catalog.Provider, Kind: string(mp.KindEpisodeOrder), ExternalID: answer.OrderID,
-		}
+		res.catalog = orderKey(series.catalog, answer.OrderID)
 		return b.byEntry(ctx, s, in, res)
 	case answered && answer.Choice == store.OrderByCatalog:
 	case d == nil || d.Orders == nil:
@@ -111,7 +108,7 @@ func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series store.Li
 	s.ordersWanted = true
 	keys := make([]store.LibraryCatalogKey, 0, len(orders))
 	for _, o := range orders {
-		keys = append(keys, store.LibraryCatalogKey{Provider: series.Provider, Kind: string(mp.KindEpisodeOrder), ExternalID: o.ID})
+		keys = append(keys, orderKey(series, o.ID))
 	}
 	if err := b.im.Catalog.WantLibraryCatalog(ctx, keys); err != nil {
 		b.im.log().Warn("library scan: episode orders not asked for", "catalog", series.String(), "err", err)
@@ -142,11 +139,20 @@ type cachedSeason struct {
 // episode on disk in each season, does: it knows no other ordering, and each of those seasons
 // holds exactly that many episodes there. A record that does not say is not trusted.
 func numberedLikeDisk(d *mp.Descriptive, last map[int]int) bool {
-	if d == nil || d.Orders == nil || len(d.Orders) != 0 || len(last) == 0 {
+	if d == nil || d.Orders == nil || len(d.Orders) != 0 {
 		return false
 	}
-	size := make(map[int]int, len(d.Seasons))
-	for _, s := range d.Seasons {
+	return fitsDisk(d.Seasons, last)
+}
+
+// fitsDisk reports whether a layout's seasons end where the disk's do: each season on disk holds
+// exactly as many episodes there as last's highest. Nothing on disk fits nothing.
+func fitsDisk(seasons []mp.SeasonSize, last map[int]int) bool {
+	if len(last) == 0 {
+		return false
+	}
+	size := make(map[int]int, len(seasons))
+	for _, s := range seasons {
 		size[s.Number] = s.Episodes
 	}
 	for season, episode := range last {

@@ -4,19 +4,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func TestFillerSource_ServesHomeNeedsAConfiguredCountry(t *testing.T) {
 	unclassified := FillerSource{Kind: "archive"}
-	british := FillerSource{Kind: "archive", Geography: filler.Geography{Country: "GB"}}
-	if unclassified.ServesHome(filler.Geography{}) || !unclassified.GeographicallyEligible(filler.Geography{}) {
+	british := FillerSource{Kind: "archive", Geography: pod.Geography{Country: "GB"}}
+	if unclassified.ServesHome(pod.Geography{}) || !unclassified.GeographicallyEligible(pod.Geography{}) {
 		t.Fatal("with no installation country, nothing is served even though the geography gate admits all")
 	}
-	if !unclassified.ServesHome(filler.Geography{Country: "us"}) {
+	if !unclassified.ServesHome(pod.Geography{Country: "us"}) {
 		t.Fatal("a source with no country follows the installation's")
 	}
-	if british.ServesHome(filler.Geography{Country: "US"}) {
+	if british.ServesHome(pod.Geography{Country: "US"}) {
 		t.Fatal("a British source served a US installation")
 	}
 }

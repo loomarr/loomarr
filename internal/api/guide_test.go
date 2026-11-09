@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -497,10 +498,10 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    65000,
-		Entries: []filler.PodEntry{
+		Entries: []pod.Entry{
 			{Name: "Channel bumper", Role: filler.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
 			{Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
 		},
@@ -513,15 +514,15 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	if len(airings) != 1 || airings[0].Pod == nil {
 		t.Fatalf("filler block has no pod composition: %+v", airings)
 	}
-	pod := airings[0].Pod
-	if len(pod.Entries) != 2 {
-		t.Fatalf("pod has %d entries, want the clips that actually play", len(pod.Entries))
+	brk := airings[0].Pod
+	if len(brk.Entries) != 2 {
+		t.Fatalf("pod has %d entries, want the clips that actually play", len(brk.Entries))
 	}
-	if pod.MatchLevel == "" {
+	if brk.MatchLevel == "" {
 		t.Error("no match level — the answer to 'why are my commercials wrong' is missing")
 	}
-	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
-		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	if brk.Entries[0].Quality == "" || brk.Entries[0].Era == 0 {
+		t.Errorf("entry lacks era/quality context: %+v", brk.Entries[0])
 	}
 }
 
@@ -533,10 +534,10 @@ func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    60000,
-		Entries: []filler.PodEntry{
+		Entries: []pod.Entry{
 			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: filler.Commercial, DurationMs: 30000},
 			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000},
 		},
@@ -575,10 +576,10 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    90000,
-		Entries: []filler.PodEntry{
+		Entries: []pod.Entry{
 			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
 				Role: filler.Commercial, DurationMs: 30000},
 			{Hash: "h-curated", Name: "Zap Cola", NameSource: clips.NameFromCurated,
@@ -631,10 +632,10 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 			},
 		},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    30_000,
-		Entries: []filler.PodEntry{{
+		Entries: []pod.Entry{{
 			Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial",
 			Role: filler.Commercial, DurationMs: 30_000,
 		}},
@@ -815,10 +816,10 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    30000,
-		Entries: []filler.PodEntry{{
+		Entries: []pod.Entry{{
 			Name: "Crunchlings", Role: filler.Commercial, DurationMs: 30000,
 			Era: 1994, Quality: "480p",
 			// Grounded at the source (§8): each of these persisted on the clip only because a
@@ -836,7 +837,7 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 		t.Fatalf("filler block has no pod entry: %+v", airings)
 	}
 	e := airings[0].Pod.Entries[0]
-	// Each field must survive the Clip → PodEntry → PodEntryDTO trip. Sabotage check: drop any
+	// Each field must survive the Clip → pod.Entry → PodEntryDTO trip. Sabotage check: drop any
 	// one of these in podToPoolDTO and exactly its assertion goes red.
 	if e.Brand != "Brightfield's" {
 		t.Errorf("brand = %q, want it carried to the hover card", e.Brand)
@@ -861,8 +862,8 @@ func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		Entries: []filler.PodEntry{{Name: "Mystery spot", Role: filler.Commercial, DurationMs: 30000}},
+	fp := &fakePods{pod: pod.Pod{
+		Entries: []pod.Entry{{Name: "Mystery spot", Role: filler.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
@@ -894,8 +895,8 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 			gridBlock(schedule.SlotFiller, "Break", 30*time.Minute, 4),
 		},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		Entries: []filler.PodEntry{{Name: "Ad", Role: filler.Commercial, DurationMs: 30000}},
+	fp := &fakePods{pod: pod.Pod{
+		Entries: []pod.Entry{{Name: "Ad", Role: filler.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
@@ -929,13 +930,13 @@ func TestGuide_ProgrammesCarryNoPod(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 	}}
-	fp := &fakePods{pod: filler.Pod{Entries: []filler.PodEntry{{Name: "Ad", DurationMs: 30000}}}}
+	fp := &fakePods{pod: pod.Pod{Entries: []pod.Entry{{Name: "Ad", DurationMs: 30000}}}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
-	if pod := getGuide(t, srv, "").Channels[0].Airings[0].Pod; pod != nil {
-		t.Errorf("a programme carried a pod: %+v", pod)
+	if brk := getGuide(t, srv, "").Channels[0].Airings[0].Pod; brk != nil {
+		t.Errorf("a programme carried a pod: %+v", brk)
 	}
 }
 

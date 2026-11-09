@@ -15,7 +15,7 @@ import type { CoverageMeterProps } from "./coverage-meter.type";
 // exact bug §10's shared assembler exists to prevent.
 //
 // So this shows what the ladder actually answers: the rung a break WOULD be filled from, and how
-// much material each rung holds. Everything here comes from `filler.Coverage`, which calls the
+// much material each rung holds. Everything here comes from `pod.Coverage`, which calls the
 // same `candidatePools` that `Assemble` calls — the agreement is pinned by a Go test, not by
 // this component agreeing to be careful.
 const LEVEL_COPY: Record<CoverageDTOLevel, { tone: StatusTone; label: string; hint: string }> = {

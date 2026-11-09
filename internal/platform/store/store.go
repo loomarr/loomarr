@@ -543,7 +543,7 @@ type AiringStore interface {
 	// error because the airing history intentionally survives catalog pruning and re-admission.
 	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (recorded bool, err error)
 	// FillerAirings returns the household's stored clip airings across every channel. A break's
-	// snapshot is cut from them by filler.ExposuresBefore, so one read serves every break in a
+	// snapshot is cut from them by pod.ExposuresBefore, so one read serves every break in a
 	// window (#1420).
 	FillerAirings(ctx context.Context) ([]clips.Airing, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
@@ -81,7 +81,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	if !got[0].Enabled {
 		t.Error("persisted source is disabled")
 	}
-	if got[0].Geography != (filler.Geography{Country: "US"}) {
+	if got[0].Geography != (pod.Geography{Country: "US"}) {
 		t.Errorf("persisted geography = %+v", got[0].Geography)
 	}
 }
@@ -663,7 +663,7 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	overridden := records.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
-	overridden.Geography = filler.Geography{Country: "CA"}
+	overridden.Geography = pod.Geography{Country: "CA"}
 	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +729,7 @@ func TestSetFillerSourceEnabled_RefusedFolderSwitchLeavesTheCoverageAlone(t *tes
 	if err := st.UpsertFillerSource(ctx, records.NewFillerSource("folder", "folder", "/data/filler", "Drop folder", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetFillerSourceGeography(ctx, "folder", filler.Geography{Country: "US"}); err != nil {
+	if err := st.SetFillerSourceGeography(ctx, "folder", pod.Geography{Country: "US"}); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
