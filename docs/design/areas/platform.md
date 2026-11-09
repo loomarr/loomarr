@@ -21,7 +21,7 @@ One area of the [package map](../package-map.md#start-here).
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`platform/buildinfo`** · 5 importers
   Carries the version stamped into the binary at build time.
-- **`platform/config`** · 5 importers
+- **`platform/config`** · 4 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`platform/diagnostics`** · 11 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
