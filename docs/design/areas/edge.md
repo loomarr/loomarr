@@ -6,7 +6,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (80), filler (53), library (27), channels (21), proposals (19), media (17), playout (12), people (11)
+**Imports from other areas:** any, by design — platform (82), filler (53), library (27), channels (21), proposals (19), media (17), playout (12), people (11)
 
 ## Packages
 
@@ -20,7 +20,7 @@ One area of the [package map](../package-map.md#start-here).
   Serves the filler routes under /v1/filler: the clip catalog and its edits, the Incoming queue, readiness and pool health, the pull approval queue, the header's watch status, clip-detail research status and the defect floor report.
 - **`api/guide`** · 2 importers · → `api/channels`, `api/httpcore`, `channels`, `channels/schedule`, `filler/cliplibrary`, `filler/pod`, `media/images`, `platform/holidayvocab`, `platform/settings`, `platform/store`, `platform/store/channelstore`, `platform/store/clipstore`, `playout`, `provision`
   Serves what is on and what would be on: the time-grid guide and its highlights, each channel's now, next, upcoming and timeline, the programming and cycle previews, the filler pod and coverage previews, the programming vocabulary and the holiday calendar.
-- **`api/httpcore`** · 14 importers · → `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout`
+- **`api/httpcore`** · 14 importers · → `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout`
   Plumbing every API area shares and none owns: RFC 7807 problem constructors and the transformer that stamps them with the request id, the request-id and security-header middleware, the caller's role and the authorizer seam, the route-role marker every registration carries, the raw-operation helpers, the wire-JSON never-null format and the docs page.
 - **`api/images`** · 2 importers · → `api/httpcore`, `media/images`
   Serves the image service's HTTP surface (§22): a rendition's bytes, an image's record and uploads.
@@ -32,7 +32,7 @@ One area of the [package map](../package-map.md#start-here).
   Mounts the people routes of the HTTP API: sign-in and sessions, paired devices, the user directory, invitations and their redemption, password change and recovery, and single sign-on.
 - **`api/playout`** · 2 importers · → `api/httpcore`, `channels/schedule`, `channels/viewing`, `media/encode`, `platform/settings`, `platform/store`, `platform/store/channelstore`, `platform/store/identitystore`, `playout`
   Mounts the playout routes of the HTTP API: the streaming routes a channel is watched through (HLS, the MPEG-TS tuner stream, still frames), the signed playout URLs, the guide feed and the playout status projection.
-- **`api/proposals`** · 2 importers · → `api/httpcore`, `channels/schedule`, `platform/activity`, `platform/holidayvocab`, `platform/store`, `platform/store/activitystore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `proposals/outlook`, `proposals/suggest`, `proposals/workflow`, `provision`
+- **`api/proposals`** · 2 importers · → `api/httpcore`, `channels/schedule`, `platform/activity`, `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/activitystore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `proposals/outlook`, `proposals/suggest`, `proposals/workflow`, `provision`
   Serves the channel-request routes under /v1/proposals (submit, list, approve, deny, outlook) and the First-channel Journey reads under /v1/proposal-jobs.
 - **`api/setup`** · 2 importers · → `api/httpcore`, `people/notifications`, `platform/settings`
   Serves the settings and the setup wizard: the settings list and edits, secrets, connection tests, the setup status checks and their repairs (Tunarr, the Live TV tuner, the *arrs the requester already knows), and the notification destinations.

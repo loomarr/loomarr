@@ -329,6 +329,9 @@ components:
           items:
             $ref: "#/components/schemas/ProposalItem"
           type: array
+        audience:
+          $ref: "#/components/schemas/Rating"
+          description: A higher audience limit for the channel; left-out titles it admits are included
         drop:
           description: Provisioning keys to remove from the proposal before approving
           items:
@@ -9472,6 +9475,9 @@ components:
           type: string
         proposal:
           $ref: "#/components/schemas/Proposal"
+        raiseAudienceTo:
+          $ref: "#/components/schemas/Rating"
+          description: The lowest audience limit that admits every rated left-out title; absent when none was left out for its rating
         status:
           enum:
             - submitted
@@ -10113,6 +10119,21 @@ components:
         - novelty
         - tieKey
       type: object
+    Rating:
+      description: A content rating on Loomarr's audience ladder, TV and film systems side by side, lowest first.
+      enum:
+        - TV-Y
+        - TV-Y7
+        - TV-G
+        - G
+        - TV-PG
+        - PG
+        - TV-14
+        - PG-13
+        - TV-MA
+        - R
+        - NC-17
+      type: string
     ReadyOutputBody:
       additionalProperties: false
       properties:

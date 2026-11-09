@@ -113,6 +113,63 @@ describe("ApprovalQueueItem", () => {
     expect(screen.queryByText("Sunny Toons")).not.toBeInTheDocument();
   });
 
+  // #3012: one button names the lowest limit that lets them in; it rides the approval as an edit.
+  describe("Raise to <rating>", () => {
+    const refused = [
+      {
+        item: {
+          mediaType: "movie" as const,
+          name: "Midnight Toons",
+          officialRating: "TV-G",
+          inLibrary: true,
+        },
+        reason: "over_ceiling",
+      },
+    ];
+
+    it("sets the edit's audience, keeps the title edits, and takes it back on a second press", () => {
+      const onEdit = vi.fn();
+      const { rerender } = render(
+        <ApprovalQueueItem
+          title="Toons"
+          refused={refused}
+          audienceLimit="TV-Y7"
+          raiseAudienceTo="TV-G"
+          edit={{ note: "Bigger kids too" }}
+          onEdit={onEdit}
+        />,
+      );
+      const raise = screen.getByRole("button", { name: "Raise to TV-G" });
+      expect(raise).toHaveAttribute("aria-pressed", "false");
+      expect(screen.queryByText(/after the channel is created/i)).not.toBeInTheDocument();
+      fireEvent.click(raise);
+      expect(onEdit).toHaveBeenLastCalledWith({ note: "Bigger kids too", audience: "TV-G" });
+
+      rerender(
+        <ApprovalQueueItem
+          title="Toons"
+          refused={refused}
+          audienceLimit="TV-Y7"
+          raiseAudienceTo="TV-G"
+          edit={{ audience: "TV-G" }}
+          onEdit={onEdit}
+        />,
+      );
+      expect(screen.getByRole("button", { name: "Raise to TV-G" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText(/Approving raises this channel's audience limit to TV-G/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Raise to TV-G" }));
+      expect(onEdit).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it("offers no button where the card can't edit", () => {
+      render(
+        <ApprovalQueueItem title="Toons" refused={refused} audienceLimit="TV-Y7" raiseAudienceTo="TV-G" />,
+      );
+      expect(screen.queryByRole("button", { name: /raise to/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/raise the audience limit after the channel is created/i)).toBeInTheDocument();
+    });
+  });
+
   // Nothing refused ⇒ nothing rendered. A permanent "0 titles won't be included" would train an
   // admin to skip the notice on exactly the rows where it matters.
   it("renders no refusal notice when nothing was refused", () => {

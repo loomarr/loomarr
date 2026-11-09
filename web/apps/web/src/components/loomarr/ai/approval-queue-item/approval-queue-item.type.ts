@@ -1,6 +1,7 @@
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { Rating } from "@loomarr/api/models/rating";
 import type { RefusedPick } from "@loomarr/api/models/refusedPick";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
 import type { ReactNode } from "react";
@@ -32,6 +33,10 @@ interface ApprovalQueueItemProps {
   // The rating the proposal's audience ceiling allows (e.g. "TV-Y7"), named in the refusal notice so
   // a reviewer sees which limit left the titles out. Omitted when the proposal carries none.
   audienceLimit?: string;
+  // The lowest audience limit that lets the rated left-out titles in (the proposal's
+  // `raiseAudienceTo`, #3012). With `onEdit`, the left-out box offers "Raise to <rating>", which
+  // sets the edit's `audience` so the raise applies when the channel is approved.
+  raiseAudienceTo?: Rating;
   // Holidays this request asked the channel to be exclusive to that the household's country doesn't
   // keep (#2030 decision 38). Their season never comes, so the channel doesn't follow it; shown
   // beside `refused` for the same reason.

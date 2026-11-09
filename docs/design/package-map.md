@@ -73,7 +73,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `api/httpcore` | `channels/schedule`, `filler/source`, `media/images`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
+| `api/httpcore` | `channels/schedule`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
 | `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
@@ -124,7 +124,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store/storedb` | — |
 | `playout` | `channels/schedule`, `media/encode`, `platform/diagnostics`, `provision` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
-| `proposals/accept` | `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
+| `proposals/accept` | `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/quality`, `provision`, `tmdb` |
 | `provision` | — |
