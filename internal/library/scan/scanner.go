@@ -254,6 +254,29 @@ func (l *Library) Rescan() error {
 	return nil
 }
 
+// SetInUse confirms or releases a root. Confirming one ("Use this folder") asks for a pass, so
+// its media starts arriving now rather than at the next hourly pass.
+func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
+	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
+		return err
+	}
+	if inUse && l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// Add records a folder typed by hand, in use at once, and asks for a pass.
+func (l *Library) Add(ctx context.Context, path string) error {
+	if err := l.Roots.Add(ctx, path); err != nil {
+		return err
+	}
+	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
 // ConfirmRemovals records the maintainer's word on a root's held removal ("They're gone, remove
 // them") and asks for the pass that applies it.
 func (l *Library) ConfirmRemovals(ctx context.Context, root string) error {
