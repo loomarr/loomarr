@@ -20,21 +20,16 @@ import (
 
 type notificationAuthorizer struct{}
 
-func (notificationAuthorizer) Authorize(r *http.Request) httpcore.Role {
-	role, _ := notificationAuthorizer{}.AuthorizeUser(r)
-	return role
-}
-
-func (notificationAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
+func (notificationAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	switch strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") {
 	case adminToken:
 		user := identitystore.User{ID: "admin-1", Name: "Admin", Role: identitystore.RoleAdmin}
-		return httpcore.RoleAdmin, &user
+		return httpcore.Identity{Role: httpcore.RoleAdmin, User: &user}
 	case memberToken:
 		user := identitystore.User{ID: "member-1", Name: "Member", Role: identitystore.RoleMember}
-		return httpcore.RoleMember, &user
+		return httpcore.Identity{Role: httpcore.RoleMember, User: &user}
 	default:
-		return httpcore.RoleAnonymous, nil
+		return httpcore.Identity{Role: httpcore.RoleAnonymous}
 	}
 }
 

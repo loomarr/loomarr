@@ -19,14 +19,8 @@ func (s *Server) registerMiddleware(api huma.API) {
 		var user *identitystore.User
 		var deviceID string
 		if s.auth != nil {
-			if ia, ok := s.auth.(identityAuthorizer); ok {
-				identity := ia.AuthorizeIdentity(r)
-				role, user, deviceID = identity.role, identity.user, identity.deviceID
-			} else if ua, ok := s.auth.(UserAuthorizer); ok {
-				role, user = ua.AuthorizeUser(r)
-			} else {
-				role = s.auth.Authorize(r)
-			}
+			identity := s.auth.Authorize(r)
+			role, user, deviceID = identity.Role, identity.User, identity.DeviceID
 		}
 		// CSRF (§11): mutating requests authenticated by a *cookie* must carry
 		// X-Loomarr-Csrf: 1. Combined with SameSite=Strict this closes form-based
