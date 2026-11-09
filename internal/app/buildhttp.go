@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/people"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -29,10 +30,10 @@ type httpBuild struct {
 	suggestions suggestionBuild
 	fillers     fillerBuild
 	auth        authBuild
-	backups     api.BackupsService
+	backups     system.BackupsService
 	// watermarks draws the channel page's On-screen logo preview (#1659).
 	watermarks               *channelWatermarks
-	restart                  api.RestartService
+	restart                  system.RestartService
 	bootConfig               *config.Config
 	guide                    api.GuideReader
 	settings                 api.SettingsService
@@ -42,8 +43,8 @@ type httpBuild struct {
 	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
-	jobs                     api.JobService
-	database                 api.DatabaseService
+	jobs                     system.JobService
+	database                 system.DatabaseService
 	residentLLM              residentLLMBuild
 	// library is Settings → Library, the scanner over its folders, and the arrs' webhooks.
 	library libraryServices

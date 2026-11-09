@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -139,7 +139,7 @@ type LLMModelView struct {
 
 // registerSystemLLM mounts /v1/system/llm* (§8.1). Admin-only — model selection
 // changes what runs on the box and can trigger a multi-GB download.
-func (s *Server) registerSystemLLM(api huma.API) {
+func (s *Handlers) registerSystemLLM(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-status", Method: http.MethodGet, Path: "/v1/system/llm",
 		Summary: "LLM host probe + model catalog",
@@ -193,7 +193,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 	}, httpcore.RoleAdmin), s.systemLLMDiscover)
 }
 
-func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
+func (s *Handlers) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 	Body struct {
 		Models   []DiscoverModelView `json:"models"`
 		SourceOK bool                `json:"sourceOk" doc:"False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state"`
@@ -222,7 +222,7 @@ func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 	return out, nil
 }
 
-func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
+func (s *Handlers) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
 	Body SystemLLMStatus
 }, error) {
 	if s.systemLLM == nil {
@@ -244,7 +244,7 @@ type systemLLMSelectInput struct {
 	}
 }
 
-func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) (*struct {
+func (s *Handlers) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) (*struct {
 	Body SystemLLMStatus
 }, error) {
 	if s.systemLLM == nil {
@@ -287,7 +287,7 @@ type systemLLMTestInput struct {
 }
 
 // systemLLMTest validates a hosted provider + key without swapping (§8.1).
-func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*struct {
+func (s *Handlers) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*struct {
 	Body struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error,omitempty"`
@@ -328,7 +328,7 @@ type systemLLMPullInput struct {
 	}
 }
 
-func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*struct {
+func (s *Handlers) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*struct {
 	Body struct {
 		JobID string `json:"jobId" doc:"Read progress from /v1/system/llm/pull-operations/{jobId}; llm_pull events only accelerate display"`
 	}
@@ -372,11 +372,11 @@ type systemLLMPullOperationDTO struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-func (s *Server) systemLLMPullOperation(
+func (s *Handlers) systemLLMPullOperation(
 	ctx context.Context,
 	in *systemLLMPullOperationInput,
 ) (*struct{ Body systemLLMPullOperationDTO }, error) {
-	operation, err := s.store.GetInteractiveOperation(ctx, in.JobID)
+	operation, err := s.operations.GetInteractiveOperation(ctx, in.JobID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Model pull not found", "That model-pull operation doesn't exist.")
 	}

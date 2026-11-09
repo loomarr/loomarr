@@ -9,21 +9,24 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 )
 
 type fakeEncryption struct {
-	status  api.EncryptionStatus
+	status  system.EncryptionStatus
 	rotated int
 }
 
-func (f *fakeEncryption) Status(context.Context) (api.EncryptionStatus, error) { return f.status, nil }
+func (f *fakeEncryption) Status(context.Context) (system.EncryptionStatus, error) {
+	return f.status, nil
+}
 func (f *fakeEncryption) RotateDataKey(context.Context) error {
 	f.rotated++
 	return nil
 }
 
 func TestSystemEncryptionStatusAndRotationAreAdminOnly(t *testing.T) {
-	fake := &fakeEncryption{status: api.EncryptionStatus{
+	fake := &fakeEncryption{status: system.EncryptionStatus{
 		Enabled: true, InstallationKeyFingerprint: "sha256:1234", DataKeyCount: 2,
 	}}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{Auth: testAuthorizer{}, Encryption: fake})
@@ -42,7 +45,7 @@ func TestSystemEncryptionStatusAndRotationAreAdminOnly(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	var got api.EncryptionStatus
+	var got system.EncryptionStatus
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}

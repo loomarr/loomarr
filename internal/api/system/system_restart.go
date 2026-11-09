@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -50,7 +50,7 @@ type RestartCost struct {
 
 // registerSystemRestart mounts the restart + reload routes. Admin-only: restarting
 // interrupts playback for every internally-streamed channel.
-func (s *Server) registerSystemRestart(api huma.API) {
+func (s *Handlers) registerSystemRestart(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-restart-cost", Method: http.MethodGet, Path: "/v1/system/restart",
 		Summary: "What a restart would cost right now",
@@ -84,7 +84,7 @@ type systemRestartCostOutput struct {
 	Body RestartCost
 }
 
-func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRestartCostOutput, error) {
+func (s *Handlers) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRestartCostOutput, error) {
 	out := &systemRestartCostOutput{}
 	out.Body.Available = s.restart != nil
 
@@ -106,7 +106,7 @@ func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRes
 	return out, nil
 }
 
-func (s *Server) systemRestart(ctx context.Context, _ *struct{}) (*struct{}, error) {
+func (s *Handlers) systemRestart(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if s.restart == nil {
 		return nil, httpcore.NotImplemented("Restart unavailable",
 			"This build can't restart itself. Restart the container or service the way you started it.")
@@ -120,11 +120,11 @@ type systemReloadOutput struct {
 	Body struct {
 		// Checks reuses the setup-check shape, so reload and the wizard checklist render
 		// through the same component and cannot drift apart.
-		Checks []SetupCheck `json:"checks"`
+		Checks []httpcore.SetupCheck `json:"checks"`
 	}
 }
 
-func (s *Server) systemReload(ctx context.Context, _ *struct{}) (*systemReloadOutput, error) {
+func (s *Handlers) systemReload(ctx context.Context, _ *struct{}) (*systemReloadOutput, error) {
 	// ⚠ The SAME probe the wizard's checklist runs, not a second implementation — a
 	// reload that disagreed with it would send an operator chasing a discrepancy that
 	// exists only in our code.
@@ -133,7 +133,7 @@ func (s *Server) systemReload(ctx context.Context, _ *struct{}) (*systemReloadOu
 	// A nil slice serializes as `null`, which a client must special-case before mapping.
 	// An unwired build legitimately has no checks to report.
 	if out.Body.Checks == nil {
-		out.Body.Checks = []SetupCheck{}
+		out.Body.Checks = []httpcore.SetupCheck{}
 	}
 	return out, nil
 }

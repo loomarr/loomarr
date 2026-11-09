@@ -11,32 +11,33 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 )
 
 // fakeBackups is a scriptable BackupsService. It records the name Open was asked for, so
 // the traversal assertions can prove a rejected request never reached the service at all
 // versus being rejected inside it.
 type fakeBackups struct {
-	list     api.BackupList
-	content  api.BackupContent
+	list     system.BackupList
+	content  system.BackupContent
 	openErr  error
 	openedAs []string
 	ran      bool
 }
 
-func (f *fakeBackups) List(context.Context) (api.BackupList, error) { return f.list, nil }
+func (f *fakeBackups) List(context.Context) (system.BackupList, error) { return f.list, nil }
 
-func (f *fakeBackups) Open(_ context.Context, name string) (api.BackupContent, error) {
+func (f *fakeBackups) Open(_ context.Context, name string) (system.BackupContent, error) {
 	f.openedAs = append(f.openedAs, name)
 	if f.openErr != nil {
-		return api.BackupContent{}, f.openErr
+		return system.BackupContent{}, f.openErr
 	}
 	return f.content, nil
 }
 
-func (f *fakeBackups) Run(context.Context) (api.BackupEntry, error) {
+func (f *fakeBackups) Run(context.Context) (system.BackupEntry, error) {
 	f.ran = true
-	return api.BackupEntry{Name: "loomarr-2026-07-29-033000.db", Bytes: 4096, WrittenAt: 1_700_000_000}, nil
+	return system.BackupEntry{Name: "loomarr-2026-07-29-033000.db", Bytes: 4096, WrittenAt: 1_700_000_000}, nil
 }
 
 func writeFile(t *testing.T, dir, name, content string) string {
@@ -50,7 +51,7 @@ func writeFile(t *testing.T, dir, name, content string) string {
 
 // newSystemBackupsHarness hides the fixed backup-route assembly behind the
 // common API lifecycle. Tests vary only backup-service behavior.
-func newSystemBackupsHarness(t *testing.T, svc api.BackupsService) *apiHarness {
+func newSystemBackupsHarness(t *testing.T, svc system.BackupsService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
@@ -66,7 +67,7 @@ func newSystemBackupsHarness(t *testing.T, svc api.BackupsService) *apiHarness {
 // every route here is admin-only — including the download, which is a plain mux handler
 // and therefore does NOT inherit Huma's requireAdmin.
 func TestSystemBackups_RequiresAdmin(t *testing.T) {
-	fake := &fakeBackups{content: api.BackupContent{Name: "loomarr-2026-07-29-033000.db"}}
+	fake := &fakeBackups{content: system.BackupContent{Name: "loomarr-2026-07-29-033000.db"}}
 	srv := newSystemBackupsHarness(t, fake).Server
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/system/backups"},
@@ -106,9 +107,9 @@ func TestSystemBackups_NotConfigured501(t *testing.T) {
 // The list carries the policy alongside the files: the page has to say "nightly at 03:30,
 // keeps 7" and neither number is derivable from the file list.
 func TestSystemBackups_ListReportsFilesAndPolicy(t *testing.T) {
-	srv := newSystemBackupsHarness(t, &fakeBackups{list: api.BackupList{
+	srv := newSystemBackupsHarness(t, &fakeBackups{list: system.BackupList{
 		Supported: true, Dir: "/data/backups", Schedule: "0 30 3 * * *", Retain: 7,
-		Backups: []api.BackupEntry{
+		Backups: []system.BackupEntry{
 			{Name: "loomarr-2026-07-29-033000.db", Bytes: 4096, WrittenAt: 1_700_000_000},
 		},
 	}}).Server
@@ -116,7 +117,7 @@ func TestSystemBackups_ListReportsFilesAndPolicy(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d, want 200", resp.StatusCode)
 	}
-	var got api.BackupList
+	var got system.BackupList
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestSystemBackups_ListReportsFilesAndPolicy(t *testing.T) {
 func TestSystemBackups_DownloadServesTheFile(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "loomarr-2026-07-29-033000.db", "snapshot-bytes")
-	srv := newSystemBackupsHarness(t, &fakeBackups{content: api.BackupContent{
+	srv := newSystemBackupsHarness(t, &fakeBackups{content: system.BackupContent{
 		Name: "loomarr-2026-07-29-033000.db", Path: path, Bytes: 14,
 	}}).Server
 
@@ -173,7 +174,7 @@ func TestSystemBackups_RunWritesAndReports(t *testing.T) {
 	if !fake.ran {
 		t.Error("run did not reach the service")
 	}
-	var got api.BackupEntry
+	var got system.BackupEntry
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}

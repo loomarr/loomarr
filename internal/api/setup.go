@@ -45,25 +45,6 @@ func (s *Server) registerSetup(api huma.API) {
 	}, httpcore.RoleAdmin), s.livetvReconnectHandler)
 }
 
-// SetupCheck is one integration's checklist result (§13).
-type SetupCheck struct {
-	Name string `json:"name" example:"livetv" doc:"Integration key"`
-	OK   bool   `json:"ok"`
-	Hint string `json:"hint,omitempty" doc:"Actionable hint when not OK (§13)"`
-	// DocHref deep-links this check to its Troubleshooting section so a red check
-	// is one click from the exact fix (§13 "failures never blame").
-	DocHref string `json:"docHref,omitempty" doc:"Anchor into the embedded Troubleshooting docs"`
-	// Target is what this check connected TO — the Services panel shows it beside the state
-	// (§12, V31), because "media server: FAIL" without an address makes an operator go
-	// looking for which one. Empty when the probe has no configurable endpoint (TMDB) or the
-	// setting is unset.
-	Target string `json:"target,omitempty" doc:"The URL or path this check probed"`
-	// NotSetUp is true when the check is not OK because nobody has set this service up yet
-	// (#2781): none of its connection settings are set. That is not a failure — an optional
-	// service a fresh install has not touched must not read as broken.
-	NotSetUp bool `json:"notSetUp,omitempty" doc:"True when not OK only because none of this service's connection settings are set yet"`
-}
-
 // connectionChecklist is the ordered set of connection probes surfaced by
 // setup/status, reusing the §8 setup/test registry (SettingsService.Test). Each
 // maps a probe name to its Troubleshooting anchor. `filler` is optional — shown
@@ -94,7 +75,7 @@ var connectionChecklist = []struct {
 
 type setupStatusOutput struct {
 	Body struct {
-		Checks []SetupCheck `json:"checks"`
+		Checks []httpcore.SetupCheck `json:"checks"`
 	}
 }
 
@@ -116,13 +97,13 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 // than a second copy. A reload that disagreed with the wizard's checklist would send an
 // operator chasing a discrepancy that exists only in our code — and two copies of a
 // probe list drift the moment one gains a check.
-func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
+func (s *Server) runConnectionChecks(ctx context.Context) []httpcore.SetupCheck {
 	// ⚠ make(), not `var` — a nil slice marshals to JSON `null`, and since V53b the spec
 	// declares this array non-nullable. The empty case is not hypothetical here: this function
 	// deliberately contributes no check for services that aren't wired, so an UNCONFIGURED
 	// INSTALL — the wizard's entire reason to exist — is exactly when it would be nil.
 	// `TestResponses_ContainNoJSONNull` caught it; it was the only leak in 46 GET paths.
-	checks := make([]SetupCheck, 0, len(connectionChecklist))
+	checks := make([]httpcore.SetupCheck, 0, len(connectionChecklist))
 
 	// Connection probes (media_server, requester, tunarr, llm, tmdb, filler) via
 	// the shared registry. filler is optional — shown only when configured.
@@ -140,7 +121,7 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 			if c.target != nil {
 				target = s.configValue(*c.target)
 			}
-			checks = append(checks, SetupCheck{
+			checks = append(checks, httpcore.SetupCheck{
 				Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target,
 				NotSetUp: !ok && !s.anyConfigured(c.configuredBy),
 			})
@@ -150,7 +131,7 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 	// Live TV publication check (§6), followed by Tunarr's independent media-source scan.
 	if s.livetv != nil {
 		wired, err := s.livetv.Wired(ctx)
-		check := SetupCheck{Name: "livetv", OK: wired, DocHref: "troubleshooting#livetv"}
+		check := httpcore.SetupCheck{Name: "livetv", OK: wired, DocHref: "troubleshooting#livetv"}
 		if err != nil {
 			check.OK = false
 			check.Hint = "Couldn't reach the media server's Live TV settings. Check the media-server connection."
@@ -165,7 +146,7 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 		// silent reason (Tunarr's media source isn't scanned, so every slot degrades to
 		// dead air while everything else reports healthy), and it deserves the section
 		// that explains that rather than generic connectivity advice.
-		check := SetupCheck{Name: "tunarr_library", OK: ready, DocHref: "troubleshooting#tunarr-library"}
+		check := httpcore.SetupCheck{Name: "tunarr_library", OK: ready, DocHref: "troubleshooting#tunarr-library"}
 		if err != nil {
 			check.OK = false
 			check.Hint = "could not reach Tunarr: " + err.Error()

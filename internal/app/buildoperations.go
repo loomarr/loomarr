@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/access"
@@ -30,8 +31,8 @@ import (
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
-func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *config.Config) {
-	var service api.RestartService
+func buildRestart(overrides Overrides, log *slog.Logger) (system.RestartService, *config.Config) {
+	var service system.RestartService
 	if overrides.Restart != nil {
 		service = restartAdapter{fn: overrides.Restart}
 	}
@@ -43,7 +44,7 @@ func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *c
 	return service, bootConfig
 }
 
-func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) api.DatabaseService {
+func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) system.DatabaseService {
 	if st == nil {
 		return nil
 	}
@@ -58,8 +59,8 @@ type residentLLMBuild struct {
 }
 
 type operationsBuild struct {
-	backups                  api.BackupsService
-	restart                  api.RestartService
+	backups                  system.BackupsService
+	restart                  system.RestartService
 	bootConfig               *config.Config
 	auth                     authBuild
 	guide                    api.GuideReader
@@ -71,10 +72,10 @@ type operationsBuild struct {
 	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
-	jobs                     api.JobService
+	jobs                     system.JobService
 	// scheduler is nil without a store; Current Health reads starved tasks from it.
 	scheduler   *jobs.Scheduler
-	database    api.DatabaseService
+	database    system.DatabaseService
 	residentLLM residentLLMBuild
 }
 
@@ -141,7 +142,7 @@ func buildOperations(
 	if err != nil {
 		return operationsBuild{}, err
 	}
-	var jobService api.JobService
+	var jobService system.JobService
 	if scheduler != nil {
 		jobService = jobsAdapter{s: scheduler}
 	}
@@ -278,7 +279,7 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	return residentLLMBuild{probe: probe, reclaim: reclaim}
 }
 
-func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) api.BackupsService {
+func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
 		service := &backupsService{
 			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
@@ -296,7 +297,7 @@ func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *sl
 }
 
 type authBuild struct {
-	backup               api.BackupStreamer
+	backup               system.BackupStreamer
 	authorizer           httpcore.Authorizer
 	login                people.LoginService
 	sso                  people.SSOService
