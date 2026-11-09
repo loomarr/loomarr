@@ -148,7 +148,7 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   visual review because it cheapened the otherwise restrained identity motion.
 - **Three kinds of movement only (#2789):** the tune, sheets sliding in from their edge over 200ms,
   and 120ms opacity fades. Hover, focus and press change colour or border, never position or size:
-  no scale, lift, nudge or bounce. `apps/web/src/test/motion-rules.test.ts` fails on a transform
+  no scale, lift, nudge or bounce. `web/scripts/motion-rule.test.mjs` fails on a transform
   transition anywhere else; its allowlist names the tune, the sheets and the launch identity.
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
