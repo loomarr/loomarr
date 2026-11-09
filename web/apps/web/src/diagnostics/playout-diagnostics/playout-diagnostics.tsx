@@ -8,6 +8,7 @@ import {
   Field,
   Icon,
   icons,
+  PressableRow,
   StatusDot,
   type StatusTone,
   Surface,
@@ -460,22 +461,26 @@ const PlayoutDiagnostics = ({
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <button
-                        type="button"
-                        className={`border-border hover:bg-muted/20 grid h-full w-full cursor-pointer gap-1 border-b px-3 py-3 text-left ${selected?.id === run.id ? "bg-muted/30" : ""}`}
+                      <PressableRow
                         aria-pressed={selected?.id === run.id}
-                        onClick={() => onFiltersChange({ ...filters, processId: run.id })}
+                        divided
+                        onPress={() => onFiltersChange({ ...filters, processId: run.id })}
+                        selected={selected?.id === run.id}
                       >
-                        <span className="flex items-center justify-between gap-2">
-                          <strong className="truncate text-sm">{run.purpose}</strong>
-                          <span className="inline-flex items-center gap-1 text-xs">
-                            <StatusDot tone={tone(run.status)} label={run.status} />
-                            {run.status}
+                        <div className="grid w-full gap-1 text-left">
+                          <span className="flex items-center justify-between gap-2">
+                            <strong className="truncate text-sm">{run.purpose}</strong>
+                            <span className="inline-flex items-center gap-1 text-xs">
+                              <StatusDot tone={tone(run.status)} label={run.status} />
+                              {run.status}
+                            </span>
                           </span>
-                        </span>
-                        <span className="text-muted-foreground truncate text-xs">{run.target ?? run.id}</span>
-                        <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
-                      </button>
+                          <span className="text-muted-foreground truncate text-xs">
+                            {run.target ?? run.id}
+                          </span>
+                          <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                        </div>
+                      </PressableRow>
                     </li>
                   );
                 })}
