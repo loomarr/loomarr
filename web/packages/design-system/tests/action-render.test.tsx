@@ -552,6 +552,55 @@ describe("Action render composition", () => {
     expect(actionPress).toHaveBeenCalledOnce();
   });
 
+  it("renders a native submit button that carries its own disabled", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action disabled submit>
+          Save
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toMatch(/<button[^>]*type="submit"/);
+    expect(markup).toMatch(/<button[^>]*disabled/);
+    expect(markup).toContain("Save");
+  });
+
+  it("submits its form when pressed", () => {
+    const onSubmit = vi.fn((event: Event) => event.preventDefault());
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <form onSubmit={onSubmit as unknown as React.FormEventHandler}>
+            <Action submit>Save</Action>
+          </form>
+        </LoomarrProvider>,
+      );
+    });
+    const button = container.querySelector("button");
+    act(() => {
+      button?.click();
+    });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("draws a compact icon action as a 24 px square", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action compact icon="close" layout="icon" variant="ghost">
+          Remove
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("width:24px");
+    expect(markup).toContain("height:24px");
+    expect(markup).toContain('aria-label="Remove"');
+  });
+
   it("is ignored on children that are not a valid element", () => {
     // Guards the isValidElement check: a Pressable still renders when `render` isn't usable.
     const markup = renderToStaticMarkup(

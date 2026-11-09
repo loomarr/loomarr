@@ -18,6 +18,7 @@ import { TamaguiText } from "../text-base";
 import {
   brandChroma,
   type Density,
+  iconography,
   nativeFontFace,
   semanticRadius,
   semanticSpace,
@@ -77,6 +78,18 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    */
   render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
+  /**
+   * Web: a form's submit button. The Action renders onto a native `<button type="submit">` that
+   * carries `disabled` itself, so Enter in a field cannot submit through a disabled one. Ignored
+   * on native, and when `render` is given.
+   */
+  submit?: boolean;
+  /**
+   * With `layout="icon"`, a 24 px square holding the 16 px glyph, for a control that sits inside a
+   * row or a chip: a remove cross, a drag handle, a help mark. It meets 2.5.8 (24 px) and nothing
+   * more; a touch screen gets the full target through the caller's own hit slop.
+   */
+  compact?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
   /** `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. */
   tone?: "danger" | "primary" | "secondary" | "success";
@@ -152,9 +165,11 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       layout = "inline",
       onBlur,
       onFocus,
-      render,
+      render: renderProp,
       selected = false,
       style,
+      submit = false,
+      compact = false,
       tabIndex,
       tone = "primary",
       variant,
@@ -165,6 +180,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const theme = useTheme();
     const focusLook = useFocusLook({ onBlur, onFocus });
     const focused = focusLook.focused;
+    const render: ReactElement<Record<string, unknown>> | undefined =
+      renderProp ?? (submit && isWeb ? <button disabled={disabled === true} type="submit" /> : undefined);
     // A composed submit button carries its own `disabled` (it must, so Enter in a field cannot
     // submit through it); the Action greys to match rather than drawing an enabled look over it.
     const isDisabled =
@@ -173,6 +190,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
     const iconOnly = layout === "icon" && icon !== undefined;
+    const compactIcon = compact && iconOnly && !tv;
     const textOnly = layout === "text";
     const iconLabel = iconOnly && typeof children === "string" ? children : undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
@@ -249,7 +267,12 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         {children}
       </TamaguiText>
     ) : iconOnly && icon ? (
-      <Icon decorative glyph={icons[icon]} size={tv ? "touch" : "default"} tone={iconTone} />
+      <Icon
+        decorative
+        glyph={icons[icon]}
+        size={tv ? "touch" : compactIcon ? "compact" : "default"}
+        tone={compactIcon && variant === "ghost" ? "muted" : iconTone}
+      />
     ) : stacked && icon ? (
       <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
         <Icon
@@ -336,6 +359,14 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       paddingHorizontal: iconOnly ? 0 : tv ? 24 : stacked ? 4 : semanticSpace.control,
       paddingVertical: tv && !iconOnly ? 8 : 0,
       ...(iconOnly ? { width: semanticTargets[density] } : {}),
+      ...(compactIcon
+        ? {
+            borderRadius: semanticSpace.inline / 2,
+            height: iconography.size.control,
+            minHeight: 0,
+            width: iconography.size.control,
+          }
+        : {}),
       // Text alone: no box to fill or border, and an outline for focus so nothing beside it moves.
       ...(textOnly
         ? {
