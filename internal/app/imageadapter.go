@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/rustgen"
@@ -42,7 +42,7 @@ import (
 // and the first call would panic on a store-less boot — the exact state §9's "keep serving so
 // /readyz can explain why" is designed to survive. app.go already carries this warning for
 // `*tmdb.Client`; this is the same trap, one type over.
-func imageService(s *images.Service) api.ImageService {
+func imageService(s *images.Service) imagesapi.ImageService {
 	if s == nil {
 		return nil
 	}

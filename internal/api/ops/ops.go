@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -89,7 +89,7 @@ func scrapeGuard(token string, next http.Handler) http.HandlerFunc {
 
 // registerOps mounts the operational surface. `pprofOn` gates the profiler routes;
 // `metricsToken` is the scrape credential guarding /metrics ("" ⇒ refused).
-func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
+func (s *Handlers) registerOps(api huma.API, pprofOn bool, metricsToken string) {
 	metricsInner := http.NotFoundHandler()
 	if s.metrics != nil {
 		metricsInner = s.metrics.Handler()
@@ -171,13 +171,13 @@ func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
 	}
 }
 
-func (s *Server) healthz(_ context.Context, _ *struct{}) (*healthOutput, error) {
+func (s *Handlers) healthz(_ context.Context, _ *struct{}) (*healthOutput, error) {
 	out := &healthOutput{}
 	out.Body.Status = "ok"
 	return out, nil
 }
 
-func (s *Server) readyz(_ context.Context, _ *struct{}) (*readyOutput, error) {
+func (s *Handlers) readyz(_ context.Context, _ *struct{}) (*readyOutput, error) {
 	out := &readyOutput{Status: http.StatusOK}
 	ready, detail := true, "ok"
 	if s.ready != nil {

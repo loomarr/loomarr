@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -331,7 +331,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// A packager starting or stopping is a structural change the dashboard sees at once over
 		// the SSE bus (§8); GET /v1/playout/sessions stays the truth. The payload is the count.
 		packagedHLS.OnChange(func() {
-			eventBus.Publish(events.Event{Type: "playout", Payload: api.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
+			eventBus.Publish(events.Event{Type: "playout", Payload: opsapi.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
 		})
 		playoutObserver = packagedHLS
 		owner.addStop(func(context.Context) error {

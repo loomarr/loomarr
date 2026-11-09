@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -325,11 +326,11 @@ func newFillerServer(t *testing.T) (*httptest.Server, records.Store, *fakeFiller
 	return newFillerServerWithImages(t, nil)
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithImages(t *testing.T, imageService imagesapi.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithConfig(t, imageService, nil)
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithConfig(t *testing.T, imageService imagesapi.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, imageService, stringSettings(liveConfig), nil)
 }
 
@@ -337,7 +338,7 @@ func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, 
 	return newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.incoming.ready_window": readyWindow}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })

@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
@@ -48,7 +49,7 @@ func TestSystemServices_AlwaysReportsLoomarrItself(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("services → %d, want 200", resp.StatusCode)
 	}
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +78,12 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
 
-	var failing *api.ServiceRow
+	var failing *opsapi.ServiceRow
 	for i := range view.Rows {
 		if view.Rows[i].Name == "requester" {
 			failing = &view.Rows[i]
@@ -142,11 +143,11 @@ func TestSystemServices_ArrRowOnlyWhenConnected(t *testing.T) {
 		LiveSettings: mapSettings{"sonarr.url": "http://sonarr.lan:8989"},
 	})
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
-	rows := map[string]api.ServiceRow{}
+	rows := map[string]opsapi.ServiceRow{}
 	for _, row := range view.Rows {
 		rows[row.Name] = row
 	}

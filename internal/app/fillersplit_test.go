@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
@@ -361,7 +361,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	}
 
 	var statuses []string
-	var terminal *api.FillerSplitEvent
+	var terminal *opsapi.FillerSplitEvent
 	deadline := time.After(5 * time.Second)
 	for terminal == nil {
 		select {
@@ -372,7 +372,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 			// ⚠ A TYPED payload. huma names an SSE frame after its payload's Go type, so a
 			// frame published as anything but api.FillerSplitEvent goes out unnamed and the
 			// review UI's listener never fires — see internal/api/events.go.
-			p, ok := ev.Payload.(api.FillerSplitEvent)
+			p, ok := ev.Payload.(opsapi.FillerSplitEvent)
 			if !ok {
 				t.Fatalf("frame payload = %T, want api.FillerSplitEvent", ev.Payload)
 			}
@@ -670,7 +670,7 @@ func awaitSplitTerminal(t *testing.T, ch <-chan events.Event, jobID string) stri
 			if ev.Type != "filler_split" {
 				continue
 			}
-			p, ok := ev.Payload.(api.FillerSplitEvent)
+			p, ok := ev.Payload.(opsapi.FillerSplitEvent)
 			if !ok || p.JobID != jobID {
 				continue
 			}

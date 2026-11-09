@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -1155,7 +1155,7 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res fetch.Resu
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_ingest",
-		Payload: api.FillerIngestEvent{
+		Payload: opsapi.FillerIngestEvent{
 			JobID: jobID, Status: status,
 			Fetched: res.Fetched, Skipped: res.Skipped,
 			Failed: res.Failed, Empty: res.Empty, Error: errMsg,
@@ -1284,7 +1284,7 @@ func (a fillerServiceAdapter) publishSplit(jobID, clipHash, status, proposalID s
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_split",
-		Payload: api.FillerSplitEvent{
+		Payload: opsapi.FillerSplitEvent{
 			JobID: jobID, ClipHash: clipHash, Status: status,
 			ProposalID: proposalID, Segments: segments, Error: errMsg,
 		},

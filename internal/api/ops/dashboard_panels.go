@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
@@ -56,7 +55,7 @@ type ServicesView struct {
 	Rows    []ServiceRow `json:"rows"`
 }
 
-func (s *Server) registerDashboardPanels(api huma.API) {
+func (s *Handlers) registerDashboardPanels(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-services", Method: http.MethodGet, Path: "/v1/system/services",
 		Summary: "Every configured integration and whether it answers",
@@ -80,7 +79,7 @@ type systemServicesOutput struct {
 	Body ServicesView
 }
 
-func (s *Server) systemServices(ctx context.Context, _ *struct{}) (*systemServicesOutput, error) {
+func (s *Handlers) systemServices(ctx context.Context, _ *struct{}) (*systemServicesOutput, error) {
 	info := buildinfo.Get()
 	out := &systemServicesOutput{}
 
@@ -88,9 +87,8 @@ func (s *Server) systemServices(ctx context.Context, _ *struct{}) (*systemServic
 	// have been answered — so it reports identity rather than health.
 	backend := ""
 	schema := int64(0)
-	if s.store != nil {
-		backend = string(store.DialectOf(s.store))
-		schema = store.SchemaVersion(s.store)
+	if s.storeFacts != nil {
+		schema, backend = s.storeFacts()
 	}
 	out.Body.Loomarr = ServiceRow{
 		Name:   "loomarr",
@@ -101,8 +99,9 @@ func (s *Server) systemServices(ctx context.Context, _ *struct{}) (*systemServic
 	// ⚠ The SAME probe the wizard checklist and /v1/system/reload run. V31's gate names this
 	// explicitly, and `runConnectionChecks` is why it holds structurally rather than by
 	// convention: there is one implementation, so three surfaces cannot drift apart.
-	out.Body.Rows = make([]ServiceRow, 0, len(connectionChecklist))
-	for _, c := range s.runConnectionChecks(ctx) {
+	checks := s.runConnectionChecks(ctx)
+	out.Body.Rows = make([]ServiceRow, 0, len(checks))
+	for _, c := range checks {
 		out.Body.Rows = append(out.Body.Rows, ServiceRow{
 			Name: c.Name, Target: c.Target, OK: c.OK, Hint: c.Hint, DocHref: c.DocHref,
 			SettingsGroup: fixLocation[c.Name],
@@ -138,7 +137,7 @@ type listActivityOutput struct {
 	}
 }
 
-func (s *Server) listActivity(ctx context.Context, in *listActivityInput) (*listActivityOutput, error) {
+func (s *Handlers) listActivity(ctx context.Context, in *listActivityInput) (*listActivityOutput, error) {
 	if s.store == nil {
 		return nil, httpcore.NotImplemented("Activity unavailable", "There's no store configured yet.")
 	}

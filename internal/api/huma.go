@@ -12,7 +12,9 @@ import (
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -72,12 +74,6 @@ type Server struct {
 	// Phase 11 is configured.
 	suggest SuggestService
 	search  SearchService
-	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
-	// byte route 404s and the record route reports the image absent, which is the honest answer
-	// for an instance where the service is not wired.
-	images   ImageService
-	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	// The jobs, database, encryption, backups, restart and help routes are served by
 	// system.Handlers, built from the same Options in Router. A generation's start time
 	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop
@@ -99,18 +95,6 @@ type Server struct {
 	// a handler built without one (unit tests) records nothing rather than needing a guard
 	// at every write point.
 	activity *activity.Recorder
-	// diagnosticEvents is the admin-only retained technical timeline. Nil keeps the route mounted
-	// but truthfully unavailable for store-less generations.
-	diagnosticEvents DiagnosticEventService
-	// diagnosticProcesses owns bounded Process-run metadata, progress, and output reads.
-	diagnosticProcesses DiagnosticProcessService
-	// diagnosticBundles owns bounded preview and on-demand archive assembly.
-	diagnosticBundles DiagnosticBundleService
-	diagnosticCapture DiagnosticCaptureService
-	// clientDiagnostics accepts a closed authenticated web/TV event set; it never grants reads.
-	clientDiagnostics ClientDiagnosticService
-	// clientCrashes takes crash reports from any signed-in app and serves them to admins (#1816).
-	clientCrashes ClientCrashService
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings                 SettingsService
@@ -133,13 +117,6 @@ type Server struct {
 	// snapshot. A domain-specific seam keeps handlers from independently reading flavor, URL,
 	// and token and accidentally observing a mixed generation during a concurrent save.
 	libraryConfigured func() bool
-	// ready is the same readiness /readyz reports, surfaced through the typed
-	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
-	ready          ReadyFunc
-	startupReports StartupReportService
-
-	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
-	playoutObserver playoutapi.PlayoutObserver
 	// playoutCapability supplies the retained encoder probe result without starting a probe.
 	// Unlike live session stats, it remains available while playout is idle.
 	playoutCapability func() playout.Capacity
@@ -494,8 +471,8 @@ type Options struct {
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
-	Images          ImageService
-	Events          EventSource                // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Images          imagesapi.ImageService
+	Events          opsapi.EventSource         // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler          fillerapi.Service          // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
@@ -523,19 +500,19 @@ type Options struct {
 	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
 	Activity *activity.Recorder
 	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
-	DiagnosticEvents DiagnosticEventService
+	DiagnosticEvents opsapi.DiagnosticEventService
 	// DiagnosticProcesses backs active/recent Process runs and bounded output.
-	DiagnosticProcesses DiagnosticProcessService
+	DiagnosticProcesses opsapi.DiagnosticProcessService
 	// DiagnosticBundles backs preview and on-demand redacted ZIP creation.
-	DiagnosticBundles DiagnosticBundleService
+	DiagnosticBundles opsapi.DiagnosticBundleService
 	// DiagnosticCapture controls the recorder's process-local bounded debug window.
-	DiagnosticCapture DiagnosticCaptureService
+	DiagnosticCapture opsapi.DiagnosticCaptureService
 	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.
-	ClientDiagnostics ClientDiagnosticService
+	ClientDiagnostics opsapi.ClientDiagnosticService
 	// ClientCrashes backs the crash-report write and its admin reads (#1816); nil ⇒ unmounted.
-	ClientCrashes ClientCrashService
+	ClientCrashes opsapi.ClientCrashService
 	// StartupReports backs the current/recent application-generation report.
-	StartupReports StartupReportService
+	StartupReports opsapi.StartupReportService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart system.RestartService

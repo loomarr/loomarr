@@ -13,7 +13,9 @@ import (
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -53,24 +55,17 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	guideapi.New(guideapi.Deps{}).Register(humaAPI)
 	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
-	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerSearch(humaAPI)
 	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
-	srv.registerImages(humaAPI)
-	srv.registerDiscoveryQuality(humaAPI)
-	srv.registerDashboardPanels(humaAPI)
+	imagesapi.New(imagesapi.Deps{}).Register(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
-	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
-	// the generated client always has the event types even when this export ran without one.
-	srv.registerEvents(humaAPI)
-	// pprof=false: the profiler routes are Hidden on both paths anyway (they exist only when a
-	// flag is set, so advertising them would describe a surface most installs do not have), and
-	// the exporter has no Options to read the flag from.
-	srv.registerOps(humaAPI, false, "")
-	srv.registerDashboard(humaAPI)
-	srv.registerDiagnostics(humaAPI)
+	// The events frames are nil-guarded on the bus; schemaOnly forces the frame schemas out so the
+	// generated client always has the event types even when this export ran without one. The
+	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
+	// exporter has no Options to read the flag from.
+	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
 	// spec, matching how /v1/auth/* is handled. Documented via §11.
@@ -87,8 +82,8 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 // `event:` line. Every addEventListener keyed to that name stops firing, nothing errors, and
 // the feature just looks broken.
 func EventFrameTypes() map[string]string {
-	out := make(map[string]string, len(eventTypeMap()))
-	for name, v := range eventTypeMap() {
+	out := make(map[string]string, len(opsapi.EventTypeMap()))
+	for name, v := range opsapi.EventTypeMap() {
 		out[name] = reflect.TypeOf(v).Name()
 	}
 	return out

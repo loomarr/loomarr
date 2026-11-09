@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -48,7 +48,7 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 		// reason beyond tidiness. huma names an SSE frame after its payload's Go type
 		// (internal/api/events.go), so publishing anything else here would ship the frame
 		// unnamed and every browser listener for "title" would silently stop firing.
-		payload, ok := got.Payload.(api.TitleEvent)
+		payload, ok := got.Payload.(opsapi.TitleEvent)
 		if !ok {
 			t.Fatalf("payload type = %T, want api.TitleEvent", got.Payload)
 		}
@@ -141,7 +141,7 @@ func TestHealthEmitterPublishesTypedInvalidation(t *testing.T) {
 		if got.Type != "health" {
 			t.Fatalf("event type = %q", got.Type)
 		}
-		if _, ok := got.Payload.(api.HealthEvent); !ok {
+		if _, ok := got.Payload.(opsapi.HealthEvent); !ok {
 			t.Fatalf("payload type = %T, want api.HealthEvent", got.Payload)
 		}
 	default:

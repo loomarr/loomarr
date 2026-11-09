@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -198,7 +198,7 @@ type PlayoutEvent struct {
 // feature simply looks broken. huma does print "unknown event type" + a stack to STDERR — but
 // that is a raw dump that never reaches the app's slog, fails nothing, and returns 200 to a
 // client that then waits forever. Guarded by TestEveryPublishedEventIsInTheEventTypeMap.
-func eventTypeMap() map[string]any {
+func EventTypeMap() map[string]any {
 	return map[string]any{
 		"title":         TitleEvent{},
 		"channel":       ChannelEvent{},
@@ -225,7 +225,7 @@ func eventTypeMap() map[string]any {
 //
 // Per §8 this stream is a LATENCY optimization and makes no delivery guarantees: a client that
 // misses a frame re-reads the GET endpoints, which are the source of truth.
-func (s *Server) registerEvents(api huma.API) {
+func (s *Handlers) registerEvents(api huma.API) {
 	if s.events == nil && !s.schemaOnly {
 		return
 	}
@@ -237,7 +237,7 @@ func (s *Server) registerEvents(api huma.API) {
 			"also readable from a GET, which stays the source of truth on reconnect, so a dropped " +
 			"frame costs freshness and never correctness.",
 		Tags: []string{"events"},
-	}, httpcore.RoleMember), eventTypeMap(), s.streamEvents)
+	}, httpcore.RoleMember), EventTypeMap(), s.streamEvents)
 }
 
 // streamEvents fans the bus out to one subscriber until they disconnect.
@@ -245,7 +245,7 @@ func (s *Server) registerEvents(api huma.API) {
 // The payload arrives already typed — the publishers construct the DTOs (internal/app) — so
 // this hands ev.Payload straight to huma, which picks the event name off its Go type. A frame
 // whose type is not in eventTypeMap would go out unnamed; see the map's docstring.
-func (s *Server) streamEvents(ctx context.Context, _ *struct{}, send sse.Sender) {
+func (s *Handlers) streamEvents(ctx context.Context, _ *struct{}, send sse.Sender) {
 	if s.events == nil {
 		return // schema-only registration; nothing to stream
 	}

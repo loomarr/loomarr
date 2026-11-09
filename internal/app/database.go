@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -189,7 +189,7 @@ func (d *databaseService) emit(st system.DatabaseStatus) {
 	if d.bus == nil {
 		return
 	}
-	d.bus.Publish(events.Event{Type: "database", Payload: api.DatabaseEvent{
+	d.bus.Publish(events.Event{Type: "database", Payload: opsapi.DatabaseEvent{
 		Phase: st.Phase, Parity: st.Parity, Tables: st.Tables, Error: st.Error,
 	}})
 }

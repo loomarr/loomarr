@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/people"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
@@ -219,7 +220,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 
 // clientCrashService keeps a store-less build's nil module from becoming a non-nil interface,
 // which would mount the crash routes over nothing.
-func clientCrashService(c *diagnostics.ClientCrashes) api.ClientCrashService {
+func clientCrashService(c *diagnostics.ClientCrashes) opsapi.ClientCrashService {
 	if c == nil {
 		return nil
 	}

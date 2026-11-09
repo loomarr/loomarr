@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -28,9 +29,9 @@ func newDashboardServer(t *testing.T, sessions playoutapi.PlayoutObserver) *http
 	return srv
 }
 
-func telemetry(t *testing.T, resp *http.Response) api.PlayoutTelemetry {
+func telemetry(t *testing.T, resp *http.Response) opsapi.PlayoutTelemetry {
 	t.Helper()
-	var body api.PlayoutTelemetry
+	var body opsapi.PlayoutTelemetry
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}

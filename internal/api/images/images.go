@@ -1,4 +1,4 @@
-package api
+package images
 
 import (
 	"context"
@@ -49,7 +49,7 @@ type ImageService interface {
 // in one but not the other is invisible in the direction it was missed — live but undocumented
 // (orval cannot type it) or documented but unmounted (the generated client calls a 404).
 // `TestRegisterListsMatchBetweenRouterAndExporter` guards it.
-func (s *Server) registerImages(api huma.API) {
+func (s *Handlers) registerImages(api huma.API) {
 	// ⚠ **RolePublic at the MOUNT, per-row visibility in the HANDLER**, and this is the one place
 	// the image service departs from every other raw-byte route in §7.1.
 	//
@@ -99,7 +99,7 @@ type serveImageInput struct {
 }
 
 // serveImage streams one rendition.
-func (s *Server) serveImage(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) serveImage(w http.ResponseWriter, r *http.Request) {
 	if s.images == nil {
 		http.NotFound(w, r)
 		return
@@ -206,7 +206,7 @@ type getImageInput struct {
 
 type getImageOutput struct{ Body httpcore.ImageDTO }
 
-func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutput, error) {
+func (s *Handlers) getImage(ctx context.Context, in *getImageInput) (*getImageOutput, error) {
 	if s.images == nil {
 		return nil, httpcore.NotFound("Image not found", "That image doesn't exist.")
 	}
@@ -224,7 +224,7 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 // class this repo has already been bitten by more than once — the second copy is the one that
 // forgets `srcSetAvif` when the AVIF job lands, and nothing fails, it just quietly serves WebP
 // forever on one surface.
-func (s *Server) imageToDTO(ctx context.Context, rec images.Image) httpcore.ImageDTO {
+func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.ImageDTO {
 	// ⚠ AVIF is advertised only when a rendition actually EXISTS. <picture> commits to the source
 	// it selects by type and does not fall back on a 404, so a job-produced AVIF that has not been
 	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
@@ -258,7 +258,7 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) httpcore.Imag
 
 // libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
 // arrived, so a surface draws without it rather than showing a broken image.
-func (s *Server) libraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
+func (s *Handlers) LibraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
 	if s.images == nil || hash == "" {
 		return nil
 	}
@@ -276,7 +276,7 @@ const libraryCandidateImageOwner = "library_candidate"
 
 // candidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
 // its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
-func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
+func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
 	if s.images == nil || url == "" {
 		return nil
 	}
@@ -303,7 +303,7 @@ func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *httpc
 // one lookup instead of one per referencing row. And a miss is never an error: §22's Durability
 // section makes "the row is here, the file is not" an accepted state, so a surface must still
 // render — falling back to whatever it showed before the image service existed.
-func (s *Server) imageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
+func (s *Handlers) ImageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
 	if s.images == nil || len(hashes) == 0 {
 		return nil
 	}
@@ -347,7 +347,7 @@ type uploadImageInput struct {
 
 type uploadImageOutput struct{ Body httpcore.ImageDTO }
 
-func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*uploadImageOutput, error) {
+func (s *Handlers) uploadImage(ctx context.Context, in *uploadImageInput) (*uploadImageOutput, error) {
 	if s.images == nil {
 		return nil, httpcore.Problem(http.StatusNotImplemented, "Images aren't configured",
 			"The image service isn't wired on this instance.")

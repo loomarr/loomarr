@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -145,7 +145,7 @@ type clientDiagnosticsOutput struct {
 	}
 }
 
-func (s *Server) registerDiagnostics(api huma.API) {
+func (s *Handlers) registerDiagnostics(api huma.API) {
 	if s.startupReports != nil || s.schemaOnly {
 		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "get-current-health", Method: http.MethodGet, Path: "/v1/diagnostics/health",
@@ -243,7 +243,7 @@ func (s *Server) registerDiagnostics(api huma.API) {
 	}, httpcore.RoleAdmin), s.stopVerboseCapture)
 }
 
-func (s *Server) previewDiagnosticBundle(ctx context.Context, input *diagnosticBundleInput) (*diagnosticBundlePreviewOutput, error) {
+func (s *Handlers) previewDiagnosticBundle(ctx context.Context, input *diagnosticBundleInput) (*diagnosticBundlePreviewOutput, error) {
 	if s.diagnosticBundles == nil {
 		return nil, huma.Error501NotImplemented("Support bundles aren't available on this Loomarr generation.")
 	}
@@ -261,7 +261,7 @@ func (s *Server) previewDiagnosticBundle(ctx context.Context, input *diagnosticB
 	return &diagnosticBundlePreviewOutput{Body: preview}, nil
 }
 
-func (s *Server) diagnosticBundleHandler(w http.ResponseWriter, r *http.Request, input *diagnosticBundleInput) {
+func (s *Handlers) diagnosticBundleHandler(w http.ResponseWriter, r *http.Request, input *diagnosticBundleInput) {
 	if s.diagnosticBundles == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Support bundles unavailable", "Support bundles aren't available on this Loomarr generation.")
 		return
@@ -286,14 +286,14 @@ func (s *Server) diagnosticBundleHandler(w http.ResponseWriter, r *http.Request,
 	_, _ = w.Write(result.Content)
 }
 
-func (s *Server) getVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
+func (s *Handlers) getVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
 	if s.diagnosticCapture == nil {
 		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
 	}
 	return &verboseCaptureOutput{Body: s.diagnosticCapture.VerboseCapture()}, nil
 }
 
-func (s *Server) startVerboseCapture(_ context.Context, input *verboseCaptureInput) (*verboseCaptureOutput, error) {
+func (s *Handlers) startVerboseCapture(_ context.Context, input *verboseCaptureInput) (*verboseCaptureOutput, error) {
 	if s.diagnosticCapture == nil {
 		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
 	}
@@ -309,14 +309,14 @@ func (s *Server) startVerboseCapture(_ context.Context, input *verboseCaptureInp
 	return &verboseCaptureOutput{Body: capture}, nil
 }
 
-func (s *Server) stopVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
+func (s *Handlers) stopVerboseCapture(_ context.Context, _ *struct{}) (*verboseCaptureOutput, error) {
 	if s.diagnosticCapture == nil {
 		return nil, huma.Error501NotImplemented("Verbose capture isn't available on this Loomarr generation.")
 	}
 	return &verboseCaptureOutput{Body: s.diagnosticCapture.StopVerboseCapture()}, nil
 }
 
-func (s *Server) listDiagnosticProcesses(
+func (s *Handlers) listDiagnosticProcesses(
 	ctx context.Context, input *diagnosticProcessesInput,
 ) (*diagnosticProcessPageOutput, error) {
 	if s.diagnosticProcesses == nil {
@@ -336,7 +336,7 @@ func (s *Server) listDiagnosticProcesses(
 	return &diagnosticProcessPageOutput{Body: page}, nil
 }
 
-func (s *Server) getDiagnosticProcess(
+func (s *Handlers) getDiagnosticProcess(
 	ctx context.Context, input *diagnosticProcessInput,
 ) (*diagnosticProcessDetailOutput, error) {
 	if s.diagnosticProcesses == nil {
@@ -353,7 +353,7 @@ func (s *Server) getDiagnosticProcess(
 	return &diagnosticProcessDetailOutput{Body: detail}, nil
 }
 
-func (s *Server) diagnosticProcessOutputHandler(
+func (s *Handlers) diagnosticProcessOutputHandler(
 	w http.ResponseWriter, r *http.Request, input *diagnosticProcessInput,
 ) {
 	if s.diagnosticProcesses == nil {
@@ -381,7 +381,7 @@ func (s *Server) diagnosticProcessOutputHandler(
 	_, _ = w.Write(output.Content)
 }
 
-func (s *Server) ingestClientDiagnostics(
+func (s *Handlers) ingestClientDiagnostics(
 	ctx context.Context, input *clientDiagnosticsInput,
 ) (*clientDiagnosticsOutput, error) {
 	if s.clientDiagnostics == nil {
@@ -415,14 +415,14 @@ func (s *Server) ingestClientDiagnostics(
 	return out, nil
 }
 
-func (s *Server) getCurrentHealth(_ context.Context, _ *struct{}) (*currentHealthOutput, error) {
+func (s *Handlers) getCurrentHealth(_ context.Context, _ *struct{}) (*currentHealthOutput, error) {
 	if s.startupReports == nil {
 		return nil, huma.Error501NotImplemented("Current Health isn't available on this Loomarr generation.")
 	}
 	return &currentHealthOutput{Body: s.startupReports.Health()}, nil
 }
 
-func (s *Server) listStartupReports(ctx context.Context, input *startupReportsInput) (*startupReportsOutput, error) {
+func (s *Handlers) listStartupReports(ctx context.Context, input *startupReportsInput) (*startupReportsOutput, error) {
 	if s.startupReports == nil {
 		return nil, huma.Error501NotImplemented("Startup reports aren't available on this Loomarr generation.")
 	}
@@ -437,7 +437,7 @@ func (s *Server) listStartupReports(ctx context.Context, input *startupReportsIn
 	return out, nil
 }
 
-func (s *Server) diagnosticEventsHandler(
+func (s *Handlers) diagnosticEventsHandler(
 	w http.ResponseWriter, r *http.Request, input *diagnosticEventsInput,
 ) {
 	if s.diagnosticEvents == nil {
