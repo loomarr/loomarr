@@ -1,3 +1,4 @@
+export { logoSize, rungFor } from "./art";
 export { ClipChrome } from "./clip-chrome";
 export { playbarFromTimeline } from "./playbar-data";
 export type { PlayerAudioProps } from "./player-audio";
@@ -10,6 +11,7 @@ export type {
   PlaybarSegment,
   PlaybarSpot,
   PlaybarWindow,
+  PlayerArt,
   PlayerBandData,
   PlayerChromeProps,
   PlayerInfoData,
