@@ -1,6 +1,6 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { Action } from "@loomarr/design-system";
-import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
+import { Action, LoadingStrip } from "@loomarr/design-system";
+import { CheckCircle2, KeyRound, Mail } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
@@ -95,7 +95,7 @@ const PasswordRecoveryReset = ({
   if (isLoading) {
     return (
       <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
+        <LoadingStrip decorative width={32} />
         Checking reset link…
       </div>
     );

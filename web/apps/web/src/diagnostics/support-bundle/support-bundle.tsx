@@ -10,9 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  LoadingStrip,
   Toggle,
 } from "@loomarr/design-system";
-import { LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
+import { Settings2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 type Range = "1h" | "6h" | "24h";
@@ -222,7 +223,7 @@ const SupportBundle = ({
 
             {busy === "preview" && (
               <p className="text-muted-foreground inline-flex items-center gap-2 text-sm" role="status">
-                <LoaderCircle className="size-4 animate-spin" aria-hidden /> Reviewing the selected evidence…
+                <LoadingStrip decorative width={32} /> Reviewing the selected evidence…
               </p>
             )}
 

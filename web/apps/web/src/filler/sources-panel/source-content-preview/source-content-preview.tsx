@@ -1,8 +1,8 @@
 import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { Action, LoadingStrip } from "@loomarr/design-system";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
@@ -46,7 +46,7 @@ const SourceContentPreview = ({
               role="status"
               aria-live="polite"
             >
-              <Loader2 className="size-4 animate-spin" aria-hidden />
+              <LoadingStrip decorative width={32} />
               Loading examples…
             </div>
           )}
