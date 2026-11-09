@@ -90,7 +90,7 @@ func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput
 		return nil, invitationRedemptionError(err)
 	}
 	return &meOutput{
-		SetCookie: s.sessionCookie(requestFrom(ctx), token, expires),
+		SetCookie: s.sessionCookie(httpcore.RequestFrom(ctx), token, expires),
 		Body: meBody{ID: user.ID, Name: user.Name, Role: string(user.Role), Disabled: user.Disabled,
 			Quota: user.Quota, AutoApprove: user.AutoApprove,
 			Local: !user.MediaServerLinked, OfflineLogin: user.MediaServerLinked && user.PasswordHash != ""},

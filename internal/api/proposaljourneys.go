@@ -140,7 +140,7 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
 	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	journeys, err := s.proposalWorkflow.List(ctx, viewer, workflow.ListOptions{
@@ -202,7 +202,7 @@ func (s *Server) reviseProposalJourney(
 		return nil, err
 	}
 	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	err := s.proposalWorkflow.Revise(ctx, viewer, in.JobID, in.Body)
@@ -231,7 +231,7 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
 	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
 	journey, err := s.proposalWorkflow.Inspect(ctx, viewer, in.JobID)

@@ -139,11 +139,11 @@ func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*location
 		return nil, httpcore.ServiceUnavailable("Location suggestion unavailable", "The built-in location index couldn't be opened. Search for your location instead.")
 	}
 	out := &locationSuggestionOutput{}
-	request := requestFrom(ctx)
+	request := httpcore.RequestFrom(ctx)
 	if request == nil {
 		return out, nil
 	}
-	if s.trustProxy {
+	if s.origin.TrustProxy {
 		if place, source, ok := trustedLocationHeader(index, request); ok {
 			dto := locationDTOFrom(place)
 			dto.Source, dto.Approximate = source, true
@@ -151,7 +151,7 @@ func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*location
 			return out, nil
 		}
 	}
-	address, ok := effectiveLocationClientAddress(request, s.trustProxy)
+	address, ok := effectiveLocationClientAddress(request, s.origin.TrustProxy)
 	if !ok {
 		return out, nil
 	}

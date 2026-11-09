@@ -77,7 +77,7 @@ func (s *Server) channelListsUser(ctx context.Context) (string, error) {
 	if s.store == nil {
 		return "", httpcore.FeatureNotConfigured("Channel lists unavailable", "The persistence service is not configured.")
 	}
-	userID := userIDFromHuma(ctx)
+	userID := httpcore.UserIDFrom(ctx)
 	if userID == "" {
 		return "", httpcore.Unauthorized("Not signed in", "Favourite and recent channels belong to a person. Sign in, or use a paired device.")
 	}

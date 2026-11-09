@@ -481,7 +481,7 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 			"This channel already has a change being generated or waiting for review. Finish or dismiss it before asking for another.")
 	}
 
-	jobID, err := s.suggest.Refine(ctx, ch.ID, intent, userIDFromHuma(ctx))
+	jobID, err := s.suggest.Refine(ctx, ch.ID, intent, httpcore.UserIDFrom(ctx))
 	if err != nil {
 		return nil, err
 	}

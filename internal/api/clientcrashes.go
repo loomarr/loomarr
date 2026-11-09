@@ -113,12 +113,12 @@ func (s *Server) reportClientCrash(ctx context.Context, in *clientCrashReportInp
 // clientCrashReporter is who sent the report, from the authenticated request only.
 func (s *Server) clientCrashReporter(ctx context.Context) diagnostics.ClientCrashReporter {
 	var reporter diagnostics.ClientCrashReporter
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return reporter
 	}
 	reporter.UserID = user.ID
-	deviceID, ok := deviceIDFrom(ctx)
+	deviceID, ok := httpcore.DeviceIDFrom(ctx)
 	if !ok {
 		return reporter
 	}

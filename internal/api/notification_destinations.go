@@ -306,7 +306,7 @@ func (s *Server) notificationDestinationTest(
 
 func notificationPrincipal(ctx context.Context) notifications.Principal {
 	principal := notifications.Principal{Administrator: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
-	if user, ok := userFrom(ctx); ok {
+	if user, ok := httpcore.UserFrom(ctx); ok {
 		principal.PersonID = user.ID
 	}
 	return principal

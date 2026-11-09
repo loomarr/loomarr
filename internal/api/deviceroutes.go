@@ -87,11 +87,11 @@ type deviceStartOutput struct {
 const pollInterval = 5
 
 func (s *Server) handleDeviceStart(ctx context.Context, in *deviceStartInput) (*deviceStartOutput, error) {
-	r := requestFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
 	// Keyed on IP alone: there is no user yet, and the thing being limited is the minting of
 	// pairings. Without this an attacker could farm codes to raise the odds that a guess at the
 	// approve endpoint lands on a live one.
-	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("start|"+s.clientIP(r)) {
+	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("start|"+s.origin.ClientIP(r)) {
 		return nil, httpcore.TooManyRequests("Too many pairing attempts",
 			"Too many devices have started pairing from this address. Wait a moment and try again.")
 	}
@@ -160,8 +160,8 @@ type deviceApproveOutput struct {
 }
 
 func (s *Server) handleDeviceApprove(ctx context.Context, in *deviceApproveInput) (*deviceApproveOutput, error) {
-	r := requestFrom(ctx)
-	user, ok := userFrom(ctx)
+	r := httpcore.RequestFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Sign-in required", "Sign in before approving a device.")
 	}
@@ -169,7 +169,7 @@ func (s *Server) handleDeviceApprove(ctx context.Context, in *deviceApproveInput
 	// off a screen and type it, which means its safety comes from a narrow window plus a bounded
 	// number of attempts — not from length. Keyed per user so one account cannot grind codes, and
 	// per IP so a pool of accounts cannot either.
-	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("approve|"+user.ID+"|"+s.clientIP(r)) {
+	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("approve|"+user.ID+"|"+s.origin.ClientIP(r)) {
 		return nil, httpcore.TooManyRequests("Too many attempts",
 			"Too many pairing codes tried. Wait a moment and try again.")
 	}
@@ -206,7 +206,7 @@ type deviceDTO struct {
 }
 
 func (s *Server) handleDeviceList(ctx context.Context, _ *struct{}) (*deviceListOutput, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to see your devices.")
 	}
@@ -232,7 +232,7 @@ type deviceRevokeInput struct {
 }
 
 func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) (*struct{}, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to revoke a device.")
 	}
@@ -249,11 +249,11 @@ func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) 
 }
 
 func (s *Server) handleCurrentDeviceRevoke(ctx context.Context, _ *struct{}) (*struct{}, error) {
-	user, ok := userFrom(ctx)
+	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Paired device required", "Only a paired device can disconnect itself.")
 	}
-	deviceID, ok := deviceIDFrom(ctx)
+	deviceID, ok := httpcore.DeviceIDFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Paired device required", "Only a paired device can disconnect itself.")
 	}

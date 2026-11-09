@@ -364,7 +364,7 @@ func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput
 	// The caller's own cookie marks exactly one row as "this device". Read from the raw
 	// request because the token itself is never put in the context — only the user is.
 	var callerToken string
-	if r := requestFrom(ctx); r != nil {
+	if r := httpcore.RequestFrom(ctx); r != nil {
 		if c, err := r.Cookie(auth.CookieName); err == nil {
 			callerToken = c.Value
 		}

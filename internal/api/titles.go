@@ -70,12 +70,12 @@ func (s *Server) registerMiddleware(api huma.API) {
 		}
 
 		c := httpcore.ContextWithRole(ctx, role)
-		c = huma.WithValue(c, reqCtxKey{}, r) // raw request for handlers (login IP, cookies)
+		c = httpcore.ContextWithRequest(c, r) // raw request for handlers (login IP, cookies)
 		if user != nil {
-			c = huma.WithValue(c, userCtxKey{}, *user)
+			c = httpcore.ContextWithUser(c, *user)
 		}
 		if deviceID != "" {
-			c = huma.WithValue(c, deviceCtxKey{}, deviceID)
+			c = httpcore.ContextWithDevice(c, deviceID)
 		}
 		next(c)
 	})
