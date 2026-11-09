@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -845,7 +846,7 @@ func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
 	if read.StatusCode != http.StatusOK {
 		t.Fatalf("read after stale detach -> %d, want 200", read.StatusCode)
 	}
-	var got api.ChannelDTO
+	var got channelsapi.ChannelDTO
 	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}

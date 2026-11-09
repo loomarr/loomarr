@@ -200,32 +200,11 @@ func parseRendition(s string) (int, images.Format, bool) {
 	return 0, "", false
 }
 
-// ImageDTO is one image as the frontend sees it.
-type ImageDTO struct {
-	Hash string `json:"hash" doc:"Content hash — the image's identity and its ETag"`
-	Role string `json:"role" doc:"poster | backdrop | icon | thumb | logo — decides the width ladder"`
-	// Width/Height are the ORIGINAL's. ⚠ Served so an <img> can carry real width/height
-	// attributes: browsers derive aspect-ratio from them, which takes cumulative layout shift to
-	// zero without the frontend guessing a shape per surface.
-	Width  int `json:"width" doc:"The original's width in pixels"`
-	Height int `json:"height" doc:"The original's height in pixels"`
-	// Placeholder is a base64 ThumbHash (~25 bytes) — the blur preview rendered while the real
-	// image loads. Carries alpha, which is why it is not a BlurHash.
-	Placeholder string `json:"placeholder" doc:"Base64 ThumbHash for the low-quality placeholder"`
-	DominantHex string `json:"dominantHex" doc:"Average colour, for tinting a skeleton"`
-	Animated    bool   `json:"animated" doc:"True when the original carries motion; such images have one rendition"`
-	// SrcSetAVIF may be empty while the AVIF job catches up — that is a normal state, not an
-	// error, and the frontend omits the <source> rather than waiting.
-	SrcSetAVIF string `json:"srcSetAvif" doc:"Same-origin srcset for AVIF; empty until the AVIF job has run"`
-	SrcSetWebP string `json:"srcSetWebp" doc:"Same-origin srcset for WebP"`
-	Src        string `json:"src" doc:"A same-origin path for the <img> fallback: JPEG, or WebP for a logo so its transparency survives"`
-}
-
 type getImageInput struct {
 	Hash string `path:"hash" example:"9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503"`
 }
 
-type getImageOutput struct{ Body ImageDTO }
+type getImageOutput struct{ Body httpcore.ImageDTO }
 
 func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutput, error) {
 	if s.images == nil {
@@ -245,7 +224,7 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 // class this repo has already been bitten by more than once — the second copy is the one that
 // forgets `srcSetAvif` when the AVIF job lands, and nothing fails, it just quietly serves WebP
 // forever on one surface.
-func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
+func (s *Server) imageToDTO(ctx context.Context, rec images.Image) httpcore.ImageDTO {
 	// ⚠ AVIF is advertised only when a rendition actually EXISTS. <picture> commits to the source
 	// it selects by type and does not fall back on a 404, so a job-produced AVIF that has not been
 	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
@@ -263,7 +242,7 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
 		// cache the same loop under several width URLs and give the browser false descriptors.
 		webp = s.images.PathFor(rec.Hash, rec.Width, images.FormatWebP) + " " + strconv.Itoa(rec.Width) + "w"
 	}
-	return ImageDTO{
+	return httpcore.ImageDTO{
 		Hash:        rec.Hash,
 		Role:        string(rec.Role),
 		Width:       rec.Width,
@@ -275,6 +254,41 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
 		SrcSetWebP:  webp,
 		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidth(rec.Width), rec.Role.Fallback()),
 	}
+}
+
+// imageDTOsByHash resolves a set of image hashes in ONE pass, deduplicated.
+//
+// ⚠ **Every list endpoint that renders images must go through this rather than looking one up per
+// row.** A per-row lookup is an N+1 — the shape a profile here has already caught once — and it
+// gets worse as the surface gets bigger: a channel list is tens of rows, but the filler catalog is
+// a GRID of clips, each with a still and a hover loop, so the naive version is two queries per
+// tile. Distinct hashes are fetched once each even when many rows share one.
+//
+// ⚠ A failed lookup is recorded as a nil ENTRY rather than skipped, so a shared broken hash costs
+// one lookup instead of one per referencing row. And a miss is never an error: §22's Durability
+// section makes "the row is here, the file is not" an accepted state, so a surface must still
+// render — falling back to whatever it showed before the image service existed.
+func (s *Server) imageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
+	if s.images == nil || len(hashes) == 0 {
+		return nil
+	}
+	byHash := make(map[string]*httpcore.ImageDTO, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, seen := byHash[hash]; seen {
+			continue
+		}
+		byHash[hash] = nil
+		rec, err := s.images.Get(ctx, hash)
+		if err != nil {
+			continue
+		}
+		dto := s.imageToDTO(ctx, rec)
+		byHash[hash] = &dto
+	}
+	return byHash
 }
 
 // imageUploadForm is the multipart body.
@@ -296,7 +310,7 @@ type uploadImageInput struct {
 	RawBody    huma.MultipartFormFiles[imageUploadForm]
 }
 
-type uploadImageOutput struct{ Body ImageDTO }
+type uploadImageOutput struct{ Body httpcore.ImageDTO }
 
 func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*uploadImageOutput, error) {
 	if s.images == nil {

@@ -76,12 +76,12 @@ type GuideAiring struct {
 	// ThumbImage is the image record behind ThumbURL — width/height, ThumbHash and both srcsets.
 	// A programme's bounded interactive fetch returns real bytes before this is emitted; failure
 	// omits both fields cleanly rather than exposing an adopted placeholder row.
-	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset, animation and placeholder rendering"`
+	ThumbImage *httpcore.ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset, animation and placeholder rendering"`
 	// LogoImage and BackdropImage are the TITLE's clear logo and fanart from the Library (#2567):
 	// the film's own, or for an episode its show's. ThumbImage stays the block's preview (an
 	// episode's still), so a player can lay the show's logo over the episode's frame.
-	LogoImage     *ImageDTO `json:"logoImage,omitempty" doc:"The title's clear logo, transparent (WebP and AVIF only); for an episode, its show's. Absent when the Library holds none"`
-	BackdropImage *ImageDTO `json:"backdropImage,omitempty" doc:"The title's fanart; for an episode, its show's. Absent when the Library holds none"`
+	LogoImage     *httpcore.ImageDTO `json:"logoImage,omitempty" doc:"The title's clear logo, transparent (WebP and AVIF only); for an episode, its show's. Absent when the Library holds none"`
+	BackdropImage *httpcore.ImageDTO `json:"backdropImage,omitempty" doc:"The title's fanart; for an episode, its show's. Absent when the Library holds none"`
 	// titleKey is the provisioning key the title art resolves by; never on the wire.
 	titleKey provision.Key
 	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
@@ -265,7 +265,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		// the user's channels and hiding it would look like it had been deleted.
 		logo := ch.Logo
 		if s.images != nil {
-			logo = browserLogoURL(ch.Logo, s.images.PathFor)
+			logo = httpcore.BrowserLogoURL(ch.Logo, s.images.PathFor)
 		}
 		rows[i] = GuideChannelTimeline{
 			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Logo: logo,

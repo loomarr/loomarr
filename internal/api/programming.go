@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -56,7 +57,7 @@ type previewProgrammingInput struct {
 	Body struct {
 		// Lineup is the draft lineup (omit to use the saved one). Lowered by key like a PATCH —
 		// rich scheduling metadata carried forward, so the preview matches what a save would air.
-		Lineup []LineupEntryDTO `json:"lineup,omitempty"`
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
 		// Policy is the draft policy (omit to use the saved one). Validated like a policy write.
 		Policy *schedule.ChannelPolicy `json:"policy,omitempty"`
 	}
@@ -192,12 +193,12 @@ func parsePreviewInstant(name, raw string) (time.Time, error) {
 // lowerProgrammingDraft validates and lowers a {lineup?, policy?} draft exactly as a save would.
 // Shared by both draft previews so the change list cannot accept a draft the single-point
 // preview refuses, or lower it differently.
-func lowerProgrammingDraft(lineup []LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
+func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
 	// Draft lineup: validate + convert the lossy DTOs; the engine lowers them by key like a
 	// PATCH (ApplyLineup PreserveByKey). Nil ⇒ the saved lineup.
 	var draftLineup []schedule.LineupEntry
 	if lineup != nil {
-		entries, err := lineupEntriesFromDTOs(lineup)
+		entries, err := channelsapi.LineupEntriesFromDTOs(lineup)
 		if err != nil {
 			return nil, nil, httpcore.BadRequest("Invalid lineup", err.Error())
 		}
@@ -207,7 +208,7 @@ func lowerProgrammingDraft(lineup []LineupEntryDTO, policy *schedule.ChannelPoli
 	// A lone `era` was already folded into Dates on decode; `era` with `dates` is ambiguous.
 	if policy != nil {
 		if err := policy.DateAliasConflict(); err != nil {
-			return nil, nil, ambiguousDatesError(err)
+			return nil, nil, httpcore.AmbiguousDatesError(err)
 		}
 		if err := policy.Validate(); err != nil {
 			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
@@ -224,8 +225,8 @@ type previewProgrammingChangesInput struct {
 	// Body is the SAME draft shape as programming/preview, deliberately restated rather than
 	// shared: naming the type would rename the existing endpoint's generated request type.
 	Body struct {
-		Lineup []LineupEntryDTO        `json:"lineup,omitempty"`
-		Policy *schedule.ChannelPolicy `json:"policy,omitempty"`
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
+		Policy *schedule.ChannelPolicy      `json:"policy,omitempty"`
 	}
 }
 

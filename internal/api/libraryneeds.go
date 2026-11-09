@@ -68,12 +68,12 @@ type externalIDDTO struct {
 }
 
 type libraryCandidateDTO struct {
-	Kind       string        `json:"kind" enum:"movie,series"`
-	ExternalID externalIDDTO `json:"externalId"`
-	Name       string        `json:"name"`
-	Year       int           `json:"year,omitempty" doc:"Absent when unknown"`
-	Overview   string        `json:"overview,omitempty"`
-	Poster     *ImageDTO     `json:"poster,omitempty" doc:"Absent when it has none, or while it is still being fetched"`
+	Kind       string             `json:"kind" enum:"movie,series"`
+	ExternalID externalIDDTO      `json:"externalId"`
+	Name       string             `json:"name"`
+	Year       int                `json:"year,omitempty" doc:"Absent when unknown"`
+	Overview   string             `json:"overview,omitempty"`
+	Poster     *httpcore.ImageDTO `json:"poster,omitempty" doc:"Absent when it has none, or while it is still being fetched"`
 	// The agreement flags say which of the file's facts the candidate shares.
 	NameMatches     bool `json:"nameMatches"`
 	YearMatches     bool `json:"yearMatches"`
@@ -207,7 +207,7 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 
 // candidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
 // its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
-func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *ImageDTO {
+func (s *Server) candidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
 	if s.images == nil || url == "" {
 		return nil
 	}
@@ -259,7 +259,7 @@ func (s *Server) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInput
 }
 
 // libraryOrderNeedOf is an order need as Needs you shows it: the disk's seasons by number.
-func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*ImageDTO) libraryOrderNeedDTO {
+func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*httpcore.ImageDTO) libraryOrderNeedDTO {
 	dto := libraryOrderNeedDTO{
 		Item:    libraryItemOf(o.LibraryItemSummary, posters),
 		Disk:    make([]librarySeasonSizeDTO, 0, len(o.Last)),

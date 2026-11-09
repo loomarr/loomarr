@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -44,7 +45,7 @@ type suggestionBuild struct {
 	collections      api.CollectionService
 	ideaLibrary      api.IdeaLibrary
 	systemLLM        system.SystemLLMService
-	icons            api.IconService
+	icons            channelsapi.IconService
 	images           *images.Service
 	imageFetcher     *images.Fetcher
 	timelineThumbs   api.TimelineThumbResolver

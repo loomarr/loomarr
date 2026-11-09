@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -19,16 +19,16 @@ func TestChannelListReadsDurableCheckpointOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	s := &Server{
+	s := &Handlers{
 		log:   testkit.Logger(),
 		store: st,
-		backendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+		backend: httpcore.Backend{Source: func(context.Context) (httpcore.BackendCheckpoint, error) {
 			calls++
 			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil
-		},
+		}},
 	}
 
 	listed, err := s.listChannels(context.Background(), &struct{}{})
@@ -45,16 +45,16 @@ func TestChannelListReadsDurableCheckpointOnce(t *testing.T) {
 
 func TestChannelListFailsClosedWhenCheckpointReadFails(t *testing.T) {
 	want := errors.New("checkpoint unavailable")
-	s := &Server{backendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+	s := &Handlers{backend: httpcore.Backend{Source: func(context.Context) (httpcore.BackendCheckpoint, error) {
 		return httpcore.BackendCheckpoint{}, want
-	}}
+	}}}
 	if _, err := s.listChannels(context.Background(), &struct{}{}); httpcore.StatusFromError(err, 0) != 503 {
 		t.Fatalf("list error = %v, want 503 checkpoint failure", err)
 	}
 }
 
 func TestChannelDTOCarriesServerResolvedInAppPlayable(t *testing.T) {
-	s := &Server{}
+	s := &Handlers{}
 	got := s.channelDTOAt(channelstore.Channel{Channel: schedule.Channel{Status: schedule.StatusLive}}, nil, nil, nil,
 		httpcore.BackendCheckpoint{Applied: schedule.PlayoutBackendInternal})
 	if !got.InAppPlayable {
@@ -65,7 +65,7 @@ func TestChannelDTOCarriesServerResolvedInAppPlayable(t *testing.T) {
 // #2767: the channel's decade is on the wire, the same one the on-screen logo's palette uses, and
 // absent for a channel with no single-decade era.
 func TestChannelDTOCarriesTheEraDecade(t *testing.T) {
-	s := &Server{}
+	s := &Handlers{}
 	eighties := channelstore.Channel{Policy: schedule.ChannelPolicy{
 		OperatorPolicy: schedule.OperatorPolicy{},
 		Scope:          schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1980, To: 1989})},

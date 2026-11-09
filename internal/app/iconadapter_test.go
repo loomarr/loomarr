@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -139,7 +139,7 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("suggestions = %d, want 3: %+v", len(got), got)
 	}
-	byTitle := map[string]api.IconSuggestion{}
+	byTitle := map[string]channelsapi.IconSuggestion{}
 	for _, s := range got {
 		byTitle[s.Title] = s
 	}
@@ -290,4 +290,4 @@ func TestIconAdapter_SkipsMalformedKeys(t *testing.T) {
 }
 
 // Type-check: iconAdapter satisfies api.IconService.
-var _ api.IconService = iconAdapter{}
+var _ channelsapi.IconService = iconAdapter{}

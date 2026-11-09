@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -37,9 +37,9 @@ type ChannelDTO struct {
 	// ⚠ It ENRICHES `logo` rather than replacing it. The frontend's <Image> primitive needs real
 	// width/height, the ThumbHash and both srcsets — none of which a URL carries — but an external
 	// logo is a supported configuration, not a legacy state, so the plain URL has to keep working.
-	LogoImage *ImageDTO `json:"logoImage,omitempty" doc:"The image record when the logo is served by this instance's image service; absent for an external URL"`
-	Strategy  string    `json:"strategy" enum:"sequential,shuffle,time_slot"`
-	Status    string    `json:"status" enum:"building,live,empty,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
+	LogoImage *httpcore.ImageDTO `json:"logoImage,omitempty" doc:"The image record when the logo is served by this instance's image service; absent for an external URL"`
+	Strategy  string             `json:"strategy" enum:"sequential,shuffle,time_slot"`
+	Status    string             `json:"status" enum:"building,live,empty,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	// InAppPlayable is the server-resolved surfability truth (§9.1 V57). It includes the
 	// global-backend/channel-override precedence and lifecycle state, so Web/native clients never
 	// grow their own subtly different copy of those rules.
@@ -130,7 +130,7 @@ type entryAcq struct {
 // store-backed resolver; the list passes nil to skip the per-entry lookups it does not need).
 // logoImage, when non-nil, resolves the channel's logo URL to an image record — pre-resolved by
 // the caller precisely so the list handler does not turn into an N+1 (see logoImageResolver).
-func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
+func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *httpcore.ImageDTO) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
 	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
@@ -165,7 +165,7 @@ func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryA
 
 // channelDTOAt is every handler's channel rendering. requesters comes from channelRequesters, so
 // each response that carries a channel names its requester the same way.
-func (s *Server) channelDTOAt(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint httpcore.BackendCheckpoint) ChannelDTO {
+func (s *Handlers) channelDTOAt(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *httpcore.ImageDTO, requesters map[string]string, checkpoint httpcore.BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
 	out.InAppPlayable = httpcore.InAppPlayableAt(ch, checkpoint)
 	out.RequestedBy = requesters[ch.ID]
@@ -174,7 +174,7 @@ func (s *Server) channelDTOAt(ch channelstore.Channel, entryState func(provision
 
 // channelRequesters is one read naming every channel's requester. It only decorates the response,
 // so a failure leaves requestedBy out rather than failing the request.
-func (s *Server) channelRequesters(ctx context.Context) map[string]string {
+func (s *Handlers) channelRequesters(ctx context.Context) map[string]string {
 	requesters, err := s.store.ChannelRequesters(ctx)
 	if err != nil {
 		s.log.Warn("channel requesters unavailable", "err", err)
@@ -190,7 +190,7 @@ func (s *Server) channelRequesters(ctx context.Context) map[string]string {
 // not a list fan-out. A key with no Record resolves to `pending` (lineupEntryState), so a
 // manually-added, not-yet-requested title reads as pending durably rather than only at
 // add-time. The list endpoint deliberately does NOT use this (it shows counts, not entries).
-func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) entryAcq {
+func (s *Handlers) entryStateResolver(ctx context.Context) func(provision.Key) entryAcq {
 	return func(key provision.Key) entryAcq {
 		rec, err := s.store.GetTitle(ctx, key)
 		found := err == nil
@@ -217,7 +217,7 @@ func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) ent
 // junk entry. A key not `available` in the library is fine: it renders as a pending slot
 // until the title lands (§9), so this never plays or acquires unapproved content.
 func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
-	incoming, err := lineupEntriesFromDTOs(edit)
+	incoming, err := LineupEntriesFromDTOs(edit)
 	if err != nil {
 		return nil, err
 	}
@@ -225,11 +225,11 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 		schedule.ApplyOpts{PreserveByKey: true, Now: time.Now().UTC()}), nil
 }
 
-// lineupEntriesFromDTOs validates + converts the lossy edit DTOs into partial LineupEntries
+// LineupEntriesFromDTOs validates + converts the lossy edit DTOs into partial LineupEntries
 // (display fields + an optional season window; rich scheduling metadata is carried forward
 // from the current entry by ApplyLineup's PreserveByKey, §7). Shared by the PATCH merge and
 // the programming/preview draft so a preview lowers the edit exactly as the save would.
-func lineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+func LineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
 	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {

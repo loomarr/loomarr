@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -231,7 +232,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 		body, _ := io.ReadAll(read.Body)
 		t.Fatalf("read after upload = %d, want 200: %s", read.StatusCode, body)
 	}
-	var got api.ChannelDTO
+	var got channelsapi.ChannelDTO
 	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}

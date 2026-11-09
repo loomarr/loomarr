@@ -41,7 +41,7 @@ One area of the [package map](../package-map.md#start-here).
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
-- **`provision`** · 31 importers
+- **`provision`** · 32 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`, `requester`
   Provisioning backstop (design §4, §7, §18).

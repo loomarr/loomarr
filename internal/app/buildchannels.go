@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -35,7 +36,7 @@ import (
 type channelBuild struct {
 	channelService         api.ChannelService
 	liveTV                 api.LiveTVService
-	tunerRescanner         api.TunerRescanner
+	tunerRescanner         channelsapi.TunerRescanner
 	tunarrConnector        api.TunarrConnector
 	backendController      *backendtransition.Controller
 	refreshBackendSettings func(context.Context) error
@@ -69,7 +70,7 @@ func buildChannels(
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
-	var tunerRescanner api.TunerRescanner
+	var tunerRescanner channelsapi.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector
 	var mediaSource *livetvpublish.MediaSourceConnector
 	var channelEngine *channels.Engine

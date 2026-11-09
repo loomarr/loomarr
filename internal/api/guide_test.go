@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -43,18 +44,18 @@ type guideBody struct {
 		PendingCount int    `json:"pendingCount"`
 		Decade       int    `json:"decade"`
 		Airings      []struct {
-			Kind          string        `json:"kind"`
-			Title         string        `json:"title"`
-			Series        string        `json:"series"`
-			StartMs       int64         `json:"startMs"`
-			StopMs        int64         `json:"stopMs"`
-			Nominal       bool          `json:"nominal"`
-			RuntimeMs     int64         `json:"runtimeMs"`
-			Provenance    string        `json:"provenance"`
-			ThumbURL      string        `json:"thumbUrl"`
-			ThumbImage    *api.ImageDTO `json:"thumbImage"`
-			LogoImage     *api.ImageDTO `json:"logoImage"`
-			BackdropImage *api.ImageDTO `json:"backdropImage"`
+			Kind          string             `json:"kind"`
+			Title         string             `json:"title"`
+			Series        string             `json:"series"`
+			StartMs       int64              `json:"startMs"`
+			StopMs        int64              `json:"stopMs"`
+			Nominal       bool               `json:"nominal"`
+			RuntimeMs     int64              `json:"runtimeMs"`
+			Provenance    string             `json:"provenance"`
+			ThumbURL      string             `json:"thumbUrl"`
+			ThumbImage    *httpcore.ImageDTO `json:"thumbImage"`
+			LogoImage     *httpcore.ImageDTO `json:"logoImage"`
+			BackdropImage *httpcore.ImageDTO `json:"backdropImage"`
 			Pod           *struct {
 				MatchLevel string `json:"matchLevel"`
 				TotalMs    int64  `json:"totalMs"`

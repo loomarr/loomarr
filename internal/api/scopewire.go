@@ -1,11 +1,6 @@
 package api
 
 import (
-	"net/http"
-
-	"github.com/danielgtaylor/huma/v2"
-
-	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
@@ -20,12 +15,4 @@ import (
 type scopePolicy struct {
 	schedule.ScopePolicy
 	Era *schedule.Range `json:"era,omitempty" writeOnly:"true" deprecated:"true" doc:"Shortcut for dates: the same year range on movieRelease, seriesPremiere and seriesAiring. Accepted on requests only and stored as dates; never returned. Sending both era and dates is rejected with 422."`
-}
-
-// ambiguousDatesError is the 422 for a policy request carrying both `era` and `dates`
-// (schedule.ErrEraAndDates): era is a shortcut for dates, so the request does not say
-// which one it means.
-func ambiguousDatesError(err error) huma.StatusError {
-	return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Era and dates both set",
-		"Send either an era or programming dates, not both. An era is a shortcut for the same year range on movie release, series premiere and episode airing.", err)
 }

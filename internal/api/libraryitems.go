@@ -136,14 +136,14 @@ type libraryItemDTO struct {
 	Year  int    `json:"year,omitempty" doc:"Absent when unknown"`
 	Files int    `json:"files" doc:"Present files; a series counts its episodes' files"`
 	// Ready is false while any file's details are unread.
-	Ready  bool      `json:"ready" doc:"False while some of its files' details aren't read yet"`
-	Poster *ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
+	Ready  bool               `json:"ready" doc:"False while some of its files' details aren't read yet"`
+	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 	// A title with either count above zero needs a look (#2151 decision 24).
 	Unplayable  int `json:"unplayable" doc:"Files that can't be played: their details couldn't be read"`
 	ExtraCopies int `json:"extraCopies" doc:"A movie's files beyond the one that plays"`
 }
 
-func libraryItemOf(it store.LibraryItemSummary, posters map[string]*ImageDTO) libraryItemDTO {
+func libraryItemOf(it store.LibraryItemSummary, posters map[string]*httpcore.ImageDTO) libraryItemDTO {
 	extra := 0
 	if it.Kind == "movie" && it.Files > 1 {
 		extra = it.Files - 1
@@ -157,8 +157,8 @@ func libraryItemOf(it store.LibraryItemSummary, posters map[string]*ImageDTO) li
 
 // libraryPosters renders the items' posters, by hash. An image whose bytes have not arrived is
 // left out, so the grid shows the title's name rather than a broken image.
-func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*ImageDTO {
-	out := map[string]*ImageDTO{}
+func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*httpcore.ImageDTO {
+	out := map[string]*httpcore.ImageDTO{}
 	if s.images == nil {
 		return out
 	}
@@ -176,7 +176,7 @@ func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSu
 
 // libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
 // arrived, so a surface draws without it rather than showing a broken image.
-func (s *Server) libraryImage(ctx context.Context, hash string) *ImageDTO {
+func (s *Server) libraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
 	if s.images == nil || hash == "" {
 		return nil
 	}
@@ -287,8 +287,8 @@ type libraryItemDetailDTO struct {
 	Item libraryItemDTO `json:"item"`
 	// LogoImage and BackdropImage are drawn in place of a typed title and behind the details
 	// (#2567). A logo keeps its transparency: its fallback src is WebP, never JPEG.
-	LogoImage     *ImageDTO             `json:"logoImage,omitempty" doc:"Its clear logo; absent when it has none, or while one is still being fetched"`
-	BackdropImage *ImageDTO             `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched"`
+	LogoImage     *httpcore.ImageDTO    `json:"logoImage,omitempty" doc:"Its clear logo; absent when it has none, or while one is still being fetched"`
+	BackdropImage *httpcore.ImageDTO    `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched"`
 	Overview      string                `json:"overview,omitempty"`
 	Genres        []string              `json:"genres"`
 	Rating        string                `json:"rating,omitempty" doc:"The certification, such as TV-14"`
@@ -325,7 +325,7 @@ func (s *Server) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*
 	return &getLibraryItemOutput{Body: body}, nil
 }
 
-func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) libraryItemDetailDTO {
+func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDTO) libraryItemDetailDTO {
 	out := libraryItemDetailDTO{
 		Item:     libraryItemOf(d.LibraryItemSummary, posters),
 		Overview: d.Facts.Overview, Genres: d.Facts.Genres, Rating: d.Facts.OfficialRating,

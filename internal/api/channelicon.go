@@ -35,10 +35,6 @@ import (
 // a hostile or accidental large upload out of the DB blob without a config knob.
 const maxIconBytes = 2 << 20
 
-// channelLogoWidth is the rendition width stored on the channel — the top of the icon ladder
-// (images.RoleIcon.Widths() = 92, 185, 500). See channelLogoURL for why this rung and why JPEG.
-const channelLogoWidth = 500
-
 // ownerKindChannel is the image owner kind for a channel icon (channel_images). A Ref is what keeps the GC
 // from collecting the icon as an orphan while a channel still points at it (§22).
 const ownerKindChannel = "channel"
@@ -149,7 +145,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	// A logo is channel identity, so this goes through the same edit rules as a PATCH of `logo`
 	// (the `building` tuner-list signal, the due-now deadline, the auto-reconcile that pushes the
 	// icon to Tunarr). Revision 0: link the icon to whatever the channel is now.
-	if err := s.linkUploadToChannel(ctx, in.ID, "icon", func(ch *channelstore.Channel) error {
+	if err := s.channelRoutes.LinkUpload(ctx, in.ID, "icon", func(ch *channelstore.Channel) error {
 		ch.Logo = logo
 		return nil
 	}); err != nil {
@@ -190,7 +186,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 // supported in BROWSERS, which is not the population fetching this. w500 is the top of the
 // icon ladder: small enough to be cheap, large enough not to look soft on a 4K guide grid.
 func (s *Server) channelLogoURL(hash string) string {
-	return s.images.URLFor(hash, channelLogoWidth, images.FormatJPEG)
+	return s.images.URLFor(hash, httpcore.ChannelLogoWidth, images.FormatJPEG)
 }
 
 // iconContentType returns the media type from a byte-signature sniff

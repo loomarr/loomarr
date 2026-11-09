@@ -311,8 +311,8 @@ type ClipDTO struct {
 	// writes files under FILLER_DIR and the adoption job converts them (§22, phase 6). Those
 	// columns are the seam between the two, deliberately not exposed here: a path relative to a
 	// cache directory is not something a client can do anything with now that the routes are gone.
-	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run, or when no frame was extracted"`
-	HoverImage *ImageDTO `json:"hoverImage,omitempty" doc:"Image-service record for the hover loop; absent until adopted, or when no animation was rendered"`
+	ThumbImage *httpcore.ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run, or when no frame was extracted"`
+	HoverImage *httpcore.ImageDTO `json:"hoverImage,omitempty" doc:"Image-service record for the hover loop; absent until adopted, or when no animation was rendered"`
 	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
 	//
 	// ⚠ PlaysCounted is what stops this being a lie. A Tunarr-backed channel airs its filler
@@ -475,7 +475,7 @@ func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool)
 // grid, and each tile has a still AND a hover loop, so a per-row lookup is two queries per tile:
 // a 200-clip page would be 400 round trips to render one screen. This is the same N+1 the channel
 // list already avoids, one surface over, and it matters more here because the page is bigger.
-func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip) func(string) *ImageDTO {
+func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip) func(string) *httpcore.ImageDTO {
 	if s.images == nil || len(clips) == 0 {
 		return nil
 	}
@@ -487,7 +487,7 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip
 	if len(byHash) == 0 {
 		return nil
 	}
-	return func(hash string) *ImageDTO {
+	return func(hash string) *httpcore.ImageDTO {
 		if hash == "" {
 			return nil
 		}
@@ -498,7 +498,7 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip
 // clipToDTO renders a clip for the wire. `img`, when non-nil, resolves an image hash to its
 // record — pre-resolved by the caller for the whole page, never looked up per clip (see
 // imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
-func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
+func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *httpcore.ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Role: string(c.Role),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
@@ -1294,7 +1294,7 @@ type getFillerSplitInput struct {
 // evidence and is never accepted back on the write path.
 type SplitReviewSegmentDTO struct {
 	split.Segment
-	Artwork *ImageDTO `json:"artwork,omitempty" doc:"Representative still from this exact proposed span; absent when extraction was unavailable"`
+	Artwork *httpcore.ImageDTO `json:"artwork,omitempty" doc:"Representative still from this exact proposed span; absent when extraction was unavailable"`
 }
 
 // SplitReviewProposalDTO keeps detector state private while giving the review surface complete

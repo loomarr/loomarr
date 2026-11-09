@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -70,10 +71,6 @@ type Server struct {
 	// Phase 10 is configured.
 	channels ChannelService
 	livetv   LiveTVService
-	// tunerRescanner refreshes the media server's channel list after a lifecycle write removes an
-	// internal channel without running reconcile (pause/detach). It is separate from setup wiring:
-	// one is a per-operation freshness poke, the other owns tuner registration.
-	tunerRescanner TunerRescanner
 	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
 	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
 	tunarrConnect TunarrConnector
@@ -94,9 +91,6 @@ type Server struct {
 	// libraryHooks backs /v1/library/hooks/* (#2151 decision 10); nil ⇒ those routes 409.
 	libraryHooks LibraryHookService
 	ideaLibrary  IdeaLibrary
-	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
-	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
-	icons IconService
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
@@ -126,6 +120,9 @@ type Server struct {
 	// now is an optional request-clock seam for projections whose membership is time-bounded.
 	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
 	now func() time.Time
+	// channelRoutes is the channel resource (api/channels). The icon and watermark uploads still
+	// live here and write through it, so every channel edit shares one set of rules. Set by Router.
+	channelRoutes *channelsapi.Handlers
 	// viewing is who is watching what, from the players' own playlist polls (#1662). Always set
 	// by Router; nil only on the schema-only exporter.
 	viewing *viewing.Tracker
@@ -158,7 +155,6 @@ type Server struct {
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
 	backendTransition BackendTransitioner
-	backendCheckpoint func(context.Context) (httpcore.BackendCheckpoint, error)
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
@@ -166,9 +162,6 @@ type Server struct {
 	// automatic approval path (§7/§8). The API owns authorization and presentation;
 	// the coordinator owns the indivisible domain transition.
 	approver ProposalApprover
-	// binder serves the explicit channel creation helpers. Proposal approval does
-	// not call it directly; doing so would split the local transaction again.
-	binder ChannelBinder
 	// liveSettings answers a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
 	// a route gates on the CURRENT config (a saved connection enables it with no
@@ -778,39 +771,6 @@ type SearchCandidate struct {
 	OfficialRating   string   `json:"officialRating,omitempty"`
 }
 
-// IconService backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate
-// channel-icon images drawn from the channel's OWN lineup — a Star Trek channel
-// offers its five series' posters, so the operator picks a themed icon without
-// leaving the channel page. Implemented by an adapter over the store + *tmdb.Client;
-// abstracted so the API package needn't import tmdb. nil ⇒ the route 501s (TMDB
-// unconfigured — matching every other TMDB-dependent feature's gate).
-type IconService interface {
-	// IconSuggestions returns candidate poster URLs for one channel, best-effort:
-	// a lookup failure on one lineup title is skipped, never fails the whole call
-	// (§icon — one bad title must not deny every other suggestion).
-	IconSuggestions(ctx context.Context, channelID string) ([]IconSuggestion, error)
-}
-
-// IconSuggestion is one candidate channel icon: a lineup title's display name paired with the
-// poster's URL on THIS instance's image service.
-//
-// ⚠ **`url` stopped being a TMDB URL in V52 phase 7.** It used to point at TMDB's CDN, which meant
-// the icon picker — one of the three surfaces an operator looks at most — loaded a dozen
-// third-party images in their browser. The poster is now adopted, fetched server-side, and served
-// from our own disk (§22). The field keeps its name and its job: it is what the channel's `logo`
-// is set to when the operator picks this suggestion.
-type IconSuggestion struct {
-	Title string `json:"title" example:"Star Trek: The Next Generation"`
-	URL   string `json:"url" example:"https://loomarr.example/v1/images/9f2b1c4e/w500.jpg" doc:"Image-service URL for the poster; becomes the channel's logo when picked"`
-	// ImageHash links the suggestion to its image record. Carried separately from `url` because
-	// the handler resolves it to `image` in one deduplicated pass — see imageDTOsByHash.
-	ImageHash string `json:"imageHash,omitempty" doc:"Content hash of the poster's image record"`
-	// Image is the full record the frontend's <Image> primitive needs: real width/height, the
-	// ThumbHash, and both srcsets. Absent only if the record disappeared between listing and
-	// enrichment, in which case the plain `url` still renders.
-	Image *ImageDTO `json:"image,omitempty" doc:"The poster's image record, for srcset and placeholder rendering"`
-}
-
 // ChannelService is the channel-management surface the API depends on (§9).
 // Implemented by channels.Engine + the store; abstracted so the API doesn't
 // couple to the reconcile internals.
@@ -859,12 +819,6 @@ type LiveTVService interface {
 	Wired(ctx context.Context) (bool, error)
 }
 
-// TunerRescanner is the operation-specific media-server freshness seam from §9. A guide refresh
-// cannot remove a channel from an already-registered M3U tuner; the tuner itself must be re-read.
-type TunerRescanner interface {
-	RescanTuner(ctx context.Context) error
-}
-
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
 // can stream + index the library — backs POST /v1/setup/tunarr-connect and the
 // tunarr_library setup check. Idempotent. Implemented by livetvpublish.MediaSourceConnector.
@@ -899,16 +853,6 @@ type ProposalApprover interface {
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
 	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
-}
-
-// ChannelBinder shares channel-number occupancy with manually typed channel numbers.
-// Approval uses ProposalApprover instead of reaching through this lower-level seam.
-type ChannelBinder interface {
-	// NumberInUse answers the SAME question the approve path's numbering asks — is this
-	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
-	// number gets the same answer the server gives itself when it picks one. Best-effort:
-	// an unreachable Tunarr reports not-in-use rather than blocking a create.
-	NumberInUse(ctx context.Context, number int) (bool, error)
 }
 
 // Provisioner owns first-run bootstrap + explicit import (§11). Together with
@@ -964,7 +908,7 @@ type Options struct {
 	Demo             DemoAccount                   // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
 	Channels         ChannelService                // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV           LiveTVService                 // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunerRescanner   TunerRescanner                // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunerRescanner   channelsapi.TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
 	TunarrConnect    TunarrConnector               // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
 	ArrDiscovery     ArrDiscovery                  // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
 	Suggest          SuggestService                // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
@@ -976,7 +920,7 @@ type Options struct {
 	LibraryRoots     LibraryRootService            // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
 	LibraryHooks     LibraryHookService            // /v1/library/hooks/* (#2151); nil ⇒ 409
 	IdeaLibrary      IdeaLibrary                   // /v1/discovery/ideas (#1665); nil ⇒ route 501
-	Icons            IconService                   // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	Icons            channelsapi.IconService       ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
@@ -1039,8 +983,8 @@ type Options struct {
 	Guide                    GuideReader                                               // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision                Provisioner                                               // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	ProposalOutlook          proposalsapi.ProposalOutlook
-	Approver                 ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
-	Binder                   ChannelBinder    // explicit channel intent/number helpers; not the approval gate
+	Approver                 ProposalApprover   // atomic proposal + titles + channel gate (§7); required for approval
+	Binder                   channelsapi.Binder // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver playoutapi.PlayoutObserver
 	// PlayoutCapability returns the already-published host encoder capability. It must not
