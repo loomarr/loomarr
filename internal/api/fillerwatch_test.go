@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt time.Time) {
@@ -312,7 +313,7 @@ func TestFillerWatch_CountsAreIncomingsTotals(t *testing.T) {
 	putClip(t, st, filler.Clip{Hash: "reel", Path: "reel.mp4", Name: "Reel", Held: true, IsComposite: true})
 	if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
 		ID: "split-1", ClipHash: "reel", CreatedAt: now,
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

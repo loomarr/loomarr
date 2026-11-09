@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -38,7 +39,7 @@ func TestStructureAssessmentWindowPreparerRendersCompleteSetAndReusesVerifiedMed
 		window := plan.Windows[ordinal]
 		if prepared.Window != window || prepared.Media != first.Authority.Windows[ordinal] ||
 			prepared.Media.Media.ProfileSHA256 != cut.SoftwareProfile().SHA256 ||
-			!filler.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
+			!split.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
 			t.Fatalf("prepared window %d = %+v", ordinal, prepared)
 		}
 		want := cut.PartArguments(cut.SoftwareProfile(), calls.snapshots[ordinal], window.MediaStartMS, window.MediaEndMS-window.MediaStartMS, calls.outputs[ordinal])
@@ -151,15 +152,15 @@ func TestStructureAssessmentWindowPreparerRejectsIncompleteDecode(t *testing.T) 
 func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*testing.T, *filler.StructureAssessmentSource)
+		mutate func(*testing.T, *split.AssessmentSource)
 	}{
-		{name: "bytes", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+		{name: "bytes", mutate: func(t *testing.T, input *split.AssessmentSource) {
 			t.Helper()
 			if err := os.WriteFile(input.FullPath, []byte("changed source"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "symlink", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+		{name: "symlink", mutate: func(t *testing.T, input *split.AssessmentSource) {
 			t.Helper()
 			target := filepath.Join(filepath.Dir(input.FullPath), "target.mp4")
 			if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
@@ -172,7 +173,7 @@ func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t
 				t.Fatal(err)
 			}
 		}},
-		{name: "path", mutate: func(_ *testing.T, input *filler.StructureAssessmentSource) { input.FullPath += ".other" }},
+		{name: "path", mutate: func(_ *testing.T, input *split.AssessmentSource) { input.FullPath += ".other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -227,7 +228,7 @@ type structureAssessmentWindowCalls struct {
 	outputs          []string
 }
 
-func structureAssessmentWindowSource(t *testing.T) (string, filler.StructureAssessmentSource, window.Plan) {
+func structureAssessmentWindowSource(t *testing.T) (string, split.AssessmentSource, window.Plan) {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "incoming", "compilation.mp4")
@@ -245,8 +246,8 @@ func structureAssessmentWindowSource(t *testing.T) (string, filler.StructureAsse
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := filler.StructureAssessmentSource{Source: filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
+	input := split.AssessmentSource{Source: split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
 		Path: "incoming/compilation.mp4", DurationMs: 300_000,
 	}, FullPath: path}
 	plan, err := window.NewPlan(structure.Source{SHA256: digest, Bytes: size, DurationMS: 300_000}, cut.SoftwareProfile())

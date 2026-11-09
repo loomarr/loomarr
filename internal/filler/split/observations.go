@@ -1,4 +1,4 @@
-package filler
+package split
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func normalizeStructureObservations(in []StructureObservation, durationMs int64) ([]StructureObservation, error) {
+func normalizeStructureObservations(in []Observation, durationMs int64) ([]Observation, error) {
 	out := slices.Clone(in)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].StartMs != out[j].StartMs {
@@ -26,7 +26,7 @@ func normalizeStructureObservations(in []StructureObservation, durationMs int64)
 			o.RoleEvidence = &roleEvidence
 		}
 		o.ID, o.Producer = strings.TrimSpace(o.ID), strings.TrimSpace(o.Producer)
-		if o.ID == "" || o.Producer == "" || !isContentHash(o.EvidenceSHA256) || !validStructureObservationKind(o.Kind) || !validStructureObservationEffect(o.Effect) || o.StartMs < 0 || o.EndMs < o.StartMs || o.EndMs > durationMs {
+		if o.ID == "" || o.Producer == "" || !IsContentHash(o.EvidenceSHA256) || !validStructureObservationKind(o.Kind) || !validStructureObservationEffect(o.Effect) || o.StartMs < 0 || o.EndMs < o.StartMs || o.EndMs > durationMs {
 			return nil, fmt.Errorf("source structure: invalid observation %q", o.ID)
 		}
 		if o.Kind == ObservationSceneChange || o.Kind == ObservationStandardDuration {
@@ -35,7 +35,7 @@ func normalizeStructureObservations(in []StructureObservation, durationMs int64)
 			}
 		}
 		if o.Kind == ObservationSegmentRole {
-			if o.Effect != ObservationContextOnly || o.RoleEvidence == nil || ValidateStructureRoleEvidence(*o.RoleEvidence) != nil || o.StartMs != o.RoleEvidence.StartMs || o.EndMs != o.RoleEvidence.EndMs || o.EvidenceSHA256 != o.RoleEvidence.SHA256 {
+			if o.Effect != ObservationContextOnly || o.RoleEvidence == nil || ValidateRoleEvidence(*o.RoleEvidence) != nil || o.StartMs != o.RoleEvidence.StartMs || o.EndMs != o.RoleEvidence.EndMs || o.EvidenceSHA256 != o.RoleEvidence.SHA256 {
 				return nil, fmt.Errorf("source structure: segment role observation %q is invalid", o.ID)
 			}
 		} else if o.RoleEvidence != nil {
@@ -49,8 +49,8 @@ func normalizeStructureObservations(in []StructureObservation, durationMs int64)
 	return out, nil
 }
 
-func fuseStructureBoundaries(observations []StructureObservation, durationMs int64) []StructureBoundary {
-	var candidates []StructureBoundary
+func fuseStructureBoundaries(observations []Observation, durationMs int64) []Boundary {
+	var candidates []Boundary
 	for _, o := range observations {
 		if o.Effect != ObservationProposesBoundary && o.Effect != ObservationSupportsBoundary {
 			continue
@@ -66,7 +66,7 @@ func fuseStructureBoundaries(observations []StructureObservation, durationMs int
 			}
 		}
 		if matched < 0 {
-			candidates = append(candidates, StructureBoundary{WindowStartMs: o.StartMs, WindowEndMs: o.EndMs})
+			candidates = append(candidates, Boundary{WindowStartMs: o.StartMs, WindowEndMs: o.EndMs})
 			matched = len(candidates) - 1
 		} else {
 			candidates[matched].WindowStartMs = max(candidates[matched].WindowStartMs, o.StartMs)
@@ -74,7 +74,7 @@ func fuseStructureBoundaries(observations []StructureObservation, durationMs int
 		}
 		candidates[matched].ObservationIDs = append(candidates[matched].ObservationIDs, o.ID)
 	}
-	byID := make(map[string]StructureObservation, len(observations))
+	byID := make(map[string]Observation, len(observations))
 	for _, o := range observations {
 		byID[o.ID] = o
 	}
@@ -119,7 +119,7 @@ func windowsOverlap(aStart, aEnd, bStart, bEnd int64) bool {
 	return aStart <= bEnd && bStart <= aEnd
 }
 
-func validStructureObservationKind(kind StructureObservationKind) bool {
+func validStructureObservationKind(kind ObservationKind) bool {
 	switch kind {
 	case ObservationChapterEdge, ObservationBlackInterval, ObservationSilenceInterval, ObservationTranscriptChange, ObservationOCRLogoChange, ObservationAudioContinuity, ObservationVisualContinuity, ObservationSceneChange, ObservationStandardDuration, ObservationSegmentRole, ObservationCompleteTimelineDecision:
 		return true
@@ -128,7 +128,7 @@ func validStructureObservationKind(kind StructureObservationKind) bool {
 	}
 }
 
-func validateStructureRoleObservationSources(observations []StructureObservation, source SplitSourceAsset) error {
+func validateStructureRoleObservationSources(observations []Observation, source SourceAsset) error {
 	for _, observation := range observations {
 		if observation.RoleEvidence != nil && observation.RoleEvidence.Source != source {
 			return fmt.Errorf("source structure: role observation %q binds a different source", observation.ID)
@@ -137,6 +137,6 @@ func validateStructureRoleObservationSources(observations []StructureObservation
 	return nil
 }
 
-func validStructureObservationEffect(effect StructureObservationEffect) bool {
+func validStructureObservationEffect(effect ObservationEffect) bool {
 	return effect == ObservationProposesBoundary || effect == ObservationSupportsBoundary || effect == ObservationContradictsBoundary || effect == ObservationContextOnly
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -100,7 +101,7 @@ func cloneAirworthinessDecision(decision AirworthinessDecision) AirworthinessDec
 
 func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 	if evidence.SchemaVersion != SegmentScreeningSchemaVersion || evidence.ContractVersion != SegmentScreeningContractVersion ||
-		!filler.IsContentHash(evidence.SubjectSHA256) || evidence.AssessedAt.IsZero() ||
+		!split.IsContentHash(evidence.SubjectSHA256) || evidence.AssessedAt.IsZero() ||
 		ValidateAirworthinessDecision(evidence.Airworthiness) != nil || evidence.Airworthiness.SubjectSHA256 != evidence.SubjectSHA256 {
 		return fmt.Errorf("segment screening identity or interval is invalid")
 	}
@@ -128,7 +129,7 @@ func ValidateSegmentScreeningResult(result SegmentScreeningResult) error {
 	if result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold {
 		return fmt.Errorf("segment screening outcome is invalid")
 	}
-	if !filler.IsContentHash(result.AuthoritySHA256) || !ValidScreeningReasonCode(result.ReasonCode) {
+	if !split.IsContentHash(result.AuthoritySHA256) || !ValidScreeningReasonCode(result.ReasonCode) {
 		return fmt.Errorf("segment screening authority is invalid")
 	}
 	return nil

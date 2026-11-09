@@ -6,13 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // preparedSplitCut is one fully staged child plus its final content-addressed location.
 // Split confirmation owns domain enrollment; splitPublication owns only filesystem visibility.
 type preparedSplitCut struct {
-	segment  SplitSegment
+	segment  split.Segment
 	kind     Role
 	hash     string
 	path     string

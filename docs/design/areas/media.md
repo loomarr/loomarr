@@ -31,5 +31,5 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 - **`media/proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
-- **`media/tools`** · 7 importers · → `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics`
+- **`media/tools`** · 8 importers · → `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.

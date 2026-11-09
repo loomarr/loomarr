@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -63,12 +64,12 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	}
 	clip := StoreClip{Clip: Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
 
-	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, SplitSourceAsset{})
+	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, split.SourceAsset{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantPath := filepath.Join(root, filepath.FromSlash(evidence.Asset.Path))
-	if bound.Role != SplitSourceEvidence || bound.SHA256 != evidence.Asset.SHA256 ||
+	if bound.Role != split.SourceEvidence || bound.SHA256 != evidence.Asset.SHA256 ||
 		bound.ClipHash != evidence.Asset.ClipHash || bound.DurationMs != evidence.DurationMs || gotPath != wantPath {
 		t.Fatalf("resolved source = (%+v, %q), want evidence %+v at %q", bound, gotPath, evidence, wantPath)
 	}

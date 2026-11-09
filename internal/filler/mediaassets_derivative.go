@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -75,7 +76,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 		return MediaDerivativeLineage{}, err
 	}
 	sourcePath := filepath.Join(request.ClipDir, filepath.FromSlash(request.Source.Path))
-	stageDir := filepath.Join(request.ClipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(request.ClipDir, split.MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: create staging directory: %w", err)
 	}
@@ -129,7 +130,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	if err != nil {
 		return MediaDerivativeLineage{}, err
 	}
-	rel := filepath.ToSlash(filepath.Join(MediaAssetRootName, mediaEvidenceDirName,
+	rel := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, split.MediaEvidenceDirName,
 		request.Source.SHA256[:2], request.Source.SHA256[2:4], recipeDigest[:16], digest+".mp4"))
 	target := filepath.Join(request.ClipDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -144,7 +145,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 		Tool: request.Tool, DurationMs: output.DurationMs, Quality: quality, QC: qc,
 		InputProbe: request.Input, OutputProbe: output,
 	}
-	if err := validateMediaDerivative(lineage, MediaAssetEvidence, mediaEvidenceDirName, request.Source.SHA256); err != nil {
+	if err := validateMediaDerivative(lineage, MediaAssetEvidence, split.MediaEvidenceDirName, request.Source.SHA256); err != nil {
 		return MediaDerivativeLineage{}, err
 	}
 	return lineage, nil

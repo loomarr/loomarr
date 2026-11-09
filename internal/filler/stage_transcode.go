@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -733,7 +734,7 @@ func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezza
 
 func validConditioningPublication(p *ConditioningPublication, sourceHash, targetHash string) bool {
 	return p != nil && p.State == "pending" && len(p.Owner) == 32 &&
-		isContentHash(p.SourceHash) && isContentHash(p.TargetHash) &&
+		split.IsContentHash(p.SourceHash) && split.IsContentHash(p.TargetHash) &&
 		p.SourceHash == sourceHash && p.TargetHash == targetHash
 }
 
@@ -811,7 +812,7 @@ func isConditioningCancellation(err error) bool {
 }
 
 func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash string) error {
-	if !isContentHash(beforeHash) || !isContentHash(afterHash) ||
+	if !split.IsContentHash(beforeHash) || !split.IsContentHash(afterHash) ||
 		e.BeforeRewriteHash != beforeHash || e.AfterRewriteHash != afterHash {
 		return fmt.Errorf("persisted conditioning artifact identities are invalid")
 	}
@@ -831,15 +832,15 @@ func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash stri
 }
 
 func validConditioningLineage(lineage *ConditioningLineage, childParentHash string) bool {
-	if lineage == nil || !isContentHash(lineage.ChildHash) || !isContentHash(lineage.ParentHash) ||
+	if lineage == nil || !split.IsContentHash(lineage.ChildHash) || !split.IsContentHash(lineage.ParentHash) ||
 		lineage.ParentHash != childParentHash || lineage.IntendedStartMs < 0 || lineage.IntendedEndMs <= lineage.IntendedStartMs {
 		return false
 	}
 	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
-	role := SplitSourceRole(lineage.ParentAssetRole)
+	role := split.SourceRole(lineage.ParentAssetRole)
 	decisionBound := lineage.StructureDecisionSHA256 == "" && lineage.StructureRole == "" ||
-		isContentHash(lineage.StructureDecisionSHA256) && certifiedFillerRole(lineage.StructureRole)
-	return decisionBound && (!assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256)))
+		split.IsContentHash(lineage.StructureDecisionSHA256) && split.CertifiedFillerRole(lineage.StructureRole)
+	return decisionBound && (!assetBound || ((role == split.SourceEvidence || role == split.SourceLegacyPlayback) && split.IsContentHash(lineage.ParentAssetSHA256)))
 }
 
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {

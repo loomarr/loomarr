@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -116,7 +117,7 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
 		t.Fatalf("buildMediaDerivative error = %v, want estimate ceiling", err)
 	}
-	evidenceRoot := filepath.Join(root, MediaAssetRootName, mediaEvidenceDirName)
+	evidenceRoot := filepath.Join(root, split.MediaAssetRootName, split.MediaEvidenceDirName)
 	if _, err := os.Stat(evidenceRoot); !os.IsNotExist(err) {
 		t.Fatalf("oversized evidence was published: %v", err)
 	}

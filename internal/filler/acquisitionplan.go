@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // PlanAcquisitionFor applies hard constraints first, then selects a diverse stable prefix,
@@ -328,7 +329,7 @@ func normalizeCandidate(c AcquisitionCandidate) AcquisitionCandidate {
 	c.Geography = c.Geography.Normalize()
 	c.ObservedRoles = uniqueRoles(c.ObservedRoles)
 	c.Audiences = uniqueAudiences(c.Audiences)
-	c.Taxonomy = uniqueStrings(c.Taxonomy)
+	c.Taxonomy = split.UniqueStrings(c.Taxonomy)
 	return c
 }
 

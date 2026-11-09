@@ -75,11 +75,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | --- |
 | `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
-| `filler` | `filler/clips`, `filler/language`, `filler/pod`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
+| `filler` | `filler/clips`, `filler/language`, `filler/pod`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
 | `filler/clips` | — |
 | `filler/language` | `media/bgexec`, `media/tools` |
 | `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |
 | `filler/source` | — |
+| `filler/split` | `filler/clips`, `filler/structure`, `media/tools` |
 | `filler/station` | — |
 | `filler/structure` | — |
 | `filler/structure/window` | `filler/structure` |

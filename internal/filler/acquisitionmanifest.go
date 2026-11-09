@@ -3,9 +3,10 @@ package filler
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // AcquisitionArtifactState is the durable publication lifecycle of one exact downloaded file.
@@ -65,13 +66,13 @@ func (a AcquisitionArtifact) Validate() error {
 	if strings.TrimSpace(a.Provider) == "" || strings.TrimSpace(a.SourceURL) == "" {
 		return errors.New("acquisition artifact requires provider and source URL")
 	}
-	if !manifestRelativePath(a.MediaPath) {
+	if !split.IsRelativePath(a.MediaPath) {
 		return fmt.Errorf("acquisition artifact media path %q is not watch-relative", a.MediaPath)
 	}
-	if a.StagingPath != "" && !manifestRelativePath(a.StagingPath) {
+	if a.StagingPath != "" && !split.IsRelativePath(a.StagingPath) {
 		return fmt.Errorf("acquisition artifact staging path %q is not watch-relative", a.StagingPath)
 	}
-	if a.SidecarPath != "" && !manifestRelativePath(a.SidecarPath) {
+	if a.SidecarPath != "" && !split.IsRelativePath(a.SidecarPath) {
 		return fmt.Errorf("acquisition artifact sidecar path %q is not watch-relative", a.SidecarPath)
 	}
 	if len(a.MediaSHA256) != 64 || strings.Trim(a.MediaSHA256, "0123456789abcdef") != "" {
@@ -112,14 +113,6 @@ func ValidateProviderArchiveEntry(entry string) error {
 		return errors.New("provider archive entry must contain one extractor and one identity")
 	}
 	return nil
-}
-
-func manifestRelativePath(path string) bool {
-	if path == "" || filepath.IsAbs(path) {
-		return false
-	}
-	clean := filepath.Clean(path)
-	return clean != "." && clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 // Repair reasons the runtime writes and later has to recognise. They are compared by value, so

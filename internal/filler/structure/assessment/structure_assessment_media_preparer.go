@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -50,7 +51,7 @@ func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath
 	}, nil
 }
 
-func validateStructureAssessmentSourceSnapshot(path string, source filler.SplitSourceAsset) error {
+func validateStructureAssessmentSourceSnapshot(path string, source split.SourceAsset) error {
 	digest, size, err := filler.FileSHA256(path)
 	if err != nil || digest != source.SHA256 || size != source.Bytes {
 		return errors.New("structure assessment source bytes do not match authority")

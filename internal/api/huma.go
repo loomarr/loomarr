@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -490,7 +491,7 @@ type FillerService interface {
 	// path by which proposal segments become catalog clips. Synchronous — stream
 	// copy cuts seek rather than decode, so this is seconds, not the detection's
 	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
-	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
+	ConfirmSplit(ctx context.Context, proposalID string, segments []split.Segment) error
 }
 
 // FillerResearchService owns the operator-facing status and pre-save provider check for optional

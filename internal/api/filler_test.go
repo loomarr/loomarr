@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -302,7 +303,7 @@ func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	return "split-job-1", nil
 }
 
-func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []filler.SplitSegment) error {
+func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []split.Segment) error {
 	if f.confirmNotFound {
 		return store.ErrNotFound
 	}
@@ -1386,7 +1387,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	srv, st, _ := newFillerServerWithImages(t, imageService)
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
-		Segments: []filler.SplitSegment{
+		Segments: []split.Segment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
@@ -1422,7 +1423,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
-		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+		Detection: &split.DetectionProgress{ScannedThroughMs: 600_000},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1449,7 +1450,7 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1489,7 +1490,7 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

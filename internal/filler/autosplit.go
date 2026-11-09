@@ -3,6 +3,8 @@ package filler
 import (
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // Auto-confirm for split proposals (§10 V43) — the gate behind
@@ -107,7 +109,7 @@ func minConfidence(pol *AutoSplitPolicy) int {
 // refused segment is refused at any score — that ordering is what keeps `boundaryScore` from
 // laundering a refusal into a number, which is the objection recorded above. Confidence can only
 // hold back a segment that already passed everything.
-func segmentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
+func segmentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
 	if s.Unsplittable {
 		return RejectUnsplittable
 	}
@@ -127,7 +129,7 @@ func segmentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDu
 
 // segmentContentVerdict owns refusals that remain relevant after an independently certified
 // complete-timeline decision. It deliberately knows nothing about detector success or confidence.
-func segmentContentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
+func segmentContentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
 	if s.DupOf != "" {
 		return RejectDuplicate
 	}
@@ -204,12 +206,12 @@ func AutoConfirmable(p SplitProposal, pol *AutoSplitPolicy, minClipDuration time
 // SplitPartition is what the gate decided, segment by segment.
 type SplitPartition struct {
 	// Confirm may be cut into held child work items unattended.
-	Confirm []SplitSegment
+	Confirm []split.Segment
 	// Hold stays in the proposal, each carrying the reason it was kept back.
-	Hold []SplitSegment
+	Hold []split.Segment
 	// Discard is complete-plan material intentionally omitted with retained structure authority.
 	// It is neither publishable nor an unresolved hold.
-	Discard []SplitSegment
+	Discard []split.Segment
 	// Reject is set only for a WHOLE-proposal refusal (auto-split switched off, nothing detected).
 	// A per-segment refusal is on the segment, not here.
 	Reject AutoSplitReject
