@@ -19,6 +19,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ErrJobChannelGone reports a refine or re-curation job whose channel was removed
@@ -536,15 +537,27 @@ func Select(s *Store) string {
 }
 
 // writeLineup replaces a channel's lineup rows with lineup, in order. It runs on the transaction
-// that wrote the channel row, so a reader never sees a channel with half a lineup.
+// that wrote the channel row, so a reader never sees a channel with half a lineup. A title no
+// titles row records yet (one added by hand) gets a pending row first, because title_key is a
+// foreign key (storedb.PendingTitle).
 func (s *Store) writeLineup(ctx context.Context, exec DB, channelID string, lineup []schedule.LineupEntry) error {
 	if _, err := exec.ExecContext(ctx, s.h.Rebind(`DELETE FROM channel_lineup WHERE channel_id = ?`), channelID); err != nil {
 		return fmt.Errorf("clear lineup %s: %w", channelID, err)
 	}
+	now := time.Now().Unix()
 	for i, e := range lineup {
 		entry, err := lineupEntryDocument(e)
 		if err != nil {
 			return fmt.Errorf("marshal lineup %s entry %d: %w", channelID, i, err)
+		}
+		title, err := json.Marshal(pendingTitle(e))
+		if err != nil {
+			return fmt.Errorf("marshal lineup %s entry %d title: %w", channelID, i, err)
+		}
+		if _, err := exec.ExecContext(ctx, s.h.Rebind(`INSERT INTO titles (key, title_json, state, updated_at)
+			VALUES (?, ?, ?, ?) ON CONFLICT (key) DO NOTHING`),
+			string(e.Key), string(title), storedb.PendingTitle, now); err != nil {
+			return fmt.Errorf("write lineup %s entry %d title: %w", channelID, i, err)
 		}
 		if _, err := exec.ExecContext(ctx, s.h.Rebind(`INSERT INTO channel_lineup (channel_id, position, title_key, entry)
 			VALUES (?, ?, ?, ?)`), channelID, i, string(e.Key), entry); err != nil {
@@ -552,6 +565,21 @@ func (s *Store) writeLineup(ctx context.Context, exec DB, channelID string, line
 		}
 	}
 	return nil
+}
+
+// pendingTitle is what a lineup entry says of its title: the identity its key spells, its name
+// and year. Whatever asks for the title later writes the full record over it.
+func pendingTitle(e schedule.LineupEntry) provision.Title {
+	t := provision.Title{Name: e.Title, Year: e.Year}
+	if mt, provider, id, ok := provision.ParseKey(e.Key); ok {
+		t.MediaType = mt
+		if provider == "tvdb" {
+			t.TVDBID = id
+		} else {
+			t.TMDBID = id
+		}
+	}
+	return t
 }
 
 // lineupEntryDocument is an entry's attributes without its title key, which is its row's column.

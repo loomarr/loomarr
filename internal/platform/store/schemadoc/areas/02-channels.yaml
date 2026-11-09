@@ -78,8 +78,8 @@ tables:
       channel_id: The channel (a channels id).
       position: Where the title sits in the lineup, from 0.
       title_key: >
-        The title, by its key (such as `movie:tmdb:603`). A title added by hand may have no titles
-        row yet, until something asks for it.
+        The title (a titles key, such as `movie:tmdb:603`). A title added by hand that nothing has
+        asked for yet has a pending titles row.
       entry: >
         The rest of the entry: its display name, known runtime, any season range or episode
         selection, the rating, genres and year the channel rules filter on, and its media-server

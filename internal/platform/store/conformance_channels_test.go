@@ -333,6 +333,25 @@ func testChannelLineupRows(t *testing.T, newStore NewStoreFunc) {
 
 	saved.Lineup = ch.Lineup
 	saved = mustSaveChannel(t, s, saved)
+
+	// Every lineup title has a titles row (title_key is a foreign key); one nothing has asked for
+	// is pending, which reads as no record and counts in no state.
+	if _, err := s.GetTitle(ctx, ch.Lineup[0].Key); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a pending lineup title read as %v, want ErrNotFound", err)
+	}
+	if counts, err := s.CountTitlesByState(ctx); err != nil || len(counts) != 0 {
+		t.Errorf("titles by state = %v (err %v); pending titles must not count", counts, err)
+	}
+	// A real write of the title replaces its pending row.
+	asked := provision.Record{Key: ch.Lineup[1].Key, State: provision.Wanted,
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000011, Name: "A"}}
+	if err := s.UpsertTitle(ctx, asked); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetTitle(ctx, asked.Key); err != nil || got.State != provision.Wanted {
+		t.Errorf("after a request the title reads (%+v, %v), want wanted", got, err)
+	}
+
 	if err := s.DeleteChannel(ctx, saved.ID, saved.Revision); err != nil {
 		t.Fatal(err)
 	}
@@ -343,6 +362,18 @@ func testChannelLineupRows(t *testing.T, newStore NewStoreFunc) {
 	var left int
 	if err := sqlSt.db.QueryRowContext(ctx, `SELECT count(*) FROM channel_lineup`).Scan(&left); err != nil || left != 0 {
 		t.Errorf("%d lineup rows outlived their channel (err %v)", left, err)
+	}
+	// Once no lineup names them, the purge takes the pending rows, and only those.
+	if _, err := s.PurgeUnusedTitles(ctx, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var pending, kept int
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT
+		COALESCE(SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END), 0), COUNT(*) FROM titles`).Scan(&pending, &kept); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 0 || kept != 1 {
+		t.Errorf("after the purge %d pending of %d titles remain; want 0 of 1 (the requested one)", pending, kept)
 	}
 }
 

@@ -618,12 +618,20 @@ func TestMigrateReportsProgress(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = dst.Close() })
 
+	// The seed's titles, plus a pending row for each lineup title nothing records (#2793).
+	var titles int64
+	if err := src.(*sqlStore).db.QueryRowContext(ctx, `SELECT count(*) FROM titles`).Scan(&titles); err != nil {
+		t.Fatal(err)
+	}
+	if titles < 7 {
+		t.Fatalf("seed holds %d titles, want at least 7", titles)
+	}
 	var updates int
 	var sawTitles bool
 	if _, err := MigrateData(ctx, src, dst, func(p MigrationProgress) {
 		updates++
 		for _, st := range p.Tables {
-			if st.Table == "titles" && st.Copied == 7 {
+			if st.Table == "titles" && st.Copied == titles {
 				sawTitles = true
 			}
 		}
@@ -634,7 +642,7 @@ func TestMigrateReportsProgress(t *testing.T) {
 		t.Errorf("progress fired %d times, want per-table updates", updates)
 	}
 	if !sawTitles {
-		t.Error("never saw titles reach its full count of 7")
+		t.Errorf("never saw titles reach its full count of %d", titles)
 	}
 }
 

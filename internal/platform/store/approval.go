@@ -196,13 +196,20 @@ func (s *sqlStore) commitProposalApproval(
 	enqueued := 0
 	for _, item := range encoded {
 		r := item.record
+		// A pending row (a title a lineup names that nothing has asked for) is no record, so the
+		// approval writes over it; a real record is left as it is.
 		result, err := tx.ExecContext(ctx, s.ph(
 			`INSERT INTO titles
 			   (key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(key) DO NOTHING`),
+			 ON CONFLICT(key) DO UPDATE SET
+			   title_json=excluded.title_json, state=excluded.state, library_id=excluded.library_id,
+			   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
+			   last_error=excluded.last_error, updated_at=excluded.updated_at
+			 WHERE titles.state = ?`),
 			string(r.Key), item.json, string(r.State), r.LibraryID,
-			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt))
+			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt),
+			storedb.PendingTitle)
 		if err != nil {
 			return 0, fmt.Errorf("approve proposal %s: insert title %s: %w", p.ID, r.Key, err)
 		}
@@ -294,7 +301,8 @@ func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, us
 }
 
 func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
+	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ? AND state <> ?`),
+		string(key), storedb.PendingTitle))
 }
 
 // isConstraintViolation is storedb.IsConstraintViolation under the name this package's 14 call
