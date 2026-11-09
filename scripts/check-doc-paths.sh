@@ -7,7 +7,9 @@
 # span that starts with a top-level repo directory, and fails for one that names nothing.
 #
 # A span resolves when its path exists from the repo root, from the doc's own directory, or from
-# docs/ (docs/design.md writes `design/overview.md` for docs/design/overview.md). Spans that are
+# docs/ (docs/design.md writes `design/overview.md` for docs/design/overview.md), or when it names
+# a Go package directory relative to internal/ (`api/people`, as the generated area docs write
+# it). Spans that are
 # patterns (`*`, `{}`, `<...>`, `$VAR`), gitignored build output (`storybook-static`) and Go
 # symbols (`internal/platform/metrics.Recorder`, checked as the package directory) are not paths to
 # check. A `:12` or `:12-34` line suffix and a `#fragment` are stripped first.
@@ -40,6 +42,10 @@ allowed() {
 resolves() {
   local doc_dir="$1" path="$2"
   [[ -e "$path" || -e "$doc_dir/$path" || -e "docs/$path" ]] && return 0
+  # A Go package named relative to internal/, as the generated area docs and package map write it
+  # (`api/people` for internal/api/people). It is tried only after the repo-root lookup misses,
+  # because a few such names, `api` and `app`, also start with a top-level directory.
+  [[ -d "internal/$path" ]] && return 0
   # Build output. The trailing-slash form matches directory-only patterns (`storybook-static/`).
   git check-ignore -q "$path" 2>/dev/null && return 0
   git check-ignore -q "$path/" 2>/dev/null && return 0
