@@ -7,6 +7,7 @@ package cliplibrary
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -113,6 +114,14 @@ type ScanningSource interface {
 }
 
 var _ ScanningSource = DirSource{}
+
+// ErrSourceDisabled reports that the drop-folder is switched off on the Sources tab (§10 V35).
+//
+// ⚠ A distinct error rather than a silent zero result, and that is the difference between the
+// switch working and the switch lying. A no-op success makes "Fetch now" a button that appears
+// to run and changes nothing, which reads as a broken sync rather than a disabled source; the
+// caller turns this into an answer that names the switch to flip.
+var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched off")
 
 // StoreClip is the persistence view the sync round-trips (mirrors store.Clip;
 // declared here so filler doesn't import store — the adapter in main bridges them).

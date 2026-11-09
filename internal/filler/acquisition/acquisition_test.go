@@ -1,10 +1,10 @@
-package filler_test
+package acquisition_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -21,10 +21,10 @@ func TestAcquisitionOutcomeFromUsesPipelineLifecycle(t *testing.T) {
 		{Status: pipelinestate.StatusFailed, Disposition: pipelinestate.DispositionRejected},
 		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionDismissed},
 	}
-	want := filler.AcquisitionOutcome{
+	want := acquisition.Outcome{
 		Enrolled: 8, Preparing: 3, NeedsDecision: 1, Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1,
 	}
-	if got := filler.AcquisitionOutcomeFrom(rows, now); got != want {
+	if got := acquisition.OutcomeFrom(rows, now); got != want {
 		t.Fatalf("AcquisitionOutcomeFrom() = %+v, want %+v", got, want)
 	}
 }

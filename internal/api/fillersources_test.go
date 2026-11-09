@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -162,7 +163,7 @@ func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 
 func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.sourceResolutionErr = filler.ErrInvalidSourceReference
+	ff.sourceResolutionErr = acquisition.ErrInvalidSourceReference
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources", adminToken,
 		`{"kind":"archive","uri":"one_video"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -220,7 +221,7 @@ func TestFillerSourceSuggestionsStopAtDisabledProvider(t *testing.T) {
 
 func TestYouTubeSourceSearchFailureKeepsManualInputActionable(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.sourceSuggestionErr = filler.ErrSourceProvider
+	ff.sourceSuggestionErr = acquisition.ErrSourceProvider
 	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=retro+ads", adminToken, "")
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("GET YouTube suggestions → %d, want 502", resp.StatusCode)
@@ -292,7 +293,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	if err != nil || !claimed {
 		t.Fatalf("claim = %v, %v", claimed, err)
 	}
-	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
+	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, acquisition.SourceCheckCompletion{
 		CheckedAt: checkedAt,
 		Checkpoint: source.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
@@ -628,7 +629,7 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrSourceCheckInProgress
+	ff.fetchErr = acquisition.ErrSourceCheckInProgress
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -641,7 +642,7 @@ func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
+	ff.fetchResult = acquisition.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -661,7 +662,7 @@ func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T
 
 func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrSourceDisabled
+	ff.fetchErr = cliplibrary.ErrSourceDisabled
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -674,7 +675,7 @@ func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
 
 func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrFetchSourceNotFound
+	ff.fetchErr = acquisition.ErrFetchSourceNotFound
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=removed", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {

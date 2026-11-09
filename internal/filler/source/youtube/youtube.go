@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
@@ -131,7 +131,7 @@ func (*Provider) EmbedURL(itemURL string) string {
 }
 
 // WithFinder gives the provider the means to suggest channels and verify an address. Without one,
-// as on an installation without yt-dlp, both fail with filler.ErrSourceProvider.
+// as on an installation without yt-dlp, both fail with acquisition.ErrSourceProvider.
 func (p *Provider) WithFinder(finder source.Finder) *Provider {
 	p.finder = finder
 	return p
@@ -140,7 +140,7 @@ func (p *Provider) WithFinder(finder source.Finder) *Provider {
 // Suggest implements sourceprovider.Finder.
 func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]source.Suggestion, error) {
 	if p.finder == nil {
-		return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		return nil, fmt.Errorf("%w: yt-dlp is unavailable", acquisition.ErrSourceProvider)
 	}
 	return p.finder.Suggest(ctx, query, limit)
 }
@@ -148,7 +148,7 @@ func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]sour
 // Resolve implements sourceprovider.Finder.
 func (p *Provider) Resolve(ctx context.Context, input string) (source.Suggestion, error) {
 	if p.finder == nil {
-		return source.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		return source.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", acquisition.ErrSourceProvider)
 	}
 	return p.finder.Resolve(ctx, input)
 }

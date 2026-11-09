@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"fmt"
@@ -20,16 +20,16 @@ import (
 // ranks what a bounded pass takes first; it never rejects a candidate, so a source whose items
 // carry no year still supplies the catalog, and stored pulls keep decoding under the same intent
 // version. Hard constraints still run first and are unchanged.
-func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState, gaps CoverageGaps) (AcquisitionPlan, error) {
+func PlanAcquisitionFor(intent AcquisitionIntent, candidates []Candidate, existing map[string]ExistingRemoteState, gaps CoverageGaps) (Plan, error) {
 	intent = intent.Normalize()
 	if err := intent.Validate(); err != nil {
-		return AcquisitionPlan{}, fmt.Errorf("%w: %v", ErrInvalidAcquisitionIntent, err)
+		return Plan{}, fmt.Errorf("%w: %v", ErrInvalidAcquisitionIntent, err)
 	}
-	plan := AcquisitionPlan{Intent: intent, Selected: []AcquisitionDecision{}, Rejected: []AcquisitionDecision{}}
-	eligible := make([]AcquisitionDecision, 0, len(candidates))
+	plan := Plan{Intent: intent, Selected: []Decision{}, Rejected: []Decision{}}
+	eligible := make([]Decision, 0, len(candidates))
 	seen := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {
-		decision := AcquisitionDecision{Candidate: normalizeCandidate(candidate)}
+		decision := Decision{Candidate: normalizeCandidate(candidate)}
 		key := decision.Candidate.Identity.Key()
 		if err := decision.Candidate.Identity.Validate(); err != nil || strings.TrimSpace(decision.Candidate.URL) == "" {
 			decision.Disposition, decision.Detail = CandidateDuplicateRemote, "candidate has no actionable registered identity or URL"
@@ -96,7 +96,7 @@ func DefaultAcquisitionIntent(pool pod.PoolReport, geography pod.Geography) Acqu
 	}
 }
 
-func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (CandidateDisposition, string) {
+func rejectByIntent(intent AcquisitionIntent, c Candidate) (CandidateDisposition, string) {
 	if len(intent.SourceAllowlist) > 0 && !containsFold(intent.SourceAllowlist, c.Identity.SourceID) {
 		return CandidateSourceNotAllowed, "registered source is outside the intent allow-list"
 	}
@@ -154,7 +154,7 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 	return "", ""
 }
 
-func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, usedYears map[int]bool, gaps CoverageGaps) bool {
+func candidateBetter(a, b Candidate, usedSources map[string]bool, usedYears map[int]bool, gaps CoverageGaps) bool {
 	var av, bv bool
 	// Relevance to a channel that is short of material outranks representation quality: a sharp
 	// modern spot does nothing for a channel whose breaks cannot fill from its own era.
@@ -184,7 +184,7 @@ type CoverageGaps struct {
 	Eras []pod.EraRange
 	// Roles are break roles the catalog lacks entirely: bookends (bumpers and station IDs) when
 	// no live channel's pod can open or close on one.
-	Roles []Role
+	Roles []clips.Role
 	// Short is how many commercials the shortest channel's exact rung lacks of its pool target
 	// (#2035). Zero with no gap is a met target: an unattended pass has nothing to fetch.
 	Short int
@@ -201,7 +201,7 @@ func (g CoverageGaps) Met() bool { return g.Short <= 0 && len(g.Eras) == 0 && le
 // role. Only OBSERVED facts count: a candidate with no observed year fills no era gap, and one with
 // no role token fills no role gap, because missing metadata never satisfies a target (see
 // AcquisitionIntent).
-func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
+func gapFilled(c Candidate, gaps CoverageGaps) (string, bool) {
 	if c.StationSearch != "" && slices.Contains(gaps.Stations, c.StationSearch) {
 		return StationGapKey(c.StationSearch), true
 	}
@@ -223,18 +223,18 @@ func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
 // observedRoles are the provider's observed roles or, failing those, the explicit role token in
 // the item's title: the same KindFromName rule intake applies to the downloaded file's name, so an
 // item steered here as an ident is classified as one on arrival. Ranking evidence only.
-func observedRoles(c AcquisitionCandidate) []Role {
+func observedRoles(c Candidate) []clips.Role {
 	if len(c.ObservedRoles) > 0 {
 		return c.ObservedRoles
 	}
-	if kind := clips.RoleFromName(c.Title); kind != Unclassified {
-		return []Role{kind}
+	if kind := clips.RoleFromName(c.Title); kind != clips.Unclassified {
+		return []clips.Role{kind}
 	}
 	return nil
 }
 
 // RoleGapKey is the stable record of a role gap an acquisition was for: "role:station_id".
-func RoleGapKey(role Role) string { return "role:" + string(role) }
+func RoleGapKey(role clips.Role) string { return "role:" + string(role) }
 
 // StationGapKey is the stable record of a station search an acquisition came from: "station:WPIX".
 func StationGapKey(callSign string) string { return "station:" + callSign }
@@ -284,7 +284,7 @@ func CoverageGapsFrom(pool pod.PoolReport, targets pod.PoolTargets, thisYear int
 	}
 	gaps := CoverageGaps{Eras: pod.NormalizeEraWindows(eras), Short: short}
 	if len(pool.Channels) > 0 && pool.Bookends == 0 {
-		gaps.Roles = []Role{Bumper, StationID}
+		gaps.Roles = []clips.Role{clips.Bumper, clips.StationID}
 	}
 	return gaps
 }
@@ -320,7 +320,7 @@ func dispositionForExisting(state ExistingRemoteState) CandidateDisposition {
 	}
 }
 
-func normalizeCandidate(c AcquisitionCandidate) AcquisitionCandidate {
+func normalizeCandidate(c Candidate) Candidate {
 	c.Identity.Provider = strings.ToLower(strings.TrimSpace(c.Identity.Provider))
 	c.Identity.SourceID = strings.TrimSpace(c.Identity.SourceID)
 	c.Identity.RemoteID = strings.TrimSpace(c.Identity.RemoteID)
@@ -343,7 +343,7 @@ func containsFold(haystack []string, needle string) bool {
 	return false
 }
 
-func roleOverlap(a, b []Role) bool {
+func roleOverlap(a, b []clips.Role) bool {
 	for _, left := range a {
 		for _, right := range b {
 			if left == right {
@@ -354,7 +354,7 @@ func roleOverlap(a, b []Role) bool {
 	return false
 }
 
-func audienceOverlap(a, b []Audience) bool {
+func audienceOverlap(a, b []clips.Audience) bool {
 	for _, left := range a {
 		for _, right := range b {
 			if left == right {

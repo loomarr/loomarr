@@ -39,11 +39,6 @@ func DefaultBudget() Budget {
 	}
 }
 
-// PlanAcquisition is PlanAcquisitionFor with no coverage gaps.
-func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState) (AcquisitionPlan, error) {
-	return PlanAcquisitionFor(intent, candidates, existing, CoverageGaps{})
-}
-
 // SummarizePipelines is the in-memory adapter for tests. Production SQL groups equivalent facts
 // before calling Add, but both paths cross Lifecycle for the actual decision.
 func SummarizePipelines(rows []pipelinestate.ClipPipeline, at time.Time) pipelinestate.PipelineOverview {

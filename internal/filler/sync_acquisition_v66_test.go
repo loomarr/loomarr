@@ -7,25 +7,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 type consumedAcquisitionAuthority struct {
-	artifact AcquisitionArtifact
+	artifact acquisition.Artifact
 }
 
 func (a *consumedAcquisitionAuthority) AcquisitionArtifactForClip(
 	_ context.Context,
 	_, clipHash string,
-) (AcquisitionArtifact, bool, error) {
+) (acquisition.Artifact, bool, error) {
 	return a.artifact, clipHash == a.artifact.ClipHash, nil
 }
 
 func (a *consumedAcquisitionAuthority) UpsertAcquisitionArtifacts(
 	_ context.Context,
-	artifacts []AcquisitionArtifact,
+	artifacts []acquisition.Artifact,
 ) error {
 	if len(artifacts) == 1 {
 		a.artifact = artifacts[0]
@@ -96,11 +97,11 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	}
 
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &consumedAcquisitionAuthority{artifact: AcquisitionArtifact{
+	authority := &consumedAcquisitionAuthority{artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "archive:classic",
 		Provider: "archive", SourceURL: "https://archive.example/details/one",
 		MediaPath: "retired-intake-name.mp4", MediaSHA256: sourceSHA, MediaBytes: sourceBytes,
-		ClipHash: playbackHash, State: ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+		ClipHash: playbackHash, State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}}
 	syncer := &Syncer{dir: root, acquisitions: authority, now: func() time.Time { return now }}
 	return consumedV66Fixture{
@@ -114,10 +115,10 @@ func TestAuthorizeAcquisitionAcceptsConsumedPlaybackBoundToExactSourceMaster(t *
 	fixture := newConsumedV66Fixture(t)
 
 	artifact, found, err := fixture.syncer.authorizeAcquisition(t.Context(), fixture.clip)
-	if err != nil || !found || artifact.State != ArtifactConsumed {
+	if err != nil || !found || artifact.State != acquisition.ArtifactConsumed {
 		t.Fatalf("consumed V66 acquisition = %+v, found=%v, error=%v", artifact, found, err)
 	}
-	if fixture.authority.artifact.State != ArtifactConsumed || fixture.authority.artifact.RepairReason != "" {
+	if fixture.authority.artifact.State != acquisition.ArtifactConsumed || fixture.authority.artifact.RepairReason != "" {
 		t.Fatalf("consumed V66 acquisition was moved to repair: %+v", fixture.authority.artifact)
 	}
 }
@@ -147,7 +148,7 @@ func TestAuthorizeAcquisitionDoesNotRecoverDriftedConsumedV66Assets(t *testing.T
 			if err == nil || !found {
 				t.Fatalf("drifted V66 acquisition found=%v, error=%v", found, err)
 			}
-			if fixture.authority.artifact.State != ArtifactRepair || fixture.authority.artifact.RepairReason == "" {
+			if fixture.authority.artifact.State != acquisition.ArtifactRepair || fixture.authority.artifact.RepairReason == "" {
 				t.Fatalf("drifted V66 acquisition escaped repair: %+v", fixture.authority.artifact)
 			}
 		})

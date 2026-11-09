@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"time"
@@ -98,7 +98,7 @@ type Pull struct {
 	// V35 source-level pull JSON without pretending those records had candidate evidence.
 	Intent   AcquisitionIntent           `json:"intent,omitempty"`
 	Plan     []PullPlanRow               `json:"plan"`
-	Rejected []AcquisitionDecision       `json:"rejected,omitempty"`
+	Rejected []Decision                  `json:"rejected,omitempty"`
 	Sources  []AcquisitionSourceDecision `json:"sources,omitempty"`
 
 	CreatedAt time.Time

@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -127,7 +128,7 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		roles := filler.CoverageGapsFrom(report, pod.PoolTargets{}, 2026).Roles
+		roles := acquisition.CoverageGapsFrom(report, pod.PoolTargets{}, 2026).Roles
 		if report.Bookends != tc.bookends || len(roles) != tc.roleGapTo {
 			t.Fatalf("bookends = %d, role gaps = %v; want %d and %d roles", report.Bookends,
 				roles, tc.bookends, tc.roleGapTo)

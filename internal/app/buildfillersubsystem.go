@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
@@ -58,8 +59,8 @@ type fillerBuild struct {
 
 // compilationGate reads `filler.acquisition.compilations` against the same single-clip ceiling
 // probe marks compilations by, both live on every call (#1773).
-func compilationGate(set resolved) filler.CompilationGate {
-	return filler.CompilationGate{
+func compilationGate(set resolved) acquisition.CompilationGate {
+	return acquisition.CompilationGate{
 		Take: func() bool { return settings.FillerAcquisitionCompilations.Get(set) },
 		Over: func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 	}
@@ -314,14 +315,14 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
-	autoFetch := filler.NewFetcher(
+	autoFetch := acquisition.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
 			fetchEvery: func() time.Duration { return settings.FillerFetchEvery.Get(set) },
 			home:       set.homeGeography,
 		},
 		providers, adapter,
-		filler.FetchLimits{
+		acquisition.FetchLimits{
 			MaxPerRun:         func() int { return settings.FillerFetchMaxPerRun.Get(set) },
 			MaxProviderPerRun: func() int { return 50 },
 			MaxCatalogClips:   func() int { return settings.FillerFetchMaxCatalogClips.Get(set) },
@@ -329,16 +330,16 @@ func buildFillerSubsystem(
 			MaxDuration:       func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 			Compilations:      compilationGate(set),
 		}, log,
-	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
+	).WithCoverageGaps(func(ctx context.Context) (acquisition.CoverageGaps, error) {
 		// The same per-channel coverage readiness and the pool strip report (#749), against a
 		// target sized from the household's watched evenings (#2035).
 		pool, err := result.preview.Pool(ctx)
 		if err != nil {
-			return filler.CoverageGaps{}, err
+			return acquisition.CoverageGaps{}, err
 		}
 		airings, err := st.FillerAirings(ctx)
 		if err != nil {
-			return filler.CoverageGaps{}, err
+			return acquisition.CoverageGaps{}, err
 		}
 		windows := make(map[string][]pod.EraRange, len(pool.Channels))
 		for _, ch := range pool.Channels {
@@ -346,7 +347,7 @@ func buildFillerSubsystem(
 		}
 		now := time.Now()
 		spacing := time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second
-		gaps := filler.CoverageGapsFrom(pool, pod.SizePool(airings, windows, spacing, now), now.Year())
+		gaps := acquisition.CoverageGapsFrom(pool, pod.SizePool(airings, windows, spacing, now), now.Year())
 		if !gaps.Met() {
 			// A short pass also looks for the stations near each place, in the eras it is short of
 			// (#2059 decision 9). Without them it still fetches; it just doesn't look for local.

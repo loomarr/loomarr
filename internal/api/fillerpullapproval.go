@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -43,7 +43,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		return nil, huma.Error500InternalServerError("read pull", err)
 	}
 	// Fast feedback for a visible decision; the transaction below owns concurrent decisions.
-	if p.Status != filler.PullPending {
+	if p.Status != acquisition.PullPending {
 		return nil, httpcore.Conflict("That pull has already been decided",
 			"Someone already "+string(p.Status)+" this pull. Propose a new one if you still want the clips.")
 	}
@@ -96,17 +96,17 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		return nil, huma.Error500InternalServerError("revalidate queued filler candidates", err)
 	}
 	for _, other := range otherPulls {
-		if other.ID == p.ID || other.Status == filler.PullDismissed {
+		if other.ID == p.ID || other.Status == acquisition.PullDismissed {
 			continue
 		}
 		for _, row := range other.Committed() {
 			if row.Identity().Validate() == nil {
-				remoteStates[row.Identity().Key()] = filler.RemoteQueued
+				remoteStates[row.Identity().Key()] = acquisition.RemoteQueued
 			}
 		}
 	}
 
-	targets := make([]filler.AcquisitionTarget, 0, len(committed))
+	targets := make([]acquisition.AcquisitionTarget, 0, len(committed))
 	for _, row := range committed {
 		src, ok := live[row.SourceID]
 		if !ok {
@@ -124,14 +124,14 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			return nil, httpcore.Conflict("A candidate in this pull no longer matches its source",
 				"The candidate identity no longer belongs to the registered provider. Dismiss it and propose a new pull.")
 		}
-		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url, Gap: row.Gap})
+		targets = append(targets, acquisition.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url, Gap: row.Gap})
 	}
 
-	p.Status = filler.PullApproved
+	p.Status = acquisition.PullApproved
 	p.Note = strings.TrimSpace(in.Body.Note)
 	p.DecidedAt = time.Now().UTC()
 	p.DecidedBy = auditActor(ctx)
-	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run filler.AcquisitionRun) error {
+	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run acquisition.AcquisitionRun) error {
 		return s.store.CommitPullApproval(commitCtx, p, run)
 	}); err != nil {
 		if errors.Is(err, records.ErrPullNotPending) {
@@ -235,11 +235,11 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 		}
 		return nil, huma.Error500InternalServerError("read pull", err)
 	}
-	if p.Status != filler.PullPending {
+	if p.Status != acquisition.PullPending {
 		return nil, httpcore.Conflict("That pull has already been decided",
 			"Someone already "+string(p.Status)+" this pull.")
 	}
-	p.Status = filler.PullDismissed
+	p.Status = acquisition.PullDismissed
 	p.DecidedAt = time.Now().UTC()
 	p.DecidedBy = auditActor(ctx)
 	if err := s.store.DismissPull(ctx, p); err != nil {

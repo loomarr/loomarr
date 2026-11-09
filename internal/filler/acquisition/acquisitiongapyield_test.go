@@ -1,11 +1,11 @@
-package filler_test
+package acquisition_test
 
 import (
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -14,7 +14,7 @@ import (
 func TestAcquisitionGapYieldFrom_AttributesClipsAndTheirSplitsToTheDownloadsGap(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	artifacts := []filler.AcquisitionArtifact{
+	artifacts := []acquisition.Artifact{
 		{ID: "a", ClipHash: "single", Gap: "era:1990-1999"},
 		{ID: "b", ClipHash: "reel", Gap: "era:1990-1999"},
 		{ID: "c", ClipHash: "modern"},                 // unsteered: no gap row
@@ -33,17 +33,17 @@ func TestAcquisitionGapYieldFrom_AttributesClipsAndTheirSplitsToTheDownloadsGap(
 	}
 	parents := map[string]string{"reel-spot-1": "reel", "reel-spot-2": "reel"}
 
-	got := filler.AcquisitionGapYieldFrom(artifacts, rows, parents, now)
-	want := []filler.AcquisitionGapYield{
+	got := acquisition.GapYieldFrom(artifacts, rows, parents, now)
+	want := []acquisition.GapYield{
 		{Gap: "era:1970-1979", Downloads: 1},
-		{Gap: "era:1990-1999", Downloads: 2, Outcome: filler.AcquisitionOutcome{
+		{Gap: "era:1990-1999", Downloads: 2, Outcome: acquisition.Outcome{
 			Enrolled: 4, Ready: 2, Rejected: 1, Dismissed: 1,
 		}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gap yield = %+v\nwant %+v", got, want)
 	}
-	if got := filler.AcquisitionGapYieldFrom(artifacts[2:3], rows, parents, now); got != nil {
+	if got := acquisition.GapYieldFrom(artifacts[2:3], rows, parents, now); got != nil {
 		t.Fatalf("unsteered run gap yield = %+v, want none", got)
 	}
 }

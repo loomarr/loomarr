@@ -11,7 +11,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -610,10 +611,10 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	}
 	results, err := s.filler.SuggestSources(ctx, in.Kind, query, limit)
 	if err != nil {
-		if errors.Is(err, filler.ErrInvalidSourceReference) {
+		if errors.Is(err, acquisition.ErrInvalidSourceReference) {
 			return nil, httpcore.Unprocessable("That search could not be used", err.Error())
 		}
-		if down := s.providerDescription(in.Kind).SearchDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
+		if down := s.providerDescription(in.Kind).SearchDown; down != "" && errors.Is(err, acquisition.ErrSourceProvider) {
 			return nil, huma.Error502BadGateway(down, err)
 		}
 		return nil, huma.Error502BadGateway("find filler sources", err)
@@ -638,10 +639,10 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 	}
 	result, err := s.filler.ResolveSource(ctx, in.Kind, strings.TrimSpace(in.Body.Input))
 	if err != nil {
-		if errors.Is(err, filler.ErrInvalidSourceReference) {
+		if errors.Is(err, acquisition.ErrInvalidSourceReference) {
 			return nil, httpcore.Unprocessable("That source could not be verified", err.Error())
 		}
-		if down := s.providerDescription(in.Kind).ResolveDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
+		if down := s.providerDescription(in.Kind).ResolveDown; down != "" && errors.Is(err, acquisition.ErrSourceProvider) {
 			return nil, huma.Error502BadGateway(down, err)
 		}
 		return nil, huma.Error502BadGateway("check filler source", err)
@@ -722,7 +723,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []source.Item{{
 		ID: in.Body.RemoteID, URL: in.Body.URL,
 	}})
-	if errors.Is(err, filler.ErrProviderPaused) {
+	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
 	if errors.Is(err, ErrIngestUnavailable) {
@@ -855,7 +856,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		}
 		resolved, err := s.filler.ResolveSource(ctx, kind, id)
 		if err != nil {
-			if errors.Is(err, filler.ErrInvalidSourceReference) {
+			if errors.Is(err, acquisition.ErrInvalidSourceReference) {
 				return nil, httpcore.Unprocessable("That source could not be verified", err.Error())
 			}
 			return nil, huma.Error502BadGateway("verify source", err)
@@ -1574,13 +1575,13 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}
-		if errors.Is(err, filler.ErrSourceCheckInProgress) {
+		if errors.Is(err, acquisition.ErrSourceCheckInProgress) {
 			return nil, httpcore.Conflict("Already looking for clips", "This source is already being checked.")
 		}
-		if errors.Is(err, filler.ErrSourceDisabled) {
+		if errors.Is(err, cliplibrary.ErrSourceDisabled) {
 			return nil, errSourceDisabled()
 		}
-		if errors.Is(err, filler.ErrFetchSourceNotFound) {
+		if errors.Is(err, acquisition.ErrFetchSourceNotFound) {
 			return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 		}
 		return nil, huma.Error502BadGateway("fetch remote filler", err)
@@ -1588,7 +1589,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
 	// Same reason as the sync route: a source the operator switched off is an answer, not a
 	// gateway failure. This is the "Fetch now" on the very row carrying the switch.
-	if errors.Is(err, filler.ErrSourceDisabled) {
+	if errors.Is(err, cliplibrary.ErrSourceDisabled) {
 		return nil, errSourceDisabled()
 	}
 	if err != nil {

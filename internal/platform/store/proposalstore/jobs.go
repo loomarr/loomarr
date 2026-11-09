@@ -277,7 +277,7 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := s.channels.ChannelForJobIn(ctx, tx, id)
+	channel, channelErr := channelstore.ChannelForJobIn(ctx, s.channels, tx, id)
 	if channelErr == nil {
 		out.Channel = &channel
 	} else if !errors.Is(channelErr, storedb.ErrNotFound) && !errors.Is(channelErr, channelstore.ErrJobChannelGone) {

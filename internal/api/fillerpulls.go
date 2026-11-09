@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
@@ -65,13 +65,13 @@ type PullDTO struct {
 	// ProposedByName is who ProposedBy resolves to, name-resolved server-side exactly like a
 	// proposal's CreatedByName (§12) — so a filler-pull card never has to show a raw user id.
 	// Empty when the id does not match a known user, e.g. a scheduled job's name.
-	ProposedByName string                             `json:"proposedByName,omitempty" doc:"Display name of who proposed this pull; empty if unknown"`
-	Status         string                             `json:"status" enum:"pending,approved,dismissed"`
-	Note           string                             `json:"note,omitempty" doc:"The operator's narrowing instruction, captured at approval"`
-	Plan           []PullPlanRowDTO                   `json:"plan"`
-	Intent         filler.AcquisitionIntent           `json:"intent"`
-	Rejected       []PullRejectedCandidateDTO         `json:"rejected"`
-	Sources        []filler.AcquisitionSourceDecision `json:"sources"`
+	ProposedByName string                                  `json:"proposedByName,omitempty" doc:"Display name of who proposed this pull; empty if unknown"`
+	Status         string                                  `json:"status" enum:"pending,approved,dismissed"`
+	Note           string                                  `json:"note,omitempty" doc:"The operator's narrowing instruction, captured at approval"`
+	Plan           []PullPlanRowDTO                        `json:"plan"`
+	Intent         acquisition.AcquisitionIntent           `json:"intent"`
+	Rejected       []PullRejectedCandidateDTO              `json:"rejected"`
+	Sources        []acquisition.AcquisitionSourceDecision `json:"sources"`
 	// EstimateClips totals the rows the operator has NOT dropped.
 	EstimateClips  int    `json:"estimateClips"`
 	CandidateCount int    `json:"candidateCount" doc:"Exact number of remote items still selected; unlike estimateClips this does not predict how many clips segmentation will yield."`
@@ -80,7 +80,7 @@ type PullDTO struct {
 	DecidedBy      string `json:"decidedBy,omitempty"`
 }
 
-func pullToDTO(p filler.Pull) PullDTO {
+func pullToDTO(p acquisition.Pull) PullDTO {
 	// Non-nil even when empty: a JSON `null` here would make every consumer guard before
 	// iterating, and a pull with no rows is a real (refused) state, not a missing one.
 	rows := make([]PullPlanRowDTO, 0, len(p.Plan))
@@ -103,7 +103,7 @@ func pullToDTO(p filler.Pull) PullDTO {
 			Disposition: string(decision.Disposition), Detail: decision.Detail,
 		})
 	}
-	sources := make([]filler.AcquisitionSourceDecision, len(p.Sources))
+	sources := make([]acquisition.AcquisitionSourceDecision, len(p.Sources))
 	copy(sources, p.Sources)
 	dto := PullDTO{
 		ID: p.ID, Title: p.Title, Reason: p.Reason, ProposedBy: p.ProposedBy,
@@ -180,7 +180,7 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
-	pulls, err := s.store.ListPulls(ctx, filler.PullStatus(in.Status))
+	pulls, err := s.store.ListPulls(ctx, acquisition.PullStatus(in.Status))
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list pulls", err)
 	}

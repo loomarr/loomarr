@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 func TestFillerExactClipSourceProvenance(t *testing.T) {
@@ -19,16 +20,16 @@ func TestFillerExactClipSourceProvenance(t *testing.T) {
 	putClip(t, st, filler.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Role: filler.Commercial, IsComposite: true})
 	putClip(t, st, filler.Clip{Hash: "source-child", Path: "child.mp4", Name: "Rendered child", Role: filler.Commercial, ParentHash: "source-reel"})
 	putClip(t, st, filler.Clip{Hash: "unrelated", Path: "reel.mp4", Name: "Reused filename", Role: filler.Commercial})
-	if err := st.UpsertAcquisitionRun(ctx, filler.AcquisitionRun{ID: "source-run", Trigger: filler.AcquisitionManual, Status: filler.AcquisitionSuccess, UpdatedAt: now}); err != nil {
+	if err := st.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: "source-run", Trigger: acquisition.TriggerManual, Status: acquisition.RunSuccess, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	artifact := filler.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "source-artifact", AcquisitionID: "source-run", Provider: "archive", SourceID: "classic",
 		SourceURL: "https://archive.org/details/original-reel", RemoteID: "original-reel",
 		MediaPath: "reel.mp4", ClipHash: "source-reel", MediaSHA256: strings.Repeat("a", 64),
-		MediaBytes: 42, State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+		MediaBytes: 42, State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := st.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+	if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	read := func(query string) []api.ClipDTO {
@@ -61,7 +62,7 @@ func TestFillerExactClipSourceProvenance(t *testing.T) {
 	}
 	for _, unsafe := range []string{"javascript:alert(1)", "https://secret:password@archive.org/details/reel", "file:///private/reel.mp4"} {
 		artifact.SourceURL = unsafe
-		if err := st.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+		if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 			t.Fatal(err)
 		}
 		if rows := read("hashes=source-reel"); len(rows) != 1 || rows[0].SourceURL != "" {

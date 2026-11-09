@@ -1,4 +1,4 @@
-package filler_test
+package acquisition_test
 
 import (
 	"bytes"
@@ -14,7 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
@@ -22,7 +23,7 @@ import (
 )
 
 type fetchStub struct {
-	sources     []filler.FetchSource
+	sources     []acquisition.FetchSource
 	paths       []string
 	offers      []source.Item
 	queued      []string
@@ -41,12 +42,12 @@ type fetchStub struct {
 	checked      map[string]time.Time
 	activeChecks map[string]bool
 	failedChecks map[string]time.Time
-	completions  map[string]filler.SourceCheckCompletion
+	completions  map[string]acquisition.SourceCheckCompletion
 	claimCalls   int
 	catalogCalls int
 }
 
-func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, error) {
+func (f *fetchStub) ListFetchSources(context.Context) ([]acquisition.FetchSource, error) {
 	return f.sources, nil
 }
 func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) {
@@ -56,7 +57,7 @@ func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) {
 
 // list is the raw listing the stub's providers read: what the source offers, however its provider
 // then walks it.
-func (f *fetchStub) list(source filler.FetchSource, limit int) ([]source.Item, error) {
+func (f *fetchStub) list(source acquisition.FetchSource, limit int) ([]source.Item, error) {
 	f.calls++
 	f.listed = append(f.listed, source.URI)
 	f.listedKinds = append(f.listedKinds, source.Kind)
@@ -101,13 +102,13 @@ func (f *fetchStub) ClaimCheck(_ context.Context, id string, _ time.Time, _, _ t
 	return true, nil
 }
 
-func (f *fetchStub) CompleteCheck(_ context.Context, id string, _ time.Time, completion filler.SourceCheckCompletion) error {
+func (f *fetchStub) CompleteCheck(_ context.Context, id string, _ time.Time, completion acquisition.SourceCheckCompletion) error {
 	if f.checked == nil {
 		f.checked = map[string]time.Time{}
 	}
 	f.checked[id] = completion.CheckedAt
 	if f.completions == nil {
-		f.completions = map[string]filler.SourceCheckCompletion{}
+		f.completions = map[string]acquisition.SourceCheckCompletion{}
 	}
 	f.completions[id] = completion
 	delete(f.activeChecks, id)
@@ -131,8 +132,8 @@ func refs(ids ...string) []source.Item {
 	return out
 }
 
-func limits(perRun, catalog int) filler.FetchLimits {
-	return filler.FetchLimits{
+func limits(perRun, catalog int) acquisition.FetchLimits {
+	return acquisition.FetchLimits{
 		MaxPerRun:         func() int { return perRun },
 		MaxProviderPerRun: func() int { return 50 },
 		MaxCatalogClips:   func() int { return catalog },
@@ -141,7 +142,7 @@ func limits(perRun, catalog int) filler.FetchLimits {
 	}
 }
 
-func newFetcher(t *testing.T, stub *fetchStub, l filler.FetchLimits) *filler.Fetcher {
+func newFetcher(t *testing.T, stub *fetchStub, l acquisition.FetchLimits) *acquisition.Fetcher {
 	t.Helper()
 	return newFetcherWithRemoteStates(t, stub, l, nil)
 }
@@ -150,21 +151,21 @@ func newFetcher(t *testing.T, stub *fetchStub, l filler.FetchLimits) *filler.Fet
 // fetch fixture into a second stateful catalog implementation.
 type fetchStoreWithRemoteStates struct {
 	*fetchStub
-	listRemoteStates func(context.Context) (map[string]filler.ExistingRemoteState, error)
+	listRemoteStates func(context.Context) (map[string]acquisition.ExistingRemoteState, error)
 }
 
-func (s fetchStoreWithRemoteStates) ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error) {
+func (s fetchStoreWithRemoteStates) ListAcquisitionRemoteStates(ctx context.Context) (map[string]acquisition.ExistingRemoteState, error) {
 	if s.listRemoteStates == nil {
 		return nil, nil
 	}
 	return s.listRemoteStates(ctx)
 }
 
-func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l filler.FetchLimits, states map[string]filler.ExistingRemoteState) *filler.Fetcher {
+func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l acquisition.FetchLimits, states map[string]acquisition.ExistingRemoteState) *acquisition.Fetcher {
 	t.Helper()
-	return filler.NewFetcher(fetchStoreWithRemoteStates{
+	return acquisition.NewFetcher(fetchStoreWithRemoteStates{
 		fetchStub: stub,
-		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) {
+		listRemoteStates: func(context.Context) (map[string]acquisition.ExistingRemoteState, error) {
 			return states, nil
 		},
 	}, providersOver(t, stub.list, nil), stub, l, discardLog())
@@ -176,13 +177,13 @@ func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l filler.FetchLim
 // Kind and URI. search is nil for a catalog that cannot search.
 func providersOver(
 	t *testing.T,
-	list func(source filler.FetchSource, limit int) ([]source.Item, error),
-	search func(source filler.FetchSource, query string, limit int) ([]source.Item, error),
+	list func(source acquisition.FetchSource, limit int) ([]source.Item, error),
+	search func(source acquisition.FetchSource, query string, limit int) ([]source.Item, error),
 ) *source.Registry {
 	t.Helper()
 	providers, err := source.NewRegistry(
 		youtubeprovider.New(func(_ context.Context, target string, limit int) ([]source.Item, int, error) {
-			items, err := list(filler.FetchSource{Kind: "youtube", URI: target}, limit)
+			items, err := list(acquisition.FetchSource{Kind: "youtube", URI: target}, limit)
 			return items, len(items), err
 		}),
 		archiveprovider.New(archiveprovider.Config{
@@ -200,8 +201,8 @@ func providersOver(
 // archiveCatalogOver is an archive.org catalog over listings of provider items. archive.org lists
 // an item by its id, so an item's URL is its details page.
 type archiveCatalogOver struct {
-	list   func(source filler.FetchSource, limit int) ([]source.Item, error)
-	search func(source filler.FetchSource, query string, limit int) ([]source.Item, error)
+	list   func(source acquisition.FetchSource, limit int) ([]source.Item, error)
+	search func(source acquisition.FetchSource, query string, limit int) ([]source.Item, error)
 }
 
 func discovered(items []source.Item) fetch.DiscoveryResult {
@@ -216,7 +217,7 @@ func discovered(items []source.Item) fetch.DiscoveryResult {
 }
 
 func (c archiveCatalogOver) EnumerateCollection(_ context.Context, ref string, limit int) (fetch.DiscoveryResult, error) {
-	items, err := c.list(filler.FetchSource{Kind: "archive", URI: ref}, limit)
+	items, err := c.list(acquisition.FetchSource{Kind: "archive", URI: ref}, limit)
 	return discovered(items), err
 }
 
@@ -224,15 +225,15 @@ func (c archiveCatalogOver) SearchCollection(_ context.Context, ref, query strin
 	if c.search == nil {
 		return fetch.DiscoveryResult{}, nil
 	}
-	items, err := c.search(filler.FetchSource{Kind: "archive", URI: ref}, query, limit)
+	items, err := c.search(acquisition.FetchSource{Kind: "archive", URI: ref}, query, limit)
 	return discovered(items), err
 }
 
 func (archiveCatalogOver) Enrich(context.Context, []fetch.DiscoveredItem) {}
 
-type sourceEnum func(filler.FetchSource) []source.Item
+type sourceEnum func(acquisition.FetchSource) []source.Item
 
-func (e sourceEnum) list(source filler.FetchSource, _ int) ([]source.Item, error) {
+func (e sourceEnum) list(source acquisition.FetchSource, _ int) ([]source.Item, error) {
 	return e(source), nil
 }
 
@@ -245,7 +246,7 @@ func youtubeRef(id string, duration time.Duration) source.Item {
 
 func TestFetch_YouTubeRejectsUnusableMediaBeforeQueueing(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "youtube:bounded", Kind: "youtube", URI: "https://youtube.com/@bounded/videos", Enabled: true,
 		}},
 		offers: []source.Item{
@@ -282,7 +283,7 @@ func TestFetch_YouTubeRejectsUnusableMediaBeforeQueueing(t *testing.T) {
 func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 	const sourceID = "youtube:resume"
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@resume/videos", Enabled: true,
 		}},
 		offers: []source.Item{
@@ -290,7 +291,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 			youtubeRef("video-3", 30*time.Second), youtubeRef("video-4", 30*time.Second),
 		},
 	}
-	states := map[string]filler.ExistingRemoteState{}
+	states := map[string]acquisition.ExistingRemoteState{}
 	fetcher := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
 
 	first, err := fetcher.RunSource(t.Context(), sourceID)
@@ -304,8 +305,8 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 		t.Fatalf("first pass = %+v, ids=%v, completion=%+v", first, stub.queuedIDs, firstCompletion)
 	}
 	for _, id := range stub.queuedIDs {
-		identity := filler.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}
-		states[identity.Key()] = filler.RemoteQueued
+		identity := acquisition.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}
+		states[identity.Key()] = acquisition.RemoteQueued
 	}
 	stub.sources[0].ScanCheckpoint = firstCompletion.Checkpoint
 	stub.queuedIDs = nil
@@ -321,8 +322,8 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 		t.Fatalf("second pass = %+v, ids=%v, completion=%+v", second, stub.queuedIDs, secondCompletion)
 	}
 	for _, id := range stub.queuedIDs {
-		identity := filler.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}
-		states[identity.Key()] = filler.RemoteQueued
+		identity := acquisition.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}
+		states[identity.Key()] = acquisition.RemoteQueued
 	}
 	stub.sources[0].ScanCheckpoint = secondCompletion.Checkpoint
 	stub.offers = append([]source.Item{youtubeRef("new-video", 30*time.Second)}, stub.offers...)
@@ -341,12 +342,12 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 }
 
 func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
-	stub := &fetchStub{sources: []filler.FetchSource{
+	stub := &fetchStub{sources: []acquisition.FetchSource{
 		{ID: "youtube:one", Kind: "youtube", URI: "one", Enabled: true, MaxPerRun: 3},
 		{ID: "youtube:two", Kind: "youtube", URI: "two", Enabled: true, MaxPerRun: 3},
 		{ID: "youtube:three", Kind: "youtube", URI: "three", Enabled: true, MaxPerRun: 3},
 	}}
-	enum := sourceEnum(func(src filler.FetchSource) []source.Item {
+	enum := sourceEnum(func(src acquisition.FetchSource) []source.Item {
 		return []source.Item{
 			youtubeRef(src.URI+":1", 30*time.Second),
 			youtubeRef(src.URI+":2", 30*time.Second),
@@ -355,7 +356,7 @@ func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
 	})
 	l := limits(3, 2000)
 	l.MaxProviderPerRun = func() int { return 5 }
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, l, discardLog())
+	fetcher := acquisition.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, l, discardLog())
 
 	res, err := fetcher.Run(t.Context())
 	if err != nil {
@@ -377,7 +378,7 @@ func TestFetch_YouTubePrefersDifferentCampaignsOverShortAndLongCuts(t *testing.T
 	other := youtubeRef("hot-takes", 30*time.Second)
 	other.Title = "Hot Takes - 30 Sec"
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "youtube:hoagie-hut", Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
 		offers: []source.Item{short, long, other},
@@ -403,12 +404,12 @@ func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
 	secondOther := youtubeRef("remember", 30*time.Second)
 	secondOther.Title = "Remember Get It Before Its Gone - 30 Sec"
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
 		offers: []source.Item{short, firstOther, secondOther, long},
 	}
-	states := map[string]filler.ExistingRemoteState{}
+	states := map[string]acquisition.ExistingRemoteState{}
 	fetcher := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
 
 	first, err := fetcher.RunSource(t.Context(), sourceID)
@@ -417,7 +418,7 @@ func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
 	}
 	completion := stub.completions[sourceID]
 	for _, id := range stub.queuedIDs {
-		states[(filler.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}).Key()] = filler.RemoteQueued
+		states[(acquisition.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}).Key()] = acquisition.RemoteQueued
 	}
 	stub.sources[0].ScanCheckpoint = completion.Checkpoint
 	stub.queuedIDs = nil
@@ -438,7 +439,7 @@ func TestFetch_ManualCheckRetainsTheProviderPassCap(t *testing.T) {
 		items[i] = youtubeRef(fmt.Sprintf("video-%02d", i), 30*time.Second)
 	}
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "youtube:manual-cap", Kind: "youtube", URI: "manual-cap", Enabled: true, MaxPerRun: 100,
 		}},
 		offers: items,
@@ -456,7 +457,7 @@ func TestFetch_ManualCheckRetainsTheProviderPassCap(t *testing.T) {
 func TestFetch_QueueFailureDoesNotAdvanceTheYouTubeCheckpoint(t *testing.T) {
 	now := time.Date(2026, 9, 19, 15, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "youtube:retry", Kind: "youtube", URI: "retry", Enabled: true,
 			ScanCheckpoint: source.Checkpoint{Watermark: "prior"},
 		}},
@@ -480,7 +481,7 @@ func TestFetch_QueueFailureDoesNotAdvanceTheYouTubeCheckpoint(t *testing.T) {
 // thousands of items, and without this "add a source" means "download all of it tonight".
 func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b", "c", "d", "e", "f", "g", "h"),
 	}
 	res, err := newFetcher(t, stub, limits(3, 2000)).Run(context.Background())
@@ -517,12 +518,12 @@ func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
 		{take: true, want: []string{"reel", "spot", "unknown"}},
 	} {
 		stub := &fetchStub{
-			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+			sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 			offers:  offers,
 		}
 		l := limits(10, 2000)
 		take := tc.take
-		l.Compilations = filler.CompilationGate{
+		l.Compilations = acquisition.CompilationGate{
 			Take: func() bool { return take },
 			Over: func() time.Duration { return 2 * time.Minute },
 		}
@@ -547,7 +548,7 @@ func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
 // "nothing happened".
 func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "s1", Kind: "archive", URI: "coll-1", Enabled: true},
 			{ID: "s2", Kind: "archive", URI: "coll-2", Enabled: true},
 		},
@@ -557,7 +558,7 @@ func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
 		},
 	}
 	l := limits(10, 2000)
-	l.Compilations = filler.CompilationGate{
+	l.Compilations = acquisition.CompilationGate{
 		Take: func() bool { return false },
 		Over: func() time.Duration { return 2 * time.Minute },
 	}
@@ -577,7 +578,7 @@ func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
 // item was skipped as already_known, and never fetched (#1375 to here).
 func TestFetch_ANonYouTubeTitleThatNamesItsLengthIsStillTaken(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers: []source.Item{
 			{ID: "cola", URL: "https://archive.org/details/cola", Title: "Acme Cola 30 second spot", DurationMS: 30 * 1000},
 			{ID: "plain", URL: "https://archive.org/details/plain", Title: "Acme Cola spot", DurationMS: 30 * 1000},
@@ -596,7 +597,7 @@ func TestFetch_ANonYouTubeTitleThatNamesItsLengthIsStillTaken(t *testing.T) {
 
 func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers: []source.Item{
 			{ID: "first-low", URL: "https://archive.org/details/first-low", Height: 240},
 			{ID: "second-hd", URL: "https://archive.org/details/second-hd", Height: 1080, License: "cc-by"},
@@ -613,7 +614,7 @@ func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 
 func TestFetch_EnumeratesTheRegisteredProviderKind(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "youtube:kids", Kind: "youtube", URI: "https://youtube.com/@kids/videos", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "youtube:kids", Kind: "youtube", URI: "https://youtube.com/@kids/videos", Enabled: true}},
 		offers:  []source.Item{youtubeRef("video-1", 30*time.Second)},
 	}
 	if _, err := newFetcher(t, stub, limits(2, 2000)).Run(context.Background()); err != nil {
@@ -628,11 +629,11 @@ func TestFetch_EnumeratesTheRegisteredProviderKind(t *testing.T) {
 }
 
 func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
-	stub := &fetchStub{sources: []filler.FetchSource{
+	stub := &fetchStub{sources: []acquisition.FetchSource{
 		{ID: "archive:classic", Kind: "archive", URI: "https://archive.org/details/classic", Enabled: true},
 		{ID: "youtube:classic", Kind: "youtube", URI: "https://youtube.com/@classic/videos", Enabled: true},
 	}}
-	enum := sourceEnum(func(src filler.FetchSource) []source.Item {
+	enum := sourceEnum(func(src acquisition.FetchSource) []source.Item {
 		if src.Kind == "youtube" {
 			item := youtubeRef("abcdef12345", 30*time.Second)
 			item.Height = 1080
@@ -640,7 +641,7 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 		}
 		return []source.Item{{ID: "abcdef12345", URL: "https://archive.org/details/abcdef12345", Height: 1080}}
 	})
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, limits(1, 2000), discardLog())
+	f := acquisition.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, limits(1, 2000), discardLog())
 	res, err := f.Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -653,7 +654,7 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 	upperRef, lowerRef := youtubeRef("AbCd123", 30*time.Second), youtubeRef("abcd123", 30*time.Second)
 	upperRef.Title, lowerRef.Title = "Upper title", "Lower title"
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: "youtube:case", Kind: "youtube", URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{upperRef, lowerRef}}
+	stub := &fetchStub{sources: []acquisition.FetchSource{{ID: "youtube:case", Kind: "youtube", URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{upperRef, lowerRef}}
 	res, err := newFetcher(t, stub, limits(2, 2000)).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -664,9 +665,9 @@ func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 }
 
 func TestFetch_TypedRemoteStatesExcludeOnlyExactIdentity(t *testing.T) {
-	upper := filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:case", RemoteID: "AbCd123"}
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: upper.SourceID, Kind: upper.Provider, URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{youtubeRef(upper.RemoteID, 30*time.Second), youtubeRef("abcd123", 30*time.Second)}}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(2, 2000), map[string]filler.ExistingRemoteState{upper.Key(): filler.RemoteCatalogued}).Run(t.Context())
+	upper := acquisition.RemoteIdentity{Provider: "youtube", SourceID: "youtube:case", RemoteID: "AbCd123"}
+	stub := &fetchStub{sources: []acquisition.FetchSource{{ID: upper.SourceID, Kind: upper.Provider, URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{youtubeRef(upper.RemoteID, 30*time.Second), youtubeRef("abcd123", 30*time.Second)}}
+	res, err := newFetcherWithRemoteStates(t, stub, limits(2, 2000), map[string]acquisition.ExistingRemoteState{upper.Key(): acquisition.RemoteCatalogued}).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,8 +677,8 @@ func TestFetch_TypedRemoteStatesExcludeOnlyExactIdentity(t *testing.T) {
 }
 
 func TestFetch_FailedQueueLeavesIdentityEligibleForHealthyRetry(t *testing.T) {
-	states := map[string]filler.ExistingRemoteState{}
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: refs("retry"), ingestErr: errors.New("temporary")}
+	states := map[string]acquisition.ExistingRemoteState{}
+	stub := &fetchStub{sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: refs("retry"), ingestErr: errors.New("temporary")}
 	f := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
 	if _, err := f.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -699,7 +700,7 @@ func TestFetch_FailedQueueLeavesIdentityEligibleForHealthyRetry(t *testing.T) {
 // and downloading" from it; auto-fetch honouring anything less makes that copy false.
 func TestFetch_SkipsDisabledSources(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: false}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: false}},
 		offers:  refs("a", "b"),
 	}
 	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
@@ -712,12 +713,12 @@ func TestFetch_SkipsDisabledSources(t *testing.T) {
 }
 
 func TestFetch_ManualCheckRefusesADisabledSource(t *testing.T) {
-	stub := &fetchStub{sources: []filler.FetchSource{{
+	stub := &fetchStub{sources: []acquisition.FetchSource{{
 		ID: "off", Kind: "archive", URI: "collection", Enabled: false,
 	}}}
 
 	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "off")
-	if !errors.Is(err, filler.ErrSourceDisabled) || stub.catalogCalls != 0 || stub.calls != 0 {
+	if !errors.Is(err, cliplibrary.ErrSourceDisabled) || stub.catalogCalls != 0 || stub.calls != 0 {
 		t.Fatalf("disabled manual check = %v, catalog/provider calls = %d/%d; want refusal before work",
 			err, stub.catalogCalls, stub.calls)
 	}
@@ -727,7 +728,7 @@ func TestFetch_ManualCheckRefusesADisabledSource(t *testing.T) {
 // request to nowhere.
 func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "folder", Kind: "folder", URI: "", Enabled: true},
 			{ID: "library", Kind: "library", URI: "", Enabled: true},
 		},
@@ -744,7 +745,7 @@ func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
 // one with an address, is never fetched either, and a manual check of either polls nothing.
 func TestFetch_ASourceWhoseProviderIsNotFetchedIsInert(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
 			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
 			{ID: "s1", Kind: "archive", URI: "coll", Enabled: true},
@@ -752,7 +753,7 @@ func TestFetch_ASourceWhoseProviderIsNotFetchedIsInert(t *testing.T) {
 		offers: refs("a"),
 	}
 	var logged bytes.Buffer
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub, limits(10, 2000),
+	fetcher := acquisition.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub, limits(10, 2000),
 		slog.New(slog.NewTextHandler(&logged, nil)))
 
 	for range 2 {
@@ -789,12 +790,12 @@ func TestFetch_ASourceWhoseProviderIsNotFetchedIsInert(t *testing.T) {
 // claims them nor walks the catalog, so an unregistered provider costs no more than an idle wake.
 func TestFetch_AWakeWithOnlyInertSourcesStaysCheap(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
 			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
 		},
 	}
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub,
+	fetcher := acquisition.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub,
 		limits(10, 2000), nil)
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatalf("pass: %v", err)
@@ -810,13 +811,13 @@ func TestFetch_AWakeWithOnlyInertSourcesStaysCheap(t *testing.T) {
 // provider/source identity.
 func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		paths:   []string{"a.mp4", "nested/b.mp4"},
 		offers:  refs("a", "b", "c"),
 	}
-	res, _ := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
-		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): filler.RemoteCatalogued,
-		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "b"}).Key(): filler.RemoteCatalogued,
+	res, _ := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]acquisition.ExistingRemoteState{
+		(acquisition.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): acquisition.RemoteCatalogued,
+		(acquisition.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "b"}).Key(): acquisition.RemoteCatalogued,
 	}).Run(context.Background())
 	if res.Skipped != 2 {
 		t.Errorf("skipped %d, want 2 — a catalogued clip must be recognised as the item it came from", res.Skipped)
@@ -829,12 +830,12 @@ func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
 // A catalogued artifact remains excluded even when its stored path uses Archive's output template.
 func TestFetch_SkipsCataloguedArchiveOutputTemplatePath(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		paths:   []string{"HearthpotsSoupAdvert - Hearthpot's Soup Advert 1993.mp4"},
 		offers:  refs("HearthpotsSoupAdvert", "new-ad"),
 	}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
-		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "HearthpotsSoupAdvert"}).Key(): filler.RemoteCatalogued,
+	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]acquisition.ExistingRemoteState{
+		(acquisition.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "HearthpotsSoupAdvert"}).Key(): acquisition.RemoteCatalogued,
 	}).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -849,7 +850,7 @@ func TestFetch_SkipsCataloguedArchiveOutputTemplatePath(t *testing.T) {
 
 func TestFetch_DoesNotTreatAnOrdinaryNameAsArchiveOutput(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		paths:   []string{"An ordinary catalog name - not an Archive item ID.mp4"},
 		offers:  refs("An ordinary catalog name"),
 	}
@@ -865,12 +866,12 @@ func TestFetch_DoesNotTreatAnOrdinaryNameAsArchiveOutput(t *testing.T) {
 // A catalogued artifact remains excluded even when its stored path uses yt-dlp's output template.
 func TestFetch_SkipsCataloguedYouTubeOutputTemplatePath(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "youtube:retro", Kind: "youtube", URI: "https://youtube.com/@retro/videos", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "youtube:retro", Kind: "youtube", URI: "https://youtube.com/@retro/videos", Enabled: true}},
 		paths:   []string{"Title for a catalogued clip [video-id].mp4"},
 		offers:  []source.Item{youtubeRef("video-id", 30*time.Second)},
 	}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
-		(filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:retro", RemoteID: "video-id"}).Key(): filler.RemoteCatalogued,
+	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]acquisition.ExistingRemoteState{
+		(acquisition.RemoteIdentity{Provider: "youtube", SourceID: "youtube:retro", RemoteID: "video-id"}).Key(): acquisition.RemoteCatalogued,
 	}).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -888,7 +889,7 @@ func TestFetch_SkipsCataloguedYouTubeOutputTemplatePath(t *testing.T) {
 // indistinguishable from one that is broken.
 func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
 		offers:  refs("a"),
 	}
@@ -903,7 +904,7 @@ func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 
 func TestFetch_ManualCheckReportsItsCapWhenCapacityStopsIt(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "selected", Kind: "archive", URI: "collection", Enabled: true, MaxPerRun: 3,
 		}},
 		paths: []string{"a", "b"},
@@ -922,7 +923,7 @@ func TestFetch_ManualCheckReportsItsCapWhenCapacityStopsIt(t *testing.T) {
 func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 	stub := &fetchStub{
 		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 	}
 	f := newFetcher(t, stub, limits(10, 3))
 	status, err := f.Status(context.Background())
@@ -952,7 +953,7 @@ func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 // caller, which is how it stayed easy to forget.
 func TestFetch_StampsASourceItQueuedFrom(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a"),
 	}
 	at := time.Unix(1_800_000_000, 0).UTC()
@@ -970,12 +971,12 @@ func TestFetch_StampsASourceItQueuedFrom(t *testing.T) {
 // productive, which is the opposite of what the timestamp is for.
 func TestFetch_DoesNotStampASourceThatBroughtNothingIn(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		paths:   []string{"a.mp4"},
 		offers:  refs("a"),
 	}
-	states := map[string]filler.ExistingRemoteState{
-		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): filler.RemoteCatalogued,
+	states := map[string]acquisition.ExistingRemoteState{
+		(acquisition.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): acquisition.RemoteCatalogued,
 	}
 	if _, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), states).Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -991,7 +992,7 @@ func TestFetch_DoesNotStampASourceThatBroughtNothingIn(t *testing.T) {
 // entirely — which also stops search.
 func TestFetch_SkipsASourceThatOptedOutButStaysEnabled(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "opted-out", Kind: "archive", URI: "a", Enabled: true, NeverFetch: true},
 			{ID: "normal", Kind: "archive", URI: "b", Enabled: true},
 		},
@@ -1010,7 +1011,7 @@ func TestFetch_SkipsASourceThatOptedOutButStaysEnabled(t *testing.T) {
 // different numbers, which one figure served badly.
 func TestFetch_PrefersASourcesOwnPerRunCap(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, MaxPerRun: 2}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, MaxPerRun: 2}},
 		offers:  refs("a", "b", "c", "d", "e"),
 	}
 	// The global says 10; this source says 2.
@@ -1025,7 +1026,7 @@ func TestFetch_PrefersASourcesOwnPerRunCap(t *testing.T) {
 // working install whose sources have all run dry.
 func TestFetch_FallsBackToTheGlobalCapWhenUnset(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b", "c", "d", "e"),
 	}
 	res, _ := newFetcher(t, stub, limits(3, 2000)).Run(context.Background())
@@ -1038,7 +1039,7 @@ func TestFetch_FallsBackToTheGlobalCapWhenUnset(t *testing.T) {
 // Nothing is polled and nothing is queued, while a source with an explicit interval may still run.
 func TestFetch_DisabledDoesNothing(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, NeverFetch: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, NeverFetch: true}},
 		offers:  refs("a", "b"),
 	}
 	f := newFetcher(t, stub, limits(10, 2000))
@@ -1056,7 +1057,7 @@ func TestFetch_DisabledDoesNothing(t *testing.T) {
 // selected enabled source, even when unattended timing is off, while retaining the ordinary cap.
 func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "first", Kind: "archive", URI: "one", Enabled: true},
 			{ID: "selected", Kind: "archive", URI: "two", Enabled: true, NeverFetch: true},
 		},
@@ -1081,7 +1082,7 @@ func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
 func TestFetch_ScheduledRunChecksOnlySourcesWhoseEffectiveIntervalIsDue(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "due", Kind: "archive", URI: "due", Enabled: true, Every: 6 * time.Hour, LastCheckedAt: now.Add(-6 * time.Hour)},
 			{ID: "not-due", Kind: "archive", URI: "not-due", Enabled: true, Every: 12 * time.Hour, LastCheckedAt: now.Add(-6 * time.Hour)},
 			{ID: "custom-while-global-off", Kind: "archive", URI: "custom", Enabled: true, Every: time.Hour, LastCheckedAt: now.Add(-2 * time.Hour)},
@@ -1100,7 +1101,7 @@ func TestFetch_ScheduledRunChecksOnlySourcesWhoseEffectiveIntervalIsDue(t *testi
 
 func TestFetch_ScheduledRunWithNothingDueDoesNotReadCapacity(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
-	stub := &fetchStub{sources: []filler.FetchSource{{
+	stub := &fetchStub{sources: []acquisition.FetchSource{{
 		ID: "later", Kind: "archive", URI: "collection", Enabled: true,
 		Every: 6 * time.Hour, LastCheckedAt: now.Add(-time.Hour),
 	}}}
@@ -1118,7 +1119,7 @@ func TestFetch_ScheduledRunWithNothingDueDoesNotReadCapacity(t *testing.T) {
 func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "empty", Kind: "archive", URI: "empty", Enabled: true, Every: 6 * time.Hour}},
+		sources: []acquisition.FetchSource{{ID: "empty", Kind: "archive", URI: "empty", Enabled: true, Every: 6 * time.Hour}},
 	}
 	f := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return now })
 	if _, err := f.Run(context.Background()); err != nil {
@@ -1134,7 +1135,7 @@ func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testi
 
 func TestFetch_NextAutomaticCheckCombinesCadenceRetryAndLease(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
-	base := filler.FetchSource{
+	base := acquisition.FetchSource{
 		ID: "source", Kind: "archive", URI: "collection", Enabled: true,
 		Every: 6 * time.Hour, LastCheckedAt: now.Add(-4 * time.Hour),
 	}
@@ -1158,7 +1159,7 @@ func TestFetch_NextAutomaticCheckCombinesCadenceRetryAndLease(t *testing.T) {
 func TestFetch_ProviderFailureUsesDurableBoundedBackoff(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "failing", Kind: "archive", URI: "collection", Enabled: true,
 			CheckFailureCount: 2,
 		}},
@@ -1171,7 +1172,7 @@ func TestFetch_ProviderFailureUsesDurableBoundedBackoff(t *testing.T) {
 	if res.SourcesPolled != 1 || !stub.failedChecks["failing"].Equal(now.Add(15*time.Minute)) {
 		t.Fatalf("failure result/retry = %+v / %v, want third-failure 15m backoff", res, stub.failedChecks)
 	}
-	if got := filler.SourceCheckRetryDelay(20); got != time.Hour {
+	if got := acquisition.SourceCheckRetryDelay(20); got != time.Hour {
 		t.Fatalf("retry cap = %v, want 1h", got)
 	}
 }
@@ -1179,7 +1180,7 @@ func TestFetch_ProviderFailureUsesDurableBoundedBackoff(t *testing.T) {
 func TestFetch_ScheduledBackoffIsSkippedButManualCheckBypassesIt(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{
+		sources: []acquisition.FetchSource{{
 			ID: "retrying", Kind: "archive", URI: "collection", Enabled: true,
 			CheckRetryAt: now.Add(time.Hour), MaxPerRun: 3,
 		}},
@@ -1197,21 +1198,21 @@ func TestFetch_ScheduledBackoffIsSkippedButManualCheckBypassesIt(t *testing.T) {
 
 func TestFetch_ManualCheckRefusesAnActiveSourceClaim(t *testing.T) {
 	stub := &fetchStub{
-		sources:      []filler.FetchSource{{ID: "active", Kind: "archive", URI: "collection", Enabled: true}},
+		sources:      []acquisition.FetchSource{{ID: "active", Kind: "archive", URI: "collection", Enabled: true}},
 		activeChecks: map[string]bool{"active": true},
 	}
 	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "active")
-	if !errors.Is(err, filler.ErrSourceCheckInProgress) || stub.calls != 0 {
+	if !errors.Is(err, acquisition.ErrSourceCheckInProgress) || stub.calls != 0 {
 		t.Fatalf("active check error/calls = %v/%d, want in-progress and no provider call", err, stub.calls)
 	}
 }
 
 func TestFetch_ManualCheckRejectsAnUnknownSource(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "known", Kind: "archive", URI: "collection", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "known", Kind: "archive", URI: "collection", Enabled: true}},
 	}
 	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "missing")
-	if !errors.Is(err, filler.ErrFetchSourceNotFound) || stub.catalogCalls != 0 || stub.calls != 0 {
+	if !errors.Is(err, acquisition.ErrFetchSourceNotFound) || stub.catalogCalls != 0 || stub.calls != 0 {
 		t.Fatalf("unknown source error/catalog/provider calls = %v/%d/%d, want not-found and no work", err, stub.catalogCalls, stub.calls)
 	}
 }
@@ -1221,7 +1222,7 @@ func TestFetch_ManualCheckRejectsAnUnknownSource(t *testing.T) {
 func TestFetch_RunSourceReportsQueueFailure(t *testing.T) {
 	want := errors.New("ingest tooling unavailable")
 	stub := &fetchStub{
-		sources:   []filler.FetchSource{{ID: "selected", Kind: "archive", URI: "two", Enabled: true}},
+		sources:   []acquisition.FetchSource{{ID: "selected", Kind: "archive", URI: "two", Enabled: true}},
 		offers:    refs("a"),
 		ingestErr: want,
 	}
@@ -1234,7 +1235,7 @@ func TestFetch_RunSourceReportsQueueFailure(t *testing.T) {
 
 func TestFetch_ScheduledRunKeepsQueueFailureBestEffort(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "first", Kind: "archive", URI: "one", Enabled: true},
 			{ID: "second", Kind: "archive", URI: "two", Enabled: true},
 		},
@@ -1253,7 +1254,7 @@ func TestFetch_ScheduledRunKeepsQueueFailureBestEffort(t *testing.T) {
 
 func TestFetch_AsksHomeSourcesBeforeFallbackCountries(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "au", Kind: "archive", URI: "au", Enabled: true, Region: 2},
 			{ID: "us", Kind: "archive", URI: "us", Enabled: true},
 			{ID: "gb", Kind: "archive", URI: "gb", Enabled: true, Region: 1},

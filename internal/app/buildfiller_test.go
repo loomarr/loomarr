@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -165,7 +165,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		if err != nil || !claimed {
 			t.Fatalf("seed check claim for %s = %v, %v", id, claimed, err)
 		}
-		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: lastChecked}); err != nil {
+		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, acquisition.SourceCheckCompletion{CheckedAt: lastChecked}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,7 +183,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := filler.NewFetcher(
+	fetcher := acquisition.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
 			fetchEvery: func() time.Duration { return 6 * time.Hour },
@@ -194,7 +194,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 			t.Fatal("an empty provider listing must not enqueue an ingest")
 			return "", nil
 		}),
-		filler.FetchLimits{
+		acquisition.FetchLimits{
 			MaxPerRun:       func() int { return 10 },
 			MaxCatalogClips: func() int { return 2000 },
 		},

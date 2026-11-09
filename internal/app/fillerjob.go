@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
@@ -121,7 +122,7 @@ func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 // Each pass first switches the curated sources for the places' nearby stations (#2059 decision
 // 10), so a place set or moved since the last pass is fetched for in this one. A failure there costs
 // only the switch: the pass still runs with the sources as they are.
-func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) jobs.Job {
+func fillerFetchJob(f *acquisition.Fetcher, local localCuratedSources) jobs.Job {
 	return jobs.Job{
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.
