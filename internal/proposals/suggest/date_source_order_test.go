@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -37,7 +37,7 @@ func TestSuggest_DateSourceOrderInitialDenialMatrix(t *testing.T) {
 			{name: "malformed", response: `{"picks":[]}`, code: suggest.FailureProvider, terminal: proposals.TerminalMalformedExhausted, calls: 3},
 		} {
 			t.Run(source.name+"/"+failureCase.name, func(t *testing.T) {
-				corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+				corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 				references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
 				responses := make([]llm.Response, failureCase.calls)
 				for i := range responses {
@@ -62,7 +62,7 @@ func TestSuggest_DateSourceOrderInitialDenialMatrix(t *testing.T) {
 
 func TestSuggest_DateSourceOrderReferenceEvidenceTitleAnchorsMarigoldProtocol(t *testing.T) {
 	meaning := dateMeaningNone()
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{
 		Title:        "Friday night science fiction",
 		URL:          "https://lineups.example/friday",
@@ -145,7 +145,7 @@ func TestSuggest_DateSourceOrderReferenceContinuationUsesTwoRepairs(t *testing.T
 		"malformed-after-bootstrap":  {testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse("not json"), testkit.FinalResponse(finalWithDateMeaning(t, meaning))},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
 			model := testkit.NewLLM(t, responses...)
 			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "1990 and 2000 https://lineups.example/friday"})
@@ -196,7 +196,7 @@ func TestSuggest_DateSourceOrderValidTitleAndCollectionCallsReserveNoNegativeWor
 		"collection": {"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": meaning},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			model := testkit.NewLLM(t, testkit.ToolCallResponse("catalog_search", arguments), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "marigold"})
 			if err != nil || len(proposal.Lineup) != 1 {
@@ -208,7 +208,7 @@ func TestSuggest_DateSourceOrderValidTitleAndCollectionCallsReserveNoNegativeWor
 
 func TestSuggest_DateSourceOrderInvalidCollectionExtraFieldDoesNotInitializeSources(t *testing.T) {
 	meaning := dateMeaningNone()
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	invalid := map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "genres": []any{"Action"}, "dateMeaning": meaning}
 	valid := map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": meaning}
 	model := testkit.NewLLM(t, testkit.ToolCallResponse("catalog_search", invalid), testkit.ToolCallResponse("catalog_search", valid), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
@@ -231,8 +231,8 @@ func TestSuggest_DateSourceOrderInvalidCollectionExtraFieldDoesNotInitializeSour
 func TestSuggest_DateSourceOrderCuratedIdentitySurvivesSourceInitialization(t *testing.T) {
 	meaning := dateMeaningNone()
 	curated := marigoldCandidate()
-	unrelated := catalog.Candidate{MediaType: "movie", TMDBID: 90000604, Name: "Unrelated Movie", Year: 2000, InLibrary: true}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{curated, unrelated}}
+	unrelated := titlesearch.Candidate{MediaType: "movie", TMDBID: 90000604, Name: "Unrelated Movie", Year: 2000, InLibrary: true}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{curated, unrelated}}
 	final, err := json.Marshal(map[string]any{
 		"picks": []any{
 			map[string]any{"mediaType": "movie", "key": "movie:tmdb:90000603", "name": curated.Name},

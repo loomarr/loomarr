@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -33,7 +33,7 @@ const (
 // anchors. It is shared by pointer across Intent copies, like requiredTitleKeys.
 type exampleFill struct {
 	from, to   int
-	neighbours []catalog.Candidate
+	neighbours []titlesearch.Candidate
 }
 
 // groundExampleFill derives the era window and genre of the resolved example
@@ -41,11 +41,11 @@ type exampleFill struct {
 // the request states no date of its own (meaning kind none): a stated era is
 // already the model's search constraint. Discovery is best-effort; a failed or
 // empty one leaves the lineup exactly as the model chose it.
-func (s *Suggester) groundExampleFill(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, anchors []catalog.Candidate) {
+func (s *Suggester) groundExampleFill(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, anchors []titlesearch.Candidate) {
 	if meaning.DateMeaning().Kind != DateMeaningNone {
 		return
 	}
-	var movies []catalog.Candidate
+	var movies []titlesearch.Candidate
 	for _, anchor := range anchors {
 		if anchor.MediaType == provision.Movie && anchor.Year > 0 {
 			movies = append(movies, anchor)
@@ -67,12 +67,12 @@ func (s *Suggester) groundExampleFill(ctx context.Context, intent *Intent, meani
 	if genre == "" {
 		return
 	}
-	base := catalog.DiscoveryQuery{MediaType: provision.Movie, Genres: []string{genre}, YearFrom: fill.from, YearTo: fill.to}
-	queries := []catalog.DiscoveryQuery{base}
+	base := titlesearch.DiscoveryQuery{MediaType: provision.Movie, Genres: []string{genre}, YearFrom: fill.from, YearTo: fill.to}
+	queries := []titlesearch.DiscoveryQuery{base}
 	if intentSignalsKids(*intent) && genre != "Family" {
 		family := base
 		family.Genres = []string{genre, "Family"}
-		queries = []catalog.DiscoveryQuery{family, base}
+		queries = []titlesearch.DiscoveryQuery{family, base}
 	}
 	found, err := s.catalog.DiscoverUnion(ctx, queries)
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *Suggester) groundExampleFill(ctx context.Context, intent *Intent, meani
 			isAnchor[key] = true
 		}
 	}
-	var family, rest []catalog.Candidate
+	var family, rest []titlesearch.Candidate
 	for _, candidate := range found.Candidates {
 		key, keyErr := candidate.Key()
 		if keyErr != nil || isAnchor[key] || !candidate.InLibrary || candidate.MediaType != provision.Movie ||
@@ -106,7 +106,7 @@ func (s *Suggester) groundExampleFill(ctx context.Context, intent *Intent, meani
 // sharedAnchorGenre is the genre most anchors carry (first listed wins a tie).
 // With several anchors a genre only one of them has is not shared, so none is
 // chosen and the era alone shapes the lineup.
-func sharedAnchorGenre(anchors []catalog.Candidate) string {
+func sharedAnchorGenre(anchors []titlesearch.Candidate) string {
 	counts := map[string]int{}
 	var order []string
 	for _, anchor := range anchors {
@@ -131,7 +131,7 @@ func sharedAnchorGenre(anchors []catalog.Candidate) string {
 
 // withExampleNeighbours adds the era's neighbours to a retrieval result so the
 // model sees them as ordinary tool evidence and chooses among them itself.
-func withExampleNeighbours(cands []catalog.Candidate, fill *exampleFill) []catalog.Candidate {
+func withExampleNeighbours(cands []titlesearch.Candidate, fill *exampleFill) []titlesearch.Candidate {
 	if fill == nil || len(fill.neighbours) == 0 {
 		return cands
 	}
@@ -141,7 +141,7 @@ func withExampleNeighbours(cands []catalog.Candidate, fill *exampleFill) []catal
 			seen[key] = true
 		}
 	}
-	out := append([]catalog.Candidate(nil), cands...)
+	out := append([]titlesearch.Candidate(nil), cands...)
 	for _, candidate := range fill.neighbours {
 		if key, err := candidate.Key(); err == nil && !seen[key] {
 			seen[key] = true

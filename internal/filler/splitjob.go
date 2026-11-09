@@ -950,7 +950,39 @@ func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments
 // media visible, so an expired predecessor is fenced before it can publish.
 const splitProposalClaimLease = 30 * time.Minute
 
+// confirm runs the three steps of a confirmation in order: claim the proposal so one confirmer owns
+// it, cut the reviewed segments into hidden staging, and publish them (record the children and
+// consume or shrink the proposal). Staging and the claim outlive the cut step on purpose: the cut
+// bytes are only moved into place by the publish step, and the claim fences a predecessor until
+// then.
 func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []split.Segment, storageMode storagegovernor.Mode) ([]string, error) {
+	claim, err := sp.claimSplitProposal(ctx, proposalID)
+	if err != nil {
+		return nil, err
+	}
+	defer claim.release()
+	plan, err := sp.planSplitConfirmation(ctx, proposalID, claim, segments, hold)
+	if err != nil {
+		return nil, err
+	}
+	staging := &splitStaging{}
+	defer staging.close()
+	cuts, err := sp.cutConfirmedSegments(ctx, claim, plan, storageMode, staging)
+	if err != nil {
+		return nil, err
+	}
+	return sp.publishConfirmedSegments(ctx, proposalID, claim, plan, cuts)
+}
+
+// splitClaim is a confirmer's lease on one proposal: the token that fences it, the proposal as it
+// was claimed, and the release that hands the lease back.
+type splitClaim struct {
+	token    string
+	proposal SplitProposal
+	release  func()
+}
+
+func (sp *Splitter) claimSplitProposal(ctx context.Context, proposalID string) (*splitClaim, error) {
 	if sp.newID == nil {
 		return nil, errors.New("split confirm: claim token generator is required")
 	}
@@ -963,11 +995,26 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
+	release := func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = sp.store.ReleaseSplitProposalClaim(releaseCtx, proposalID, claimToken)
-	}()
+	}
+	return &splitClaim{token: claimToken, proposal: p, release: release}, nil
+}
+
+// splitConfirmPlan is a confirmation after validation: the compilation, the source bytes it is cut
+// from, and the reviewed segments with the server-owned evidence rebound onto them.
+type splitConfirmPlan struct {
+	clip     cliplibrary.StoreClip
+	source   split.SourceAsset
+	src      string
+	segments []split.Segment
+	hold     []split.Segment
+}
+
+func (sp *Splitter) planSplitConfirmation(ctx context.Context, proposalID string, claim *splitClaim, segments, hold []split.Segment) (*splitConfirmPlan, error) {
+	p := claim.proposal
 	if !p.Ready() {
 		return nil, fmt.Errorf("%w: proposal %s is still detecting boundaries", ErrSplitValidation, proposalID)
 	}
@@ -1005,6 +1052,33 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err := validateConfirmedSegments(segments, source.DurationMs, sp.floor()); err != nil {
 		return nil, err
 	}
+	return &splitConfirmPlan{clip: clip, source: source, src: src, segments: segments, hold: hold}, nil
+}
+
+// splitStaging collects what the cut step must keep alive until the publish step is done (the
+// storage lease, the staging directory, the write monitor) and releases it in reverse order.
+type splitStaging struct{ cleanups []func() }
+
+func (s *splitStaging) after(cleanup func()) { s.cleanups = append(s.cleanups, cleanup) }
+
+func (s *splitStaging) close() {
+	for i := len(s.cleanups) - 1; i >= 0; i-- {
+		s.cleanups[i]()
+	}
+}
+
+// splitCuts is what the cut step hands the publish step: the prepared cuts and the snapshot of the
+// compilation they were cut from.
+type splitCuts struct {
+	publication splitPublication
+	snapshot    string
+}
+
+// cutConfirmedSegments reserves storage, snapshots the compilation and cuts every reviewed segment
+// into the hidden staging directory. It writes nothing the catalog can see.
+func (sp *Splitter) cutConfirmedSegments(ctx context.Context, claim *splitClaim, plan *splitConfirmPlan, storageMode storagegovernor.Mode, staging *splitStaging) (*splitCuts, error) {
+	p, clip, source, src, segments := claim.proposal, plan.clip, plan.source, plan.src, plan.segments
+	claimToken := claim.token
 	var storageLease *storagegovernor.Lease
 	if sp.storage != nil {
 		budget, ok := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{
@@ -1023,7 +1097,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		if storageLease == nil {
 			return nil, storagegovernor.Pause("reserve split storage", decision)
 		}
-		defer storageLease.Release()
+		staging.after(storageLease.Release)
 		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
 			return nil, storagegovernor.Pause("revalidate split storage", decision)
 		}
@@ -1049,13 +1123,13 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err != nil {
 		return nil, fmt.Errorf("split confirm: temp dir: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	staging.after(func() { _ = os.RemoveAll(tmpDir) })
 	splitCtx := ctx
 	finishStorage := func() error { return nil }
 	if storageLease != nil {
 		splitCtx, finishStorage = storagegovernor.MonitorPath(ctx, storageLease, tmpDir, 0)
 	}
-	defer func() { _ = finishStorage() }()
+	staging.after(func() { _ = finishStorage() })
 	sourceSnapshot, err := snapshotSplitComposite(splitCtx, src, tmpDir, ext, source.ClipHash)
 	if err != nil {
 		if storageErr := finishStorage(); storageErr != nil {
@@ -1153,7 +1227,17 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err := finishStorage(); err != nil {
 		return nil, err
 	}
-	if err := validateSplitCompositeOwnership(ctx, src, sourceSnapshot); err != nil {
+	return &splitCuts{publication: publication, snapshot: sourceSnapshot}, nil
+}
+
+// publishConfirmedSegments moves the cut segments into place and records them: it fences the
+// source, publishes the staged files, files each child in the catalog (held until the generation
+// commits), and then either consumes the proposal or shrinks it to the segments still held for a
+// person. It returns the hashes of the clips it created.
+func (sp *Splitter) publishConfirmedSegments(ctx context.Context, proposalID string, claim *splitClaim, plan *splitConfirmPlan, cuts *splitCuts) ([]string, error) {
+	p, clip, src, hold, claimToken := claim.proposal, plan.clip, plan.src, plan.hold, claim.token
+	publication := cuts.publication
+	if err := validateSplitCompositeOwnership(ctx, src, cuts.snapshot); err != nil {
 		return nil, fmt.Errorf("split confirm: composite source changed while cuts were prepared: %w", err)
 	}
 	if err := sp.store.RenewSplitProposalClaim(ctx, proposalID, claimToken, sp.now().UTC().Add(splitProposalClaimLease)); err != nil {

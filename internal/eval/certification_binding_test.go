@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -132,7 +132,7 @@ func TestV8MetadataActualCatalogDateFiltering(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture.selectCase(tc.fixture)
-			got, err := catalogue.Discover(context.Background(), catalog.DiscoveryQuery{Genres: []string{"Drama"}, MediaType: tc.mediaType, YearFrom: tc.from, YearTo: tc.to}, 10)
+			got, err := catalogue.Discover(context.Background(), titlesearch.DiscoveryQuery{Genres: []string{"Drama"}, MediaType: tc.mediaType, YearFrom: tc.from, YearTo: tc.to}, 10)
 			var ids []int
 			for _, candidate := range got {
 				ids = append(ids, candidate.TMDBID)
@@ -143,7 +143,7 @@ func TestV8MetadataActualCatalogDateFiltering(t *testing.T) {
 		})
 	}
 	fixture.selectCase("tool-error-recovery")
-	if _, err := catalogue.Discover(context.Background(), catalog.DiscoveryQuery{Keywords: []string{"adventure"}}, 10); err == nil {
+	if _, err := catalogue.Discover(context.Background(), titlesearch.DiscoveryQuery{Keywords: []string{"adventure"}}, 10); err == nil {
 		t.Fatal("fixture discovery error was lost")
 	}
 }

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -25,7 +25,7 @@ type Refiner interface {
 // nil ⇒ re-curation runs the LLM corpus alone.
 // Narrowed to the one method, like every other dependency here.
 type Adjacencer interface {
-	Adjacent(ctx context.Context, seeds []catalog.Candidate, exclude map[provision.Key]bool, limit int) ([]catalog.Adjacency, error)
+	Adjacent(ctx context.Context, seeds []titlesearch.Candidate, exclude map[provision.Key]bool, limit int) ([]titlesearch.Adjacency, error)
 }
 
 // RunnerStore is the slice of the store the runner needs.
@@ -158,7 +158,7 @@ func (r *Runner) adjacentFor(ctx context.Context, ch channelstore.Channel) []pro
 	if r.adj == nil || len(ch.Lineup) == 0 {
 		return nil
 	}
-	seeds := make([]catalog.Candidate, 0, len(ch.Lineup))
+	seeds := make([]titlesearch.Candidate, 0, len(ch.Lineup))
 	exclude := make(map[provision.Key]bool, len(ch.Lineup))
 	for _, e := range ch.Lineup {
 		exclude[e.Key] = true
@@ -166,7 +166,7 @@ func (r *Runner) adjacentFor(ctx context.Context, ch channelstore.Channel) []pro
 		if !ok || provider != "tmdb" {
 			continue // only TMDB ids have a graph to walk
 		}
-		seeds = append(seeds, catalog.Candidate{
+		seeds = append(seeds, titlesearch.Candidate{
 			MediaType: mt, TMDBID: id, Name: e.Title, Year: e.Year,
 		})
 	}

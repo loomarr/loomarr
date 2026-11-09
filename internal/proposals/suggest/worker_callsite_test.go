@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -33,7 +33,7 @@ func TestSuggest_LLMCallsNameTheirCallSite(t *testing.T) {
 	rec := &siteRecorder{Provider: testkit.NewLLM(t, finalResponseWithNone(`{"picks":[]}`), finalResponseWithNone(`{"picks":[]}`))}
 	lib := catalogfixture.NewScriptedLibrary()
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
-	sug := suggest.New(rec, catalog.New(lib, tm), tm, 10)
+	sug := suggest.New(rec, titlesearch.New(lib, tm), tm, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = sug.Suggest(ctx, proposals.Intent{Description: "Classic Kettle Kids episodes"})

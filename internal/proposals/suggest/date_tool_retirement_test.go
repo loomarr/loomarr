@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
 func TestSuggest_RetiredEraCannotBeProjectedAway(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"media_type": "series", "network": "Kestrel One", "era": "1990s", "dateMeaning": dateMeaningNone(),

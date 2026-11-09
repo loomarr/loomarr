@@ -8,7 +8,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -22,9 +22,9 @@ type preparedToolCall struct {
 	arguments     map[string]any
 	meaning       ValidatedDateMeaning
 	collection    bool
-	discovery     catalog.DiscoveryQuery
+	discovery     titlesearch.DiscoveryQuery
 	discoveryMode bool
-	queries       []catalog.DiscoveryQuery
+	queries       []titlesearch.DiscoveryQuery
 }
 
 // prepareToolCall performs every untrusted-input check and computes the exact
@@ -169,7 +169,7 @@ func stringSliceAsAny(values []string) []any {
 	return result
 }
 
-func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, proposals.DecisionTrace, bool) {
+func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []titlesearch.Candidate, proposals.DecisionTrace, bool) {
 	if prepared.collection {
 		blob, cands, trace, ok := s.runCollectionTool(ctx, prepared.arguments, intent, feedback)
 		if !ok || len(cands) == 0 || intent.exampleFill == nil || stringArg(prepared.arguments["media_type"]) != string(provision.Movie) {
@@ -185,15 +185,15 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 	arguments, discoveryMode := prepared.arguments, prepared.discoveryMode
 	mtArg, _ := arguments["media_type"].(string)
 
-	var cands []catalog.Candidate
+	var cands []titlesearch.Candidate
 	var err error
-	var union catalog.DiscoveryUnion
+	var union titlesearch.DiscoveryUnion
 	if discoveryMode {
 		union, err = s.catalog.DiscoverUnion(ctx, prepared.queries)
 		cands = union.Candidates
 	} else {
 		// KEYWORD: search both corpora by title.
-		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
+		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), titlesearch.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
@@ -226,7 +226,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 // projectDiscoveryWindows lowers only the accepted execution meaning. Model
 // arguments never choose provider years: movie release and series premiere are
 // independent title axes, while series airing constrains episode selection only.
-func projectDiscoveryWindows(base catalog.DiscoveryQuery, meaning ValidatedDateMeaning) []catalog.DiscoveryQuery {
+func projectDiscoveryWindows(base titlesearch.DiscoveryQuery, meaning ValidatedDateMeaning) []titlesearch.DiscoveryQuery {
 	var movie, series []DateYearRange
 	for _, axis := range meaning.ExecutionWindows() {
 		switch axis.Kind {
@@ -236,8 +236,8 @@ func projectDiscoveryWindows(base catalog.DiscoveryQuery, meaning ValidatedDateM
 			series = axis.Windows
 		}
 	}
-	windowed := func(media provision.MediaType, windows []DateYearRange) []catalog.DiscoveryQuery {
-		out := make([]catalog.DiscoveryQuery, 0, len(windows))
+	windowed := func(media provision.MediaType, windows []DateYearRange) []titlesearch.DiscoveryQuery {
+		out := make([]titlesearch.DiscoveryQuery, 0, len(windows))
 		for _, window := range windows {
 			query := base
 			query.MediaType, query.YearFrom, query.YearTo = media, window.Start, window.End
@@ -255,28 +255,28 @@ func projectDiscoveryWindows(base catalog.DiscoveryQuery, meaning ValidatedDateM
 			return windowed(provision.Series, series)
 		}
 	default:
-		var out []catalog.DiscoveryQuery
+		var out []titlesearch.DiscoveryQuery
 		if len(movie) > 0 {
 			out = append(out, windowed(provision.Movie, movie)...)
 		} else if len(series) > 0 {
-			out = append(out, catalog.DiscoveryQuery{MediaType: provision.Movie, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Cast: base.Cast, Creators: base.Creators})
+			out = append(out, titlesearch.DiscoveryQuery{MediaType: provision.Movie, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Cast: base.Cast, Creators: base.Creators})
 		}
 		if len(series) > 0 {
 			out = append(out, windowed(provision.Series, series)...)
 		} else if len(movie) > 0 {
-			out = append(out, catalog.DiscoveryQuery{MediaType: provision.Series, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Network: base.Network})
+			out = append(out, titlesearch.DiscoveryQuery{MediaType: provision.Series, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Network: base.Network})
 		}
 		if len(out) > 0 {
 			return out
 		}
 	}
-	return []catalog.DiscoveryQuery{base}
+	return []titlesearch.DiscoveryQuery{base}
 }
 
 // runCollectionTool resolves only the exact constituent titles the model names.
 // It intentionally does not use network, genre, era, or adjacent discovery as
 // membership evidence: those are thematic evidence, not a named set's roster.
-func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, proposals.DecisionTrace, bool) {
+func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []titlesearch.Candidate, proposals.DecisionTrace, bool) {
 	for key := range arguments {
 		if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
 			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, proposals.DecisionTrace{}, false
@@ -290,9 +290,9 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposals.DecisionTrace{}, false
 	}
-	candidates := make([]catalog.Candidate, 0, len(titles))
+	candidates := make([]titlesearch.Candidate, 0, len(titles))
 	for _, title := range titles {
-		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
+		results, searchErr := s.catalog.Search(ctx, title.name, titlesearch.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
 			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure}, true
 		}
@@ -392,36 +392,36 @@ const (
 // parseDiscoveryQueryWithDateMeaning permits a date-only discovery only after
 // dateMeaning has passed the canonical validator at the tool boundary. The
 // ordinary parser intentionally cannot infer qualification from untrusted JSON.
-func parseDiscoveryQueryWithDateMeaning(args map[string]any, meaning ValidatedDateMeaning) (catalog.DiscoveryQuery, bool, error) {
+func parseDiscoveryQueryWithDateMeaning(args map[string]any, meaning ValidatedDateMeaning) (titlesearch.DiscoveryQuery, bool, error) {
 	return parseDiscoveryQueryWithDateQualifier(args, meaning.DateMeaning().Kind == DateMeaningConstraints)
 }
 
-func parseDiscoveryQueryWithDateQualifier(args map[string]any, dateOnlyQualifier bool) (catalog.DiscoveryQuery, bool, error) {
+func parseDiscoveryQueryWithDateQualifier(args map[string]any, dateOnlyQualifier bool) (titlesearch.DiscoveryQuery, bool, error) {
 	if _, present := args["era"]; present {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("era is retired; dateMeaning is the sole date authority")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("era is retired; dateMeaning is the sole date authority")
 	}
 	titleQuery := ""
 	if raw, exists := args["query"]; exists {
 		value, ok := raw.(string)
 		if !ok {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("query must be a string")
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("query must be a string")
 		}
 		if value != "" {
 			titleQuery = strings.TrimSpace(value)
 			if titleQuery == "" {
-				return catalog.DiscoveryQuery{}, false, fmt.Errorf("query must be empty or contain non-whitespace text")
+				return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("query must be empty or contain non-whitespace text")
 			}
 		}
 	}
 	keywords, err := optionalStringTerms(args, "keywords")
 	if err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	genres, err := optionalStringTerms(args, "genres")
 	if err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
-	query := catalog.DiscoveryQuery{
+	query := titlesearch.DiscoveryQuery{
 		MediaType: mediaTypeArg(stringArg(args["media_type"])),
 		Keywords:  keywords,
 		Genres:    genres,
@@ -430,62 +430,62 @@ func parseDiscoveryQueryWithDateQualifier(args map[string]any, dateOnlyQualifier
 		value, ok := raw.(string)
 		query.Network = strings.TrimSpace(value)
 		if !ok || query.Network == "" || len([]rune(query.Network)) > maxDiscoveryEntityRunes {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("network must be a non-empty string of at most %d characters", maxDiscoveryEntityRunes)
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("network must be a non-empty string of at most %d characters", maxDiscoveryEntityRunes)
 		}
 	}
 	if query.Cast, err = boundedEntityTerms(args, "cast"); err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	if query.Creators, err = boundedEntityTerms(args, "creators"); err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	hasPeople := len(query.Cast) > 0 || len(query.Creators) > 0
 	if query.Network != "" && hasPeople {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("network and person constraints cannot be combined")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("network and person constraints cannot be combined")
 	}
 	if query.Network != "" && query.MediaType != provision.Series {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("network requires media_type series")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("network requires media_type series")
 	}
 	if hasPeople && query.MediaType != provision.Movie {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("cast and creators require media_type movie")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("cast and creators require media_type movie")
 	}
 	if rawValue, ok := args["original_language"]; ok && rawValue != "" {
 		raw, stringOK := rawValue.(string)
 		if !stringOK || strings.TrimSpace(raw) == "" {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("original_language: must be a two-letter code")
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("original_language: must be a two-letter code")
 		}
 		query.OriginalLanguage, err = discoveryCode(raw, false)
 		if err != nil {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("original_language: %w", err)
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("original_language: %w", err)
 		}
 	}
 	if rawValue, ok := args["origin_country"]; ok && rawValue != "" {
 		raw, stringOK := rawValue.(string)
 		if !stringOK || strings.TrimSpace(raw) == "" {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("origin_country: must be a two-letter code")
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("origin_country: must be a two-letter code")
 		}
 		query.OriginCountry, err = discoveryCode(raw, true)
 		if err != nil {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("origin_country: %w", err)
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("origin_country: %w", err)
 		}
 	}
 	if query.RuntimeMin, err = boundedIntArg(args, "runtime_min", maxDiscoveryRuntimeMinutes); err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	if query.RuntimeMax, err = boundedIntArg(args, "runtime_max", maxDiscoveryRuntimeMinutes); err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	if query.RuntimeMin > 0 && query.RuntimeMax > 0 && query.RuntimeMin > query.RuntimeMax {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("runtime_min must not exceed runtime_max")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("runtime_min must not exceed runtime_max")
 	}
 	if query.VoteCountMin, err = boundedIntArg(args, "vote_count_min", maxDiscoveryVoteCount); err != nil {
-		return catalog.DiscoveryQuery{}, false, err
+		return titlesearch.DiscoveryQuery{}, false, err
 	}
 	_, voteAverageSet := args["vote_average_min"]
 	if raw, ok := args["vote_average_min"]; ok {
 		query.VoteAverageMin, err = finiteNumber(raw)
 		if err != nil || query.VoteAverageMin <= 0 || query.VoteAverageMin > 10 {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("vote_average_min must be greater than 0 and at most 10")
+			return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("vote_average_min must be greater than 0 and at most 10")
 		}
 	}
 
@@ -493,10 +493,10 @@ func parseDiscoveryQueryWithDateQualifier(args map[string]any, dateOnlyQualifier
 		query.OriginalLanguage != "" || query.OriginCountry != "" || query.RuntimeMin > 0 ||
 		query.RuntimeMax > 0 || voteAverageSet || query.VoteCountMin > 0 || query.Network != "" || hasPeople
 	if discoveryMode && titleQuery != "" {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("query cannot be combined with discovery qualifiers")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("query cannot be combined with discovery qualifiers")
 	}
 	if !discoveryMode && titleQuery == "" {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("provide query or a discovery qualifier")
+		return titlesearch.DiscoveryQuery{}, false, fmt.Errorf("provide query or a discovery qualifier")
 	}
 	return query, discoveryMode, nil
 }
@@ -727,7 +727,7 @@ func stringArg(v any) string { s, _ := v.(string); return s }
 // filterByMediaType keeps only candidates matching the requested type ("movie" or
 // "series"); an unrecognized value is ignored (returns all — never hides content
 // from the model on a bad hint).
-func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate {
+func filterByMediaType(cands []titlesearch.Candidate, mt string) []titlesearch.Candidate {
 	want := provision.MediaType(mt)
 	if want != provision.Movie && want != provision.Series {
 		return cands

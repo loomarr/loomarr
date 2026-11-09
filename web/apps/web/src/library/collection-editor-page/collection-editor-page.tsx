@@ -1,7 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { LibraryCollectionEditor, type LibraryCollectionMember } from "@loomarr/ui";
+import { LibraryCollectionEditor, type LibraryCollectionMember, StatePanel } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -103,7 +103,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
   };
 
   if (saved.error && !current) return <ErrorState error={saved.error} onRetry={() => void saved.refetch()} />;
-  if (!draft) return null;
+  if (!draft) return <StatePanel kind="loading" title="Loading this collection" />;
 
   return (
     <LibraryCollectionEditor

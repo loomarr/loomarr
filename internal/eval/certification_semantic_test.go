@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -79,7 +79,7 @@ func TestV8SemanticProductionPlannerAndSchedule(t *testing.T) {
 				t.Fatal(err)
 			}
 			var queries [][3]any
-			generator.(*embeddedCertificationGenerator).fixture.onDiscover = func(q catalog.DiscoveryQuery) {
+			generator.(*embeddedCertificationGenerator).fixture.onDiscover = func(q titlesearch.DiscoveryQuery) {
 				queries = append(queries, [3]any{q.MediaType, q.YearFrom, q.YearTo})
 			}
 			card := NewRunner(generator, config).WithObserver(observer).WithMaterializer(materializer).Run(context.Background(), []Case{c})
@@ -148,7 +148,7 @@ func TestV8SemanticIndexedAnchorRejectedBeforeDiscoveryAndRepaired(t *testing.T)
 				t.Fatal(err)
 			}
 			var queries [][3]any
-			generator.(*embeddedCertificationGenerator).fixture.onDiscover = func(q catalog.DiscoveryQuery) {
+			generator.(*embeddedCertificationGenerator).fixture.onDiscover = func(q titlesearch.DiscoveryQuery) {
 				queries = append(queries, [3]any{q.MediaType, q.YearFrom, q.YearTo})
 			}
 			provider.OnChat = func() {

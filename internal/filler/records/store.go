@@ -278,6 +278,10 @@ type FillerSourceStore interface {
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
+	// ChangeFillerSource applies one operator edit (switch, coverage, fetch tuning) in one
+	// statement, so a PATCH that names several of them cannot half-apply. store.ErrNotFound for an
+	// unknown id.
+	ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error
 }
 
 // Store is the core store extended with the filler store: the one value the composition root

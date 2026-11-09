@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 )
 
 // This file is the job execution model (§8): submissions become persisted jobs;
@@ -293,7 +294,7 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 	}
 }
 
-func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
+func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 	jobCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(work.JobID, p, round) })
@@ -313,7 +314,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		return
 	}
 	completed, err := s.workflow.Complete(ctx, work, suggested)
-	if errors.Is(err, ErrStaleAttempt) {
+	if errors.Is(err, workflow.ErrStaleAttempt) {
 		s.log.Info("discarding stale suggestion result", "job", work.JobID, "attempt", work.Attempt, "err", err)
 		return
 	}
@@ -332,10 +333,10 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 
-func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error, measuredDuration time.Duration, measured bool) {
+func (s *Service) failWorkflow(ctx context.Context, work workflow.Work, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
 	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), persistedMessage(cause), traceJSON); err != nil {
-		if errors.Is(err, ErrStaleAttempt) {
+		if errors.Is(err, workflow.ErrStaleAttempt) {
 			s.log.Info("discarding stale Proposal Job failure",
 				"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 			return
@@ -594,7 +595,7 @@ func classifyFailure(cause error) string {
 		}
 		return failure.Code
 	}
-	if errors.Is(cause, ErrNoGroundedTitles) {
+	if errors.Is(cause, proposals.ErrNoGroundedTitles) {
 		return FailureCodeNoGroundedTitles
 	}
 	return FailureCodeGenerationFailed

@@ -22,9 +22,9 @@ One area of the [package map](../package-map.md#start-here).
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposals/quality`** · 6 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
-- **`proposals/suggest`** · 8 importers · → `catalog`, `channels/schedule`, `library/tmdb`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`
+- **`proposals/suggest`** · 7 importers · → `channels/schedule`, `library/titlesearch`, `library/tmdb`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `proposals/workflow`, `provision`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`proposals/webreference`** · 4 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
-- **`proposals/workflow`** · 2 importers · → `channels/schedule`, `platform/store`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`
+- **`proposals/workflow`** · 3 importers · → `channels/schedule`, `platform/store`, `platform/store/proposalstore`, `proposals`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.

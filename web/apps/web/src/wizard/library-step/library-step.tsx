@@ -1,9 +1,10 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { ArrFromRequesterDTOApp } from "@loomarr/api/models/arrFromRequesterDTOApp";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { Action, Text } from "@loomarr/design-system";
-import { LibraryWizardStep } from "@loomarr/ui";
+import { LibraryWizardStep, StatePanel } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -34,10 +35,10 @@ const LibraryStep = ({ backend }: LibraryStepProps) => {
   const body = folders.roots;
   const current = folders.status;
 
-  if (folders.error && !body) {
+  if (folders.error && !(body && current)) {
     return <ErrorState error={folders.error} onRetry={() => void folders.refresh()} />;
   }
-  if (!body || !current) return null;
+  if (!body || !current) return <StatePanel kind="loading" title="Loading your media folders" />;
 
   const anArr = value(SettingKey.SonarrURL) !== "" || value(SettingKey.RadarrURL) !== "";
   return (
@@ -64,8 +65,10 @@ const LibraryStep = ({ backend }: LibraryStepProps) => {
       {fill.filled.length > 0 ? (
         <Text textRole="body" tone="secondary">
           Filled in from Seerr:{" "}
-          {fill.filled.map((a) => (a.app === "sonarr" ? "Sonarr" : "Radarr")).join(" and ")}. If Loomarr
-          can&rsquo;t reach one at that address, change it here.
+          {fill.filled
+            .map((a) => (a.app === ArrFromRequesterDTOApp.sonarr ? "Sonarr" : "Radarr"))
+            .join(" and ")}
+          . If Loomarr can&rsquo;t reach one at that address, change it here.
         </Text>
       ) : null}
       {fill.error ? <ErrorState error={fill.error} /> : null}

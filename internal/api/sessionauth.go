@@ -19,11 +19,6 @@ type sessionAuthorizer struct {
 	apiTokenCurrent func(context.Context) (string, error)
 }
 
-// NewSessionAuthorizer builds the session+token authorizer.
-func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) httpcore.Authorizer {
-	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
-}
-
 // NewSessionAuthorizerCurrent builds the production session authorizer with a
 // request-boundary API token resolver. Postgres uses it to observe a rotation
 // performed by another replica; resolver errors fail only the bearer fallback
@@ -41,37 +36,14 @@ func NewSessionAuthorizerCurrent(
 	return &sessionAuthorizer{mgr: mgr, devices: devices, apiTokenCurrent: apiToken}
 }
 
-func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Role {
-	return a.authorizeIdentity(r).role
-}
-
-// AuthorizeUser resolves the role AND the authenticated user (when a session
-// cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
-func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
-	identity := a.authorizeIdentity(r)
-	return identity.role, identity.user
-}
-
-type requestIdentity struct {
-	deviceID string
-	role     httpcore.Role
-	user     *identitystore.User
-}
-
-type identityAuthorizer interface {
-	AuthorizeIdentity(r *http.Request) requestIdentity
-}
-
-func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
-	return a.authorizeIdentity(r)
-}
-
-func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
+// Authorize resolves the role AND the authenticated user (when a session cookie or a paired
+// device identifies one). The API_TOKEN path has no user (machine/break-glass).
+func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
 		if u, err := a.mgr.Resolve(r.Context(), c.Value, httpcore.ClientLabel(r.UserAgent())); err == nil {
 			user := u
-			return requestIdentity{role: roleOf(u), user: &user}
+			return httpcore.Identity{Role: roleOf(u), User: &user}
 		}
 	}
 	const prefix = "Bearer "
@@ -89,7 +61,7 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
 		if principal, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
 			user := principal.User
-			return requestIdentity{deviceID: principal.ID, role: roleOf(user), user: &user}
+			return httpcore.Identity{DeviceID: principal.ID, Role: roleOf(user), User: &user}
 		}
 	}
 
@@ -106,10 +78,10 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 			}
 		}
 		if apiToken != "" && httpcore.ConstantEq(h[len(prefix):], apiToken) {
-			return requestIdentity{role: httpcore.RoleAdmin}
+			return httpcore.Identity{Role: httpcore.RoleAdmin}
 		}
 	}
-	return requestIdentity{role: httpcore.RoleAnonymous}
+	return httpcore.Identity{Role: httpcore.RoleAnonymous}
 }
 
 // hasBearer reports whether a request carries an Authorization: Bearer credential.
@@ -122,14 +94,6 @@ func hasBearer(r *http.Request) bool {
 	const prefix = "Bearer "
 	h := r.Header.Get("Authorization")
 	return len(h) > len(prefix) && h[:len(prefix)] == prefix
-}
-
-// UserAuthorizer is implemented by authorizers that can also return the
-// authenticated user (the session authorizer). The middleware uses it to thread
-// identity for /v1/auth/me etc.
-type UserAuthorizer interface {
-	httpcore.Authorizer
-	AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User)
 }
 
 func roleOf(u identitystore.User) httpcore.Role {

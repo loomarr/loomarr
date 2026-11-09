@@ -30,7 +30,7 @@ func TestV8TypedDateRefusalRunnerMatrix(t *testing.T) {
 		{name: "conflict rejects ambiguity", expected: proposals.TerminalConstraintsConflict, err: typedDateFailure(proposals.TerminalDateSemanticsUnclear), schema: true, passed: true},
 		{name: "ambiguity rejects conflict", expected: proposals.TerminalDateSemanticsUnclear, err: typedDateFailure(proposals.TerminalConstraintsConflict), schema: true, passed: true},
 		{name: "wrapped conflict accepts conflict", expected: proposals.TerminalConstraintsConflict, err: fmt.Errorf("wrapped: %w", typedDateFailure(proposals.TerminalConstraintsConflict)), quality: true, schema: true, passed: true, certified: true},
-		{name: "generic no grounded titles is not typed quality", expected: proposals.TerminalConstraintsConflict, err: suggest.ErrNoGroundedTitles, schema: true, passed: true},
+		{name: "generic no grounded titles is not typed quality", expected: proposals.TerminalConstraintsConflict, err: proposals.ErrNoGroundedTitles, schema: true, passed: true},
 		{name: "successful empty proposal is not typed quality", expected: proposals.TerminalConstraintsConflict, schema: true, passed: true},
 		{name: "malformed terminal is not typed", expected: proposals.TerminalConstraintsConflict, err: typedDateFailure(proposals.TerminalMalformedExhausted), passed: false},
 		{name: "wrong failure code is not typed", expected: proposals.TerminalConstraintsConflict, err: suggest.NewFailure(suggest.FailureProvider, validDateTrace(proposals.TerminalConstraintsConflict), errors.New("provider failed")), passed: false},
@@ -62,7 +62,7 @@ func TestV8TypedDateRefusalKeepsAbstentionAndNoFabricationContracts(t *testing.T
 		passed     bool
 		noTypedRef bool
 	}{
-		{name: "old abstention accepts ordinary no grounded titles", err: suggest.ErrNoGroundedTitles, quality: true, schema: true, passed: true},
+		{name: "old abstention accepts ordinary no grounded titles", err: proposals.ErrNoGroundedTitles, quality: true, schema: true, passed: true},
 		{name: "old abstention rejects typed ordinary cause", err: typedDateFailure(proposals.TerminalConstraintsConflict), schema: false, passed: false},
 		{name: "old abstention rejects successful empty proposal", quality: false, schema: true, passed: true},
 		{name: "old abstention rejects nonempty proposal", proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}, quality: false, schema: true, passed: true},

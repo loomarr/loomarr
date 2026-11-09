@@ -62,17 +62,12 @@ func (f clientDiagnosticServiceFunc) Ingest(
 
 type diagnosticUserAuthorizer struct{}
 
-func (diagnosticUserAuthorizer) Authorize(r *http.Request) httpcore.Role {
-	role, _ := diagnosticUserAuthorizer{}.AuthorizeUser(r)
-	return role
-}
-
-func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
+func (diagnosticUserAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != memberToken {
-		return httpcore.RoleAnonymous, nil
+		return httpcore.Identity{Role: httpcore.RoleAnonymous}
 	}
 	user := identitystore.User{ID: "member_1", Name: "Viewer", Role: identitystore.RoleMember}
-	return httpcore.RoleMember, &user
+	return httpcore.Identity{Role: httpcore.RoleMember, User: &user}
 }
 
 func (f diagnosticEventServiceFunc) Query(

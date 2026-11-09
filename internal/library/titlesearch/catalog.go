@@ -8,7 +8,7 @@
 //
 // This is the grounding chokepoint (§8): the LLM never invents titles; it can
 // only choose from what Search returns, and every Candidate carries a real id.
-package catalog
+package titlesearch
 
 import (
 	"context"
