@@ -167,7 +167,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		StartupReports:       deps.foundation.startupReports,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
-		RestartDrift:             restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		RestartDrift:             config.RestartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
 		Jobs:                     jobsSvc,
 		Settings:                 settingsSvc,
 		NotificationDestinations: deps.notificationDestinations,

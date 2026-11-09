@@ -1,4 +1,11 @@
-package app
+// Package currenthealth runs Loomarr's health checks: the startup report's integration
+// checks, and the continuous Current Health probes the scheduler and the manual refresh share.
+//
+// Every probe is handed in by the composition root, so this package decides only which checks
+// apply to the live settings and how a result is reported. A probe's own detail stays private,
+// because setup probes may echo URLs or credentials into a report that is retained and
+// downloadable.
+package currenthealth
 
 import (
 	"context"
@@ -17,7 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
-const startupIntegrationTimeout = 5 * time.Second
+const IntegrationTimeout = 5 * time.Second
 const systemHealthDefaultCron = "*/30 * * * * *"
 
 type startupIntegration struct {
@@ -29,7 +36,7 @@ type startupIntegration struct {
 // unavailableDetail is the operator-facing reason for a configured check that failed. Most
 // checks stay deliberately generic (their probes may echo credentials); the public address has
 // exactly one fix, so it names the setting to change.
-func unavailableDetail(set resolved, key string) string {
+func unavailableDetail(set settings.Reader, key string) string {
 	if key == diagnostics.StartupCheckPublicURL {
 		return publicURLFailureDetail(settings.ServerPublicURL.Get(set))
 	}
@@ -49,7 +56,7 @@ func publicURLFailureDetail(raw string) string {
 
 // publicURLProbe is the health probe for server.public_url: the server must answer its own
 // unauthenticated liveness route there, the same path a media server or Tunarr would dial.
-func publicURLProbe(set resolved, client *http.Client) func(context.Context) (bool, string) {
+func PublicURLProbe(set settings.Reader, client *http.Client) func(context.Context) (bool, string) {
 	return func(ctx context.Context) (bool, string) {
 		base := strings.TrimRight(strings.TrimSpace(settings.ServerPublicURL.Get(set)), "/")
 		if base == "" {
@@ -68,7 +75,7 @@ func publicURLProbe(set resolved, client *http.Client) func(context.Context) (bo
 	}
 }
 
-func startupIntegrations(set resolved) []startupIntegration {
+func startupIntegrations(set settings.Reader) []startupIntegration {
 	return []startupIntegration{
 		{diagnostics.StartupCheckPublicURL, strings.TrimSpace(settings.ServerPublicURL.Get(set)) != "",
 			"/settings/system/playback"},
@@ -89,10 +96,10 @@ func startupIntegrations(set resolved) []startupIntegration {
 // completeStartupIntegrations projects the existing setup probes into the startup report. It
 // does not invent a second health implementation: connectionTests remains the one probe truth.
 // Independent probes run concurrently so one slow optional service costs at most one timeout.
-func completeStartupIntegrations(
+func CompleteStartupIntegrations(
 	parent context.Context,
 	startup *diagnostics.Startup,
-	set resolved,
+	set settings.Reader,
 	probes map[string]func(context.Context) (bool, string),
 ) {
 	var wg sync.WaitGroup
@@ -117,7 +124,7 @@ func completeStartupIntegrations(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(parent, startupIntegrationTimeout)
+			ctx, cancel := context.WithTimeout(parent, IntegrationTimeout)
 			defer cancel()
 			ok, _ := probe(ctx)
 			if ok {
@@ -139,13 +146,13 @@ func completeStartupIntegrations(
 
 // currentHealthRunner is the one continuous probe implementation used by the scheduler and manual
 // refresh. Probe-specific detail stays private because setup probes may include URLs or credentials.
-type currentHealthRunner struct {
+type Runner struct {
 	mu     sync.Mutex
 	health *diagnostics.Startup
 	store  interface {
 		GetSetting(context.Context, string) (string, error)
 	}
-	set    resolved
+	set    settings.Reader
 	probes map[string]func(context.Context) (bool, string)
 	tasks  starvedTaskSource
 }
@@ -157,7 +164,7 @@ type starvedTaskSource interface {
 
 // watchTasks attaches the scheduler once it exists: it is built after this runner's job is
 // registered, so it cannot be a constructor argument.
-func (r *currentHealthRunner) watchTasks(tasks starvedTaskSource) {
+func (r *Runner) WatchTasks(tasks starvedTaskSource) {
 	if r == nil {
 		return
 	}
@@ -166,18 +173,18 @@ func (r *currentHealthRunner) watchTasks(tasks starvedTaskSource) {
 	r.mu.Unlock()
 }
 
-func newCurrentHealthRunner(
+func NewRunner(
 	health *diagnostics.Startup,
 	st interface {
 		GetSetting(context.Context, string) (string, error)
 	},
-	set resolved,
+	set settings.Reader,
 	probes map[string]func(context.Context) (bool, string),
-) *currentHealthRunner {
-	return &currentHealthRunner{health: health, store: st, set: set, probes: probes}
+) *Runner {
+	return &Runner{health: health, store: st, set: set, probes: probes}
 }
 
-func (r *currentHealthRunner) Run(parent context.Context) error {
+func (r *Runner) Run(parent context.Context) error {
 	if r == nil || r.health == nil {
 		return nil
 	}
@@ -229,7 +236,7 @@ func (r *currentHealthRunner) Run(parent context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(parent, startupIntegrationTimeout)
+			ctx, cancel := context.WithTimeout(parent, IntegrationTimeout)
 			defer cancel()
 			if check.fn(ctx) {
 				r.health.Observe(check.key, diagnostics.HealthObservation{
@@ -258,7 +265,7 @@ func (r *currentHealthRunner) Run(parent context.Context) error {
 
 // observeTasks turns starved scheduled tasks into a warning that names them, so Current Health is
 // Degraded rather than Healthy while work is days overdue.
-func (r *currentHealthRunner) observeTasks(ctx context.Context, freshFor time.Duration) {
+func (r *Runner) observeTasks(ctx context.Context, freshFor time.Duration) {
 	if r.tasks == nil {
 		return
 	}
@@ -266,7 +273,7 @@ func (r *currentHealthRunner) observeTasks(ctx context.Context, freshFor time.Du
 	if err != nil {
 		r.health.Observe(diagnostics.StartupCheckScheduledTasks, diagnostics.HealthObservation{
 			Status: diagnostics.HealthFailed, Detail: "could not read the task schedule",
-			RemediationRoute: scheduledTasksRoute, FreshFor: freshFor,
+			RemediationRoute: ScheduledTasksRoute, FreshFor: freshFor,
 		})
 		return
 	}
@@ -282,11 +289,11 @@ func (r *currentHealthRunner) observeTasks(ctx context.Context, freshFor time.Du
 	}
 	r.health.Observe(diagnostics.StartupCheckScheduledTasks, diagnostics.HealthObservation{
 		Status: diagnostics.HealthWarning, Detail: "Overdue: " + strings.Join(titles, ", "),
-		RemediationRoute: scheduledTasksRoute, FreshFor: freshFor,
+		RemediationRoute: ScheduledTasksRoute, FreshFor: freshFor,
 	})
 }
 
-const scheduledTasksRoute = "/settings/system/tasks"
+const ScheduledTasksRoute = "/settings/system/tasks"
 
 func currentHealthFreshness(expression string, now time.Time) time.Duration {
 	if expression == "" {
@@ -302,10 +309,10 @@ func currentHealthFreshness(expression string, now time.Time) time.Duration {
 	}
 	// Two missed scheduled observations plus one probe deadline is stale. This tolerates one
 	// delayed scheduler claim while still preventing old green state from lingering.
-	return 2*second.Sub(first) + startupIntegrationTimeout
+	return 2*second.Sub(first) + IntegrationTimeout
 }
 
-func (r *currentHealthRunner) Refresh(ctx context.Context) (diagnostics.HealthReport, error) {
+func (r *Runner) Refresh(ctx context.Context) (diagnostics.HealthReport, error) {
 	if r == nil || r.health == nil {
 		return diagnostics.HealthReport{State: diagnostics.HealthUnhealthy}, errors.New("current health is unavailable")
 	}
@@ -313,7 +320,7 @@ func (r *currentHealthRunner) Refresh(ctx context.Context) (diagnostics.HealthRe
 	return r.health.Health(), err
 }
 
-func (r *currentHealthRunner) Job() jobs.Job {
+func (r *Runner) Job() jobs.Job {
 	return jobs.Job{
 		Name: "system-health", Group: jobs.GroupSystem, Title: "Check app health",
 		Description: "Checks Loomarr's database and configured connections and refreshes Current Health.",

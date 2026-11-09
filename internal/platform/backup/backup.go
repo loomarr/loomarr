@@ -1,4 +1,7 @@
-package app
+// Package backup keeps the SQLite backups on disk: it lists them, opens one for download, writes
+// a new one and prunes to the retention policy, and supplies the scheduled `backup` job (§16,
+// §18.1).
+package backup
 
 import (
 	"context"
@@ -7,56 +10,91 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
-// backupsService backs /v1/system/backups* (§16, V12) — the backups on disk, as opposed
-// to `GET /v1/backup`, which generates a fresh snapshot and keeps nothing.
+// Entry is one backup file on disk.
+type Entry struct {
+	Name      string
+	Bytes     int64
+	WrittenAt int64 // Unix seconds
+}
+
+// List is the backups on disk, newest first, plus the policy in force.
+type List struct {
+	// Supported is false on Postgres, where in-app backup is deliberately not offered (§16).
+	Supported bool
+	Dir       string
+	Schedule  string
+	Retain    int // how many are kept; 0 keeps everything
+	Backups   []Entry
+}
+
+// Content is one backup opened for download.
+type Content struct {
+	Name  string
+	Path  string
+	Bytes int64
+}
+
+// Service is the backups on disk, as opposed to `GET /v1/backup`, which generates a fresh
+// snapshot and keeps nothing (§16, V12).
 //
-// Wired only for a SQLite install, mirroring the scheduled `backup` job: WriteBackup is
+// It is wired only for a SQLite install, mirroring the scheduled `backup` job: WriteBackup is
 // SQLite-only by design, so on Postgres the API reports 501 and the UI explains pg_dump
 // rather than showing an empty table that reads as breakage.
 //
 // `backup.dir` and `backup.retain` are read at CALL time, not captured at boot, so a
-// hot-applied settings change takes effect without a restart — the same pattern
-// databaseService uses for the same key.
-type backupsService struct {
-	w      backupWriter
+// hot-applied settings change takes effect without a restart.
+type Service struct {
+	w      Writer
 	dir    func() string
 	retain func() int
 	sched  func() string
 }
 
-// backupWriter is the one capability this service needs from the store — the same shape
+// Config is what a Service reads. Dir, Retain and Schedule resolve at call time.
+type Config struct {
+	Writer   Writer
+	Dir      func() string
+	Retain   func() int
+	Schedule func() string
+}
+
+// New returns the backups service over c.
+func New(c Config) *Service {
+	return &Service{w: c.Writer, dir: c.Dir, retain: c.Retain, sched: c.Schedule}
+}
+
+// Writer is the one capability this service needs from the store — the same shape
 // store.BackupWriter returns. Declared here rather than reaching for the store's concrete
 // type so the service can be tested with a stub that writes a file and nothing else.
-type backupWriter interface {
+type Writer interface {
 	WriteBackup(ctx context.Context, dir string) (store.BackupFile, error)
 }
 
-// errBackupNotFound covers both "not a name we write" and "not on disk". They are one
+// ErrNotFound covers both "not a name we write" and "not on disk". They are one
 // answer on purpose: both mean the caller cannot have the file, and distinguishing them
 // would confirm which paths exist.
-var errBackupNotFound = errors.New("backup not found")
+var ErrNotFound = errors.New("backup not found")
 
-func (b *backupsService) List(context.Context) (system.BackupList, error) {
+func (b *Service) List(context.Context) (List, error) {
 	dir := b.dir()
 	files, err := store.ListBackups(dir)
 	if err != nil {
-		return system.BackupList{}, err
+		return List{}, err
 	}
-	out := system.BackupList{
+	out := List{
 		Supported: true,
 		Dir:       dir,
 		Schedule:  b.sched(),
 		Retain:    b.retain(),
-		Backups:   make([]system.BackupEntry, 0, len(files)),
+		Backups:   make([]Entry, 0, len(files)),
 	}
 	for _, f := range files {
-		out.Backups = append(out.Backups, system.BackupEntry{
+		out.Backups = append(out.Backups, Entry{
 			Name:      filepath.Base(f.Path),
 			Bytes:     f.Bytes,
 			WrittenAt: f.WrittenAt,
@@ -65,39 +103,39 @@ func (b *backupsService) List(context.Context) (system.BackupList, error) {
 	return out, nil
 }
 
-func (b *backupsService) Open(_ context.Context, name string) (system.BackupContent, error) {
+func (b *Service) Open(_ context.Context, name string) (Content, error) {
 	// ⚠ `name` is a client-supplied path segment. Validate it against the pattern the
 	// writer produces BEFORE it reaches the filesystem: the pattern admits no separators
 	// and no dots beyond the extension, so "../../etc/passwd" is rejected here rather
 	// than being cleaned into something that happens to be safe.
 	if !store.IsBackupName(name) {
-		return system.BackupContent{}, errBackupNotFound
+		return Content{}, ErrNotFound
 	}
 	// Listing rather than stat-ing the joined path keeps ONE definition of "a backup
 	// that exists" — the same function the UI's table was built from. A file that is on
 	// disk but not in the listing is not something this endpoint should serve.
 	files, err := store.ListBackups(b.dir())
 	if err != nil {
-		return system.BackupContent{}, err
+		return Content{}, err
 	}
 	for _, f := range files {
 		if filepath.Base(f.Path) == name {
-			return system.BackupContent{Name: name, Path: f.Path, Bytes: f.Bytes}, nil
+			return Content{Name: name, Path: f.Path, Bytes: f.Bytes}, nil
 		}
 	}
-	return system.BackupContent{}, errBackupNotFound
+	return Content{}, ErrNotFound
 }
 
-func (b *backupsService) Run(ctx context.Context) (system.BackupEntry, error) {
+func (b *Service) Run(ctx context.Context) (Entry, error) {
 	dir := b.dir()
 	bf, err := b.w.WriteBackup(ctx, dir)
 	if err != nil {
-		return system.BackupEntry{}, err
+		return Entry{}, err
 	}
 	// Prune AFTER the write, never before — see store.PruneBackups. A prune failure does
 	// not fail the call: the backup the operator asked for is on disk and valid.
 	_, _ = store.PruneBackups(dir, b.retain())
-	return system.BackupEntry{
+	return Entry{
 		Name:      filepath.Base(bf.Path),
 		Bytes:     bf.Bytes,
 		WrittenAt: bf.WrittenAt,
@@ -126,7 +164,7 @@ const (
 // ⚠ It calls the SAME service the "Back up now" button does, rather than a second copy of
 // write-then-prune. Two implementations of a retention policy is how the scheduled path and
 // the manual path come to disagree about which files are safe to delete.
-func (s *backupsService) Job(log *slog.Logger) jobs.Job {
+func (s *Service) Job(log *slog.Logger) jobs.Job {
 	return jobs.Job{
 		Name: backupJobName, Group: jobs.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: settings.BackupSchedule.Key(),
@@ -156,7 +194,7 @@ func (s *backupsService) Job(log *slog.Logger) jobs.Job {
 // No Run func: the scheduler never calls one for a disabled job, so leaving it nil means a
 // regression that DID schedule it panics loudly in tests rather than silently running a
 // no-op that looks like a successful backup.
-func unavailableBackupJob(reason string) jobs.Job {
+func UnavailableJob(reason string) jobs.Job {
 	return jobs.Job{
 		Name: backupJobName, Group: jobs.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: settings.BackupSchedule.Key(),

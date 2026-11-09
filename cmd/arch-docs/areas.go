@@ -195,7 +195,8 @@ var areas = []area{
 		Packages: []string{
 			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
-			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
+			"platform/backup", "platform/databasemigration",
+			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
 			"platform/llm", "platform/llm/picker", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",

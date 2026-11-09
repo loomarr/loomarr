@@ -1,4 +1,4 @@
-package app
+package currenthealth
 
 import (
 	"context"
@@ -24,10 +24,10 @@ func TestPublicURLProbeNamesAnUnreachableAddress(t *testing.T) {
 	t.Cleanup(up.Close)
 	client := &http.Client{Timeout: time.Second}
 
-	if ok, _ := publicURLProbe(visionSet(t, map[string]string{"server.public_url": up.URL}), client)(context.Background()); !ok {
+	if ok, _ := PublicURLProbe(fixedSettings(t, map[string]string{"server.public_url": up.URL}), client)(context.Background()); !ok {
 		t.Fatal("a reachable public address must pass")
 	}
-	if ok, _ := publicURLProbe(visionSet(t, map[string]string{"server.public_url": deadPublicURL}), client)(context.Background()); ok {
+	if ok, _ := PublicURLProbe(fixedSettings(t, map[string]string{"server.public_url": deadPublicURL}), client)(context.Background()); ok {
 		t.Fatal("an unreachable public address must fail")
 	}
 
@@ -43,9 +43,9 @@ func TestCurrentHealthReportsAnUnreachablePublicURL(t *testing.T) {
 	health := diagnostics.NewStartup(now, 1, "dev", []diagnostics.StartupCheck{
 		{Key: diagnostics.StartupCheckPublicURL, Mode: diagnostics.HealthCheckContinuous, FreshFor: time.Minute},
 	}, func() time.Time { return now })
-	set := visionSet(t, map[string]string{"server.public_url": deadPublicURL})
-	runner := newCurrentHealthRunner(health, nil, set, map[string]func(context.Context) (bool, string){
-		diagnostics.StartupCheckPublicURL: publicURLProbe(set, &http.Client{Timeout: time.Second}),
+	set := fixedSettings(t, map[string]string{"server.public_url": deadPublicURL})
+	runner := NewRunner(health, nil, set, map[string]func(context.Context) (bool, string){
+		diagnostics.StartupCheckPublicURL: PublicURLProbe(set, &http.Client{Timeout: time.Second}),
 	})
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatal(err)

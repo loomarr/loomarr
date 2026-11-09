@@ -19,11 +19,17 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`platform/activity`** · 6 importers · → `platform/store/activitystore`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
+- **`platform/backup`** · 1 importer · → `platform/jobs`, `platform/settings`, `platform/store`
+  Keeps the SQLite backups on disk: it lists them, opens one for download, writes a new one and prunes to the retention policy, and supplies the scheduled `backup` job (§16, §18.1).
 - **`platform/buildinfo`** · 5 importers
   Carries the version stamped into the binary at build time.
-- **`platform/config`** · 4 importers
+- **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`platform/diagnostics`** · 11 importers · → `platform/storagegovernor`
+- **`platform/currenthealth`** · 1 importer · → `platform/diagnostics`, `platform/jobs`, `platform/settings`, `platform/store`
+  Runs Loomarr's health checks: the startup report's integration checks, and the continuous Current Health probes the scheduler and the manual refresh share.
+- **`platform/databasemigration`** · 2 importers · → `platform/config`, `platform/store`
+  SQLite→PostgreSQL migration stepper's backend (§18, V11): it preflights a target, takes the backup the migration requires, and admits one atomic migrate-and-restart request.
+- **`platform/diagnostics`** · 12 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
@@ -33,7 +39,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`platform/httpx`** · 14 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`platform/jobs`** · 6 importers · → `platform/store`, `platform/store/jobstore`
+- **`platform/jobs`** · 8 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
@@ -55,11 +61,11 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 20 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
+- **`platform/settings`** · 22 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 9 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 31 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 34 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 9 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.

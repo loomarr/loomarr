@@ -1,4 +1,4 @@
-package app
+package backup
 
 import (
 	"context"
@@ -35,8 +35,8 @@ func (s *stubWriter) WriteBackup(_ context.Context, dir string) (store.BackupFil
 	return store.BackupFile{Path: path, Bytes: info.Size(), WrittenAt: info.ModTime().Unix()}, nil
 }
 
-func newBackupsService(dir string, retain int, w backupWriter) *backupsService {
-	return &backupsService{
+func newBackupsService(dir string, retain int, w Writer) *Service {
+	return &Service{
 		w:      w,
 		dir:    func() string { return dir },
 		retain: func() int { return retain },
@@ -191,7 +191,7 @@ func TestBackupsService_FailedWriteDeletesNothing(t *testing.T) {
 // #1411: the backup took ~57s on the 1.8 GB household database — three seconds inside River's
 // inherited one-minute JobTimeout. It must declare its own ceiling.
 func TestScheduledBackupDeclaresItsOwnTimeout(t *testing.T) {
-	job := (&backupsService{}).Job(nil)
+	job := (&Service{}).Job(nil)
 	if job.Timeout < 10*time.Minute {
 		t.Fatalf("backup Timeout = %v; zero inherits River's 1-minute default", job.Timeout)
 	}
