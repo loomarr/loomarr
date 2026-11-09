@@ -415,7 +415,7 @@ classify() {
           select_gate e2e
           select_gate tuner
           ;;
-        web/apps/web/components.json|web/apps/web/index.html|web/apps/web/tsconfig.json|web/apps/web/tsr.config.json|web/apps/web/vite.config.ts)
+        web/apps/web/index.html|web/apps/web/tsconfig.json|web/apps/web/tsr.config.json|web/apps/web/vite.config.ts)
           select_gate visual
           select_gate e2e
           select_gate tuner

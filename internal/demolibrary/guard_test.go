@@ -113,7 +113,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/people/invitation-join/invitation-join.stories.tsx",
 	"web/apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.stories.tsx",
 	"web/apps/web/src/components/loomarr/shell/app-shell/app-shell.stories.tsx",
-	"web/apps/web/src/components/ui/label/label.stories.tsx",
 	// The layout and incoming stories and the e2e mock backend (slice 14).
 	"web/apps/web/src/design-system/layout.stories.tsx",
 	"web/apps/web/src/filler/incoming/incoming.stories.tsx",

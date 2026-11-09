@@ -1,8 +1,7 @@
-import { Action, Card, CompactSelect, Tooltip } from "@loomarr/design-system";
+import { Action, Card, CompactSelect, Text, Tooltip } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { AUDIENCE_LABEL, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { FillerSearch } from "../../filler-search";
 import { type CatalogView, CatalogViewToggle } from "../catalog-view-toggle";
@@ -88,7 +87,9 @@ const CatalogToolbar = ({
           )}
         >
           <div>
-            <Label htmlFor="clip-kind">Kind</Label>
+            <Text as="label" htmlFor="clip-kind" textRole="label">
+              Kind
+            </Text>
             <CompactSelect
               id="clip-kind"
               label="Kind"
@@ -98,7 +99,9 @@ const CatalogToolbar = ({
             />
           </div>
           <div>
-            <Label htmlFor="clip-audience">Audience</Label>
+            <Text as="label" htmlFor="clip-audience" textRole="label">
+              Audience
+            </Text>
             <CompactSelect
               id="clip-audience"
               label="Audience"

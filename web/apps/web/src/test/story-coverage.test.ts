@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as loomarr from "@/components/loomarr";
-import * as ui from "@/components/ui";
 
 // LIBRARY HEALTH (frontend-design §5.1, §5.1a, §5.1b).
 //
@@ -12,8 +11,7 @@ import * as ui from "@/components/ui";
 // because every one of those properties was a convention that decayed exactly as fast as the
 // library grew:
 //
-//   coverage      — Layer 1 AND Layer 2 (primitives were exempt; the token layer restyles them,
-//                   so they are the LAST place to skip pixel coverage)
+//   coverage      — every Layer 2 component (the primitives are the design system's, storied there)
 //   grouping      — every story title carries a domain prefix, so the sidebar cannot flatten
 //   design pages  — the palette/type/spacing/token pages exist and are snapshotted
 //
@@ -21,7 +19,6 @@ import * as ui from "@/components/ui";
 // invisible in a diff; they only surface when someone goes looking.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LOOMARR_DIR = join(SRC, "components", "loomarr");
-const UI_DIR = join(SRC, "components", "ui");
 const DESIGN_DIR = join(SRC, "design");
 
 const toKebab = (name: string): string => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -48,7 +45,6 @@ const findStory = (kebab: string): string | null => {
 };
 
 const loomarrComponents = componentsOf(loomarr);
-const uiComponents = componentsOf(ui);
 
 describe("Storybook coverage", () => {
   it("sees the full Layer-2 component vocabulary", () => {
@@ -61,30 +57,6 @@ describe("Storybook coverage", () => {
   });
 });
 
-// §5.1: primitives are in scope. They are restyled through the token layer, so a palette edit
-// moves all of them at once — with no stories, neither the gallery nor the visual suite would
-// show it. `Button`'s dark-on-accent text and `Badge`'s -300 stops are contrast calibrations
-// that were learned the hard way; these stories are what keeps them from silently regressing.
-describe("Primitive coverage", () => {
-  // Radix re-exports (SelectTrigger, DialogHeader…) are parts of a primitive, not primitives —
-  // the story lives with the folder, so coverage is checked per FOLDER rather than per export.
-  const primitiveFolders = readdirSync(UI_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name);
-
-  // Not a count floor: this layer shrinks as primitives move into the design system (#2147), and
-  // the block goes with its last folder. Non-empty only proves the scan found the directory.
-  it("sees the primitive layer", () => {
-    expect(primitiveFolders.length).toBeGreaterThan(0);
-    expect(uiComponents.length).toBeGreaterThan(0);
-  });
-
-  it.each(primitiveFolders)("%s has a co-located *.stories.tsx", (folder) => {
-    const p = join(UI_DIR, folder, `${folder}.stories.tsx`);
-    expect(existsSync(p), `ui/${folder}: expected ${folder}/${folder}.stories.tsx`).toBe(true);
-  });
-});
-
 // §5.1a: the sidebar has to stay navigable. A bare `Loomarr/<Name>` title is what 46 components
 // under one flat namespace looked like — every story present, and none of them findable.
 describe("Story grouping", () => {
@@ -92,7 +64,6 @@ describe("Story grouping", () => {
   // the check reads it from the loaded module, not from the file's text.
   const storyModules = import.meta.glob<{ default: { title?: string } }>([
     "../components/loomarr/**/*.stories.tsx",
-    "../components/ui/**/*.stories.tsx",
     "../design/**/*.stories.tsx",
   ]);
   const storyFiles = Object.keys(storyModules).sort();
