@@ -51,21 +51,33 @@ const roots = [
     .filter((path) => existsSync(path)),
 ];
 
+const INTERACTION_VARIANT = /hover|focus|active|pressed/;
+const TRANSFORM_UTILITY = /^-?(?:translate-[xy]|scale(?:-[xy])?|rotate)-/;
+
+// transformOnInteraction reads each class token as its variants and its utility
+// (`group-hover:translate-x-0.5` is the variant `group-hover` and the utility `translate-x-0.5`).
+// Splitting, not one pattern over the variant chain, keeps the check linear on any input.
+const transformOnInteraction = (text) =>
+  text.split(/[\s"'`]+/).some((token) => {
+    const variants = token.split(":");
+    const utility = variants.pop() ?? "";
+    return TRANSFORM_UTILITY.test(utility) && variants.some((variant) => INTERACTION_VARIANT.test(variant));
+  });
+
 // Rules over text: a class string, an inline CSS string, or a stylesheet.
 const TEXT_RULES = [
   // `transition-all` animates transform too, so it hides a scale or nudge behind a colour change.
-  { name: "a transform or all-property transition class", pattern: /\btransition-(?:transform|all)\b/ },
+  {
+    name: "a transform or all-property transition class",
+    test: (text) => /\btransition-(?:transform|all)\b/.test(text),
+  },
   // A transform utility behind an interaction variant: a hover lift, a focus scale, a press shrink, an
   // arrow nudge. A state (`group-data-[panel-open]:rotate-180`) is not an interaction and may flip.
-  {
-    name: "a transform on hover, focus or press",
-    pattern:
-      /(?:^|[\s"'`])(?:[\w/[\]-]*(?:hover|focus|focus-visible|focus-within|active|pressed)[\w/-]*:)+-?(?:translate-[xy]|scale(?:-[xy])?|rotate)-/m,
-  },
+  { name: "a transform on hover, focus or press", test: transformOnInteraction },
   // A CSS transition naming transform (or all).
   {
     name: "a transition that names transform",
-    pattern: /transition(?:-property)?\s*:\s*[^;"'`}]*\b(?:transform|all)\b/,
+    test: (text) => /transition(?:-property)?\s*:\s*[^;"'`}]*\b(?:transform|all)\b/.test(text),
   },
 ];
 
@@ -88,7 +100,7 @@ const tsViolations = (program) => {
   const visit = (node) => {
     if (!node || typeof node.type !== "string") return;
     const text = node.type === "TemplateLiteral" || node.type === "StringLiteral" ? literalText(node) : null;
-    if (text !== null) for (const rule of TEXT_RULES) if (rule.pattern.test(text)) found.add(rule.name);
+    if (text !== null) for (const rule of TEXT_RULES) if (rule.test(text)) found.add(rule.name);
     if (node.type === "ObjectProperty" && !node.computed) {
       const name = keyName(node.key);
       // A native style that scales: the old press shrink and focus grow lived here.
@@ -111,7 +123,7 @@ const tsViolations = (program) => {
   return [...found];
 };
 
-const cssViolations = (text) => TEXT_RULES.filter((rule) => rule.pattern.test(text)).map((rule) => rule.name);
+const cssViolations = (text) => TEXT_RULES.filter((rule) => rule.test(text)).map((rule) => rule.name);
 
 // JSX only for .tsx: in a .ts file `<T>value` is a type assertion, which the JSX plugin misreads.
 const parseSource = (code, path) =>
