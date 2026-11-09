@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -370,7 +371,7 @@ func newManualChannelHarness(
 		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
-		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
+		approver := accept.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
 		return api.Router(defaults.Log, api.Options{
 			Suggest:          service,

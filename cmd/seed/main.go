@@ -7,7 +7,7 @@
 // shapes every line below: seed goes through the SAME domain paths the app does and
 // NEVER writes raw rows that skip a gate. Concretely (AGENTS.md do-nots):
 //
-//   - `available` titles are produced ONLY by suggest.Approver — the single approval
+//   - `available` titles are produced ONLY by accept.Approver — the single approval
 //     gate. Seed builds a submitted proposal and approves it, exactly as the admin's
 //     "approve" button does. It never UpsertTitle's an `available` record directly.
 //   - the channel's desired lineup + any relaxation chips are the REAL output of
@@ -43,7 +43,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -157,7 +157,7 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 //
 //  1. record the suggest job + a submitted proposal (a lineup of in-library picks +
 //     an acquisition list), exactly the shape the suggester emits;
-//  2. suggest.Approver — THE gate — atomically turns in-library picks into
+//  2. accept.Approver — THE gate — atomically turns in-library picks into
 //     `available` records, acquisitions into `wanted` ones, flips the proposal to
 //     approved, and creates its local channel;
 //  3. walk two acquisitions forward through the pure provision.Apply state machine
@@ -254,7 +254,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
 	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
 	channelPlanner := approval.New(st, nil, nil, slog.New(slog.DiscardHandler))
-	approver := suggest.NewApprover(st, channelPlanner, time.Now)
+	approver := accept.NewApprover(st, channelPlanner, time.Now)
 	approved, err := approver.Approve(ctx, stored, nil, adminID)
 	if err != nil {
 		return fmt.Errorf("approve (the gate): %w", err)

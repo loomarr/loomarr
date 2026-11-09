@@ -31,6 +31,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
@@ -920,14 +921,14 @@ type DiscoveredArr struct {
 
 // ProposalOutlook observes pending content without approval or persistence.
 type ProposalOutlook interface {
-	Assess(context.Context, store.Proposal, *suggest.ApprovalEdit) (outlook.Assessment, error)
+	Assess(context.Context, store.Proposal, *accept.ApprovalEdit) (outlook.Assessment, error)
 }
 
 // ProposalApprover is the complete approval gate. Its implementation plans the
 // channel and commits proposal, titles, and channel atomically before post-commit
 // runtime work; a handler cannot reproduce or reorder that choreography.
 type ProposalApprover interface {
-	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
+	Approve(ctx context.Context, p store.Proposal, edit *accept.ApprovalEdit, approvedBy string) (accept.ApprovalResult, error)
 	// ResolveManualLineup re-grounds a hand-picked lineup against current Library presence
 	// (manual/AI-off channel creation, #1817 G2), splitting it into owned titles and titles to
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a

@@ -1,4 +1,4 @@
-package suggest_test
+package accept_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -222,14 +222,14 @@ func movieKey(t *testing.T, tmdbID int) provision.Key {
 	return key
 }
 
-func autoApprover(st *quotaStore, defaultLimit int) *suggest.AutoApprover {
+func autoApprover(st *quotaStore, defaultLimit int) *accept.AutoApprover {
 	return autoApproverWithChannels(st, defaultLimit, quotaChannels{})
 }
 
-func autoApproverWithChannels(st *quotaStore, defaultLimit int, channels quotaChannels) *suggest.AutoApprover {
+func autoApproverWithChannels(st *quotaStore, defaultLimit int, channels quotaChannels) *accept.AutoApprover {
 	now := func() time.Time { return time.Unix(1_700_000_000, 0) }
-	approver := suggest.NewApprover(st, channels, now)
-	return suggest.NewAutoApprover(
+	approver := accept.NewApprover(st, channels, now)
+	return accept.NewAutoApprover(
 		st,
 		approver,
 		func(context.Context) int { return defaultLimit },
@@ -260,8 +260,8 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 			t.Errorf("enqueued %d, want 2", d.Enqueued)
 		}
 		// The audit must say a machine decided (§11).
-		if got := st.proposals["p1"].ApprovedBy; got != suggest.AutoApprovedBy {
-			t.Errorf("approvedBy = %q, want %q", got, suggest.AutoApprovedBy)
+		if got := st.proposals["p1"].ApprovedBy; got != accept.AutoApprovedBy {
+			t.Errorf("approvedBy = %q, want %q", got, accept.AutoApprovedBy)
 		}
 		if st.titles[movieKey(t, 101)].State != provision.Wanted {
 			t.Error("acquisition did not become a wanted title")
@@ -375,7 +375,7 @@ func TestAutoApprove_ConcurrentProposalsShareTheRemainingQuota(t *testing.T) {
 
 	start := make(chan struct{})
 	type outcome struct {
-		decision suggest.Decision
+		decision proposals.AutoDecision
 		err      error
 	}
 	outcomes := make(chan outcome, 2)

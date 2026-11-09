@@ -48,7 +48,7 @@ type Service struct {
 	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
 	// which is the correct default: the gate is closed unless something opens it.
-	auto *AutoApprover
+	auto AutoApprover
 	// autoCurate applies the §8.2 channel-scoped auto-curate grant to a re-curation
 	// proposal. nil ⇒ re-curation proposals wait for an admin (the closed default). Distinct
 	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
@@ -86,9 +86,16 @@ func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
 // re-curation proposal may auto-approve because its CHANNEL opted in (AutoCurate), bounded by
 // the quality bar + title cap — never a user quota. The suggest package declares the interface
 // (dependency inversion); internal/channels/recurate implements it, wired at the composition root, so
-// suggest never imports recurate. Returns the same Decision shape the per-user grant does.
+// suggest never imports recurate. Returns the same AutoDecision shape the per-user grant does.
 type ChannelAutoCurator interface {
-	Consider(ctx context.Context, p store.Proposal) (Decision, error)
+	Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error)
+}
+
+// AutoApprover applies the per-user auto-approve grant (§8, §11) to a just-produced proposal. The
+// suggest package declares the interface; internal/proposals/accept implements it, wired at the
+// composition root, so suggest never imports accept.
+type AutoApprover interface {
+	Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error)
 }
 
 const (
@@ -101,7 +108,7 @@ const (
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
 // composition root, where the settings service and the full store are both available.
-func (s *Service) WithAutoApprove(a *AutoApprover) *Service {
+func (s *Service) WithAutoApprove(a AutoApprover) *Service {
 	s.auto = a
 	return s
 }

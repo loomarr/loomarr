@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -236,7 +237,7 @@ func (s *Server) personNames(ctx context.Context) (personNames, error) {
 // name maps a stored created_by/decided_by to something a person can read. An unknown id
 // yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
 func (n personNames) name(id string) string {
-	if id == suggest.AutoApprovedBy {
+	if id == accept.AutoApprovedBy {
 		return "Automatic"
 	}
 	return n[id]
@@ -383,7 +384,7 @@ type approveInput struct {
 // edit and an empty ModSummary. The server approval gate may still canonicalise a missing or
 // crafted series selector from the trusted original Intent; an empty-but-non-nil edit would
 // falsely describe that server grounding as "approved with modifications: none".
-func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
+func approvalEditFromDTO(b *ApprovalEditDTO) *accept.ApprovalEdit {
 	if b == nil || (len(b.Drop) == 0 && len(b.Add) == 0 && b.Note == "") {
 		return nil
 	}
@@ -391,7 +392,7 @@ func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
 	for _, k := range b.Drop {
 		drop = append(drop, provision.Key(k))
 	}
-	return &suggest.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note}
+	return &accept.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note}
 }
 
 type approveOutput struct {
@@ -435,19 +436,19 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 		return nil, errors.New("approve: approval coordinator is not configured")
 	}
 	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), userIDFromHuma(ctx))
-	if errors.Is(err, suggest.ErrNotSubmitted) {
+	if errors.Is(err, accept.ErrNotSubmitted) {
 		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
-	if errors.Is(err, suggest.ErrSuperseded) {
+	if errors.Is(err, accept.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
-	if errors.Is(err, suggest.ErrProposalJobGone) {
+	if errors.Is(err, accept.ErrProposalJobGone) {
 		return nil, errProposalTooOld()
 	}
-	if errors.Is(err, suggest.ErrRevisionActive) {
+	if errors.Is(err, accept.ErrRevisionActive) {
 		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
 	}
-	if errors.Is(err, suggest.ErrEmptyApproval) {
+	if errors.Is(err, accept.ErrEmptyApproval) {
 		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
 	}
 	if err != nil {
@@ -641,7 +642,7 @@ func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*str
 		return nil, errFeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
 	}
 	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
-	if errors.Is(err, suggest.ErrProposalJobGone) {
+	if errors.Is(err, accept.ErrProposalJobGone) {
 		return nil, errProposalTooOld()
 	}
 	if err != nil {

@@ -156,9 +156,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			traceDecision(trace, proposals.DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
 		}
 	}
-	stampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
-	stampEpisodeSelection(prop.Acquisitions, intent.Intent, holidays)
-	stampEpisodeSelection(prop.Alternates, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Acquisitions, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Alternates, intent.Intent, holidays)
 	if requiresMembershipEvidence(intent) {
 		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
 	}

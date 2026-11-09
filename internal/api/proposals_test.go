@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -97,7 +98,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 			// No Reconciler wired here (channels isn't under test) — mirrors the
 			// composition root's nil-guard: the bind still creates/patches the
 			// channel row and just skips the immediate Tunarr reconcile push.
-			Approver: suggest.NewApprover(defaults.Store, chBinder, time.Now),
+			Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
 			Binder:   chBinder,
 			Settings: config.Settings,
 		})

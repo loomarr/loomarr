@@ -31,7 +31,7 @@ Channels and what they play. A channel's lineup becomes an ordered schedule, and
 
 ### [Proposals](areas/proposals.md)
 
-Turning "I want a channel that feels like X" into a lineup a person can approve. The suggester checks every title against the real library and catalog, the workflow tracks each request through to the household's first channel, and the outlook explains a pending proposal before anyone approves it. The quality and planner-reference packages measure how good the suggestions are.
+Turning "I want a channel that feels like X" into a lineup a person can approve. The suggester checks every title against the real library and catalog, the workflow tracks each request through to the household's first channel, and the outlook explains a pending proposal before anyone approves it. Accepting a proposal, by a person's approval or the auto-approve grant within its pending-acquisition quota, is its own package. The quality and planner-reference packages measure how good the suggestions are.
 
 ### [Playout](areas/playout.md)
 
@@ -105,6 +105,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store` | `channels/schedule`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
 | `playout` | `channels/schedule`, `media/encode`, `platform/config`, `platform/diagnostics`, `provision` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
+| `proposals/accept` | `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `provision`, `tmdb` |
 | `provision` | — |

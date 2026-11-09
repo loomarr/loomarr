@@ -1,4 +1,4 @@
-package suggest
+package accept
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals"
 )
 
 // AutoApprovedBy is the audit value recorded when the grant, not a human, approved a
@@ -54,25 +55,16 @@ func NewAutoApprover(
 	return &AutoApprover{store: st, approver: approver, defaults: defaultLimit, log: log}
 }
 
-// Decision records what the grant did, for the caller to log and for tests to assert on.
-type Decision struct {
-	Approved bool
-	// Reason is why it did NOT auto-approve, empty when it did. Recorded rather than
-	// dropped so "why is this still in the queue?" is answerable.
-	Reason   string
-	Enqueued int
-}
-
 // Consider applies the grant to a just-created proposal.
-func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (Decision, error) {
+func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error) {
 	if a == nil || p.CreatedBy == "" {
-		return Decision{Reason: "no requester"}, nil
+		return proposals.AutoDecision{Reason: "no requester"}, nil
 	}
 	if a.approver == nil {
-		return Decision{Reason: "approval unavailable"}, errors.New("auto-approve: approval gate is not configured")
+		return proposals.AutoDecision{Reason: "approval unavailable"}, errors.New("auto-approve: approval gate is not configured")
 	}
 
-	decision := Decision{}
+	decision := proposals.AutoDecision{}
 	guardRan := false
 	guard := func(guardCtx context.Context, view store.ProposalApprovalReader) error {
 		guardRan = true

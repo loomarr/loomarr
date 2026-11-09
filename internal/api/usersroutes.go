@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
@@ -266,7 +266,7 @@ func (s *Server) withUsage(ctx context.Context, body userBody, u identitystore.U
 		limit = s.configInt(settings.SuggestMaxAcquisitions)
 	}
 	body.EffectiveQuota = limit
-	usage, err := suggest.PendingFor(ctx, s.store, u.ID, limit)
+	usage, err := accept.PendingFor(ctx, s.store, u.ID, limit)
 	if err != nil {
 		return body
 	}

@@ -10,7 +10,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **platform** · 16 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
 - **library** · 9 imports — the titles a channel plays: `provision` keys and states, `inventory` break analysis, and `catalog` candidates for re-curation
-- **proposals** · 4 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
+- **proposals** · 5 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
 - **playout** · 2 imports — handing reconciled programming to the backend that plays it: Loomarr's own `playout` engine or `playout/tunarr`
 - **filler** · 2 imports — asking the filler engine for the pod that fills a break
 
@@ -18,7 +18,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`channels`** · 4 importers · → `channels/schedule`, `episodeevidence`, `filler`, `filler/language`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `playout`, `playout/tunarr`, `provision`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
-- **`channels/approval`** · 2 importers · → `channels/schedule`, `platform/rating`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
+- **`channels/approval`** · 2 importers · → `channels/schedule`, `platform/rating`, `platform/store`, `proposals`, `proposals/accept`, `provision`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`channels/edit`** · 1 importer · → `channels/approval`, `channels/schedule`, `platform/activity`, `platform/store`, `provision`
   One write path for an operator's channel changes (§7): creating a hand-made channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
@@ -26,7 +26,7 @@ One area of the [package map](../package-map.md#start-here).
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`channels/recommend`** · → `platform/llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`channels/recurate`** · 1 importer · → `catalog`, `channels/schedule`, `platform/jobs`, `platform/settings`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
+- **`channels/recurate`** · 1 importer · → `catalog`, `channels/schedule`, `platform/jobs`, `platform/settings`, `platform/store`, `proposals`, `proposals/accept`, `proposals/suggest`, `provision`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 - **`channels/schedule`** · 22 importers · → `inventory`, `platform/holidayvocab`, `platform/langcode`, `platform/rating`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.

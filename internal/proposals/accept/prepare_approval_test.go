@@ -1,4 +1,4 @@
-package suggest_test
+package accept_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -26,10 +26,10 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 		t.Fatal(err)
 	}
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body}
-	edit := &suggest.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []proposals.ProposalItem{
+	edit := &accept.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: proposals.EditorialCore},
 	}, Note: "More variety"}
-	prepared, err := suggest.PrepareApproval(p, edit, holidayvocab.Default())
+	prepared, err := accept.PrepareApproval(p, edit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	}
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{}
-	if _, err := suggest.NewApprover(st, channels, time.Now).Approve(context.Background(), p, edit, "admin"); err != nil {
+	if _, err := accept.NewApprover(st, channels, time.Now).Approve(context.Background(), p, edit, "admin"); err != nil {
 		t.Fatal(err)
 	}
 	if len(st.Commits) != 1 || !reflect.DeepEqual(st.Commits[0].Proposal.Body, prepared.Body) || st.Commits[0].Proposal.ModSummary != prepared.ModSummary {
@@ -59,7 +59,7 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 		},
 	}
 	p := store.Proposal{ID: "p-backup", Status: "submitted", Body: body}
-	prepared, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+	prepared, err := accept.PrepareApproval(p, &accept.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000002"},
 	}, holidayvocab.Default())
 	if err != nil {
@@ -76,7 +76,7 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"},
 	}}
 	p := store.Proposal{ID: "p-owned-add", Status: "submitted", Body: body}
-	edit := &suggest.ApprovalEdit{Add: []proposals.ProposalItem{
+	edit := &accept.ApprovalEdit{Add: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true, LibraryItemID: "library-2"},
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged-library-id"},
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Duplicate owned addition", InLibrary: false},
@@ -87,11 +87,11 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 		{Item: edit.Add[1], Owned: false},
 		{Item: proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"}, Owned: true},
 	}}
-	resolvedEdit, err := suggest.ResolveApprovalEdit(context.Background(), edit, resolver)
+	resolvedEdit, err := accept.ResolveApprovalEdit(context.Background(), edit, resolver)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := suggest.PrepareApproval(p, resolvedEdit, holidayvocab.Default())
+	prepared, err := accept.PrepareApproval(p, resolvedEdit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,10 +115,10 @@ func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Only title"},
 	}}
 	p := store.Proposal{ID: "p-empty", Status: "submitted", Body: body}
-	_, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+	_, err := accept.PrepareApproval(p, &accept.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000001"},
 	}, holidayvocab.Default())
-	if !errors.Is(err, suggest.ErrEmptyApproval) {
+	if !errors.Is(err, accept.ErrEmptyApproval) {
 		t.Fatalf("PrepareApproval error = %v, want ErrEmptyApproval", err)
 	}
 }
