@@ -58,6 +58,7 @@ const render = (overrides: Partial<LibrarySettingsProps>) => {
     checking: false,
     onCheckAgain: vi.fn(),
     onRescan: vi.fn(),
+    onRefreshEverything: vi.fn(),
     onConfirmRemoval: vi.fn(),
     onUseFolder: vi.fn(),
     onAddFolder: vi.fn(async () => "Loomarr can't open that folder"),
@@ -175,6 +176,38 @@ describe("LibrarySettings", () => {
     });
     expect(paused.host.textContent).not.toContain("Ready so far");
     paused.cleanup();
+  });
+
+  it("scans now, and refreshes everything only once asked", () => {
+    const { host, props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    act(() => button("Scan now").click());
+    expect(props.onRescan).toHaveBeenCalled();
+
+    // The confirm may draw outside the host, so look through the whole page.
+    const page = (globalThis as unknown as { document: { body: Host } }).document.body;
+    const buttons = (name: string) =>
+      Array.from(page.querySelectorAll('[role="button"], button')).filter(
+        (n) => n.textContent?.trim() === name,
+      );
+    expect(host.textContent).not.toContain("Refresh every title?");
+    act(() => button("Refresh everything").click());
+    expect(page.textContent).toContain("Refresh every title?");
+    act(() => buttons("Not now")[0]?.click());
+    expect(props.onRefreshEverything).not.toHaveBeenCalled();
+
+    act(() => button("Refresh everything").click());
+    const confirm = buttons("Refresh everything");
+    act(() => confirm[confirm.length - 1]?.click());
+    expect(props.onRefreshEverything).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("says a scan is running and offers no second one", () => {
+    const walking: LibraryScan = { ...IDLE, stage: "walking" };
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: walking });
+    expect(host.textContent).toContain("Scanning…");
+    expect(host.textContent).not.toContain("Scan now");
+    cleanup();
   });
 
   it("holds a removal until the maintainer answers", () => {

@@ -31,6 +31,7 @@ type LibraryRootService interface {
 	Progress() scan.Progress
 	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
 	Rescan() error
+	RefreshEverything(ctx context.Context) error
 	ConfirmRemovals(ctx context.Context, root string) error
 
 	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
@@ -105,6 +106,13 @@ func (s *Handlers) registerLibrary(api huma.API) {
 		Description: "Starts a scan of every folder in use now. 409 when the scanner is turned off.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, httpcore.RoleAdmin), s.rescanLibrary)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "refreshLibrary", Method: http.MethodPost, Path: "/v1/library/refresh",
+		Summary: "Refresh everything in the library",
+		Description: "Writes every file again on a scan started now, and fetches every title's catalog record again " +
+			"in the background. Titles keep playing meanwhile. 409 when the scanner is turned off.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
+	}, httpcore.RoleAdmin), s.refreshLibrary)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirmLibraryRemoval", Method: http.MethodPost, Path: "/v1/library/roots/confirm-removal",
 		Summary: "Remove the titles a scan no longer found",
@@ -387,6 +395,19 @@ func (s *Handlers) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStat
 		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
 	} else if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't start a scan", "Try again in a moment.", err)
+	}
+	return s.libraryStatus(ctx, nil)
+}
+
+func (s *Handlers) refreshLibrary(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.RefreshEverything(ctx); errors.Is(err, scan.ErrScannerOff) {
+		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+	} else if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't start the refresh", "Try again in a moment.", err)
 	}
 	return s.libraryStatus(ctx, nil)
 }

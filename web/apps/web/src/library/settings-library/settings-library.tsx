@@ -13,13 +13,14 @@ const SettingsLibrary = () => {
   const mutation = { mutation: { onSettled: folders.refresh } };
   const map = libraryApi.useSetLibraryPathMapping(mutation);
   const rescan = libraryApi.useRescanLibrary(mutation);
+  const refresh = libraryApi.useRefreshLibrary(mutation);
   const confirmRemoval = libraryApi.useConfirmLibraryRemoval(mutation);
 
   const body = folders.roots;
   const current = folders.status;
   const health = current?.health;
 
-  const error = folders.error ?? map.error ?? rescan.error ?? confirmRemoval.error;
+  const error = folders.error ?? map.error ?? rescan.error ?? refresh.error ?? confirmRemoval.error;
   if (error && !(body && health)) return <ErrorState error={error} onRetry={() => void folders.refresh()} />;
   if (!body || !current || !health) return <StatePanel kind="loading" title="Loading your media folders" />;
 
@@ -35,6 +36,7 @@ const SettingsLibrary = () => {
         scan={current.scan}
         readySoFar={folders.readySoFar.map(readyTitleOf)}
         onRescan={() => rescan.mutate()}
+        onRefreshEverything={() => refresh.mutate()}
         onConfirmRemoval={(path) => confirmRemoval.mutate({ data: { path } })}
         onAddFolder={folders.onAddFolder}
         onCheckAgain={folders.onCheckAgain}

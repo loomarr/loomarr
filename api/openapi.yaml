@@ -18789,6 +18789,26 @@ paths:
       summary: Map another app's folder to a folder here
       tags:
         - library
+  /v1/library/refresh:
+    post:
+      description: Writes every file again on a scan started now, and fetches every title's catalog record again in the background. Titles keep playing meanwhile. 409 when the scanner is turned off.
+      operationId: refreshLibrary
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Refresh everything in the library
+      tags:
+        - library
   /v1/library/roots:
     get:
       description: The folders Loomarr reads media from, where each was found, its last readability check, and the path map.

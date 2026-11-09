@@ -250,8 +250,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` makes one when the app starts, hourly, and on
-  `POST /v1/library/scan`; `library.scanner.enabled` (on by default) stops passes, folder passes
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used or
+  added, and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and Jellyfin).
+  `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
+  and marks every fetched catalog row due, then starts a pass: each file is written again from its
+  name and its apps, each title looked up again, and the headers already read are kept, so nothing
+  stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
   and header reads. Sonarr and Radarr are its managers when connected; one with no connection
   manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
   uses, and wait while playout's admission budget holds any session, copies included. A root
