@@ -8,6 +8,7 @@ import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
 import { PlayerReadout } from "./player-readout";
 import { PlayerTopRow } from "./player-top-row";
+import { TuneDip } from "./tune-dip";
 import { clearOfWatermark, type Frame } from "./watermark-clearance";
 
 // The height of a top-row key.
@@ -61,6 +62,7 @@ const ChromeBody = memo(
           pointerEvents="none"
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
+        <TuneDip tuneKey={band.channelNumber} />
         <View
           aria-hidden={!shown || undefined}
           pointerEvents="none"
