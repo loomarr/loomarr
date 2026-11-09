@@ -98,6 +98,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `people/access` | `people/contact` |
 | `people/contact` | — |
 | `people/notifications` | `platform/httpx` |
+| `platform/buildinfo` | — |
 | `platform/config` | — |
 | `platform/diagnostics` | `platform/storagegovernor` |
 | `platform/holidayvocab` | — |
@@ -106,7 +107,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library`, `platform/config` |
+| `platform/settings` | `library`, `platform/buildinfo`, `platform/config` |
 | `platform/storagegovernor` | — |
 | `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/identitystore`, `proposals`, `proposals/quality`, `provision` |
 | `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications` |

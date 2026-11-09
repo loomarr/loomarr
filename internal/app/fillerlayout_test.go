@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -117,7 +118,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	}
 }
 
-func assertPendingLayout(t *testing.T, restart api.RestartCost, want bool) {
+func assertPendingLayout(t *testing.T, restart system.RestartCost, want bool) {
 	t.Helper()
 	if !want {
 		if restart.RestartRequired || len(restart.PendingKeys) != 0 {
@@ -196,13 +197,13 @@ func fillerFolderTarget(t *testing.T, h http.Handler, token string) string {
 	return ""
 }
 
-func restartCost(t *testing.T, h http.Handler, token string) api.RestartCost {
+func restartCost(t *testing.T, h http.Handler, token string) system.RestartCost {
 	t.Helper()
 	rec := adminRequest(t, h, token, http.MethodGet, "/v1/system/restart", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/system/restart = %d: %s", rec.Code, rec.Body.String())
 	}
-	var cost api.RestartCost
+	var cost system.RestartCost
 	if err := json.NewDecoder(rec.Body).Decode(&cost); err != nil {
 		t.Fatal(err)
 	}

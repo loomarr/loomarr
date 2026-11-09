@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"bytes"
@@ -13,13 +13,12 @@ import (
 	"github.com/loomarr/loomarr/docs"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // registerHelp mounts the in-app Help + system-info routes (§13). Both are readable by
 // any authenticated user: Help is documentation, and the version is what a member quotes
 // in a bug report.
-func (s *Server) registerHelp(api huma.API) {
+func (s *Handlers) registerHelp(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-docs", Method: http.MethodGet, Path: "/v1/docs",
 		Summary:     "List the embedded help pages",
@@ -70,7 +69,7 @@ type listDocsOutput struct {
 	}
 }
 
-func (s *Server) listDocs(_ context.Context, _ *struct{}) (*listDocsOutput, error) {
+func (s *Handlers) listDocs(_ context.Context, _ *struct{}) (*listDocsOutput, error) {
 	out := &listDocsOutput{}
 	pages := docs.Pages()
 	out.Body.Docs = make([]DocSummary, 0, len(pages))
@@ -93,7 +92,7 @@ type getDocOutput struct {
 	}
 }
 
-func (s *Server) getDoc(_ context.Context, in *getDocInput) (*getDocOutput, error) {
+func (s *Handlers) getDoc(_ context.Context, in *getDocInput) (*getDocOutput, error) {
 	// Resolve the page and section together: a pre-restructure section can have moved to
 	// another page (#1736).
 	href := in.Slug
@@ -193,7 +192,7 @@ type systemVersionOutput struct {
 // version and backend — which is authenticated information a liveness probe has no business
 // returning to an unauthenticated caller.
 
-func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOutput, error) {
+func (s *Handlers) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOutput, error) {
 	info := buildinfo.Get()
 	out := &systemVersionOutput{}
 	out.Body.Version, out.Body.Commit = info.Version, info.Commit
@@ -204,9 +203,8 @@ func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOu
 	// Schema version and backend need the store. A store-less boot (§7 readiness) still
 	// serves this endpoint — it is what an operator reads to find out WHY the install is
 	// unhealthy — so both rows are simply absent rather than the handler failing.
-	if s.store != nil {
-		out.Body.SchemaVersion = store.SchemaVersion(s.store)
-		out.Body.Backend = string(store.DialectOf(s.store))
+	if s.storeFacts != nil {
+		out.Body.SchemaVersion, out.Body.Backend = s.storeFacts()
 	}
 	out.Body.Ready, out.Body.Detail = true, ""
 	if s.ready != nil {

@@ -115,11 +115,11 @@ func TestSetupStatus_UnconfiguredServiceIsNotSetUpRatherThanFailing(t *testing.T
 		LiveSettings: mapSettings{"seerr.url": "http://seerr.lan:5055"},
 	})
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
-	var body struct{ Checks []api.SetupCheck }
+	var body struct{ Checks []httpcore.SetupCheck }
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	checks := map[string]api.SetupCheck{}
+	checks := map[string]httpcore.SetupCheck{}
 	for _, check := range body.Checks {
 		checks[check.Name] = check
 	}

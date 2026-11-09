@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -72,7 +72,7 @@ type BackupContent struct {
 // ⚠ The two byte routes were plain mux handlers until they moved onto rawOp (rawop.go). They
 // live HERE, with the typed half, rather than in Router: splitting one resource across two
 // registration mechanisms is what let the list be spec'd while its download was not.
-func (s *Server) registerSystemBackups(api huma.API) {
+func (s *Handlers) registerSystemBackups(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-backups-list", Method: http.MethodGet, Path: "/v1/system/backups",
 		Summary: "Backups on disk, newest first",
@@ -120,7 +120,7 @@ type systemBackupsListOutput struct {
 	Body BackupList
 }
 
-func (s *Server) systemBackupsList(ctx context.Context, _ *struct{}) (*systemBackupsListOutput, error) {
+func (s *Handlers) systemBackupsList(ctx context.Context, _ *struct{}) (*systemBackupsListOutput, error) {
 	if s.backups == nil {
 		return nil, huma.Error501NotImplemented("in-app backup is not available on this build")
 	}
@@ -140,7 +140,7 @@ type systemBackupsRunOutput struct {
 	Body BackupEntry
 }
 
-func (s *Server) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBackupsRunOutput, error) {
+func (s *Handlers) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBackupsRunOutput, error) {
 	if s.backups == nil {
 		return nil, huma.Error501NotImplemented("in-app backup is not available on this build")
 	}
@@ -157,7 +157,7 @@ func (s *Server) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBack
 // Keeps the stdlib (w, r) signature because http.ServeContent does Range, If-Modified-Since and
 // 206 in one call; it is mounted as a rawOp (rawop.go), so authorization is the operation's
 // declared RoleAdmin enforced by the shared middleware, not a check in this body.
-func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.backups == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Backup unavailable",
 			"In-app backup is available on SQLite installs. On Postgres, back up the database with your usual Postgres tools.")
