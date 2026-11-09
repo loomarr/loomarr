@@ -165,10 +165,12 @@ that no grounded source rates inherits its series' strictest rating. One that a 
 that rating, whether it is stricter or not.
 
 People (decision 49) are a title's main cast in billing order (TMDB's top 20), then its key crew:
-a series' creators, then directors and writers. Each is a `library_people` row keyed by TMDB person
-id wherever they are credited. A person an NFO or the media server names without an id is kept by
-name, unlinked. An episode's cast is its show's. `scan.Filmographer` keeps a filmography
-(`library_filmography`, decision 50) for each linked person who directed or created a title, is
+a series' creators, then directors and writers. Each is a `library_people` row keyed by the
+catalog id a source gave (`namespace`, `external_id`; row id `tmdb:<id>` for TMDB) wherever they
+are credited. A person an NFO or the media server names without an id is kept by name, unlinked.
+An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
+decision 50) from the catalog provider for each person linked in its namespace who directed or
+created a title, is
 among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
 they first qualify and monthly after, and people no title credits any more are removed each hour.
 The household's metadata language

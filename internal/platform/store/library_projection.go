@@ -164,10 +164,12 @@ func (s *sqlStore) saveLibraryCredits(ctx context.Context, tx *sql.Tx, it Librar
 			continue
 		}
 		seen[key] = true
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, tmdb_id, photo) VALUES (?, ?, ?, ?)
+		linked := c.Linked()
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, namespace, external_id, photo)
+			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT (id) DO UPDATE SET name = excluded.name,
 			photo = CASE WHEN excluded.photo <> '' THEN excluded.photo ELSE library_people.photo END`),
-			id, c.Name, c.TMDB, c.Photo); err != nil {
+			id, c.Name, linked.Namespace, linked.Value, c.Photo); err != nil {
 			return fmt.Errorf("save library person: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_credits (item_id, position, person_id, role,

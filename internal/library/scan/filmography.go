@@ -23,9 +23,10 @@ const (
 	filmographyRetry = 6 * time.Hour
 )
 
-// FilmographyCatalog is the catalog filmographies come from (TMDB).
+// FilmographyCatalog is the catalog filmographies come from; its Capabilities.Catalog names the
+// namespace it knows people by.
 type FilmographyCatalog interface {
-	Filmography(ctx context.Context, person string) ([]mp.FilmCredit, error)
+	Filmography(ctx context.Context, person mp.ExternalID) ([]mp.FilmCredit, error)
 	Capabilities() mp.Capabilities
 }
 
@@ -73,20 +74,23 @@ func (f *Filmographer) Tick(ctx context.Context) error {
 		f.log().Debug("library filmographies: removed people no title credits", "count", n)
 	}
 	now := f.now()
+	caps := f.Catalog.Capabilities()
+	// Only people the catalog knows by its own ids have a filmography there.
 	due, err := f.Store.DueLibraryFilmographies(ctx, store.LibraryFilmographyDue{
-		Now: now, StaleBefore: now.Add(-orDuration(f.Refresh, FilmographyRefresh)), Limit: filmographyBatch,
+		Namespace: string(caps.Catalog), Now: now, StaleBefore: now.Add(-orDuration(f.Refresh, FilmographyRefresh)),
+		Limit: filmographyBatch,
 	})
 	if err != nil {
 		return err
 	}
-	gap := f.Catalog.Capabilities().Rate.MinInterval
+	gap := caps.Rate.MinInterval
 	for i, person := range due {
 		if i > 0 && gap > 0 {
 			if err := sleepFor(ctx, f.Sleep, gap); err != nil {
 				return err
 			}
 		}
-		credits, err := f.Catalog.Filmography(ctx, person.TMDB)
+		credits, err := f.Catalog.Filmography(ctx, externalID(person.External))
 		switch {
 		case err == nil, errors.Is(err, mp.ErrNotFound), errors.Is(err, mp.ErrUnsupported):
 			// None known is an answer too: it is not asked again until the refresh.
@@ -101,7 +105,7 @@ func (f *Filmographer) Tick(ctx context.Context) error {
 		}
 		entries := make([]store.LibraryFilmEntry, 0, len(credits))
 		for _, c := range credits {
-			entries = append(entries, store.LibraryFilmEntry{Kind: string(c.Kind), TMDB: c.TMDB, Title: c.Title,
+			entries = append(entries, store.LibraryFilmEntry{Kind: string(c.Kind), ID: libraryID(c.ID), Title: c.Title,
 				Year: c.Year, Role: string(c.Role), Character: c.Character})
 		}
 		if err := f.Store.SaveLibraryFilmography(ctx, person.ID, entries, now); err != nil {
