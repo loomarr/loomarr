@@ -357,7 +357,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		args = append(args, q.Kind)
 	}
 	if search := strings.TrimSpace(q.Search); search != "" {
-		where = append(where, "LOWER(i.name) LIKE ? ESCAPE '\\'")
+		where = append(where, s.lower("i.name")+" LIKE ? ESCAPE '\\'")
 		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
 	}
 	if q.InSet {

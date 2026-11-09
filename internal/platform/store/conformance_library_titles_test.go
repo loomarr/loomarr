@@ -147,6 +147,24 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("search %q = %+v, %v; want nothing", term, got, err)
 		}
 	}
+
+	// Case is ignored in every script, not only ASCII: SQLite's own lower() leaves "Ä" as it is.
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+		{ID: "umlaut", Kind: "movie", Name: "Älpha Ömega", Sources: []LibrarySource{{Path: "/m/umlaut.mkv", Plays: true}}},
+	}, recent); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/m/umlaut.mkv", "umlaut", "")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, term := range []string{"älpha", "ÖMEGA"} {
+		if got, err := st.SearchLibraryTitles(ctx, term, 10); err != nil || len(got) != 1 || got[0].ID != "umlaut" {
+			t.Errorf("search %q = %+v, %v; want Älpha Ömega", term, got, err)
+		}
+		if page, err := st.ListLibraryItems(ctx, LibraryItemQuery{Search: term}); err != nil || page.Total != 1 {
+			t.Errorf("list search %q = %+v, %v; want Älpha Ömega", term, page, err)
+		}
+	}
 }
 
 func sameTitle(a, b LibraryTitle) bool {
