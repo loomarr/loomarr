@@ -165,10 +165,12 @@ that no grounded source rates inherits its series' strictest rating. One that a 
 that rating, whether it is stricter or not.
 
 People (decision 49) are a title's main cast in billing order (TMDB's top 20), then its key crew:
-a series' creators, then directors and writers. Each is a `library_people` row keyed by TMDB person
-id wherever they are credited. A person an NFO or the media server names without an id is kept by
-name, unlinked. An episode's cast is its show's. `scan.Filmographer` keeps a filmography
-(`library_filmography`, decision 50) for each linked person who directed or created a title, is
+a series' creators, then directors and writers. Each is a `library_people` row keyed by the
+catalog id a source gave (`namespace`, `external_id`; row id `tmdb:<id>` for TMDB) wherever they
+are credited. A person an NFO or the media server names without an id is kept by name, unlinked.
+An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
+decision 50) from the catalog provider for each person linked in its namespace who directed or
+created a title, is
 among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
 they first qualify and monthly after, and people no title credits any more are removed each hour.
 The household's metadata language
@@ -398,7 +400,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
-  details, and keeps three in `library_candidates`, best first: the name counts most, then the
+  details, and keeps three in `library_candidates`, best first, each by its catalog's own id
+  (`namespace`, `external_id`); an answer keeps the id it was given the same way, so another
+  catalog's search needs no schema change. The name counts most, then the
   year (a year apart at most), then the length (movies only: within five minutes or 8% of the
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
   when its name or year changes, or once a movie's length is known. With no TMDB key nothing is

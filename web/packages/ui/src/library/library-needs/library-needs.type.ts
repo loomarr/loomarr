@@ -1,9 +1,15 @@
 import type { ReactNode } from "react";
 import type { LibraryKind } from "../library-shelf/library-shelf.type";
 
+/** A title by one catalog's id; the app passes it back as it came. */
+interface LibraryExternalId {
+  namespace: string;
+  value: string;
+}
+
 /** A title a search found for one that needs the household, and which of its facts agree. */
 interface LibraryNeedCandidate {
-  tmdbId: string;
+  externalId: LibraryExternalId;
   kind: LibraryKind;
   name: string;
   /** Absent when unknown. */
@@ -50,8 +56,8 @@ interface LibraryProblem {
 type LibraryNeedSearch = (query: string, kind: LibraryKind) => Promise<readonly LibraryNeedCandidate[]>;
 
 interface LibraryNeedsAnswers {
-  /** Says the title is tmdbId. Resolves once saved; a rejection puts the question back. */
-  onLink: (id: string, tmdbId: string) => Promise<void>;
+  /** Says the title is externalId. Resolves once saved; a rejection puts the question back. */
+  onLink: (id: string, externalId: LibraryExternalId) => Promise<void>;
   /** Says it isn't a title. Resolves once saved; a rejection puts the question back. */
   onIgnore: (id: string) => Promise<void>;
 }
@@ -74,6 +80,7 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
 }
 
 export type {
+  LibraryExternalId,
   LibraryNeed,
   LibraryNeedCandidate,
   LibraryNeedSearch,

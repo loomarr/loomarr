@@ -1,5 +1,6 @@
 export { LibraryNeedsCards, LibraryNeedsStrip } from "./library-needs";
 export type {
+  LibraryExternalId,
   LibraryNeed,
   LibraryNeedCandidate,
   LibraryNeedSearch,

@@ -113,7 +113,7 @@ const NEEDS: LibraryNeed[] = [
     kind: "movie",
     files: ["/media/movies/Paper.Kites.1997.1080p/Paper.Kites.1997.1080p.mkv"],
     best: {
-      tmdbId: "90000901",
+      externalId: { namespace: "tmdb", value: "90000901" },
       kind: "movie",
       name: "Paper Kites",
       year: 1996,
@@ -126,7 +126,7 @@ const NEEDS: LibraryNeed[] = [
     },
     others: [
       {
-        tmdbId: "90000902",
+        externalId: { namespace: "tmdb", value: "90000902" },
         kind: "movie",
         name: "Paper Kites",
         year: 2014,

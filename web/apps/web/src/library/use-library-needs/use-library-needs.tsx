@@ -31,7 +31,7 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
 });
 
 const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
-  tmdbId: c.tmdbId,
+  externalId: c.externalId,
   kind: c.kind,
   name: c.name,
   year: c.year,
@@ -61,7 +61,7 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   const body = unwrap(await libraryApi.searchLibraryTitles({ q: query, kind }));
   if (!body) throw new Error("Couldn't search");
   return body.results.map((r) => ({
-    tmdbId: r.tmdbId,
+    externalId: r.externalId,
     kind: r.kind,
     name: r.name,
     year: r.year,
@@ -94,8 +94,8 @@ const useLibraryNeeds = () => {
   // A mutation that answers with an error status still resolves; unwrap turns it into a rejection
   // so the card puts the question back.
   const answers: LibraryNeedsAnswers = {
-    onLink: async (id, tmdbId) => {
-      const res = await link.mutateAsync({ id, data: { tmdbId } });
+    onLink: async (id, externalId) => {
+      const res = await link.mutateAsync({ id, data: { externalId } });
       if (res.status !== 204) throw new Error("Couldn't save your answer");
     },
     onIgnore: async (id) => {

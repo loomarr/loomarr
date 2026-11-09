@@ -73,7 +73,7 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 	}
 	exec(`INSERT INTO library_collections (id, name, created_at_ms, updated_at_ms) VALUES ('c1', 'Kept', 1, 1)`)
 	exec(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position) VALUES ('c1', 'lib-member', 0)`)
-	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, tmdb_id, name) VALUES ('lib-gone', 0, 'movie', '90000220', 'Guess')`)
+	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, namespace, external_id, name) VALUES ('lib-gone', 0, 'movie', 'tmdb', '90000220', 'Guess')`)
 	exec(`INSERT INTO images (hash, origin, mime) VALUES ('img-gone', 'remote', 'image/png')`)
 	exec(`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role) VALUES ('img-gone', ?, 'lib-gone', 'poster')`,
 		LibraryItemImageOwner)

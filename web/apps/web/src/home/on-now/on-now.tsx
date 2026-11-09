@@ -9,12 +9,19 @@ import {
   guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import type { StatusTone } from "@loomarr/design-system";
-import { Action, Badge, SectionHeader, Text } from "@loomarr/design-system";
-import { ListGroup, ListRow, surfChannelData } from "@loomarr/ui";
+import { Action, SectionHeader } from "@loomarr/design-system";
+import {
+  CardAction,
+  CardStatus,
+  ChannelChip,
+  ListGroup,
+  ListRow,
+  PictureCard,
+  surfChannelData,
+} from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
-import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { ServedImage } from "@/components/loomarr/served-image";
 import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
@@ -159,74 +166,48 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
         </Action>
       </SectionHeader>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {onNow.map(
-          ({
-            channel,
-            channelName,
-            channelLogoUri,
-            airing,
-            title,
-            episodeLabel,
-            timeLabel,
-            inBreak,
-            waiting,
-          }) => (
-            <Link
-              key={channel.source.channelId}
-              to="/watch/$id"
-              params={{ id: channel.source.channelId }}
-              // No aria-label: the whole card is the link, and WCAG 2.5.3 needs its name to contain
-              // everything it shows, so the name is the card's own text, ending in "Watch live".
-              className="border-static-700 bg-static-900 hover:border-static-500 focus-visible:ring-ring block min-w-0 overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <div className="bg-static-800 relative aspect-video w-full overflow-hidden">
-                {waiting ? (
-                  <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
-                ) : (
-                  <AiringArtwork
-                    airing={airing}
-                    channel={{ name: channelName, number: channel.source.number }}
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                  />
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5 p-3.5">
-                <div className="flex items-center gap-2">
-                  <ChannelIdent
-                    name={channelName}
-                    number={channel.source.number}
-                    logo={channelLogoUri}
-                    size={28}
-                  />
-                  <span className="text-foreground font-mono text-sm">
-                    {String(channel.source.number).padStart(2, "0")}
-                  </span>
-                  <span className="text-static-400 truncate text-xs">{channelName}</span>
-                  {inBreak && (
-                    <Badge shape="square" tone="info" marginLeft="auto" flexShrink={0}>
-                      Ad break
-                    </Badge>
-                  )}
-                </div>
-                {waiting ? (
-                  <Text textRole="body" tone="secondary">
-                    {waiting}
-                  </Text>
-                ) : (
-                  <>
-                    <h3 className="m-0 text-base font-semibold break-words">{title}</h3>
-                    {episodeLabel && <p className="text-static-400 m-0 text-xs">{episodeLabel}</p>}
-                    <p className="text-static-400 m-0 font-mono text-xs">{timeLabel}</p>
-                  </>
-                )}
-                {/* The whole card is the link, so its trailing affordance is foreground (#1909 Q4). */}
-                <span className="text-foreground text-sm font-medium">
-                  Watch live <span aria-hidden="true">→</span>
-                </span>
-              </div>
-            </Link>
-          ),
-        )}
+        {onNow.map(({ channel, channelName, airing, title, episodeLabel, timeLabel, inBreak, waiting }) => (
+          <PictureCard
+            key={channel.source.channelId}
+            action={
+              // Named for what it plays: six cards each say "Watch live", and the name still starts
+              // with the visible label (WCAG 2.5.3).
+              <CardAction
+                accessibilityLabel={`Watch live: ${title ?? channelName} on ${channelName}`}
+                accessibilityRole="link"
+                render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
+              >
+                Watch live
+              </CardAction>
+            }
+            chip={<ChannelChip name={channelName} number={String(channel.source.number).padStart(2, "0")} />}
+            media={
+              waiting ? (
+                <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
+              ) : (
+                <AiringArtwork
+                  airing={airing}
+                  channel={{ name: channelName, number: channel.source.number }}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                />
+              )
+            }
+            meta={
+              waiting
+                ? [waiting]
+                : [
+                    ...(inBreak ? [<CardStatus key="break" label="Ad break" tone="notice" />] : []),
+                    ...(episodeLabel ? [episodeLabel] : []),
+                    ...(timeLabel ? [timeLabel] : []),
+                  ]
+            }
+            orientation="top"
+            ratio="16/9"
+            // A channel waiting for its titles has no programme to name, so the card is named for the
+            // channel and says why in its one line (#2727).
+            title={waiting ? channelName : (title ?? channelName)}
+          />
+        ))}
       </div>
     </section>
   );

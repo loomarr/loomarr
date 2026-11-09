@@ -47,16 +47,24 @@ describe("OnNow — up to six channels in number order (#1822 evidence)", () => 
     await renderOnNow([live("c1", 7)]);
     expect(screen.getByRole("heading", { name: "On now" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Full guide" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Channel c1\b.*Watch live$/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Watch live: Programme c1 on Channel c1" })).toBeInTheDocument();
+  });
+
+  it("shows the channel chip, the programme and the time on one card", async () => {
+    await renderOnNow([live("c1", 7)]);
+    const card = screen.getByRole("article");
+    expect(card).toHaveTextContent("07");
+    expect(card).toHaveTextContent("Channel c1");
+    expect(screen.getByRole("heading", { level: 3, name: "Programme c1" })).toBeInTheDocument();
   });
 
   it("orders by channel number and caps at six", async () => {
     const channels = Array.from({ length: 9 }, (_, i) => live(`c${i}`, 90 - i));
     await renderOnNow(channels);
-    const links = screen.getAllByRole("link", { name: /Watch live$/ });
+    const links = screen.getAllByRole("link", { name: /^Watch live/ });
     expect(links).toHaveLength(6);
     // Numbers 82..90 reversed by construction: lowest six numbers are 82-87.
-    expect(links[0]).toHaveAccessibleName(/Channel c8\b.*Watch live$/);
+    expect(links[0]).toHaveAccessibleName("Watch live: Programme c8 on Channel c8");
   });
 
   it("falls back to Your channels, with actual lifecycle wording, when nothing has a current block", async () => {
@@ -151,18 +159,16 @@ describe("OnNow — up to six channels in number order (#1822 evidence)", () => 
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     const art = screen.getByRole("presentation", { hidden: true });
     expect(art.style.backgroundImage).not.toContain("repeating");
-    // Twice: the generated art's monogram, and the small channel-identity mark beside the title.
-    expect(screen.getAllByText("FN")).toHaveLength(2);
+    expect(screen.getAllByText("FN")).toHaveLength(1);
   });
 
-  it("wraps a very long title instead of truncating or overflowing its card", async () => {
+  it("keeps a very long title whole on its card", async () => {
     const longTitle = "The remarkably long story of a lighthouse keeper and the extraordinary journey home";
     await renderOnNow([
       live("c1", 7, {
         airings: [{ kind: "program", scheduleBlockId: "b1", title: longTitle, startMs: 0, stopMs: 1 }],
       }),
     ]);
-    const heading = screen.getByText(longTitle);
-    expect(heading.className).toContain("break-words");
+    expect(screen.getByRole("heading", { level: 3, name: longTitle })).toBeInTheDocument();
   });
 });

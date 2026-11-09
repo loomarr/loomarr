@@ -188,7 +188,9 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
 
     const finder = screen.getByRole("searchbox", { name: "Find a setting" });
-    await userEvent.type(finder, "FILLER_STORAGE_LIBRARY_BUDGET_GB");
+    // Paste, not type: 32 keystrokes each re-filter the whole home, which ran past 5s on CI runners.
+    await userEvent.click(finder);
+    await userEvent.paste("FILLER_STORAGE_LIBRARY_BUDGET_GB");
     const match = await screen.findByRole("link", { name: /Filler storage allowance/ });
     expect(match).toHaveAttribute("href", "/filler/settings/storage");
 

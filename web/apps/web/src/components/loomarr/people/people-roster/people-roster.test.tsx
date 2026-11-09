@@ -23,10 +23,10 @@ describe("PeopleRoster", () => {
     expect(onSelect).toHaveBeenCalledWith(people.importedMember);
   });
 
-  it("says the requests column is a quota (#2751)", () => {
+  it("says the request count is a quota (#2751)", () => {
     render(<PeopleRoster users={[people.importedMember]} onSelect={() => {}} />);
-    expect(screen.getAllByText("Request quota").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Requests")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Request quota \d+ \/ \d+$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Requests\b/)).not.toBeInTheDocument();
   });
 
   it("shows when each person was last seen, and Never for someone who hasn't signed in", () => {
@@ -38,8 +38,9 @@ describe("PeopleRoster", () => {
         now={now}
       />,
     );
-    expect(screen.getByRole("button", { name: /^Manage Greta Finch/ })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: /^Manage Alder Wren/ })).toHaveTextContent("Never");
+    const row = (name: string) => screen.getByText(name).closest('[role="listitem"]') as HTMLElement;
+    expect(row("Greta Finch")).toHaveTextContent("seen 2h ago");
+    expect(row("Alder Wren")).toHaveTextContent("Never seen");
   });
 
   it("searches and filters the loaded roster with an explicit no-results state", async () => {

@@ -217,7 +217,8 @@ const appHandlers = (): RequestHandler[] => [
   getFillerWatchMockHandler({
     clips: 0,
     health: "healthy",
-    held: 0,
+    preparing: 0,
+    needsYou: 0,
     sourcesOn: 0,
     sourcesReady: 0,
     sourcesTotal: 0,

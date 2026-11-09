@@ -672,16 +672,17 @@ Everyone credited on a title in the library. A person with a TMDB id is one row 
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `id` | The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name. | `TEXT` · key |
+| `id` | The person: <namespace>:<id> for a person a catalog knows (tmdb:<id> for TMDB), name:<name> for one kept by name. | `TEXT` · key |
 | `name` | Their name. | `TEXT` |
-| `tmdb_id` | Their TMDB person id; empty when unlinked. | `TEXT` |
+| `external_id` | Their id in that catalog; empty when unlinked. | `TEXT` |
 | `photo` | The web address of their headshot; empty when no source had one. | `TEXT` |
 | `filmography_at_ms` | When their filmography was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `filmography_retry_at_ms` | After a failed filmography fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
+| `namespace` | The catalog that knows them, such as tmdb; empty when unlinked. | `TEXT` |
 
 ### library_filmography
 
-The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as the catalog that knows them lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its namespace and id in library_ids, with library_items.kind matching kind.
 
 **Kept:** Replaced whenever the person's filmography is fetched again; goes with its person (deleted once no title credits them).
 
@@ -690,11 +691,12 @@ The movies and series of the people who directed or created a title, are among a
 | `person_id` | The person (a library_people id). | `TEXT` · key · → `library_people.id` |
 | `position` | Where the title comes in their filmography, newest first, from 0. | `INTEGER` · key |
 | `kind` | movie or series. | `TEXT` |
-| `tmdb_id` | The title's TMDB id. | `TEXT` |
-| `title` | The title's name, in the household's language when TMDB has it. | `TEXT` |
+| `external_id` | The title's id in that catalog. | `TEXT` |
+| `title` | The title's name, in the household's language when the catalog has it. | `TEXT` |
 | `year` | The year it came out; 0 when unknown. | `INTEGER` |
 | `role` | What they did on it, one of actor, creator, director or writer. | `TEXT` |
 | `character_name` | An actor's part; empty for crew or when unknown. | `TEXT` |
+| `namespace` | The catalog the title's id is from, such as tmdb. | `TEXT` |
 
 ### library_id_map
 
@@ -864,7 +866,7 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 
 ### library_candidates
 
-The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
+The catalog search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
 
 **Kept:** Replaced each time the title is searched again; a title's last results are kept.
 
@@ -873,18 +875,19 @@ The TMDB search results for a movie or show Loomarr can't identify, offered in N
 | `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The result's TMDB id. | `TEXT` |
+| `external_id` | The result's id in that catalog. | `TEXT` |
 | `name` | The result's name. | `TEXT` |
 | `year` | The result's year, or 0 when unknown. | `INTEGER` |
 | `overview` | The result's description, or empty. | `TEXT` |
-| `poster` | The result's poster URL at TMDB, or empty. | `TEXT` |
+| `poster` | The result's poster URL at its catalog, or empty. | `TEXT` |
 | `name_match` | 1 when the result's name agrees with what is on disk. | `BOOLEAN` |
 | `year_match` | 1 when the result's year agrees with what is on disk. | `BOOLEAN` |
 | `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `BOOLEAN` |
+| `namespace` | The catalog that found the result, such as tmdb. | `TEXT` |
 
 ### library_answers
 
-The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
+The answer for a movie or show nothing else identifies, either the catalog title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
 
 **Kept:** Kept until someone takes the answer back, even after the title leaves the library.
 
@@ -893,10 +896,11 @@ The answer for a movie or show nothing else identifies, either the TMDB title it
 | `origin_authority` | The scanned folder of the title's scan origin, as in library_items. | `TEXT` · key |
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The TMDB title it is linked to; empty when ignored. | `TEXT` |
+| `external_id` | The title's id in that catalog; empty when ignored. | `TEXT` |
 | `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
-| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one TMDB result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one catalog result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored. | `TEXT` |
 
 ### library_collections
 

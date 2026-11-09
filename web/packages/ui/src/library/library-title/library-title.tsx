@@ -139,7 +139,7 @@ const WrongTitle = ({
     <Stack gap="inline">
       <PickTitle
         kind={title.kind}
-        onPick={(c) => answer(onLink(c.tmdbId), c.name)}
+        onPick={(c) => answer(onLink(c.externalId), c.name)}
         onSearch={onSearch}
         others={[]}
       />

@@ -45,6 +45,9 @@ type ReadinessInput struct {
 	Pool     PoolReport
 	Runs     []AcquisitionRun
 	Repairs  AcquisitionRepairSummary
+	// NeedsYou is Incoming's needs-help total: the choices Incoming lists. Review asks for a
+	// choice only when Incoming has one to show (#2733).
+	NeedsYou int
 }
 
 // Readiness is the server-owned summary shown at the simple Filler entry point. The detailed
@@ -89,8 +92,8 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Runs[0].Failed+in.Runs[0].Artifacts.Repair
 	case in.Pipeline.Recoverable > 0:
 		out.Next, out.Count = ReadinessRetryWork, in.Pipeline.Recoverable
-	case in.Pipeline.NeedsDecision > 0:
-		out.Next, out.Count = ReadinessReviewIncoming, in.Pipeline.NeedsDecision
+	case in.NeedsYou > 0:
+		out.Next, out.Count = ReadinessReviewIncoming, in.NeedsYou
 	case in.Pool.Eligible == 0:
 		out.Next = ReadinessAddFiller
 	default:

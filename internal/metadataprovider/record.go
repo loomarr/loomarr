@@ -138,10 +138,10 @@ type Descriptive struct {
 }
 
 // FilmCredit is one title in a person's filmography (#2151 decision 50): a movie or series by its
-// TMDB id, what they did on it, and an actor's character.
+// id in the catalog the filmography came from, what they did on it, and an actor's character.
 type FilmCredit struct {
 	Kind      Kind
-	TMDB      string
+	ID        ExternalID
 	Title     string
 	Year      int
 	Role      PersonRole
@@ -165,13 +165,13 @@ const (
 	PersonCreator PersonRole = "creator"
 )
 
-// Person is someone credited on a title (decision 49). TMDB is their TMDB person id when the
-// source knows it; a person without one is kept by name, unlinked.
+// Person is someone credited on a title (decision 49). ID is their id in a catalog of people when
+// the source knows one; a person without one is kept by name, unlinked.
 type Person struct {
 	Name      string
 	Role      PersonRole
 	Character string
-	TMDB      string
+	ID        ExternalID
 	// Photo is an http(s) URL of their headshot.
 	Photo string
 }

@@ -85,12 +85,12 @@ describe("ClipCard", () => {
 
   // The chip reads the server's needsDetails alone, never kind + tagged: a commercial the server
   // calls complete gets no chip even with tags missing on this client copy, and vice versa.
-  it.each([false, true])("shows Needs details exactly when the server says so (compact: %s)", (compact) => {
+  it("shows Needs details exactly when the server says so", () => {
     const { rerender } = render(
-      <ClipCard clip={{ ...base, tagged: false, needsDetails: false }} onOpen={() => {}} compact={compact} />,
+      <ClipCard clip={{ ...base, tagged: false, needsDetails: false }} onOpen={() => {}} />,
     );
     expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
-    rerender(<ClipCard clip={{ ...base, needsDetails: true }} onOpen={() => {}} compact={compact} />);
+    rerender(<ClipCard clip={{ ...base, needsDetails: true }} onOpen={() => {}} />);
     expect(screen.getByText("Needs details")).toBeInTheDocument();
   });
 
@@ -101,16 +101,17 @@ describe("ClipCard", () => {
     expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
   });
 
-  // The phone library's 2-up card: frame, duration, name, and an exception chip only.
-  it("keeps the compact card to its name, duration and exception chip", () => {
-    render(<ClipCard clip={{ ...base, held: true, brand: "Fizzwell" }} onOpen={() => {}} compact />);
-    expect(screen.getByRole("button", { name: `View details for ${base.name}` })).toBeInTheDocument();
+  // A picture card (#2765): one metadata line and one action, so brand and category stay in the
+  // details panel.
+  it("keeps the card to its name, length, one metadata line and one action", () => {
+    render(<ClipCard clip={{ ...base, held: true, brand: "Fizzwell" }} onOpen={() => {}} />);
+    expect(screen.getByRole("heading", { level: 3, name: base.name })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: `View details for ${base.name}` })).toHaveLength(1);
     expect(screen.getByText("30s")).toBeInTheDocument();
     expect(screen.getByText("Preparing")).toBeInTheDocument();
-    expect(screen.queryByText("Commercial")).not.toBeInTheDocument();
-    expect(screen.queryByText("1990s")).not.toBeInTheDocument();
+    expect(screen.getByText("Commercial")).toBeInTheDocument();
     expect(screen.queryByText("Fizzwell")).not.toBeInTheDocument();
-    expect(screen.queryByText(/aired|Airings/)).not.toBeInTheDocument();
+    expect(screen.queryByText("food")).not.toBeInTheDocument();
   });
 
   // The select box is @loomarr/ui's ClipSelect, whose 24px+ target (WCAG 2.2, 2.5.8) is pinned in

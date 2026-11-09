@@ -40,7 +40,7 @@ type LibraryRootService interface {
 	Needs(ctx context.Context) ([]scan.Need, error)
 	Problems(ctx context.Context) ([]store.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
-	Link(ctx context.Context, itemID, tmdbID string) error
+	Link(ctx context.Context, itemID string, id store.LibraryID) error
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)

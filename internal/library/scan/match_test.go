@@ -81,9 +81,9 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	}
 
 	search := &fakeSearch{hits: []SearchHit{
-		{Kind: "series", TMDBID: "90000301", Name: "Mystery Film", Year: 2002},
-		{Kind: "movie", TMDBID: "90000302", Name: "Mystery Films", Year: 2002},
-		{Kind: "movie", TMDBID: "90000303", Name: "Mystery Film", Year: 2002, Overview: "A mystery."},
+		{Kind: "series", ID: tmdbID("90000301"), Name: "Mystery Film", Year: 2002},
+		{Kind: "movie", ID: tmdbID("90000302"), Name: "Mystery Films", Year: 2002},
+		{Kind: "movie", ID: tmdbID("90000303"), Name: "Mystery Film", Year: 2002, Overview: "A mystery."},
 	}}
 	catalog := &fakeCatalog{records: map[string]mp.Record{
 		"90000302": {Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 95 * time.Minute}},
@@ -100,9 +100,9 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	needs, _ = lib.Needs(ctx)
 	got := needs[0].Candidates
 	want := []store.LibraryCandidate{
-		{Kind: "movie", TMDBID: "90000303", Name: "Mystery Film", Year: 2002, Overview: "A mystery.",
+		{Kind: "movie", ID: tmdbLink("90000303"), Name: "Mystery Film", Year: 2002, Overview: "A mystery.",
 			Poster: "https://image.invalid/90000303.jpg", NameMatch: true, YearMatch: true, LengthMatch: true},
-		{Kind: "movie", TMDBID: "90000302", Name: "Mystery Films", Year: 2002, YearMatch: true},
+		{Kind: "movie", ID: tmdbLink("90000302"), Name: "Mystery Films", Year: 2002, YearMatch: true},
 	}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("candidates = %+v\nwant %+v", got, want)
@@ -113,7 +113,7 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 		t.Fatalf("second tick searched %v, %v", search.terms, err)
 	}
 
-	if err := lib.Link(ctx, needs[0].ID, "90000303"); err != nil {
+	if err := lib.Link(ctx, needs[0].ID, tmdbLink("90000303")); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
@@ -147,10 +147,15 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	}
 
 	// The grounded title cannot be answered without a scan origin of its own kind.
-	if err := lib.Link(ctx, "no-such-item", "90000303"); !errors.Is(err, store.ErrNotFound) {
+	if err := lib.Link(ctx, "no-such-item", tmdbLink("90000303")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown item link err = %v", err)
 	}
 }
+
+// tmdbID is a TMDB id as a search hit names it; tmdbLink, as an answer does.
+func tmdbID(v string) mp.ExternalID { return mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: v} }
+
+func tmdbLink(v string) store.LibraryID { return store.LibraryID{Namespace: "tmdb", Value: v} }
 
 // A movie nothing grounds is matched by its search when exactly one result agrees on its name,
 // year and length (decision 56): it leaves Needs you, decided by the search. Two agreeing results
@@ -163,12 +168,12 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 		settled string
 	}{
 		{"one agrees", []SearchHit{
-			{Kind: "movie", TMDBID: "90000311", Name: "Mystery Film", Year: 2002},
-			{Kind: "movie", TMDBID: "90000312", Name: "Mystery Film", Year: 1971},
+			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002},
+			{Kind: "movie", ID: tmdbID("90000312"), Name: "Mystery Film", Year: 1971},
 		}, "90000311"},
 		{"two agree", []SearchHit{
-			{Kind: "movie", TMDBID: "90000311", Name: "Mystery Film", Year: 2002},
-			{Kind: "movie", TMDBID: "90000313", Name: "Mystery Film", Year: 2003},
+			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002},
+			{Kind: "movie", ID: tmdbID("90000313"), Name: "Mystery Film", Year: 2003},
 		}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -180,7 +185,7 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 			// Every candidate runs 22 minutes, as long as the harness's file.
 			catalog := &fakeCatalog{records: map[string]mp.Record{}}
 			for _, hit := range tc.hits {
-				catalog.records[hit.TMDBID] = mp.Record{Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}}
+				catalog.records[hit.ID.Value] = mp.Record{Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}}
 			}
 			search := &fakeSearch{hits: tc.hits}
 			m := &Matcher{Store: h.st, Search: search.search, Provider: catalog, Inventory: h.inv, Match: lib.MatchBySearch}
@@ -206,7 +211,7 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 					len(needs), item.ExternalIDs, DecidedBy(listed.Match))
 			}
 
-			if err := lib.Link(ctx, string(item.ID), "90000312"); err != nil {
+			if err := lib.Link(ctx, string(item.ID), tmdbLink("90000312")); err != nil {
 				t.Fatal(err)
 			}
 			h.run()
@@ -235,7 +240,7 @@ func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {
 	}
 	answered := needs[0].ID
 
-	if err := lib.Link(ctx, answered, "90000300"); err != nil {
+	if err := lib.Link(ctx, answered, tmdbLink("90000300")); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
@@ -315,8 +320,8 @@ func TestMatcherSettlesASeriesOnlyWhenOneResultHoldsItsEpisodes(t *testing.T) {
 			h.run()
 			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv}
 			hits := []SearchHit{
-				{Kind: "series", TMDBID: "90000411", Name: "Harbour Lights", Year: 1999},
-				{Kind: "series", TMDBID: "90000412", Name: "Harbour Lights", Year: 2000},
+				{Kind: "series", ID: tmdbID("90000411"), Name: "Harbour Lights", Year: 1999},
+				{Kind: "series", ID: tmdbID("90000412"), Name: "Harbour Lights", Year: 2000},
 			}
 			catalog := &fakeCatalog{records: map[string]mp.Record{}}
 			for id, layout := range tc.layouts {
