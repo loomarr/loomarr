@@ -79,9 +79,9 @@ type LibraryFileStore interface {
 	LibraryPlayingVideo(ctx context.Context, itemID string) (video LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
-	// SaveLibraryFiles writes rows whole, a chunk per transaction, so a root's first walk does not
-	// hold the write lock for its whole length. Every row is checked before any is written; a
-	// failure part-way leaves the earlier chunks written, which the next pass writes again.
+	// SaveLibraryFiles writes rows whole, a chunk per transaction, which keeps each transaction and
+	// the WAL small. Every row is checked before any is written; a failure part-way leaves the
+	// earlier chunks written, which the next pass writes again.
 	SaveLibraryFiles(ctx context.Context, files []LibraryFile) error
 	// LibraryFileRoots lists every root that has file rows.
 	LibraryFileRoots(ctx context.Context) ([]string, error)
@@ -195,8 +195,10 @@ func (s *Store) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, e
 	return out, nil
 }
 
-// LibraryFilesChunk is how many file rows one transaction writes: small enough that playout's
-// writes wait milliseconds behind a walk, large enough that a first walk is not a commit per row.
+// LibraryFilesChunk is how many file rows one transaction writes. Measured on 30,684 episode rows
+// (SQLite, 2026-11-09): one transaction took 491 ms, chunks of 500 take 302 ms. Chunks do not let
+// another writer in between them: it waits in SQLite's busy handler, which sleeps longer than the
+// gap, so it waits out the whole save (333 ms here), far inside busy_timeout.
 const LibraryFilesChunk = 500
 
 func (s *Store) SaveLibraryFiles(ctx context.Context, files []LibraryFile) error {

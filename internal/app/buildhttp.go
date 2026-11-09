@@ -83,6 +83,10 @@ func buildHTTP(deps httpBuild) http.Handler {
 		})
 	}
 	suggestSvc, proposalWorkflow := deps.suggestions.suggest, deps.suggestions.workflow
+	if ov.DemoUsername != "" && ov.DemoPassword != "" {
+		// The demo site has no AI: described channels are built from its library (#2729).
+		suggestSvc = demoSuggest{SuggestService: suggestSvc, library: deps.suggestions.ideaLibrary, now: time.Now}
+	}
 	searchSvc, movieCollectionsSvc, collectionsSvc := deps.suggestions.search, deps.suggestions.movieCollections, deps.suggestions.collections
 	systemLLM, iconSvc, imageSvc := deps.suggestions.systemLLM, deps.suggestions.icons, deps.suggestions.images
 	timelineThumbs := deps.suggestions.timelineThumbs

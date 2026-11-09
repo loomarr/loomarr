@@ -54,11 +54,11 @@ type Format struct {
 // watermarks can be shown for real. Long runtimes are cheap: each file is a short encoded
 // segment stream-copied end to end (assets.go).
 var Formats = []Format{
-	{ID: "cartoon-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 11 * 60},
+	{ID: "cartoon-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 22 * 60},
 	{ID: "episode-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 22 * 60},
 	{ID: "episode-1080p-hevc10", Label: "1080p · HEVC 10-bit", Width: 1920, Height: 1080, Codec: "hevc", TenBit: true, Duration: 22 * 60},
 	{ID: "episode-480p-4x3", Label: "480p · 4:3 SD", Width: 640, Height: 480, Codec: "h264", Duration: 22 * 60},
-	{ID: "film-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 44 * 60},
+	{ID: "film-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 90 * 60},
 	{ID: "film-2160p-hdr10", Label: "4K HDR10 · HEVC 10-bit", Width: 3840, Height: 2160, Codec: "hevc", TenBit: true, HDR10: true, Duration: 30 * 60},
 }
 
