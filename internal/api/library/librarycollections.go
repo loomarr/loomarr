@@ -20,7 +20,8 @@ import (
 // ordered list of titles. A collection a channel uses can't be deleted; the API says which
 // channels use it, and the UI words it.
 //
-// These are Loomarr's collections, not the media server's, which `/v1/library/collections` lists.
+// `/v1/library/collections` lists the same collections, names and sizes only, for the channel
+// scope picker.
 
 func (s *Handlers) registerLibraryCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
