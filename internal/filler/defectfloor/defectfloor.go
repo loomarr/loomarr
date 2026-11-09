@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -358,7 +358,7 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 	} else if err != nil {
 		return false, err
 	}
-	for f, err := range filler.RemoveRetiredCopy(d.clipDir, c.Path, tags, referenced) {
+	for f, err := range identity.RemoveRetiredCopy(d.clipDir, c.Path, tags, referenced) {
 		d.warn("defects: a retired copy's file could not be removed; it is already off the catalog",
 			"clip", c.Hash, "file", f, "err", err)
 	}
@@ -371,7 +371,7 @@ func (d *DefectFloor) referenced(ctx context.Context) (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filler.ReferencedAssets(d.clipDir, paths), nil
+	return identity.ReferencedAssets(d.clipDir, paths), nil
 }
 
 // judgeState is the judge as one pass sees it: asked which model it is once, then counted down.

@@ -37,6 +37,14 @@ type Identity struct {
 	Path     string `json:"path"`
 }
 
+// DerivativePath is the catalog-relative path of a rendition, or "" when there is none.
+func DerivativePath(d *DerivativeLineage) string {
+	if d == nil {
+		return ""
+	}
+	return d.Asset.Path
+}
+
 // Manifest is the closed portable relationship between one source and its renditions.
 // Derivative execution details are added by the recipe layer; source retention can ship first
 // without inventing an evidence/playback identity that does not exist yet.

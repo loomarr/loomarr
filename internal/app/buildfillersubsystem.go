@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -302,7 +303,7 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return settings.FillerSplitReviewWindow.Get(set) }, time.Now, log,
 	)))
-	registry.Add(fillerIdentityJob(filler.NewCreativeIdentity(
+	registry.Add(fillerIdentityJob(identity.NewCreativeIdentity(
 		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no

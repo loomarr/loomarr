@@ -75,7 +75,7 @@ func (s *TranscodeStage) ReplaceAiring(ctx context.Context, c cliplibrary.StoreC
 	}
 	swap := &airingSwap{store: s.airingStore, check: s.airingCheck}
 	if tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path))); ok {
-		swap.oldEvidence = derivativePath(tags.MediaAssets.Evidence)
+		swap.oldEvidence = asset.DerivativePath(tags.MediaAssets.Evidence)
 	}
 	res, err := s.run(ctx, c, swap)
 	if err != nil {
@@ -141,7 +141,7 @@ func (w *airingSwap) discardUncommitted(clipDir, evidence string) {
 // removeOldEvidence removes the airing clip's own evidence copy once it switched. Evidence is
 // encoded from one clip's master, so no other clip names it; the master itself always stays.
 func (w *airingSwap) removeOldEvidence(clipDir string, assets asset.Manifest) {
-	if w.oldEvidence == "" || w.oldEvidence == derivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
+	if w.oldEvidence == "" || w.oldEvidence == asset.DerivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
 		return
 	}
 	_ = os.Remove(filepath.Join(clipDir, filepath.FromSlash(w.oldEvidence)))

@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -252,11 +253,11 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 
-// fillerIdentityStoreAdapter bridges the store → filler.IdentityStore (#2033). It translates the
+// fillerIdentityStoreAdapter bridges the store → identity.IdentityStore (#2033). It translates the
 // catalog listing, which carries admission time, and the merge record; the rest passes through.
 type fillerIdentityStoreAdapter struct{ records.Store }
 
-func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
+func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]identity.IdentityClip, error) {
 	clips, err := a.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
 	if err != nil {
 		return nil, err
@@ -266,9 +267,9 @@ func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]fi
 	if err != nil && !errors.Is(err, clipstore.ErrCorruptClipDefects) {
 		return nil, err
 	}
-	out := make([]filler.IdentityClip, len(clips))
+	out := make([]identity.IdentityClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.IdentityClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt}
+		out[i] = identity.IdentityClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt}
 		if r, ok := records[c.Hash]; ok {
 			out[i].Defects = &r.Assessment
 		}
@@ -276,18 +277,18 @@ func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]fi
 	return out, nil
 }
 
-func (a fillerIdentityStoreAdapter) ListWantedCopies(ctx context.Context) ([]filler.WantedCopy, error) {
+func (a fillerIdentityStoreAdapter) ListWantedCopies(ctx context.Context) ([]identity.WantedCopy, error) {
 	wanted, err := a.Store.ListWantedCopies(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.WantedCopy, len(wanted))
+	out := make([]identity.WantedCopy, len(wanted))
 	for i, w := range wanted {
-		out[i] = filler.WantedCopy{ClipHash: w.ClipHash, Path: w.Path}
+		out[i] = identity.WantedCopy{ClipHash: w.ClipHash, Path: w.Path}
 	}
 	return out, nil
 }
-func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c filler.InferiorCopy) error {
+func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c identity.InferiorCopy) error {
 	return a.Store.MergeInferiorCopy(ctx, clipstore.InferiorCopy{
 		ClipHash: c.ClipHash, SourceHash: c.SourceHash, SurvivorHash: c.SurvivorHash, DecidedAt: c.DecidedAt,
 	})

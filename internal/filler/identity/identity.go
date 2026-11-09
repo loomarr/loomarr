@@ -1,4 +1,8 @@
-package filler
+// Package identity merges copies of the same advert: it fingerprints the catalog's clips, picks
+// the best copy of each, retires the inferior ones and re-points everything that referenced them.
+// It depends on the clip catalog and media-tool layers only, so the filler pipeline above can call
+// RemoveRetiredCopy and ReferencedAssets without a cycle.
+package identity
 
 import (
 	"cmp"
@@ -367,7 +371,7 @@ func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays. The count drops either
 		// way, so the last of two copies removed in one pass takes it.
-		for _, asset := range []string{m.SourceMaster.Path, derivativePath(m.Evidence)} {
+		for _, asset := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence)} {
 			if asset == "" {
 				continue
 			}
@@ -401,13 +405,6 @@ func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenc
 	return removeOwnFiles(clipDir, full, tags, referenced)
 }
 
-func derivativePath(d *asset.DerivativeLineage) string {
-	if d == nil {
-		return ""
-	}
-	return d.Asset.Path
-}
-
 // ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
 // paths are catalog clip paths, removed clips included; the result is the "referenced" argument of
 // RemoveRetiredCopy. It only reads.
@@ -423,7 +420,7 @@ func ReferencedAssets(clipDir string, paths []string) map[string]int {
 			continue
 		}
 		m := tags.MediaAssets
-		for _, p := range []string{m.SourceMaster.Path, derivativePath(m.Evidence), derivativePath(m.Playback)} {
+		for _, p := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence), asset.DerivativePath(m.Playback)} {
 			if p != "" {
 				out[p]++
 			}
