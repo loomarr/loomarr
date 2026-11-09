@@ -13,13 +13,13 @@ import (
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests, which an
 // external package cannot import; production code exports nothing for them.
 
-// mediaAssetManifestVersion is filler's manifest version. A wrong value makes the manifest fail
+// mediaAssetManifestVersion mirrors asset.ManifestVersion. A wrong value makes the manifest fail
 // Validate, which fails the tests that depend on it rather than passing silently.
 const mediaAssetManifestVersion = 1
 
 // screeningBlobPath is where FileSegmentScreeningEvidenceRepository (rooted at root) keeps the
 // blob of the given kind and digest. Tests that tamper with or remove stored evidence need it; the
-// production code derives the same path inside filler.
+// production code derives the same path inside the repository.
 func screeningBlobPath(root, kind, digest string) string {
 	return filepath.Join(root, kind, digest[:2], digest+".json")
 }
