@@ -4,8 +4,8 @@ import (
 	"context"
 
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/requester"
 )
 
 // arrDiscovery is api.ArrDiscovery over the settings: Seerr's Sonarr and Radarr, read per call
