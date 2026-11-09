@@ -89,11 +89,7 @@ const LocalSourceForm = () => {
         <form.Subscribe selector={(state) => state.values.uri}>
           {(uri) => (
             // A real submit button under Action's look, so Enter in the address still submits.
-            <Action
-              disabled={addSource.isPending || !uri.trim()}
-              render={<button disabled={addSource.isPending || !uri.trim()} type="submit" />}
-              variant="outline"
-            >
+            <Action disabled={addSource.isPending || !uri.trim()} submit variant="outline">
               {addSource.isPending ? "Adding…" : "+ Add source"}
             </Action>
           )}

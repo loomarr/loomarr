@@ -146,14 +146,14 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         {hidden && (
           <>
             <span className="text-static-400 text-xs">Hid {hidden.name}</span>
-            <button
-              type="button"
+            <Action
               disabled={unhide.isPending}
-              onClick={() => unhide.mutate({ ideaId: hidden.id })}
-              className="text-foreground focus-visible:ring-ring cursor-pointer border-none bg-transparent p-0 text-xs underline underline-offset-[3px] focus-visible:ring-2 focus-visible:outline-none"
+              layout="text"
+              onPress={() => unhide.mutate({ ideaId: hidden.id })}
+              variant="link"
             >
               Undo
-            </button>
+            </Action>
           </>
         )}
         {ideas.length > PAGE && (

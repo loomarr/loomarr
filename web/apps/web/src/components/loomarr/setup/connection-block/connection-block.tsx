@@ -1,7 +1,6 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { Disclosure, type StatusTone } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
@@ -81,7 +80,7 @@ const ConnectionBlock = ({
                   verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
                 )}
               >
-                {failing && <X className="size-3.5 shrink-0" aria-hidden />}
+                {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
                 <span className="min-w-0">
                   {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
                 </span>
@@ -93,7 +92,7 @@ const ConnectionBlock = ({
                     search={parseDocHref(docHref)}
                     className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
                   >
-                    Fix <ArrowUpRight className="size-3" aria-hidden />
+                    Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
                   </Link>
                 )}
               </p>

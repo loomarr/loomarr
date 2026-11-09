@@ -1,5 +1,4 @@
-import { Tooltip } from "@loomarr/design-system";
-import { Info } from "lucide-react";
+import { Action, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
@@ -29,26 +28,22 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
   const descriptionId = describedById ?? ownId;
 
   return (
-    <Tooltip content={children}>
-      <button
-        type="button"
-        aria-label={`About ${label}`}
-        aria-describedby={descriptionId}
-        // A 16 px glyph: a touch screen gets the 24 px tap area (styles.css, #1785).
-        data-touch-target
-        className={cn(
-          "text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none",
-          className,
-        )}
-      >
-        <Info className="size-3.5" aria-hidden />
-        {!describedById && (
-          <span id={descriptionId} className="sr-only">
-            {children}
-          </span>
-        )}
-      </button>
-    </Tooltip>
+    <span className={cn("inline-flex shrink-0", className)}>
+      <Tooltip content={children}>
+        <Action
+          aria-describedby={descriptionId}
+          compact
+          icon="info"
+          layout="icon"
+          variant="ghost"
+        >{`About ${label}`}</Action>
+      </Tooltip>
+      {!describedById && (
+        <span id={descriptionId} className="sr-only">
+          {children}
+        </span>
+      )}
+    </span>
   );
 };
 

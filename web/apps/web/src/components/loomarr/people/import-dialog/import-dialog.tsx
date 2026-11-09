@@ -7,10 +7,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Icon,
+  icons,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
-import { ShieldCheck } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -237,7 +238,7 @@ const ImportDialog = ({
                 <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
                   <div>
                     <p className="flex items-center gap-2 font-medium">
-                      <ShieldCheck className="text-lock size-4" aria-hidden />
+                      <Icon decorative glyph={icons.verified} size="compact" tone="success" />
                       Passwords stay private
                     </p>
                     <p className="text-muted-foreground mt-1">

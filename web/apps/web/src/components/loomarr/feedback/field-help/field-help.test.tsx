@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { FieldHelp } from "./field-help";
 
 // The tooltip content lives in a portal and only renders on hover — not worth asserting in jsdom.

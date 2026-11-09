@@ -12,10 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Icon,
+  icons,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { useAppForm } from "@/lib/app-form";
@@ -180,11 +181,17 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         <div className="bg-muted/40 rounded-lg p-4">
           <div className="flex items-start gap-3">
             {configured && status?.state === "ready" ? (
-              <CheckCircle2 className="text-lock mt-0.5 size-5 shrink-0" aria-hidden />
+              <span className="mt-0.5 flex">
+                <Icon decorative glyph={icons.passed} size="default" tone="success" />
+              </span>
             ) : status?.state === "degraded" || status?.state === "limit_reached" ? (
-              <TriangleAlert className="text-caution mt-0.5 size-5 shrink-0" aria-hidden />
+              <span className="mt-0.5 flex">
+                <Icon decorative glyph={icons.alert} size="default" tone="warning" />
+              </span>
             ) : (
-              <Search className="text-muted-foreground mt-0.5 size-5 shrink-0" aria-hidden />
+              <span className="mt-0.5 flex">
+                <Icon decorative glyph={icons.search} size="default" tone="muted" />
+              </span>
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">

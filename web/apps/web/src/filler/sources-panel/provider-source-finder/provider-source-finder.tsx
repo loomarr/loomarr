@@ -210,20 +210,16 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
           />
         </div>
         <Action
-          render={
-            <button
-              disabled={
-                !enabled ||
-                !input.trim() ||
-                resolveSource.isPending ||
-                addSource.isPending ||
-                searching ||
-                selected?.alreadyAdded ||
-                Boolean(selected && !verified)
-              }
-              type="submit"
-            />
+          disabled={
+            !enabled ||
+            !input.trim() ||
+            resolveSource.isPending ||
+            addSource.isPending ||
+            searching ||
+            selected?.alreadyAdded ||
+            Boolean(selected && !verified)
           }
+          submit
           variant={selected ? undefined : "outline"}
         >
           {resolveSource.isPending

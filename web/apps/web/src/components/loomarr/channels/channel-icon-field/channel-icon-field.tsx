@@ -1,9 +1,8 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
-import { ImageOff, Loader2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useAppForm } from "@/lib/app-form";
@@ -144,12 +143,12 @@ const ChannelIconField = ({
               image={logoImage}
               alt="Channel icon"
               sizes="48px"
-              fallback={<ImageOff className="text-static-500 size-6" aria-hidden />}
+              fallback={<Icon decorative glyph={icons.noImage} size="control" tone="muted" />}
             />
           ) : logo ? (
             <img src={logo} alt="Channel icon" className="size-full object-cover" />
           ) : (
-            <ImageOff className="text-static-500 size-6" aria-hidden />
+            <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -191,7 +190,7 @@ const ChannelIconField = ({
               <p className="text-sm font-medium">From your titles</p>
               {suggestions.isLoading && (
                 <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  <ActivityIndicator decorative size="compact" tone="inherit" />
                   Looking for posters…
                 </p>
               )}
@@ -239,7 +238,7 @@ const ChannelIconField = ({
                             image={s.image}
                             alt={s.title}
                             sizes="(min-width: 640px) 6rem, 4rem"
-                            fallback={<ImageOff className="text-static-500 size-4" aria-hidden />}
+                            fallback={<Icon decorative glyph={icons.noImage} size="compact" tone="muted" />}
                           />
                         ) : (
                           <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
@@ -269,9 +268,7 @@ const ChannelIconField = ({
                   }}
                   className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
-                {uploading && (
-                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
-                )}
+                {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
               </div>
               <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
               {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
