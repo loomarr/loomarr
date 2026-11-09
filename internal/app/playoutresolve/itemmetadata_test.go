@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func TestItemMetadataAnswersLibraryIDsFromTheTables(t *testing.T) {
 	facts := &fakeItemFacts{facts: map[string]store.LibraryItemFacts{
 		"lib-1": {Overview: "A film.", Genres: []string{"Drama"}, Year: 1999, Rating: "PG", RuntimeMs: 5_400_000},
 	}}
-	m := itemMetadata{facts: facts}
+	m := ItemMetadata{Facts: facts}
 	got, err := m.ItemMetadataByID(context.Background(), []string{"lib-1", "90000001"})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestItemMetadataAnswersLibraryIDsFromTheTables(t *testing.T) {
 
 	// The guide reads the same facts with no media server connected (r.lib is nil).
 	bs := []playout.Broadcast{{LibraryItemID: "lib-1", Title: "Film"}, {LibraryItemID: "90000001", Title: "Gone"}}
-	(&playoutResolver{itemFacts: facts}).attachMetadata(context.Background(), bs)
+	(&Resolver{itemFacts: facts}).attachMetadata(context.Background(), bs)
 	if bs[0].Description != "A film." || bs[0].Year != 1999 || bs[0].Rating != "PG" || len(bs[0].Genres) != 1 {
 		t.Errorf("guide entry = %+v, want the Library's facts", bs[0])
 	}

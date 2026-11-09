@@ -1,10 +1,10 @@
-import { Action, ActivityIndicator, BrandMark, Surface, Text } from "@loomarr/design-system";
+import { Action, BrandMark, LoadingStrip, Surface, Text } from "@loomarr/design-system";
 
 import type { StatePanelProps } from "./state-panel.type";
 
 // One family for every empty list, error, 404, cover and onboarding: the static colour bars (4px), a
 // sentence-case heading, one plain sentence and at most one action. The bars are the test card a set
-// showed when nothing was on, so they stay still; only loading swaps them for a spinner.
+// showed when nothing was on, so they stay still; only loading lights them, as the LoadingStrip (#2789).
 const StatePanel = ({ action, description, density = "pointer", icon, kind, title }: StatePanelProps) => {
   const loading = kind === "loading";
 
@@ -24,7 +24,7 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
       {icon ??
         (loading ? (
           <Surface alignItems="center" backgroundColor="transparent" borderWidth={0}>
-            <ActivityIndicator accessibilityLabel={title} size={density === "tv" ? "tv" : "control"} />
+            <LoadingStrip accessibilityLabel={title} density={density} />
           </Surface>
         ) : (
           <BrandMark contained={false} decorative size={4} />

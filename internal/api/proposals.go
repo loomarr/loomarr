@@ -463,7 +463,7 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	// approval that actually happened — recording intent would put entries in the feed for
 	// requests that were refused.
 	//
-	// Deliberately NOT inside suggest.Approver: that is the one chokepoint every approve path
+	// Deliberately NOT inside accept.Approver: that is the one chokepoint every approve path
 	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
 	// widen the gate's signature for telemetry.
 	//

@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -24,10 +24,10 @@ type measureSink struct {
 	inventory.AnalysisStore
 }
 
-// newMeasurer builds Loomarr's measurement job for this resolver: stream facts come from the same
+// NewMeasurer builds Loomarr's measurement job for this resolver: stream facts come from the same
 // prober playout already uses, revisions from the same stat rule local sources are registered
 // with, and the analysis tools from the given (background) runner.
-func (r *playoutResolver) newMeasurer(tools measure.Tools, analysis inventory.AnalysisStore) *measure.Measurer {
+func (r *Resolver) NewMeasurer(tools measure.Tools, analysis inventory.AnalysisStore) *measure.Measurer {
 	return measure.New(measure.Deps{
 		Sink:  measureSink{Service: r.inventory, AnalysisStore: analysis},
 		Tools: tools,
@@ -36,7 +36,7 @@ func (r *playoutResolver) newMeasurer(tools measure.Tools, analysis inventory.An
 			if err != nil {
 				return inventory.SourceFacts{}, err
 			}
-			return inventoryFactsOf(observed), nil
+			return InventoryFactsOf(observed), nil
 		},
 		Revision: localRevisionOfPath,
 		Now:      func() time.Time { return r.inventoryNow() },
@@ -47,7 +47,7 @@ func (r *playoutResolver) newMeasurer(tools measure.Tools, analysis inventory.An
 // measureFirstPlay is the synchronous fast path for a source Loomarr has never measured: probe
 // stream facts once, record them against the source revision, and queue the slower analysis. A
 // probe failure returns false and playout keeps its existing behaviour.
-func (r *playoutResolver) measureFirstPlay(ctx context.Context, origin inventory.OriginKey, input string) (formatOut playout.MediaFormat, ok bool) {
+func (r *Resolver) measureFirstPlay(ctx context.Context, origin inventory.OriginKey, input string) (formatOut playout.MediaFormat, ok bool) {
 	if r.measurer == nil || r.probeSource == nil {
 		return playout.MediaFormat{}, false
 	}
@@ -73,7 +73,7 @@ func (r *playoutResolver) measureFirstPlay(ctx context.Context, origin inventory
 
 // activePicture is the source's measured picture area for the channel watermark's anchor, from
 // the stored analysis of its current revision; the zero Rect (unknown) before it is measured.
-func (r *playoutResolver) activePicture(ctx context.Context, id inventory.SourceID) playout.Rect {
+func (r *Resolver) activePicture(ctx context.Context, id inventory.SourceID) playout.Rect {
 	if r.analyses == nil {
 		return playout.Rect{}
 	}
@@ -86,7 +86,7 @@ func (r *playoutResolver) activePicture(ctx context.Context, id inventory.Source
 }
 
 // submitAnalysis queues background analysis for a source whose stream facts are already stored.
-func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input string, facts inventory.SourceFacts) {
+func (r *Resolver) submitAnalysis(id inventory.SourceID, revision, input string, facts inventory.SourceFacts) {
 	if r.measurer != nil {
 		r.measurer.Submit(measure.SourceRef{ID: id, Revision: revision, Path: input, Facts: facts})
 	}
@@ -94,13 +94,13 @@ func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input 
 
 // canAnalyseItems reports whether this install can find, and read the analysis of, a library
 // item's local file: inventory, an analysis store, and the Library to resolve the item's file.
-func (r *playoutResolver) canAnalyseItems() bool {
+func (r *Resolver) canAnalyseItems() bool {
 	return r != nil && r.inventory != nil && r.analyses != nil && r.libraryFile != nil
 }
 
-// naturalBreakSource binds mid-roll candidate lookups (§10) to one reconcile or preview pass.
+// NaturalBreakSource binds mid-roll candidate lookups (§10) to one reconcile or preview pass.
 // Nil when this install cannot answer.
-func (r *playoutResolver) naturalBreakSource(ctx context.Context) schedule.NaturalBreakSource {
+func (r *Resolver) NaturalBreakSource(ctx context.Context) schedule.NaturalBreakSource {
 	if !r.canAnalyseItems() {
 		return nil
 	}
@@ -109,7 +109,7 @@ func (r *playoutResolver) naturalBreakSource(ctx context.Context) schedule.Natur
 
 type naturalBreaks struct {
 	ctx context.Context
-	r   *playoutResolver
+	r   *Resolver
 }
 
 // NaturalBreaks reads the scene fades Loomarr measured for a library item's local file. An
@@ -122,10 +122,10 @@ func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandi
 	return fadeCandidates(analysis.Breaks)
 }
 
-// premeasure queues each scheduled library item whose file is not yet measured at its current
+// Premeasure queues each scheduled library item whose file is not yet measured at its current
 // revision (#1518): the scheduler's measure-ahead for the next PremeasureHorizon. The worker is
 // the same single low-priority one first play uses, and Submit never blocks.
-func (r *playoutResolver) premeasure(ctx context.Context, libraryItemIDs []string) {
+func (r *Resolver) Premeasure(ctx context.Context, libraryItemIDs []string) {
 	if !r.canAnalyseItems() || r.measurer == nil {
 		return
 	}
@@ -140,7 +140,7 @@ func (r *playoutResolver) premeasure(ctx context.Context, libraryItemIDs []strin
 // itemAnalysis is the stored analysis of a library item's local file at its current revision.
 // When there is none, the file is queued for measurement (one low-priority worker, G7) and
 // measured is false. An item with no readable file has none.
-func (r *playoutResolver) itemAnalysis(ctx context.Context, libraryItemID string) (inventory.Analysis, bool) {
+func (r *Resolver) itemAnalysis(ctx context.Context, libraryItemID string) (inventory.Analysis, bool) {
 	input := r.itemInput(ctx, libraryItemID)
 	if input == "" {
 		return inventory.Analysis{}, false

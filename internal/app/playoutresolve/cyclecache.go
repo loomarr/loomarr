@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"encoding/binary"
@@ -51,8 +51,8 @@ import (
 // # How `at` enters the key (#1397)
 //
 // `at` is the Guide window's `from`, so it moves with every poll, every ±1h step and every day
-// change. It used to be quantised to the wall-clock minute, which made nearly every request a new
-// key: a navigated window always missed, and so did any visit more than a minute after the last.
+// change. Keying on the wall-clock minute would make nearly every request a new key: a navigated
+// window would always miss, and so would any visit more than a minute after the last.
 //
 // But `at` reaches the arrangement by exactly three routes — the active rule, the active holidays,
 // and the rolling-window index — so the key carries THOSE, not the time. schedule.ClockSignature

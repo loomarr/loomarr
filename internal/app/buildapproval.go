@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/library"
@@ -25,7 +26,7 @@ type approvalBuild struct {
 func buildApproval(
 	st store.Store,
 	channelService api.ChannelService,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	activityRecorder *activity.Recorder,
 	channelNumbers approval.NumberSource,
 	notifier suggest.ProposalNotifier,

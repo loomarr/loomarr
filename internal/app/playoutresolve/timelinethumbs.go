@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -27,12 +27,12 @@ import (
 type timelineThumbResolver struct {
 	tmdb   *tmdb.Client
 	images *images.Service
-	fetch  timelineImageFetcher
+	fetch  TimelineImageFetcher
 }
 
-// Kept as the narrow capability the resolver needs so the cold-image behavior is testable without
+// TimelineImageFetcher is the narrow capability the resolver needs so the cold-image behavior is testable without
 // a network. *images.Fetcher is the production implementation shared with the scheduled job.
-type timelineImageFetcher interface {
+type TimelineImageFetcher interface {
 	FetchNow(ctx context.Context, work []images.Image, budget time.Duration) map[string]images.Image
 }
 
@@ -162,15 +162,15 @@ type thumbEntry struct {
 	expires   time.Time
 }
 
-// timelineThumbs implements api.TimelineThumbResolver for the Guide and Watch timeline.
+// TimelineThumbs implements api.TimelineThumbResolver for the Guide and Watch timeline.
 //
 // ThumbFor is a memory read and NOTHING else: no TMDB call, no image fetch, no database access on
-// the request path (#1397 — it used to make ~57 outbound calls per Guide load and download cold
+// the request path (#1397 — a Guide load would otherwise make ~57 outbound calls and download cold
 // images inline under a 3s budget). A miss returns "" and starts one deduplicated background warm
 // on the application context; the artwork shows on a later refresh, which the maintainer accepted
 // for a hover enhancement. Answers are cached — found, absent, and failed (short) — so a failing
 // key is not retried per request.
-type timelineThumbs struct {
+type TimelineThumbs struct {
 	src timelineThumbResolver
 	ctx context.Context
 	log *slog.Logger
@@ -183,12 +183,18 @@ type timelineThumbs struct {
 	wg       sync.WaitGroup
 }
 
-func newTimelineThumbs(ctx context.Context, src timelineThumbResolver, log *slog.Logger) *timelineThumbs {
+// NewTimelineThumbs returns the resolver that serves programme artwork from memory and warms cold
+// keys in the background: TMDB names the source, images adopts it, and fetch downloads it. ctx is
+// the application's lifetime.
+func NewTimelineThumbs(
+	ctx context.Context, client *tmdb.Client, imgs *images.Service, fetch TimelineImageFetcher, log *slog.Logger,
+) *TimelineThumbs {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &timelineThumbs{
-		src: src, ctx: ctx, log: log, now: time.Now,
+	return &TimelineThumbs{
+		src: timelineThumbResolver{tmdb: client, images: imgs, fetch: fetch},
+		ctx: ctx, log: log, now: time.Now,
 		entries:  make(map[timelineThumbID]thumbEntry),
 		inflight: make(map[timelineThumbID]struct{}),
 		slots:    make(chan struct{}, timelineThumbWarmers),
@@ -197,7 +203,7 @@ func newTimelineThumbs(ctx context.Context, src timelineThumbResolver, log *slog
 
 // ThumbFor serves the cached answer. A stale answer is still served while it refreshes, so a
 // thumbnail never blinks out at its TTL.
-func (t *timelineThumbs) ThumbFor(_ context.Context, key string, season, episode int) (string, string) {
+func (t *TimelineThumbs) ThumbFor(_ context.Context, key string, season, episode int) (string, string) {
 	if key == "" {
 		return "", ""
 	}
@@ -213,7 +219,7 @@ func (t *timelineThumbs) ThumbFor(_ context.Context, key string, season, episode
 }
 
 // scheduleLocked starts a background warm unless one is already running or the queue is full.
-func (t *timelineThumbs) scheduleLocked(id timelineThumbID) {
+func (t *TimelineThumbs) scheduleLocked(id timelineThumbID) {
 	if _, running := t.inflight[id]; running || len(t.inflight) >= timelineThumbMaxPending || t.ctx.Err() != nil {
 		return
 	}
@@ -222,7 +228,7 @@ func (t *timelineThumbs) scheduleLocked(id timelineThumbID) {
 	go t.warm(id)
 }
 
-func (t *timelineThumbs) warm(id timelineThumbID) {
+func (t *TimelineThumbs) warm(id timelineThumbID) {
 	defer t.wg.Done()
 	select {
 	case t.slots <- struct{}{}:
@@ -237,7 +243,7 @@ func (t *timelineThumbs) warm(id timelineThumbID) {
 
 // finish records the outcome. A failure is logged with its class and cached briefly; if an earlier
 // good answer exists it is kept, so a TMDB blip does not remove artwork that already worked.
-func (t *timelineThumbs) finish(id timelineThumbID, res *thumbEntry, err error) {
+func (t *TimelineThumbs) finish(id timelineThumbID, res *thumbEntry, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.inflight, id)
@@ -260,14 +266,14 @@ func (t *timelineThumbs) finish(id timelineThumbID, res *thumbEntry, err error) 
 	t.storeLocked(id, *res)
 }
 
-func (t *timelineThumbs) store(id timelineThumbID, e thumbEntry) {
+func (t *TimelineThumbs) store(id timelineThumbID, e thumbEntry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.storeLocked(id, e)
 }
 
 // storeLocked inserts within the bound: expired entries go first, then an arbitrary one.
-func (t *timelineThumbs) storeLocked(id timelineThumbID, e thumbEntry) {
+func (t *TimelineThumbs) storeLocked(id timelineThumbID, e thumbEntry) {
 	if _, exists := t.entries[id]; !exists && len(t.entries) >= timelineThumbMaxEntries {
 		now := t.now()
 		for k, v := range t.entries {
@@ -285,11 +291,11 @@ func (t *timelineThumbs) storeLocked(id timelineThumbID, e thumbEntry) {
 	t.entries[id] = e
 }
 
-func (t *timelineThumbs) size() int {
+func (t *TimelineThumbs) size() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return len(t.entries)
 }
 
 // wait blocks until every background warm has finished. Tests only.
-func (t *timelineThumbs) wait() { t.wg.Wait() }
+func (t *TimelineThumbs) wait() { t.wg.Wait() }

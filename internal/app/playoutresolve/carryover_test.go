@@ -1,4 +1,4 @@
-package app
+package playoutresolve
 
 import (
 	"context"
@@ -52,14 +52,14 @@ func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool
 }
 
 // carryOverResolver has window 00:00–01:00 committed: its slice, walked from the anchor 00:00.
-func carryOverResolver(now time.Time) (*playoutResolver, time.Time) {
+func carryOverResolver(now time.Time) (*Resolver, time.Time) {
 	w0 := time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC)
 	decks := &windowDecks{window: time.Hour}
 	_, committed, _, _, _ := decks.CyclePreview(context.Background(), "ch1", w0)
 	accepted := &stubChannels{}
 	accepted.ch.ID, accepted.ch.Desired, accepted.ch.PlayoutAnchor = "ch1", committed, w0
 	accepted.ch.Status = schedule.StatusLive
-	return &playoutResolver{engine: decks, channels: accepted, now: func() time.Time { return now }}, w0
+	return &Resolver{engine: decks, channels: accepted, now: func() time.Time { return now }}, w0
 }
 
 // A programme spanning the boundary airs whole, and the next window starts at its end — in the
@@ -99,7 +99,7 @@ func TestGuide_WindowOpenedByACarryOverShowsTheCarriedProgramme(t *testing.T) {
 	accepted := &stubChannels{}
 	accepted.ch.ID, accepted.ch.Desired, accepted.ch.PlayoutAnchor = "ch1", committed, w0.Add(66*time.Minute)
 	accepted.ch.Status = schedule.StatusLive
-	r := &playoutResolver{engine: decks, channels: accepted, now: func() time.Time { return w0.Add(90 * time.Minute) }}
+	r := &Resolver{engine: decks, channels: accepted, now: func() time.Time { return w0.Add(90 * time.Minute) }}
 
 	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0.Add(time.Hour), w0.Add(2*time.Hour), playout.BroadcastsBetween)
 	if err != nil {

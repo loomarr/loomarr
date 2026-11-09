@@ -52,7 +52,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Fatalf("generation A source target = %q, want %q", got, appliedA)
 	}
-	if appA.playoutResolver == nil || appA.playoutResolver.fillerDir != appliedA {
+	if appA.playoutResolver == nil || appA.playoutResolver.FillerDir() != appliedA {
 		t.Fatalf("generation A playout root = %v, want %q", appA.playoutResolver, appliedA)
 	}
 	patchSettings(t, hA, token, map[string]string{
@@ -62,8 +62,8 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Errorf("running generation source target = %q after save, want applied %q", got, appliedA)
 	}
-	if appA.playoutResolver.fillerDir != appliedA {
-		t.Errorf("running generation playout root = %q after save, want applied %q", appA.playoutResolver.fillerDir, appliedA)
+	if appA.playoutResolver.FillerDir() != appliedA {
+		t.Errorf("running generation playout root = %q after save, want applied %q", appA.playoutResolver.FillerDir(), appliedA)
 	}
 	assertPendingLayout(t, restartCost(t, hA, token), true)
 
@@ -109,7 +109,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hB, token); got != desiredB {
 		t.Errorf("generation B source target = %q, want newly applied %q", got, desiredB)
 	}
-	if appB.playoutResolver == nil || appB.playoutResolver.fillerDir != desiredB {
+	if appB.playoutResolver == nil || appB.playoutResolver.FillerDir() != desiredB {
 		t.Errorf("generation B playout root = %v, want newly applied %q", appB.playoutResolver, desiredB)
 	}
 	if got := restartCost(t, hB, token); got.RestartRequired || len(got.PendingKeys) != 0 {
