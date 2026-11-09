@@ -68,7 +68,7 @@ const InvitationJoin = ({
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground text-xs tracking-wide uppercase">Invited identity</p>
+            <p className="text-muted-foreground text-xs">Invited identity</p>
             <p className="font-medium break-words">{identity}</p>
           </div>
           <Badge

@@ -29,12 +29,7 @@ const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorP
       <span className={cn("relative inline-flex size-2.5 rounded-full", DOT[state])} aria-hidden />
     </span>
     {showLabel && (
-      <span
-        className={cn(
-          "text-2xs font-mono tracking-wide uppercase",
-          state === "live" ? "text-onair-300" : "text-static-400",
-        )}
-      >
+      <span className={cn("text-2xs", state === "live" ? "text-onair-300" : "text-static-400")}>
         {SR[state]}
       </span>
     )}
