@@ -45,7 +45,7 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
           <Action onPress={onClose} variant="ghost">
             Cancel
           </Action>
-          <Action icon="split" onPress={onConfirm} variant="suggest">
+          <Action icon="split" onPress={onConfirm}>
             Find the clips
           </Action>
         </div>

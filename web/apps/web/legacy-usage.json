@@ -326,8 +326,7 @@
       "tailwindClasses": 38
     },
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
-      "tailwindClasses": 16,
-      "legacyUi": 1
+      "tailwindClasses": 16
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "tailwindClasses": 37
