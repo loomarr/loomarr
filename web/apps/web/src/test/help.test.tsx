@@ -178,7 +178,7 @@ describe("Command palette", () => {
       // "Search…" plus its shortcut.
       await userEvent.click(await screen.findByRole("button", { name: "Search" }));
       const dialog = await screen.findByRole("dialog", { name: /search loomarr/i });
-      expect(dialog).toHaveClass("inset-0");
+      expect(dialog.style.inset).toBe("0px");
 
       await userEvent.click(within(dialog).getByRole("button", { name: "Close search" }));
       await waitFor(() =>
