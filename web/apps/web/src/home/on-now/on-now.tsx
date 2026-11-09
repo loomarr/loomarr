@@ -180,9 +180,7 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                 Watch live
               </CardAction>
             }
-            chip={
-              <ChannelChip name={channelName} number={String(channel.source.number).padStart(2, "0")} />
-            }
+            chip={<ChannelChip name={channelName} number={String(channel.source.number).padStart(2, "0")} />}
             media={
               waiting ? (
                 <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
