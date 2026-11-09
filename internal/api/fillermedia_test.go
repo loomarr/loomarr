@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -59,7 +59,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
 	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
 		if err := st.UpsertClip(ctx, clipstore.Clip{
-			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Role: filler.Commercial, DurationMs: 30_000},
+			Clip:      clips.Clip{Hash: hash, Path: p, Name: p, Role: clips.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)

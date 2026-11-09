@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -84,7 +84,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 
 	out := &bulkResultOutput{}
 	now := time.Now().UTC()
-	var snapshots []filler.Clip
+	var snapshots []clips.Clip
 
 	// Ground the requested tag set ONCE against the live taxonomy (§10 V45a) — an unknown slug 422s
 	// the whole batch before any clip is touched (all-or-nothing on a bad request, like the single
@@ -113,7 +113,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 			era = *in.Body.Era
 		}
 		if in.Body.Audience != nil {
-			audience = filler.Audience(*in.Body.Audience)
+			audience = clips.Audience(*in.Body.Audience)
 		}
 		// Tags: the store persists the grounded set and derives category from it against the current
 		// graph in one transaction. Without Tags, both taxonomy fields remain untouched.
@@ -175,7 +175,7 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	// store keeps its path key and the wire keeps its hash identity. A hash that no longer resolves (a
 	// clip removed by a re-sync between selection and apply) is dropped and reported as missing.
 	paths := make([]string, 0, len(in.Body.Hashes))
-	snapshots := make([]filler.Clip, 0, len(in.Body.Hashes))
+	snapshots := make([]clips.Clip, 0, len(in.Body.Hashes))
 	for _, hash := range in.Body.Hashes {
 		clip, err := s.store.GetClip(ctx, hash)
 		if err != nil {

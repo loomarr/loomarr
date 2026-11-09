@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
-// GeographicScope is the clip catalog's broadcast reach (see clip.go for why filler names it).
+// GeographicScope is the clip catalog's broadcast reach (see clips/clip.go).
 type GeographicScope = clips.GeographicScope
 
 const (

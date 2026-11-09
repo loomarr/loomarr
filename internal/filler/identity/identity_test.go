@@ -1,4 +1,4 @@
-package filler
+package identity
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -108,7 +109,7 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 	}
 
 	hashes := map[string]creative.Fingerprint{}
-	var clips []IdentityClip
+	var pool []IdentityClip
 	for i, spec := range []struct {
 		fp      creative.Fingerprint
 		quality string
@@ -116,19 +117,19 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 		hash := writeContentAddressedClip(t, dir, []byte{byte(i), 'x'}, ".mp4")
 		hashes[hash] = spec.fp
 		ic := IdentityClip{CreatedAt: t0.Add(time.Duration(i) * time.Hour)}
-		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
-		ic.Placement = PlacementBreakBody
-		clips = append(clips, ic)
+		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), spec.quality, 30_000, clips.Commercial
+		ic.Placement = clips.PlacementBreakBody
+		pool = append(pool, ic)
 	}
-	st := &identityMemStore{clips: clips, fingerprints: map[string]creative.Fingerprint{}, variants: map[string][]string{}}
-	res, err := NewCreativeIdentity(st, &identityTools{byHash: hashes}, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	st := &identityMemStore{clips: pool, fingerprints: map[string]creative.Fingerprint{}, variants: map[string][]string{}}
+	res, err := NewJob(st, &identityTools{byHash: hashes}, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Merged != 1 || len(st.merges) != 1 || st.merges[0].ClipHash != clips[1].Hash || st.merges[0].SurvivorHash != clips[0].Hash {
+	if res.Merged != 1 || len(st.merges) != 1 || st.merges[0].ClipHash != pool[1].Hash || st.merges[0].SurvivorHash != pool[0].Hash {
 		t.Fatalf("merges = %+v, want only B folded into A", st.merges)
 	}
-	if !reflect.DeepEqual(st.variants[clips[2].Hash], []string{clips[0].Hash}) {
+	if !reflect.DeepEqual(st.variants[pool[2].Hash], []string{pool[0].Hash}) {
 		t.Fatalf("variants = %v, want C linked to A", st.variants)
 	}
 }
@@ -146,8 +147,8 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	clip := func(body, quality string, a *defects.Assessment) IdentityClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := IdentityClip{CreatedAt: t0, Defects: a}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
-		c.Placement = PlacementBreakBody
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, 30_000, clips.Commercial
+		c.Placement = clips.PlacementBreakBody
 		return c
 	}
 	clean := &defects.Assessment{Outcome: defects.Pass, Findings: []defects.Finding{{Check: defects.CheckBlur, Outcome: defects.Pass}}}
@@ -179,7 +180,7 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	tools := &identityTools{byHash: map[string]creative.Fingerprint{arrival.Hash: soap, cleanLow.Hash: cola, softHigh.Hash: cola,
 		blockyJuice.Hash: juice}}
 
-	res, err := NewCreativeIdentity(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewJob(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,8 +230,8 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 
 	clip := func(hash, quality string, durationMs int64, created time.Time) IdentityClip {
 		c := IdentityClip{CreatedAt: created}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, durationMs, Commercial
-		c.Placement = PlacementBreakBody
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, durationMs, clips.Commercial
+		c.Placement = clips.PlacementBreakBody
 		return c
 	}
 	spot := identitySpot(1)
@@ -246,7 +247,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	}
 	fakeTools := &identityTools{byHash: map[string]creative.Fingerprint{sharp: spot, soft: spot, cutDown: cut}}
 
-	res, err := NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewJob(st, fakeTools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +275,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	// The next pass reuses every fingerprint and finds nothing new to do.
 	fakeTools.calls = 0
 	st.clips = st.clips[1:]
-	res, err = NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
+	res, err = NewJob(st, fakeTools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
 	if err != nil || fakeTools.calls != 0 || res.Merged != 0 || res.Linked != 0 {
 		t.Fatalf("second pass = %+v (decodes %d, err %v), want cached fingerprints and no merge", res, fakeTools.calls, err)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -56,8 +57,8 @@ func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (s
 }
 
 func langClip(path, language string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
+	return cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,
 		DurationMs: 30_000, Language: language,
 	}}
 }

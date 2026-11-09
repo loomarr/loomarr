@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -504,8 +503,8 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 		MatchLevel: pod.MatchExact,
 		TotalMs:    65000,
 		Entries: []pod.Entry{
-			{Name: "Channel bumper", Role: filler.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
-			{Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
+			{Name: "Channel bumper", Role: clips.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
+			{Name: "Fizzbolt", Role: clips.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -540,8 +539,8 @@ func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 		MatchLevel: pod.MatchExact,
 		TotalMs:    60000,
 		Entries: []pod.Entry{
-			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000},
+			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: clips.Commercial, DurationMs: 30000},
+			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Role: clips.Commercial, DurationMs: 30000},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -583,11 +582,11 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 		TotalMs:    90000,
 		Entries: []pod.Entry{
 			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 			{Hash: "h-curated", Name: "Zap Cola", NameSource: clips.NameFromCurated,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clips.NameFromSidecar,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -639,7 +638,7 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 		TotalMs:    30_000,
 		Entries: []pod.Entry{{
 			Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial",
-			Role: filler.Commercial, DurationMs: 30_000,
+			Role: clips.Commercial, DurationMs: 30_000,
 		}},
 	}}
 	img := newFakeImageService()
@@ -661,8 +660,8 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 	})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
-		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Role: filler.Commercial,
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
+		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Role: clips.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "filler-still", HoverImageHash: "filler-hover",
 	}}); err != nil {
 		t.Fatal(err)
@@ -822,11 +821,11 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 		MatchLevel: pod.MatchExact,
 		TotalMs:    30000,
 		Entries: []pod.Entry{{
-			Name: "Crunchlings", Role: filler.Commercial, DurationMs: 30000,
+			Name: "Crunchlings", Role: clips.Commercial, DurationMs: 30000,
 			Era: 1994, Quality: "480p",
 			// Grounded at the source (§8): each of these persisted on the clip only because a
 			// text/visual signal literally contained it. Here the mapper merely carries them.
-			Brand: "Brightfield's", Audience: filler.Kids, Category: "cereal",
+			Brand: "Brightfield's", Audience: clips.Kids, Category: "cereal",
 			VisibleText: "BRIGHTFIELD'S CRUNCHLINGS",
 		}},
 	}}
@@ -865,7 +864,7 @@ func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
-		Entries: []pod.Entry{{Name: "Mystery spot", Role: filler.Commercial, DurationMs: 30000}},
+		Entries: []pod.Entry{{Name: "Mystery spot", Role: clips.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
@@ -898,7 +897,7 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 		},
 	}}
 	fp := &fakePods{pod: pod.Pod{
-		Entries: []pod.Entry{{Name: "Ad", Role: filler.Commercial, DurationMs: 30000}},
+		Entries: []pod.Entry{{Name: "Ad", Role: clips.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -33,9 +34,9 @@ type progMemStore struct {
 
 func newProgMemStore(hash string) *progMemStore {
 	return &progMemStore{
-		clips: map[string]cliplibrary.StoreClip{hash: {Clip: Clip{
+		clips: map[string]cliplibrary.StoreClip{hash: {Clip: clips.Clip{
 			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
-			Role: Unclassified, Source: "test-source", Held: true,
+			Role: clips.Unclassified, Source: "test-source", Held: true,
 		}}},
 		rows: map[string]pipelinestate.ClipPipeline{hash: {
 			ClipHash: hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionRunning,
@@ -124,7 +125,7 @@ func (s *reportingStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (Stag
 		if s.tick != nil {
 			s.tick()
 		}
-		reportProgress(ctx, s.id, pct)
+		pipelinestate.ReportProgress(ctx, s.id, pct)
 	}
 	if s.after != nil {
 		s.after()
@@ -184,7 +185,7 @@ func TestProgress_NoMeasurementReachesTheStoredRow(t *testing.T) {
 	// Captured mid-stage: the ladder completes, so the final row has moved on. What matters is the
 	// value the row carried WHILE the unmeasurable stage was running.
 	var during int
-	stage := &reportingStage{id: pipelinestate.StageProbe, samples: []int{NoMeasurement}}
+	stage := &reportingStage{id: pipelinestate.StageProbe, samples: []int{pipelinestate.NoMeasurement}}
 	stage.after = func() { during = st.rows["c1"].Progress }
 
 	p := NewPipeline(st, st, ladderWith(stage), DefaultBudget(), nil, clock.now, nil)
@@ -192,10 +193,10 @@ func TestProgress_NoMeasurementReachesTheStoredRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if during != NoMeasurement {
+	if during != pipelinestate.NoMeasurement {
 		t.Fatalf("stored progress during an unmeasurable stage = %d, want %d (NoMeasurement)\n"+
 			"0 renders as a bar frozen at zero — a claim about work the stage never made",
-			during, NoMeasurement)
+			during, pipelinestate.NoMeasurement)
 	}
 }
 

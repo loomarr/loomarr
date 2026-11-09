@@ -47,7 +47,7 @@ type VisionClipStore interface {
 
 // VisionStage reads a clip's frames.
 type VisionStage struct {
-	tools    MediaTools
+	tools    tools.MediaTools
 	provider llm.VisionProvider
 	store    VisionClipStore
 	clipDir  string
@@ -57,7 +57,7 @@ type VisionStage struct {
 
 // NewVisionStage builds the stage. A nil provider is the un-opted-in default — an install with no
 // vision model (the common case) pays nothing, and its ladder says so on every clip.
-func NewVisionStage(tools MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
+func NewVisionStage(tools tools.MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
 	if now == nil {
 		now = time.Now
 	}
@@ -114,7 +114,7 @@ func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (Sta
 	if len(frames) == 0 {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
 	}
-	reportProgress(ctx, pipelinestate.StageVision, NoMeasurement)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, pipelinestate.NoMeasurement)
 
 	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (Sta
 		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
 	}
 
-	reportProgress(ctx, pipelinestate.StageVision, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, 100)
 
 	updated := c
 	updated.VisibleText = v.VisibleText

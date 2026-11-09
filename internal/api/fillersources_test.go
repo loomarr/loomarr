@@ -12,9 +12,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
@@ -59,7 +59,7 @@ func clip(path, source string) clipstore.Clip {
 	c.Hash = path
 	c.Path = path
 	c.Name = path
-	c.Role = filler.Commercial
+	c.Role = clips.Commercial
 	c.Source = source
 	c.DurationMs = 30000
 	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()

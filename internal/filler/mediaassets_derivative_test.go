@@ -49,17 +49,19 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	tool := tools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: string(make([]byte, 64))}
 	tool.ExecutableSHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	lineage, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
-		ClipDir: root, Source: master, Input: Probed{DurationMs: 30_000, Height: 480},
+		ClipDir: root, Source: master, Input: tools.Probed{DurationMs: 30_000, Height: 480},
 		Recipe: tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine()), Tool: tool,
-		Probe: func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil },
+		Probe: func(context.Context, string) (tools.Probed, error) {
+			return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+		},
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
-		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 			if request.In != filepath.Join(root, filepath.FromSlash(master.Path)) || request.TargetLUFS != 0 || request.Profile.KeyframeSeconds != 1 {
 				t.Fatalf("evidence request = %+v", request)
 			}
-			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("high quality evidence bytes"), 0o600)
+			return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("high quality evidence bytes"), 0o600)
 		},
 	})
 	if err != nil {
@@ -104,14 +106,16 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 		ExecutableSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 	_, err = buildMediaDerivative(context.Background(), mediaDerivativeRequest{
-		ClipDir: root, Source: master, Input: Probed{DurationMs: 30_000, Height: 480},
+		ClipDir: root, Source: master, Input: tools.Probed{DurationMs: 30_000, Height: 480},
 		Recipe: tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine()), Tool: tool,
-		Probe: func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil },
+		Probe: func(context.Context, string) (tools.Probed, error) {
+			return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+		},
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
-		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, make([]byte, 11), 0o600)
+		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+			return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, make([]byte, 11), 0o600)
 		},
 		Storage: storagegovernor.NewWriteTracker(lease),
 	})

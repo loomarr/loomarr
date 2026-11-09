@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -161,7 +162,7 @@ type SegmentRoleEscalator interface {
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
 // something to judge.
 type SegmentVision struct {
-	Tools    MediaTools
+	Tools    tools.MediaTools
 	Provider llm.VisionProvider
 	// RoleEscalator inspects an exact bounded video only when frame evidence cannot establish
 	// a role. nil leaves the span unresolved; it never weakens the publication gate.
@@ -712,7 +713,7 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 		// someone reasons from when deciding whether a reel can be recovered.
 		return StageResult{}, err
 	}
-	reportProgress(ctx, pipelinestate.StageSplit, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageSplit, 100)
 
 	// ⚠ The segments are SPAWNED, so each one is enrolled at `probe` and runs the whole ladder for
 	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival. Before

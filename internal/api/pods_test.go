@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -132,8 +132,8 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	fp.pod = pod.Pod{
 		Entries: []pod.Entry{
-			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Role: filler.Bumper, DurationMs: 5000},
-			{Hash: "h2", TunarrProgramID: "p2", Name: "Crunchlings", Role: filler.Commercial, DurationMs: 30000},
+			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Role: clips.Bumper, DurationMs: 5000},
+			{Hash: "h2", TunarrProgramID: "p2", Name: "Crunchlings", Role: clips.Commercial, DurationMs: 30000},
 		},
 		TotalMs:    35000,
 		MatchLevel: pod.MatchExact,
@@ -165,7 +165,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	if body.Entries[0].Name != "Bumper" || body.Entries[1].Name != "Crunchlings" {
 		t.Errorf("play order not preserved: %+v", body.Entries)
 	}
-	if body.Entries[0].Role != string(filler.Bumper) || body.Entries[1].Role != string(filler.Commercial) {
+	if body.Entries[0].Role != string(clips.Bumper) || body.Entries[1].Role != string(clips.Commercial) {
 		t.Errorf("entry roles = %q/%q, want bumper/commercial", body.Entries[0].Role, body.Entries[1].Role)
 	}
 	if body.Entries[1].TunarrProgramID != "p2" {
@@ -221,7 +221,7 @@ func TestPreviewPods_MemberRouteWithholdsFileSlug(t *testing.T) {
 	const slug = "commercial-widgetmax-1991"
 	srv, _, fp := newPodsServer(t)
 	fp.pod = pod.Pod{Entries: []pod.Entry{
-		{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: filler.Commercial, DurationMs: 30000},
+		{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: clips.Commercial, DurationMs: 30000},
 	}, TotalMs: 30000, MatchLevel: pod.MatchExact}
 
 	read := func(method, path, body string) string {
@@ -256,7 +256,7 @@ func TestPreviewPods_UnknownChannelIs404(t *testing.T) {
 func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	fp.pod = pod.Pod{Entries: []pod.Entry{
-		{TunarrProgramID: "p1", Name: "Pinned Ad", Role: filler.Commercial, DurationMs: 30000},
+		{TunarrProgramID: "p1", Name: "Pinned Ad", Role: clips.Commercial, DurationMs: 30000},
 	}, TotalMs: 30000, MatchLevel: pod.MatchExact}
 
 	body := `{"filler":{"audience":"kids","categories":["toys"],"pinned":["p1"]}}`

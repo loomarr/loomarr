@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
@@ -182,7 +181,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 	return preparedStructureAssessmentWindowMedia(window, lineage, mediaPath), nil
 }
 
-func validateStructureAssessmentWindowOutput(path string, probe filler.Probed, window window.Window, profile window.Profile, wantProfile cut.Profile) error {
+func validateStructureAssessmentWindowOutput(path string, probe tools.Probed, window window.Window, profile window.Profile, wantProfile cut.Profile) error {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > profile.MaximumWindowBytes {
 		return errors.New("structure assessment window is not a bounded regular file")

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -40,7 +40,7 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO clips
 		(hash, path, name, kind, duration_ms, held, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`), hash, "aa/legacy.mp4", "Legacy admission",
-		string(filler.Commercial), 30_000, false, at.Unix()); err != nil {
+		string(clips.Commercial), 30_000, false, at.Unix()); err != nil {
 		t.Fatal(err)
 	}
 	if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{

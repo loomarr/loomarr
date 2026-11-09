@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -27,7 +28,7 @@ type Enrollment struct {
 // EnrollmentFor derives authority from facts already persisted with the clip and conveyor. A
 // remote fetch or explicit queue has an acquisition id; watched folders and libraries retain their
 // source id on the clip. Nothing guesses from a label or classification score.
-func EnrollmentFor(clip Clip, row pipelinestate.ClipPipeline) (Enrollment, bool) {
+func EnrollmentFor(clip clips.Clip, row pipelinestate.ClipPipeline) (Enrollment, bool) {
 	if row.AcquisitionID != "" {
 		return Enrollment{Kind: EnrollmentAcquisition, Reference: row.AcquisitionID}, true
 	}
@@ -43,7 +44,7 @@ type ReadyEvent struct {
 	ClipHash      string
 	AcquisitionID string
 	Enrollment    Enrollment
-	Placement     Placement
+	Placement     clips.Placement
 	CreatedAt     time.Time
 }
 
@@ -60,7 +61,7 @@ func (c ReadyCommit) Validate() error {
 	e, p := c.Event, c.Pipeline
 	if e.ID != "ready:"+e.ClipHash || e.ClipHash == "" || e.ClipHash != p.ClipHash ||
 		e.AcquisitionID != p.AcquisitionID || e.Enrollment.Reference == "" ||
-		(e.Placement != PlacementBreakBody && e.Placement != PlacementBookend) ||
+		(e.Placement != clips.PlacementBreakBody && e.Placement != clips.PlacementBookend) ||
 		p.Disposition != pipelinestate.DispositionReady || e.CreatedAt.IsZero() {
 		return fmt.Errorf("%w: incomplete ready commit", ErrReadyStale)
 	}
@@ -172,8 +173,8 @@ func (t *TerminalReady) Commit(ctx context.Context, clip cliplibrary.StoreClip, 
 	if !ok {
 		return row, fmt.Errorf("%w: enrollment authority is missing", ErrReadyStale)
 	}
-	placement := PlacementForRole(clip.Role, true, false)
-	if placement == PlacementNotPlayable {
+	placement := clips.PlacementForRole(clip.Role, true, false)
+	if placement == clips.PlacementNotPlayable {
 		return row, fmt.Errorf("%w: no playable placement", ErrReadyStale)
 	}
 	at := t.now().UTC()

@@ -18,21 +18,21 @@ import (
 type mediaDerivativeRequest struct {
 	ClipDir string
 	Source  asset.Identity
-	Input   Probed
+	Input   tools.Probed
 	Recipe  tools.DerivativeRecipe
 	// Host is the hardware profile a hardware recipe opens (its VAAPI render node).
 	Host        encode.HostProfile
 	Tool        tools.MediaToolIdentity
 	FFmpegPath  string
-	Probe       Prober
+	Probe       tools.Prober
 	Diagnostics *diagnostics.ProcessManager
-	Transcode   func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
+	Transcode   func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error)
 	Verify      func(context.Context, string, string, int64, int, bool, float64) (tools.DerivativeQC, error)
 	OnProgress  func(int)
 	Storage     *storagegovernor.WriteTracker
 }
 
-func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source asset.Identity, input Probed, ffmpeg string, enc encodeTarget, storage *storagegovernor.WriteTracker) (*asset.DerivativeLineage, tools.MediaToolIdentity, error) {
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source asset.Identity, input tools.Probed, ffmpeg string, enc encodeTarget, storage *storagegovernor.WriteTracker) (*asset.DerivativeLineage, tools.MediaToolIdentity, error) {
 	if s.evidenceTranscode == nil {
 		return nil, tools.MediaToolIdentity{}, nil
 	}
@@ -48,7 +48,7 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source a
 		Recipe: tools.EvidenceDerivativeRecipe(enc.profile), Host: enc.host, Tool: tool,
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
 		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
-		OnProgress: func(percent int) { reportProgress(ctx, pipelinestate.StageTranscode, percent*40/100) },
+		OnProgress: func(percent int) { pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, percent*40/100) },
 		Storage:    storage,
 	})
 	if err != nil {

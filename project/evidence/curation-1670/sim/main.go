@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -546,7 +546,7 @@ func fillerSim(start, end time.Time) []fillerRun {
 	fmt.Println()
 	_, _ = fmt.Fprintln(tw, "clips\tmode\tviewing\tplays\tdistinct\tC60m\tC24h\tmax/day\teve C60m\teve C24h\t")
 	for _, n := range []int{40, 150, 600} {
-		clips := clipPool(n)
+		pool := clipPool(n)
 		for _, mode := range []string{"current", "ledger"} {
 			for _, v := range viewings {
 				if mode == "ledger" && v.Name != "nobody" {
@@ -556,12 +556,12 @@ func fillerSim(start, end time.Time) []fillerRun {
 				var airings []kit.Airing
 				for t := start; t.Before(end); t = t.Add(30 * time.Minute) {
 					w := pod.Window{ChannelID: "sim", Seed: seedOf(t), GapMs: 120000, PodMax: 4,
-						Audience: filler.Audience("general"), Exposures: copyExp(exp), SnapshotAt: t}
+						Audience: clips.Audience("general"), Exposures: copyExp(exp), SnapshotAt: t}
 					cooldown := 30 * time.Minute
 					if mode == "ledger" {
 						cooldown = 24 * time.Hour
 					}
-					pod := pod.Assemble(clips, w, pod.Policy{Cooldown: cooldown}, nil)
+					pod := pod.Assemble(pool, w, pod.Policy{Cooldown: cooldown}, nil)
 					a := kit.Airing{Kind: "filler", Start: t}
 					for _, e := range pod.Entries {
 						if e.Hash == "" {
@@ -596,14 +596,14 @@ func fillerSim(start, end time.Time) []fillerRun {
 	return out
 }
 
-func clipPool(n int) []filler.Clip {
+func clipPool(n int) []clips.Clip {
 	r := rand.New(rand.NewSource(int64(n)))
 	cats := []string{"cereal", "toy", "car", "soda", "snack", "store", "phone", "shoe"}
-	out := make([]filler.Clip, n)
+	out := make([]clips.Clip, n)
 	for i := range out {
-		out[i] = filler.Clip{
+		out[i] = clips.Clip{
 			Hash: fmt.Sprintf("%064x", i+1), Path: fmt.Sprintf("aa/bb/%064x.mp4", i+1), Name: fmt.Sprintf("clip %d", i),
-			Role: filler.Commercial, Placement: filler.PlacementBreakBody, Audience: filler.Audience("general"),
+			Role: clips.Commercial, Placement: clips.PlacementBreakBody, Audience: clips.Audience("general"),
 			DurationMs: int64(15+15*r.Intn(3)) * 1000, Category: cats[r.Intn(len(cats))],
 		}
 	}

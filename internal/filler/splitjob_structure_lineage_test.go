@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
@@ -23,7 +24,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	}
 	hash := bindCompilationIdentity(t, store, oldHash, full)
 	stageParentForSplitReview(store, hash)
-	splitter := newSplitter(store, &fakeTools{chapters: []filler.Chapter{
+	splitter := newSplitter(store, &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000},
 	}}, nil, drop)
 	proposal, err := splitter.Propose(t.Context(), hash)
@@ -46,7 +47,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	if len(spawned) != 2 {
 		t.Fatalf("spawned=%v", spawned)
 	}
-	wantKinds := []filler.Role{filler.Commercial, filler.Interstitial}
+	wantKinds := []clips.Role{clips.Commercial, clips.Interstitial}
 	wantRoles := []split.Role{split.RoleCommercial, split.RolePromo}
 	for index, childHash := range spawned {
 		child, found, err := store.GetClip(t.Context(), childHash)

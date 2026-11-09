@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -40,11 +41,11 @@ func (t realReviewedSplitTools) Cut(ctx context.Context, in string, start, end i
 	return t.ffmpeg.Cut(ctx, in, start, end, out)
 }
 
-func (t realReviewedSplitTools) Chapters(ctx context.Context, file string) ([]filler.Chapter, error) {
+func (t realReviewedSplitTools) Chapters(ctx context.Context, file string) ([]tools.Chapter, error) {
 	return t.ffmpeg.Chapters(ctx, file)
 }
 
-func (t realReviewedSplitTools) Boundaries(ctx context.Context, file string, startMs, endMs int64) ([]filler.Interval, []filler.Interval, error) {
+func (t realReviewedSplitTools) Boundaries(ctx context.Context, file string, startMs, endMs int64) ([]tools.Interval, []tools.Interval, error) {
 	return t.ffmpeg.Boundaries(ctx, file, startMs, endMs)
 }
 
@@ -90,7 +91,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Role: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clips.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Role: clips.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
@@ -149,29 +150,29 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if !productive {
 		t.Fatalf("pipeline passes were not productive: %+v", passes)
 	}
-	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	listed, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var conditioned clipstore.Clip
-	for _, candidate := range clips {
+	for _, candidate := range listed {
 		if candidate.ParentHash == parentHash && candidate.Hash != childHash {
 			conditioned = candidate
 		}
 	}
 	if conditioned.Hash == "" {
-		t.Fatalf("conditioning pipeline did not prepare a child: %+v", clips)
+		t.Fatalf("conditioning pipeline did not prepare a child: %+v", listed)
 	}
 	// Since #1255 an enrolled clip whose ladder finishes clean is published automatically: the
 	// conditioned child settles Ready, released from hold, with a playable placement.
 	pipelineRow, found, err := st.GetClipPipeline(ctx, conditioned.Hash)
 	if err != nil || !found || pipelineRow.Status != pipelinestate.StatusDone ||
 		pipelineRow.Disposition != pipelinestate.DispositionReady || conditioned.Held ||
-		conditioned.Placement == filler.PlacementNotPlayable {
+		conditioned.Placement == clips.PlacementNotPlayable {
 		t.Fatalf("durable conditioned publication = %+v, held=%v placement=%q found=%v err=%v",
 			pipelineRow, conditioned.Held, conditioned.Placement, found, err)
 	}
-	if conditioned.Role != filler.Commercial {
+	if conditioned.Role != clips.Commercial {
 		t.Fatalf("conditioned child role = %q, want inherited commercial", conditioned.Role)
 	}
 	if conditioned.Hash == childHash || conditioned.DurationMs <= 0 {

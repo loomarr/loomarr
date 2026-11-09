@@ -481,7 +481,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		if found {
 			// A filename with no explicit role token cannot erase a concrete kind from an already
 			// Ready row. Existing descriptive metadata remains the stronger fact.
-			if rc.Role == Unclassified && !existing.Held && existing.Role.ValidConcrete() {
+			if rc.Role == clips.Unclassified && !existing.Held && existing.Role.ValidConcrete() {
 				merged.Role = existing.Role
 			}
 			// PRESERVE loomarr-owned match tags across syncs (§10) — never clobber a
@@ -811,7 +811,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc cliplibrary.RawClip, existing clipli
 	if !cliplibrary.IsHashDisplayName(rc.Name) {
 		return rc, false, nil
 	}
-	grounded := Clip{Role: rc.Role}
+	grounded := clips.Clip{Role: rc.Role}
 	if found {
 		grounded = existing.Clip
 	}
@@ -937,7 +937,7 @@ func (s *Syncer) repairLegacyContentPath(rc cliplibrary.RawClip, existing clipli
 // groundedRepairName replaces an opaque title from facts a person or grounded classifier supplied.
 // When there are none, it uses a neutral kind label rather than exposing an implementation id as
 // if that were a title.
-func groundedRepairName(c Clip) string {
+func groundedRepairName(c clips.Clip) string {
 	name, _ := cliplibrary.GroundedName(c)
 	return name
 }
@@ -1000,7 +1000,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc cliplibrary.RawClip, existing c
 // because a clip's still was always generated on the same pass that first inserted it.
 //
 // The rule for anything added later: if `syncClips` assigns it from `rc`, compare it here.
-func serverFieldsUnchanged(a, b Clip) bool {
+func serverFieldsUnchanged(a, b clips.Clip) bool {
 	// ⚠ NameSource is compared with Name: an unchanged name whose provenance the scan has just
 	// learned (a row migration 00134 left 'unknown') must still be written, or it stays unknown.
 	// "" and 'unknown' are one state, so neither spelling forces a write on every pass.

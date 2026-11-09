@@ -1,10 +1,6 @@
-package filler
+package pipelinestate
 
-import (
-	"context"
-
-	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
-)
+import "context"
 
 // Intra-stage progress reporting (§10 V51b) — a direct analogue of `internal/proposals/suggest/progress.go`,
 // and deliberately the same shape so the two read alike at their SSE bridges.
@@ -22,7 +18,7 @@ import (
 // misleading"). A stage with no measurement says so, and the UI shows a spinner rather than a bar
 // frozen at zero — the same distinction `confidence == 0` draws between "no measurement" and "a
 // measurement of none".
-type ProgressFunc func(stage pipelinestate.StageID, percent int)
+type ProgressFunc func(stage StageID, percent int)
 
 // NoMeasurement is the percent a stage reports when it genuinely cannot measure itself.
 const NoMeasurement = -1
@@ -43,13 +39,8 @@ func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
 	return context.WithValue(ctx, progressKey{}, fn)
 }
 
-// ReportProgress is reportProgress for a stage that lives outside this package.
-func ReportProgress(ctx context.Context, stage pipelinestate.StageID, percent int) {
-	reportProgress(ctx, stage, percent)
-}
-
-// reportProgress fires the context's ProgressFunc if one is set.
-func reportProgress(ctx context.Context, stage pipelinestate.StageID, percent int) {
+// ReportProgress fires the context's ProgressFunc if one is set.
+func ReportProgress(ctx context.Context, stage StageID, percent int) {
 	if fn, ok := ctx.Value(progressKey{}).(ProgressFunc); ok && fn != nil {
 		fn(stage, percent)
 	}

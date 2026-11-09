@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -30,7 +31,7 @@ func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (fi
 		return filler.ReadyEvent{}, false, fmt.Errorf("get filler ready event %s: %w", clipHash, err)
 	}
 	event.Enrollment.Kind = filler.EnrollmentKind(enrollmentKind)
-	event.Placement = filler.Placement(placement)
+	event.Placement = clips.Placement(placement)
 	event.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return event, true, nil
 }

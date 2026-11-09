@@ -1,4 +1,8 @@
-package filler
+// Package identity merges copies of the same advert: it fingerprints the catalog's clips, picks
+// the best copy of each, retires the inferior ones and re-points everything that referenced them.
+// It depends on the clip catalog and media-tool layers only, so the filler pipeline above can call
+// RemoveRetiredCopy and ReferencedAssets without a cycle.
+package identity
 
 import (
 	"cmp"
@@ -15,6 +19,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -30,8 +35,8 @@ type InferiorCopy struct {
 	DecidedAt                          time.Time
 }
 
-// IdentityStore is the slice of the store creative identity needs.
-type IdentityStore interface {
+// Store is the slice of the store creative identity needs.
+type Store interface {
 	// ListIdentityClips is every catalog clip, composites, held and removed clips included, with
 	// its admission time. Only published clips are compared, but every sidecar guards shared
 	// assets: a removed clip can be restored.
@@ -59,8 +64,8 @@ type WantedCopy struct {
 	ClipHash, Path string
 }
 
-// IdentityResult reports one pass.
-type IdentityResult struct {
+// Result reports one pass.
+type Result struct {
 	Fingerprinted int // clips measured this pass
 	Merged        int // inferior copies folded into their survivor
 	Upgraded      int // retired defective copies a cleaner copy of the same ad replaced
@@ -68,12 +73,12 @@ type IdentityResult struct {
 	Pending       int // published clips still waiting for a fingerprint
 }
 
-// CreativeIdentity makes the catalog hold each ad once (#2033). Every pass fingerprints published
+// Job makes the catalog hold each ad once (#2033). Every pass fingerprints published
 // clips that lack one, folds every copy of an ad into its best copy, deletes the losers' files,
 // and links variants. It is the one writer of merges and links, for new arrivals and for a
 // catalog that predates it alike: a clip's turn comes when it has a fingerprint.
-type CreativeIdentity struct {
-	store   IdentityStore
+type Job struct {
+	store   Store
 	tools   tools.MediaTools
 	clipDir string
 	// targetLUFS is the live air-time target; a copy closer to it needs less correction.
@@ -82,14 +87,14 @@ type CreativeIdentity struct {
 	log        *slog.Logger
 }
 
-func NewCreativeIdentity(store IdentityStore, tools tools.MediaTools, clipDir string,
-	targetLUFS func() float64, now func() time.Time, log *slog.Logger) *CreativeIdentity {
-	return &CreativeIdentity{store: store, tools: tools, clipDir: clipDir, targetLUFS: targetLUFS, now: now, log: log}
+func NewJob(store Store, tools tools.MediaTools, clipDir string,
+	targetLUFS func() float64, now func() time.Time, log *slog.Logger) *Job {
+	return &Job{store: store, tools: tools, clipDir: clipDir, targetLUFS: targetLUFS, now: now, log: log}
 }
 
 // Run is one pass. A failure on one clip or pair is logged and left for the next pass.
-func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
-	var res IdentityResult
+func (ci *Job) Run(ctx context.Context) (Result, error) {
+	var res Result
 	all, err := ci.store.ListIdentityClips(ctx)
 	if err != nil {
 		return res, err
@@ -224,9 +229,9 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 // (#2036). The merge moves the retired copy's airings, plays and pins to it, so the upgrade airs in
 // the old copy's place in rotation, and the ad leaves the wanted list. Every source's arrivals meet
 // this check once they are published and fingerprinted, here.
-func (ci *CreativeIdentity) upgradeWanted(ctx context.Context, cached map[string]creative.Fingerprint,
+func (ci *Job) upgradeWanted(ctx context.Context, cached map[string]creative.Fingerprint,
 	measured []IdentityClip, fps map[string]creative.Fingerprint, survivorOf []int, referenced map[string]int,
-	res *IdentityResult) error {
+	res *Result) error {
 	wanted, err := ci.store.ListWantedCopies(ctx)
 	if err != nil {
 		return err
@@ -264,15 +269,15 @@ func (ci *CreativeIdentity) upgradeWanted(ctx context.Context, cached map[string
 }
 
 // identityCandidate is a clip that airs as an ad of its own: published, not a compilation.
-func identityCandidate(c Clip) bool {
-	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != PlacementNotPlayable
+func identityCandidate(c clips.Clip) bool {
+	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != clips.PlacementNotPlayable
 }
 
 // compareCopies orders two copies of one ad best first: the cleaner copy, with fewer checks near
 // or past their bar (#2036), then the higher resolution, then the copy needing less air-time
 // loudness correction (within 1 dB is a tie), then the more complete edit, then the earlier
 // admission. An unmeasured copy ranks after every measured one on the first rung.
-func (ci *CreativeIdentity) compareCopies(a, b IdentityClip) int {
+func (ci *Job) compareCopies(a, b IdentityClip) int {
 	if d := cmp.Compare(defectsFound(a), defectsFound(b)); d != 0 {
 		return d
 	}
@@ -305,7 +310,7 @@ func defectsFound(c IdentityClip) int {
 
 // correctionNeeded is how far a copy's measured playback loudness sits from the target, in dB. An
 // unmeasured copy ranks last on this rung.
-func (ci *CreativeIdentity) correctionNeeded(c IdentityClip) float64 {
+func (ci *Job) correctionNeeded(c IdentityClip) float64 {
 	full, err := cliplibrary.ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil || ci.targetLUFS == nil {
 		return math.Inf(1)
@@ -336,7 +341,7 @@ func qualityRank(q string) int {
 // merge folds loser into survivor durably, then deletes the loser's own files. The order is the
 // correctness story, as in SplitSweeper.retire: once the merge commits, Sync never catalogues the
 // loser again, so a failed unlink leaves only bytes, never a second copy on air.
-func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityClip, referenced map[string]int) error {
+func (ci *Job) merge(ctx context.Context, loser, survivor IdentityClip, referenced map[string]int) error {
 	full, err := cliplibrary.ClipPath(ci.clipDir, loser.Path, filepath.Ext(loser.Path))
 	if err != nil {
 		return fmt.Errorf("loser path: %w", err)
@@ -366,7 +371,7 @@ func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays. The count drops either
 		// way, so the last of two copies removed in one pass takes it.
-		for _, asset := range []string{m.SourceMaster.Path, derivativePath(m.Evidence)} {
+		for _, asset := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence)} {
 			if asset == "" {
 				continue
 			}
@@ -400,13 +405,6 @@ func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenc
 	return removeOwnFiles(clipDir, full, tags, referenced)
 }
 
-func derivativePath(d *asset.DerivativeLineage) string {
-	if d == nil {
-		return ""
-	}
-	return d.Asset.Path
-}
-
 // ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
 // paths are catalog clip paths, removed clips included; the result is the "referenced" argument of
 // RemoveRetiredCopy. It only reads.
@@ -422,7 +420,7 @@ func ReferencedAssets(clipDir string, paths []string) map[string]int {
 			continue
 		}
 		m := tags.MediaAssets
-		for _, p := range []string{m.SourceMaster.Path, derivativePath(m.Evidence), derivativePath(m.Playback)} {
+		for _, p := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence), asset.DerivativePath(m.Playback)} {
 			if p != "" {
 				out[p]++
 			}
@@ -431,7 +429,7 @@ func ReferencedAssets(clipDir string, paths []string) map[string]int {
 	return out
 }
 
-func (ci *CreativeIdentity) warn(msg string, args ...any) {
+func (ci *Job) warn(msg string, args ...any) {
 	if ci.log != nil {
 		ci.log.Warn(msg, args...)
 	}
