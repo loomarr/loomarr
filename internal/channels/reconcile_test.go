@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -200,7 +201,7 @@ func TestReconcilePublishesOutcomeToGenerationMetrics(t *testing.T) {
 func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 	st := newStore(t)
 	jobID := "private-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {
@@ -240,7 +241,7 @@ func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 	st := newStore(t)
 	jobID := "recovering-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {
@@ -286,7 +287,7 @@ func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 func TestReconcileDoesNotCallEmptyOrAlreadyLiveSchedulingQuality(t *testing.T) {
 	st := newStore(t)
 	jobID := "empty-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {

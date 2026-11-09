@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -100,7 +101,7 @@ func seedApprovedProposalRetiring(
 		Retired: retired,
 	}
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -328,12 +329,12 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 		}},
 		Lineup: []proposals.ProposalItem{inLib(1, "Exact")},
 	}
-	candidate := store.Proposal{
+	candidate := proposalstore.Proposal{
 		ID: "p-exact", JobID: "job-exact", Status: "approved", ApprovedBy: "admin",
 		Body: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 
-	if err := st.CreateJob(ctx, store.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
+	if err := st.CreateJob(ctx, proposalstore.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 	// A different approved row for the same job proves planning does not re-resolve
@@ -392,7 +393,7 @@ func TestPlan_RejectsAnythingOtherThanAnApprovedCandidate(t *testing.T) {
 	st := newStore(t)
 	b := approval.New(st, nil, nil, testkit.Logger())
 
-	if _, err := b.PlanApprovedChannel(context.Background(), store.Proposal{
+	if _, err := b.PlanApprovedChannel(context.Background(), proposalstore.Proposal{
 		ID: "p-submitted", JobID: "job", Status: "submitted",
 	}); err == nil {
 		t.Fatal("planned a submitted proposal")
@@ -448,7 +449,7 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 	}
 }
 
-func mustProposal(t *testing.T, st store.Store, id string) store.Proposal {
+func mustProposal(t *testing.T, st store.Store, id string) proposalstore.Proposal {
 	t.Helper()
 	p, err := st.GetProposal(context.Background(), id)
 	if err != nil {

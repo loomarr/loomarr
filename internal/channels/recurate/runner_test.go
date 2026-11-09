@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -40,7 +41,7 @@ func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent propo
 func seedJob(t *testing.T, st store.Store, id, description string) {
 	t.Helper()
 	blob, _ := json.Marshal(proposals.Intent{Description: description, Era: "1990s"})
-	if err := st.CreateJob(context.Background(), store.Job{ID: id, Kind: "suggest", IntentJSON: string(blob), IntentHash: "h-" + id, Status: "done"}); err != nil {
+	if err := st.CreateJob(context.Background(), proposalstore.Job{ID: id, Kind: "suggest", IntentJSON: string(blob), IntentHash: "h-" + id, Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -123,7 +124,7 @@ func TestRunner_RecuratesFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testing.
 	ctx := context.Background()
 	old := time.Now().Add(-31 * 24 * time.Hour)
 	blob, _ := json.Marshal(proposals.Intent{Description: "90s action", Era: "1990s"})
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-old", Kind: "suggest", Status: "done", IntentJSON: string(blob), UpdatedAt: old,
 	}); err != nil {
 		t.Fatal(err)
@@ -220,7 +221,7 @@ func TestRunner_SkipsAChannelWithAnUnfinishedChannelJob(t *testing.T) {
 	seedJob(t, st, "job-idle", "90s comedy")
 	seedChannelStatus(t, st, "c-busy", "job-busy", schedule.StatusLive, &schedule.AutoCurate{}, 1)
 	seedChannelStatus(t, st, "c-idle", "job-idle", schedule.StatusLive, &schedule.AutoCurate{}, 2)
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-refine", Kind: "suggest", Status: "queued", ChannelID: "c-busy",
 	}); err != nil {
 		t.Fatal(err)

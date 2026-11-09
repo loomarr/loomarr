@@ -17,9 +17,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -52,7 +52,7 @@ type EngineStore interface {
 	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
-	GetJob(ctx context.Context, id string) (store.Job, error)
+	GetJob(ctx context.Context, id string) (proposalstore.Job, error)
 	SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)

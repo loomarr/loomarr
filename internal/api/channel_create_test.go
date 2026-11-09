@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 // TestCreateChannelRefusesIntentRef pins that POST /v1/channels is not a second way to bind a
@@ -14,7 +14,7 @@ import (
 func TestCreateChannelRefusesIntentRef(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "prop-1", JobID: "job-abc", Status: "approved",
 		Body: wireProposal(t, `{"intent":{"description":"late-night sci-fi"},"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"12345"}]}`),
 	}); err != nil {

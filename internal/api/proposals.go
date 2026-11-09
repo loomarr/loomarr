@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
@@ -201,7 +202,7 @@ func rfc3339OrEmpty(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func proposalToDTO(p store.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
+func proposalToDTO(p proposalstore.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
 	payload := p.Body
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
@@ -264,7 +265,7 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 		status = "submitted"
 	}
 
-	var props []store.Proposal
+	var props []proposalstore.Proposal
 	var err error
 	if in.Mine {
 		// Scope from the SESSION, never from a parameter. The important property is that this
@@ -585,9 +586,9 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.UpdatedAt = time.Now()
 	if err := s.store.CommitProposalDenial(ctx, p); err != nil {
 		switch {
-		case errors.Is(err, store.ErrProposalNotSubmitted):
+		case errors.Is(err, proposalstore.ErrProposalNotSubmitted):
 			return nil, httpcore.Conflict("Already handled", "This suggestion has already been approved or dismissed.")
-		case errors.Is(err, store.ErrProposalRevisionActive):
+		case errors.Is(err, proposalstore.ErrProposalRevisionActive):
 			return nil, httpcore.Conflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
 		default:
 			return nil, err

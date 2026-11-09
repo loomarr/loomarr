@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -88,7 +89,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: proposals.DispositionSelected, Reason: "selected"}},
 	}}
 	now := time.Now()
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}

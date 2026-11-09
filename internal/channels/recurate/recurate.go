@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -81,7 +82,7 @@ func NewCurator(st CuratorStore, approver *accept.Approver, th Thresholds, log *
 // (approved, reason) so the worker can log why a proposal stayed in the queue. The gate is
 // closed by default: any channel that is not opted in, not found, or a proposal that isn't a
 // re-curation of an auto-curate channel simply gets Reason and stays `submitted` for an admin.
-func (c *Curator) Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error) {
+func (c *Curator) Consider(ctx context.Context, p proposalstore.Proposal) (proposals.AutoDecision, error) {
 	if c == nil || p.JobID == "" {
 		return proposals.AutoDecision{Reason: "not a re-curation proposal"}, nil
 	}

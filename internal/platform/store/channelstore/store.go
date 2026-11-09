@@ -48,9 +48,10 @@ type Invalidations interface {
 	NotifyChannel() string
 }
 
-// feedbackChannelScope is the discovery_feedback scope of a channel's own choices; deleting a
-// channel deletes them in the same transaction.
-const feedbackChannelScope = "channel"
+// FeedbackChannelScope is the discovery_feedback scope of a channel's own choices; deleting a
+// channel deletes them in the same transaction. It must equal the store's FeedbackChannel, which a
+// store test pins.
+const FeedbackChannelScope = "channel"
 
 // Store is the channel persistence over one storedb.Handle.
 type Store struct {
@@ -472,7 +473,7 @@ func (s *Store) DeleteChannel(ctx context.Context, id string, expectedRevision i
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM discovery_feedback WHERE scope = ? AND scope_id = ?`),
-		feedbackChannelScope, id); err != nil {
+		FeedbackChannelScope, id); err != nil {
 		return fmt.Errorf("delete channel %s feedback: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {

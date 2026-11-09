@@ -13,8 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -29,15 +29,15 @@ type productNotificationSource interface {
 	GetChannel(context.Context, string) (channelstore.Channel, error)
 }
 
-func (c *productNotificationCoordinator) ProposalSubmitted(ctx context.Context, proposal store.Proposal) {
+func (c *productNotificationCoordinator) ProposalSubmitted(ctx context.Context, proposal proposalstore.Proposal) {
 	c.publishProposal(ctx, proposal, notifications.TopicProposalSubmitted, "")
 }
 
-func (c *productNotificationCoordinator) ProposalApproved(ctx context.Context, proposal store.Proposal, _ string) {
+func (c *productNotificationCoordinator) ProposalApproved(ctx context.Context, proposal proposalstore.Proposal, _ string) {
 	c.publishProposal(ctx, proposal, notifications.TopicProposalApproved, proposal.ModSummary)
 }
 
-func (c *productNotificationCoordinator) ProposalDenied(ctx context.Context, proposal store.Proposal) {
+func (c *productNotificationCoordinator) ProposalDenied(ctx context.Context, proposal proposalstore.Proposal) {
 	c.publishProposal(ctx, proposal, notifications.TopicProposalDenied, proposal.DenyReason)
 }
 
@@ -99,7 +99,7 @@ func channelNotificationTopic(status string) (notifications.Topic, bool) {
 
 func (c *productNotificationCoordinator) publishProposal(
 	ctx context.Context,
-	proposal store.Proposal,
+	proposal proposalstore.Proposal,
 	topic notifications.Topic,
 	summary string,
 ) {
@@ -127,7 +127,7 @@ func (c *productNotificationCoordinator) logPublicationFailure(err error, refere
 	}
 }
 
-func proposalSubject(row store.Proposal) string {
+func proposalSubject(row proposalstore.Proposal) string {
 	if name := strings.TrimSpace(row.Body.ChannelName); name != "" {
 		return name
 	}

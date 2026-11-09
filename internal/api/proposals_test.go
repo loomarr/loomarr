@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -126,7 +127,7 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
 	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000100","name":"Quiet Engines","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:90000100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
-	err := createProposalWithJob(st, context.Background(), store.Proposal{
+	err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 		CreatedAt: created,
 	})
@@ -146,7 +147,7 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	// A proposal whose lineup has one in-library pick (Marigold Protocol) and no acquisitions.
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-lib", JobID: "job-lib", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -268,9 +269,9 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	srv, st := harness.Server, harness.Store
 	intent := `{"description":"Classic Kettle Kids Episodes"}`
 	now := time.Now()
-	err := st.CreateJob(context.Background(), store.Job{
+	err := st.CreateJob(context.Background(), proposalstore.Job{
 		ID: "job-grounding", Kind: "suggest", Status: "queued", IntentJSON: intent,
-		IntentHash: "hash", CreatedBy: "alice", WorkflowVersion: store.ProposalWorkflowVersion,
+		IntentHash: "hash", CreatedBy: "alice", WorkflowVersion: proposalstore.ProposalWorkflowVersion,
 		Deadline: now, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -322,7 +323,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	if err := st.CreateJob(context.Background(), store.Job{
+	if err := st.CreateJob(context.Background(), proposalstore.Job{
 		ID: "job-owned", Kind: "suggest", Status: "queued", IntentJSON: `{"description":"Comedy"}`,
 		IntentHash: "hash", CreatedBy: "alice", CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -341,7 +342,7 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:90000001","ownership":"library","disposition":"selected","reason":"selected"}]}}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
@@ -362,7 +363,7 @@ func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"scores":{"themeFit":1,"availabilityRatio":0.5,"eraBalance":null,"overall":0.7941176470588235}}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/era-proposal", adminToken, "")
@@ -644,7 +645,7 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 	body := `{"intent":{"description":"90s Saturday morning cartoons for the kids"},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-ch", JobID: "job-ch", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -692,7 +693,7 @@ func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
 		`"lineup":[{"mediaType":"series","tmdbId":90000456,"name":"Kettle Kids",` +
 		`"inLibrary":true,"libraryItemId":"lib-kettle-kids",` +
 		`"episodeSelection":{"mode":"highlights"}}],"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -748,7 +749,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			body := fmt.Sprintf(`{"intent":{"description":%q},"lineup":[`+
 				`{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","inLibrary":true,"libraryItemId":"marigold"}],`+
 				`"acquisitions":[]}`, tt.intent)
-			if err := createProposalWithJob(st, context.Background(), store.Proposal{
+			if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", Body: wireProposal(t, body),
 			}); err != nil {
 				t.Fatal(err)
@@ -814,7 +815,7 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol",` +
 		`"inLibrary":true,"libraryItemId":"marigold"}],` +
 		`"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -872,7 +873,7 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 		`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}},` +
 		`{"mediaType":"movie","tmdbId":90000100,"name":"Crafted Movie Mode","inLibrary":false,` +
 		`"episodeSelection":{"mode":"highlights"}}]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -910,7 +911,7 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-era", JobID: "job-era", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -944,7 +945,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 		`"tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
 		`"acquisitions":[]}`
 	seed := func(id, job string, created time.Time) {
-		if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
@@ -1014,7 +1015,7 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","year":1999,"inLibrary":true,` +
 			`"libraryItemId":"lib-` + tmdb + `"}],"acquisitions":[]}`
-		if err := createProposalWithJob(st, ctx, store.Proposal{
+		if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
 			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
@@ -1088,7 +1089,7 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 	mk := func(id, tmdb, name string, created time.Time) {
 		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","inLibrary":true,"libraryItemId":"lib-` + tmdb + `"}]}`
-		if err := createProposalWithJob(st, ctx, store.Proposal{
+		if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
 			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
@@ -1144,7 +1145,7 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	}
 	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":90000603,` +
 		`"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-n", JobID: "job-n", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -1177,7 +1178,7 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 	body := `{"acquisitions":[
 		{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994},
 		{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: "p-drop", JobID: "j", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
@@ -1632,7 +1633,7 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 	t.Helper()
 	body := fmt.Sprintf(
 		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
-	err := createProposalWithJob(st, context.Background(), store.Proposal{
+	err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
 		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 	})
 
@@ -1649,7 +1650,7 @@ func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	// No job row: written straight to the store, as a purge left it.
-	if err := st.CreateProposal(context.Background(), store.Proposal{
+	if err := st.CreateProposal(context.Background(), proposalstore.Proposal{
 		ID: "p-old", JobID: "job-purged", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)

@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -245,9 +246,9 @@ func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Librar
 	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
 	// CreateJob+CreateProposal pair leaves no attempt, so the workflow rejects the job as
 	// inconsistent and GET /v1/proposal-jobs 500s on every demo-seeded backend (#1534, #1827).
-	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
+	if err := st.CreateSuggestionResult(ctx, proposalstore.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
-	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
+	}, proposalstore.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
 		Body: proposals.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}

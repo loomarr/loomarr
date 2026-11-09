@@ -1,4 +1,4 @@
-package store
+package proposalstore
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 // CommitSuggestionSuccess is the generation-success persistence boundary. A
 // proposal cannot become visible unless its job becomes done in the same commit.
-func (s *sqlStore) CommitSuggestionSuccess(
+func (s *Store) CommitSuggestionSuccess(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
@@ -26,16 +26,17 @@ func (s *sqlStore) CommitSuggestionSuccess(
 		return fmt.Errorf("complete suggestion job %s: proposal status is %q", jobID, p.Status)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("complete suggestion job %s: begin: %w", jobID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, s.ph(
+	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs SET status='done', last_error='', failure_code='', failure_trace_json=NULL, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
-		epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
+
+		storedb.Epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
 	if err != nil {
 		return fmt.Errorf("complete suggestion job %s: transition: %w", jobID, err)
 	}
@@ -45,10 +46,10 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	}
 	if affected != 1 {
 		var status, createdBy string
-		err := tx.QueryRowContext(ctx, s.ph(`SELECT status, created_by FROM proposal_jobs WHERE id = ?`), jobID).
+		err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT status, created_by FROM proposal_jobs WHERE id = ?`), jobID).
 			Scan(&status, &createdBy)
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		if err != nil {
 			return fmt.Errorf("complete suggestion job %s: read status: %w", jobID, err)
@@ -59,11 +60,12 @@ func (s *sqlStore) CommitSuggestionSuccess(
 		}
 		return fmt.Errorf("%w: job %s has status %s", ErrJobNotRunning, jobID, status)
 	}
-	result, err = tx.ExecContext(ctx, s.ph(
+	result, err = tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_job_attempts
 		    SET status='succeeded', completed_at=?, failure_code=''
 		  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
-		epoch(updatedAt), jobID, expectedAttempt, ProposalWorkflowVersion)
+
+		storedb.Epoch(updatedAt), jobID, expectedAttempt, ProposalWorkflowVersion)
 	if err != nil {
 		return fmt.Errorf("complete suggestion job %s: close Attempt %d: %w", jobID, expectedAttempt, err)
 	}
@@ -76,17 +78,19 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	// executions on a stable channel job strictly monotonic so "newest" remains
 	// causal even when a refine finishes in the same wall-clock second.
 	var latestCreatedAt sql.NullInt64
-	if err := tx.QueryRowContext(ctx, s.ph(
-		`SELECT MAX(created_at) FROM proposals WHERE job_id = ?`), jobID).Scan(&latestCreatedAt); err != nil {
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(
+		`SELECT MAX(created_at) FROM proposals WHERE job_id = ?`),
+		jobID).Scan(&latestCreatedAt); err != nil {
 		return fmt.Errorf("complete suggestion job %s: read latest proposal: %w", jobID, err)
 	}
-	if latestCreatedAt.Valid && epoch(p.CreatedAt) <= latestCreatedAt.Int64 {
-		p.CreatedAt = fromEpoch(latestCreatedAt.Int64 + 1)
+	if latestCreatedAt.Valid && storedb.Epoch(p.CreatedAt) <= latestCreatedAt.Int64 {
+		p.CreatedAt = storedb.FromEpoch(latestCreatedAt.Int64 + 1)
 		if p.UpdatedAt.Before(p.CreatedAt) {
 			p.UpdatedAt = p.CreatedAt
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE proposal_jobs SET updated_at=? WHERE id=?`), epoch(p.CreatedAt), jobID); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(
+			`UPDATE proposal_jobs SET updated_at=? WHERE id=?`),
+			storedb.Epoch(p.CreatedAt), jobID); err != nil {
 			return fmt.Errorf("complete suggestion job %s: order completion: %w", jobID, err)
 		}
 	}
@@ -94,9 +98,10 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	// A successful Proposal revision replaces the prior review atomically. Until
 	// this commit the prior submitted row remains the fallback; once the new row is
 	// durable it must leave the approval queue in the same transaction.
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposals SET status='superseded', updated_at=? WHERE job_id=? AND status='submitted'`),
-		epoch(p.CreatedAt), jobID); err != nil {
+
+		storedb.Epoch(p.CreatedAt), jobID); err != nil {
 		return fmt.Errorf("complete suggestion job %s: supersede prior proposal: %w", jobID, err)
 	}
 
@@ -113,23 +118,23 @@ func (s *sqlStore) CommitSuggestionSuccess(
 // current review disappear. The exact newest submitted proposal and the terminal
 // execution are one compare-and-swap, so approval, another revision, or a newer
 // result cannot race this request into a second actionable branch.
-func (s *sqlStore) ReviseSubmittedProposal(
+func (s *Store) ReviseSubmittedProposal(
 	ctx context.Context,
 	jobID, proposalID string,
 	expectedAttempt int,
 	intentJSON, intentHash string,
 	deadline, updatedAt time.Time,
 ) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("revise proposal %s: begin: %w", proposalID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockQuery := storedb.LockRows(s.dialect, `SELECT status FROM proposal_jobs WHERE id = ?`)
+	lockQuery := storedb.LockRows(s.h.Dialect(), `SELECT status FROM proposal_jobs WHERE id = ?`)
 	var status string
-	if err := tx.QueryRowContext(ctx, s.ph(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return storedb.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("revise proposal %s: lock job: %w", proposalID, err)
 	}
@@ -137,7 +142,7 @@ func (s *sqlStore) ReviseSubmittedProposal(
 		return ErrProposalNotRevisable
 	}
 
-	result, err := tx.ExecContext(ctx, s.ph(
+	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs
 		    SET kind='suggest', status='queued', intent_json=?, intent_hash=?, last_error='',
 		        failure_code='', failure_trace_json=NULL, deadline=?, updated_at=?
@@ -153,7 +158,8 @@ func (s *sqlStore) ReviseSubmittedProposal(
 		         WHERE p.id=? AND p.job_id=proposal_jobs.id AND p.created_by=proposal_jobs.created_by
 		           AND p.status='submitted'
 		    )`),
-		intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt,
+
+		intentJSON, intentHash, storedb.Epoch(deadline), storedb.Epoch(updatedAt), jobID, expectedAttempt,
 		proposalID, proposalID,
 	)
 	if err != nil {
@@ -175,24 +181,25 @@ func (s *sqlStore) ReviseSubmittedProposal(
 // CommitSuggestionFailure is the generation-failure persistence boundary. It
 // updates only lifecycle fields and loses safely if another execution has
 // already replaced this attempt.
-func (s *sqlStore) CommitSuggestionFailure(
+func (s *Store) CommitSuggestionFailure(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
 	cause, failureCode, failureTraceJSON string,
 	updatedAt time.Time,
 ) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: begin: %w", jobID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, s.ph(
+	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs
 		    SET status='failed', last_error=?, failure_code=?, failure_trace_json=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
-		cause, failureCode, storedb.OptionalJSON(failureTraceJSON), epoch(updatedAt), jobID, expectedAttempt)
+
+		cause, failureCode, storedb.OptionalJSON(failureTraceJSON), storedb.Epoch(updatedAt), jobID, expectedAttempt)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: transition: %w", jobID, err)
 	}
@@ -202,20 +209,21 @@ func (s *sqlStore) CommitSuggestionFailure(
 	}
 	if affected != 1 {
 		var status string
-		err = tx.QueryRowContext(ctx, s.ph(`SELECT status FROM proposal_jobs WHERE id = ?`), jobID).Scan(&status)
+		err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT status FROM proposal_jobs WHERE id = ?`), jobID).Scan(&status)
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		if err != nil {
 			return fmt.Errorf("fail suggestion job %s: read status: %w", jobID, err)
 		}
 		return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotRunning, jobID, status)
 	}
-	result, err = tx.ExecContext(ctx, s.ph(
+	result, err = tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_job_attempts
 		    SET status='failed', completed_at=?, failure_code=?
 		  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
-		epoch(updatedAt), failureCode, jobID, expectedAttempt, ProposalWorkflowVersion)
+
+		storedb.Epoch(updatedAt), failureCode, jobID, expectedAttempt, ProposalWorkflowVersion)
 	if err != nil {
 		return fmt.Errorf("fail suggestion job %s: close Attempt %d: %w", jobID, expectedAttempt, err)
 	}
@@ -233,7 +241,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 // #1720) as one finished request lifecycle: the done job, its succeeded Attempt 1, and the
 // submitted proposal, in one transaction. It is CloneSuggestionSuccess without a cache source, so
 // the request reads exactly like a generated one to the queue, the journey and the approver.
-func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Proposal) error {
+func (s *Store) CreateSuggestionResult(ctx context.Context, job Job, p Proposal) error {
 	if job.Status != "done" {
 		return fmt.Errorf("record suggestion job %s: status is %q", job.ID, job.Status)
 	}
@@ -241,26 +249,28 @@ func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Propos
 		return fmt.Errorf("record suggestion job %s: proposal %s must be the job's own submitted proposal", job.ID, p.ID)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("record suggestion job %s: begin: %w", job.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, NULL)`),
+
 		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy,
-		ProposalWorkflowVersion, job.ReachedLive, epoch(job.Deadline),
-		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		ProposalWorkflowVersion, job.ReachedLive, storedb.Epoch(job.Deadline),
+		storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt)); err != nil {
 		return fmt.Errorf("record suggestion job %s: create job: %w", job.ID, err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_job_attempts
 		    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
 		 VALUES (?, 1, ?, 'succeeded', ?, ?, '')`),
-		job.ID, ProposalWorkflowVersion, epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+
+		job.ID, ProposalWorkflowVersion, storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt)); err != nil {
 		return fmt.Errorf("record suggestion job %s: create Attempt: %w", job.ID, err)
 	}
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
@@ -274,7 +284,7 @@ func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Propos
 
 // CloneSuggestionSuccess copies only cached proposal content. The new job and
 // proposal are a fresh request lifecycle owned by the current caller.
-func (s *sqlStore) CloneSuggestionSuccess(
+func (s *Store) CloneSuggestionSuccess(
 	ctx context.Context,
 	sourceJobID string,
 	job Job,
@@ -284,7 +294,7 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: new status is %q", job.ID, job.Status)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: begin: %w", job.ID, err)
 	}
@@ -293,18 +303,19 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	// Acquire SQLite's WAL write snapshot before reading the cache source. If the
 	// source changes concurrently, the later SELECT still sees one coherent
 	// snapshot instead of failing a deferred read-to-write upgrade.
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+
 		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy, "", "",
-		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, epoch(job.Deadline), job.Attempts,
-		epoch(job.CreatedAt), epoch(job.UpdatedAt), nil); err != nil {
+		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, storedb.Epoch(job.Deadline), job.Attempts,
+		storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt), nil); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create job: %w", job.ID, err)
 	}
 
 	var proposalJSON string
-	if err := tx.QueryRowContext(ctx, s.ph(
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT p.proposal_json
 		   FROM proposal_jobs j
 		   JOIN proposals p ON p.id = (
@@ -314,9 +325,11 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		        LIMIT 1
 		   )
 		  WHERE j.id = ? AND j.status = 'done' AND j.kind = 'suggest'
-		    AND j.intent_hash = ?`), sourceJobID, job.IntentHash).
+		    AND j.intent_hash = ?`),
+
+		sourceJobID, job.IntentHash).
 		Scan(&proposalJSON); errors.Is(err, sql.ErrNoRows) {
-		return Proposal{}, ErrNotFound
+		return Proposal{}, storedb.ErrNotFound
 	} else if err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: read source result: %w", job.ID, err)
 	}
@@ -332,15 +345,17 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_job_attempts
 		    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
 		 VALUES (?, 1, ?, 'succeeded', ?, ?, '')`),
-		job.ID, ProposalWorkflowVersion, epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+
+		job.ID, ProposalWorkflowVersion, storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt)); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create cached Attempt: %w", job.ID, err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs SET workflow_version=?, attempts=1 WHERE id=?`),
+
 		ProposalWorkflowVersion, job.ID); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: version cached result: %w", job.ID, err)
 	}
@@ -350,16 +365,17 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	return p, nil
 }
 
-func insertProposalTx(ctx context.Context, tx *sql.Tx, s *sqlStore, p Proposal) error {
-	body, err := encodeProposalBody(p)
+func insertProposalTx(ctx context.Context, tx storedb.Querier, s *Store, p Proposal) error {
+	body, err := EncodeProposalBody(p)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, s.ph(
+	_, err = tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, storedb.Epoch(p.ApprovedAt), storedb.Epoch(p.CreatedAt), storedb.Epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}

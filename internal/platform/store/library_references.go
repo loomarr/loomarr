@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -268,11 +269,14 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		}
 		changed++
 	}
-	prows, err := tx.QueryContext(ctx, s.ph(proposalSelect+` WHERE status = ?`), openProposalStatus)
+	prows, err := tx.QueryContext(ctx, s.ph(proposalstore.ProposalSelect+` WHERE status = ?`), openProposalStatus)
 	if err != nil {
 		return 0, fmt.Errorf("proposals: %w", err)
 	}
-	open, err := scanProposals(prows)
+	open, err := proposalstore.ScanProposals(prows)
+	if err == nil {
+		err = prows.Err() // ScanProposals checks it too; naming it here keeps the invariant visible to rowserrcheck
+	}
 	_ = prows.Close()
 	if err != nil {
 		return 0, fmt.Errorf("proposals: %w", err)
@@ -283,7 +287,7 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		if !dirty {
 			continue
 		}
-		body, err := encodeProposalBody(open[i])
+		body, err := proposalstore.EncodeProposalBody(open[i])
 		if err != nil {
 			return 0, err
 		}
