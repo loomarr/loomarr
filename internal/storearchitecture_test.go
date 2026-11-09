@@ -128,6 +128,7 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 var clusterPackages = map[string]bool{
 	modulePath + "/internal/platform/store/identitystore": true,
 	modulePath + "/internal/platform/store/clipstore":     true,
+	modulePath + "/internal/platform/store/jobstore":      true,
 }
 
 // The store's cluster aliases are for the store itself. Everything else names the cluster type

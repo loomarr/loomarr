@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
 )
 
 // fakeStore is an in-memory ScheduleStore with a controllable clock-independent view; the
@@ -21,10 +21,10 @@ import (
 // deterministically without real time.
 type fakeStore struct {
 	mu   sync.Mutex
-	rows map[string]store.ScheduledJob
+	rows map[string]jobstore.ScheduledJob
 }
 
-func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]store.ScheduledJob{}} }
+func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]jobstore.ScheduledJob{}} }
 
 // ⚠ Upsert PRESERVES `paused`, exactly as the SQL does by omitting it from ON CONFLICT DO
 // UPDATE. A fake that let the flag through would pass tests the database fails: this call runs
@@ -33,7 +33,7 @@ func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]store.Schedu
 // ignored `ctx` is why the record-through-a-dead-context bug was invisible: the write that records
 // a job's outcome was made through the very context whose expiry caused that outcome, so a job
 // that timed out never persisted its result — and against this double it looked perfect.
-func (f *fakeStore) UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error {
+func (f *fakeStore) UpsertScheduledJob(ctx context.Context, j jobstore.ScheduledJob) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -52,19 +52,19 @@ func (f *fakeStore) SetScheduledJobPaused(_ context.Context, name string, paused
 	f.rows[name] = row
 	return nil
 }
-func (f *fakeStore) GetScheduledJob(_ context.Context, name string) (store.ScheduledJob, error) {
+func (f *fakeStore) GetScheduledJob(_ context.Context, name string) (jobstore.ScheduledJob, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	j, ok := f.rows[name]
 	if !ok {
-		return store.ScheduledJob{}, errors.New("not found")
+		return jobstore.ScheduledJob{}, errors.New("not found")
 	}
 	return j, nil
 }
-func (f *fakeStore) ListScheduledJobs(_ context.Context) ([]store.ScheduledJob, error) {
+func (f *fakeStore) ListScheduledJobs(_ context.Context) ([]jobstore.ScheduledJob, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]store.ScheduledJob, 0, len(f.rows))
+	out := make([]jobstore.ScheduledJob, 0, len(f.rows))
 	for _, j := range f.rows {
 		out = append(out, j)
 	}
@@ -296,11 +296,11 @@ func TestStarvedNamesJobsPastTwiceTheirInterval(t *testing.T) {
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 	due := clk.now().Truncate(time.Minute)
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "sweep", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "late", LastResult: "ok", NextRun: due.Add(-time.Minute)})
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "paused", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "sweep", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "late", LastResult: "ok", NextRun: due.Add(-time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "paused", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
 	_ = st.SetScheduledJobPaused(ctx, "paused", true)
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "fresh", LastResult: "ok", NextRun: due.Add(time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "fresh", LastResult: "ok", NextRun: due.Add(time.Minute)})
 
 	got, err := s.Starved(ctx)
 	if err != nil {
@@ -320,7 +320,7 @@ func TestListJoinsRegistryAndState(t *testing.T) {
 		Add(Job{Name: "second", Group: GroupSystem, Description: "test job second.", Title: "Second", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "first", LastResult: "ok", NextRun: clk.now().Add(time.Hour)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "first", LastResult: "ok", NextRun: clk.now().Add(time.Hour)})
 
 	got, err := s.List(ctx)
 	if err != nil {
