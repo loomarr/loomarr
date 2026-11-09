@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -20,12 +23,12 @@ import (
 type airingStore struct {
 	calls   int
 	oldHash string
-	clip    StoreClip
+	clip    cliplibrary.StoreClip
 	record  defects.Record
 	err     error
 }
 
-func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c StoreClip, rec defects.Record) error {
+func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c cliplibrary.StoreClip, rec defects.Record) error {
 	s.calls++
 	if s.err != nil {
 		return s.err
@@ -37,7 +40,9 @@ func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c Sto
 // derivativeStage is a transcode stage whose one encode writes body, on host when one is given.
 func derivativeStage(t *testing.T, dir string, host *encode.HostProfile, body string) *TranscodeStage {
 	t.Helper()
-	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+	}
 	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	if host != nil {
 		stage.WithEncodeHost(func() encode.HostProfile { return *host })
@@ -48,12 +53,12 @@ func derivativeStage(t *testing.T, dir string, host *encode.HostProfile, body st
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(body), 0o600)
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(body), 0o600)
 	}
-	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error) {
 		t.Fatal("a top-level clip's playback rendition was encoded a second time")
-		return MediaQuality{}, nil
+		return tools.MediaQuality{}, nil
 	}
 	return stage
 }
@@ -62,12 +67,12 @@ var nvencHost = encode.HostProfile{Family: encode.FamilyNVENC, Encoder: encode.E
 
 // airingFixture is a clip on air whose playback was encoded from its retained master under the
 // software profile, and a stage on an NVENC host that re-encodes it, gated by check.
-func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStage, *airingStore, StoreClip) {
+func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStage, *airingStore, cliplibrary.StoreClip) {
 	t.Helper()
 	dir := t.TempDir()
 	hash := writeContentAddressedClip(t, dir, []byte("the airing clip's source master"), ".mkv")
 	out, err := derivativeStage(t, dir, nil, "software derivative").Run(context.Background(),
-		StoreClip{Clip: Clip{Hash: hash, Path: filepath.ToSlash(ClipRelPath(hash, ".mkv")), Name: "Advert", Role: Commercial}})
+		cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mkv")), Name: "Advert", Role: clips.Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +82,7 @@ func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStag
 }
 
 func passingCheck(staged *string) ReplacementCheck {
-	return func(_ context.Context, c StoreClip, path string) (defects.Record, error) {
+	return func(_ context.Context, c cliplibrary.StoreClip, path string) (defects.Record, error) {
 		if staged != nil {
 			*staged = path
 		}
@@ -112,7 +117,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	var staged string
 	dir, stage, store, airing := airingFixture(t, passingCheck(&staged))
 	oldFull := filepath.Join(dir, filepath.FromSlash(airing.Path))
-	oldTags, _ := ReadSidecarTags(oldFull)
+	oldTags, _ := asset.ReadSidecarTags(oldFull)
 
 	got, err := stage.ReplaceAiring(context.Background(), airing)
 	if err != nil {
@@ -131,7 +136,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	if raw, err := os.ReadFile(newFull); err != nil || string(raw) != "nvenc derivative" {
 		t.Fatalf("new playback = %q, %v", raw, err)
 	}
-	tags, ok := ReadSidecarTags(newFull)
+	tags, ok := asset.ReadSidecarTags(newFull)
 	if !ok || tags.Mezzanine != tools.FileMezzanine(nvencHost).ID() || tags.MediaAssets == nil ||
 		tags.MediaAssets.SourceMaster.Path != oldTags.MediaAssets.SourceMaster.Path {
 		t.Fatalf("new sidecar = %+v", tags)
@@ -139,7 +144,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	if _, err := os.Stat(oldFull); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the old playback file is still on disk: %v", err)
 	}
-	if _, err := os.Stat(sidecarPathFor(oldFull)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(tools.SidecarPathFor(oldFull)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the old sidecar is still on disk: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(oldTags.MediaAssets.Evidence.Asset.Path))); !errors.Is(err, os.ErrNotExist) {
@@ -158,20 +163,20 @@ func TestReplaceAiring_ARefusedReplacementLeavesTheClipAiring(t *testing.T) {
 		check ReplacementCheck
 		want  error
 	}{
-		{"defect floor fails it", func(_ context.Context, c StoreClip, _ string) (defects.Record, error) {
+		{"defect floor fails it", func(_ context.Context, c cliplibrary.StoreClip, _ string) (defects.Record, error) {
 			return defects.Record{ClipHash: c.Hash, Verdict: defects.VerdictFail, VerdictReason: "detectors"}, nil
 		}, ErrReplacementRefused},
-		{"judge has not ruled", func(_ context.Context, c StoreClip, _ string) (defects.Record, error) {
+		{"judge has not ruled", func(_ context.Context, c cliplibrary.StoreClip, _ string) (defects.Record, error) {
 			return defects.Record{ClipHash: c.Hash, Verdict: defects.VerdictPending, VerdictReason: "waiting for the judge"}, nil
 		}, ErrReplacementRefused},
-		{"floor could not measure it", func(context.Context, StoreClip, string) (defects.Record, error) {
+		{"floor could not measure it", func(context.Context, cliplibrary.StoreClip, string) (defects.Record, error) {
 			return defects.Record{}, errors.New("decoder rejected the stream")
 		}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, stage, store, airing := airingFixture(t, tc.check)
 			oldFull := filepath.Join(dir, filepath.FromSlash(airing.Path))
-			before, _ := os.ReadFile(sidecarPathFor(oldFull))
+			before, _ := os.ReadFile(tools.SidecarPathFor(oldFull))
 
 			_, err := stage.ReplaceAiring(context.Background(), airing)
 			if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
@@ -183,7 +188,7 @@ func TestReplaceAiring_ARefusedReplacementLeavesTheClipAiring(t *testing.T) {
 			if raw, err := os.ReadFile(oldFull); err != nil || string(raw) != "software derivative" {
 				t.Fatalf("airing file = %q, %v", raw, err)
 			}
-			if after, _ := os.ReadFile(sidecarPathFor(oldFull)); !bytes.Equal(before, after) {
+			if after, _ := os.ReadFile(tools.SidecarPathFor(oldFull)); !bytes.Equal(before, after) {
 				t.Fatalf("airing sidecar changed:\n%s\n→\n%s", before, after)
 			}
 			if left := filesHolding(t, dir, "nvenc derivative"); len(left) != 0 {
@@ -222,7 +227,7 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 	removed.RemovedAt = time.Now()
 	composite.IsComposite = true
 	child.ParentHash = strings.Repeat("b", 64)
-	for name, c := range map[string]StoreClip{"held": held, "removed": removed, "composite": composite, "split child": child} {
+	for name, c := range map[string]cliplibrary.StoreClip{"held": held, "removed": removed, "composite": composite, "split child": child} {
 		if stage.NeedsReencode(c) {
 			t.Errorf("a %s clip is due a re-encode", name)
 		}
@@ -235,16 +240,16 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 	}
 
 	full := filepath.Join(dir, filepath.FromSlash(airing.Path))
-	tags, _ := ReadSidecarTags(full)
+	tags, _ := asset.ReadSidecarTags(full)
 	tags.Mezzanine = tools.FileMezzanine(nvencHost).ID()
-	if err := WriteSidecarTags(full, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	if stage.NeedsReencode(airing) {
 		t.Error("a clip already under the current profile is due a re-encode")
 	}
 	tags.Mezzanine, tags.MediaAssets.Playback = tools.DefaultMezzanine().ID(), nil
-	if err := WriteSidecarTags(full, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	if stage.NeedsReencode(airing) {

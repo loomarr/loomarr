@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func TestGroundSegmentNameRequiresExactContentEvidence(t *testing.T) {
@@ -41,7 +43,7 @@ func TestGroundSegmentNameRequiresExactContentEvidence(t *testing.T) {
 }
 
 func TestSplitNameProvenanceSurvivesProposalJSON(t *testing.T) {
-	want := SplitProposal{Segments: []SplitSegment{{
+	want := SplitProposal{Segments: []split.Segment{{
 		Index: 0, StartMs: 0, EndMs: 30_000, Name: "Acme commercial",
 		NameOrigin: SplitNameModelProposed, NameEvidence: "ACME",
 	}}}

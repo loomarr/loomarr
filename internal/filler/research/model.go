@@ -1,6 +1,6 @@
 // Package research owns bounded external context lookup for publicly sourced filler.
 //
-// It deliberately returns suggestions rather than fillerenrichment.State. That separation is the
+// It deliberately returns suggestions rather than enrichment.State. That separation is the
 // authority boundary: campaign context can help a person understand a clip, but it cannot become a
 // verified scheduling fact merely because a model found a plausible page.
 package research

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -20,13 +21,13 @@ func TestEffectiveDiscoveryFeedbackResolvesReplacementOverrideAndFallback(t *tes
 		{ID: "channel-old", Scope: FeedbackChannel, ScopeID: "ch-1", Target: target, Action: FeedbackSurprise, CreatedAt: time.Unix(2, 0)},
 	}
 
-	got := EffectiveDiscoveryFeedback(household, channel)
+	got := channeldatastore.EffectiveDiscoveryFeedback(household, channel)
 	if len(got) != 2 || got[0].ID != "house-new" || got[1].ID != "house-other" {
 		t.Fatalf("effective feedback after channel clear = %+v, want household fallback and unaffected household event", got)
 	}
 
 	channel[0] = DiscoveryFeedback{ID: "channel-replace", Scope: FeedbackChannel, ScopeID: "ch-1", Target: target, Action: FeedbackLess}
-	got = EffectiveDiscoveryFeedback(household, channel)
+	got = channeldatastore.EffectiveDiscoveryFeedback(household, channel)
 	if len(got) != 2 || got[0].ID != "channel-replace" || got[1].ID != "house-other" {
 		t.Fatalf("effective feedback after channel replacement = %+v, want channel override then household remainder", got)
 	}

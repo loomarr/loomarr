@@ -25,16 +25,22 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(b)
 }
 
-func newHelpServer(t *testing.T, ready api.ReadyFunc) *httptest.Server {
+// newHelpServer serves the help and system routes over a fresh store; tweak edits the Options
+// (a deterministic clock, say) before the router is built.
+func newHelpServer(t *testing.T, ready api.ReadyFunc, tweak ...func(*api.Options)) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/h.db")
 	t.Cleanup(func() { _ = st.Close() })
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+	opts := api.Options{
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Ready: ready,
-	}))
+	}
+	for _, edit := range tweak {
+		edit(&opts)
+	}
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -223,8 +229,8 @@ func TestSystemVersion_ReportsRuntimeAndSchema(t *testing.T) {
 // Two handlers built moments apart must report different instants, which a package-level
 // var cannot do.
 func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
-	read := func() string {
-		srv := newHelpServer(t, nil)
+	read := func(now time.Time) string {
+		srv := newHelpServer(t, nil, func(o *api.Options) { o.Now = func() time.Time { return now } })
 		resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("version → %d, want 200", resp.StatusCode)
@@ -238,14 +244,15 @@ func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
 		return body.StartedAt
 	}
 
-	first := read()
-	// RFC3339 is second-resolution, so two builds in the same second would legitimately
-	// match. Wait past the boundary rather than asserting on a value that cannot differ.
-	time.Sleep(1100 * time.Millisecond)
-	second := read()
+	// The handler stamps its start from the injected clock: two generations on clocks a minute
+	// apart report those instants, however fast the test builds them.
+	boot := time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
+	first := read(boot)
+	second := read(boot.Add(time.Minute))
 
-	if first == second {
-		t.Errorf("both generations report startedAt=%s — a restart would keep counting from the original boot", first)
+	if first != boot.Format(time.RFC3339) || second != boot.Add(time.Minute).Format(time.RFC3339) {
+		t.Errorf("startedAt = %s then %s, want the injected clock's %s then %s — a restart would keep counting from the original boot",
+			first, second, boot.Format(time.RFC3339), boot.Add(time.Minute).Format(time.RFC3339))
 	}
 }
 

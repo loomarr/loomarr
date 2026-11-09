@@ -85,7 +85,7 @@ declares.
 | Programmer | interface `Programmer.Reconcile(channel, lineup)` | Tunarr |
 | Suggester | struct `suggest.Suggester` | a local model over the Ollama API, or an OpenAI-compatible endpoint |
 | Catalog | struct `catalog.Catalog` | Library + TMDB/TVDB; grounds the model and backs `GET /v1/search` |
-| FillerSource | interface `filler.FillerSource` | `folder`, `youtube`, `archive`, `library` |
+| FillerSource | interface `cliplibrary.FillerSource` | `folder`, `youtube`, `archive`, `library` |
 | StorageGovernor | struct `storagegovernor.Governor` | host filesystem capacity, managed-root usage, atomic reservations |
 | Store | interface `Store` | Postgres, SQLite |
 | Events | struct `events.Bus` | internal (to the scheduler) and optional outbound webhook |
@@ -98,13 +98,13 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 | --- | --- | --- |
 | Channel identity, `DesiredLineup`, `ChannelPolicy`, ordering and seasonal math (pure, no I/O) | `internal/channels/schedule` | `internal/platform/jobs` |
 | The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/platform/jobs` | `internal/channels/schedule` |
-| Materializing a channel and converging its Tunarr projection; the per-channel mutex | `internal/channels` | `internal/provisionbackstop` |
-| The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/provisionbackstop` | `internal/channels` |
+| Materializing a channel and converging its Tunarr projection; the per-channel mutex | `internal/channels` | `internal/library/provisionbackstop` |
+| The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/library/provisionbackstop` | `internal/channels` |
 | Turning an approved Proposal into a channel, preserving operator edits (`approval.Bind` is the pure core; the `Binder` shell reads the store and logs) | `internal/channels/approval` | `internal/channels` |
 | Re-evaluating a channel's intent through the approval gate | `internal/channels/recurate` | `internal/proposals/suggest` |
-| Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/provisionbackstop` |
+| Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/library/provisionbackstop` |
 | Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/playout/livetvpublish` | `internal/platform/config`, `internal/app` |
-| Federated search over library, TMDB and clips | `internal/catalog` | — |
+| Federated search over library, TMDB and clips | `internal/library/titlesearch` | — |
 
 `internal/playout/tunarr` is the Tunarr port and is unrelated to
 [`programming-design.md`](../programming-design.md), which covers `ChannelPolicy` heuristics. The
@@ -163,7 +163,7 @@ served docs all derive from it, and hand-kept API docs are not allowed (decision
 (`make openapi-verify`).
 
 - **Every `/v1` route is a Huma operation**, including binary downloads, images, SSE, multipart and
-  redirects (`rawOp` in `internal/api/rawop.go`). That keeps one fail-closed authorization
+  redirects (`RawOp` in `internal/api/httpcore/rawop.go`). That keeps one fail-closed authorization
   middleware, CSRF and the router/exporter drift guard covering every route.
 - **Arrays are never nullable**, and `null` is not an empty list anywhere. `humaConfig` sets
   `DefaultArrayNullable = false`, and the API's one JSON encoder (`wireJSONFormat`, also behind

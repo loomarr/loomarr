@@ -53,6 +53,7 @@ const WithRefused: Story = {
     requestedBy: "ada",
     acquisitions: 1,
     status: "pending",
+    audienceLimit: "TV-Y7",
     refused: [
       {
         item: {
@@ -76,6 +77,15 @@ const WithRefused: Story = {
   },
 };
 
+// #3012: the left-out box offers the lowest limit that lets those titles in, and once pressed says
+// what approving will do.
+const WithRaise: Story = {
+  args: { ...WithRefused.args, raiseAudienceTo: "TV-MA", onEdit: () => {} },
+};
+const WithRaisePressed: Story = {
+  args: { ...WithRaise.args, edit: { audience: "TV-MA" } },
+};
+
 // A holiday the household's country doesn't keep (#2030 decision 38): the channel won't follow its
 // season, and the card says so before approval.
 const WithSeasonNotKept: Story = {
@@ -90,4 +100,4 @@ const WithSeasonNotKept: Story = {
 };
 
 export default meta;
-export { Approving, Denied, Pending, WithRefused, WithSeasonNotKept };
+export { Approving, Denied, Pending, WithRaise, WithRaisePressed, WithRefused, WithSeasonNotKept };

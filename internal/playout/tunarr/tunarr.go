@@ -159,9 +159,9 @@ type transcodeConfig struct {
 // carry (Phase-0 finding 3). A configured id is trusted as-is; otherwise the
 // instance's own configs are fetched and the "Default" (or, failing an exact name
 // match, the first) is chosen and cached. This is what makes TUNARR_TRANSCODE_
-// CONFIG_ID an Advanced knob rather than a required one (§15): an empty setting
-// used to send "" and Tunarr rejected every channel with a bare 400 (invalid
-// uuid), while the setup check — probing only reachability — stayed green.
+// CONFIG_ID an Advanced knob rather than a required one (§15): sending an empty id
+// makes Tunarr reject every channel with a bare 400 (invalid uuid), while the setup
+// check — probing only reachability — stays green.
 //
 // Returns an error when the instance reports no configs at all, so the setup check
 // can surface an actionable failure instead of letting channel creation die later.
@@ -230,10 +230,10 @@ func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, e
 	if spec.StartTime > 0 {
 		body.StartTime = spec.StartTime // preserve a valid anchor (stable loop across reconciles)
 	} else {
-		// 0 means either no read-back OR a channel created before this fix (the broken
-		// epoch-0 anchor). Either way, stamp NOW to HEAL it — a channel's anchor should never
-		// be epoch 0, so re-anchoring to now on the next reconcile fixes pre-fix channels
-		// without a manual recreate. (Costs one loop-seam jump, once, on the healing sweep.)
+		// 0 means either no read-back OR a channel left with an epoch-0 anchor. Either way,
+		// stamp NOW to HEAL it — a channel's anchor should never be epoch 0, so re-anchoring
+		// to now on the next reconcile fixes it without a manual recreate. (Costs one
+		// loop-seam jump, once, on the healing sweep.)
 		body.StartTime = now().UnixMilli()
 	}
 	if err := t.doJSON(ctx, http.MethodPut, "/api/channels/"+spec.TunarrID, body, nil); err != nil {

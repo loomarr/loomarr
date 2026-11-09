@@ -13,8 +13,9 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
 
 // seedLibraryChannels makes one channel per real library title, for live checks on an isolated
@@ -23,7 +24,7 @@ import (
 // year, inLibrary, libraryItemId), so every channel plays real media from the configured server.
 //
 // It uses the same gate as the default seed: each title becomes a stored proposal that
-// suggest.Approver approves, which makes the title `available` and binds its channel. No
+// accept.Approver approves, which makes the title `available` and binds its channel. No
 // `available` row or lineup is written directly. The running backend's reconcile then computes each
 // channel's schedule from the media server, like any approved channel.
 func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) error {
@@ -39,7 +40,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 	if err != nil {
 		return err
 	}
-	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := accept.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	// One minter per kind for the run, prefixed by the run's start so a later run never reuses an id.
 	run := time.Now().Unix()
 	jobIDs, propIDs := newID(fmt.Sprintf("job_lib%d", run)), newID(fmt.Sprintf("prop_lib%d", run))
@@ -60,11 +61,11 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 		// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
 		// pair left no proposal_job_attempts row, so the workflow's own invariant check
 		// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
-		if err := st.CreateSuggestionResult(ctx, store.Job{
+		if err := st.CreateSuggestionResult(ctx, proposalstore.Job{
 			ID: jobID, Kind: "suggest", Status: "done", IntentJSON: string(intentJSON),
 			IntentHash: fmt.Sprintf("seed-library-%d-%s", i, pick.LibraryItemID), CreatedBy: adminID,
 			CreatedAt: now, UpdatedAt: now,
-		}, store.Proposal{
+		}, proposalstore.Proposal{
 			ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
 			Body: proposals.Proposal{Intent: intent, Lineup: []proposals.ProposalItem{pick}}, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {

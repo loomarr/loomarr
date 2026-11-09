@@ -56,7 +56,7 @@ func TestQueryPilotAllAuthoredCasesUseProductionProtocol(t *testing.T) {
 	}
 	for i, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			provider := testkit.NewLLM(queryPilotResponses(t, corpus.Cases[i])...)
+			provider := testkit.NewLLM(t, queryPilotResponses(t, corpus.Cases[i])...)
 			generator, observer, err := NewEmbeddedQueryPilotGenerator(provider)
 			if err != nil {
 				t.Fatal(err)
@@ -194,7 +194,7 @@ func TestQueryPilotHistoryUsesProductionSuggester(t *testing.T) {
 		}
 	}
 	meaning := map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
-	provider := testkit.NewLLM(
+	provider := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "History", "media_type": "series", "dateMeaning": meaning}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:50001"},{"mediaType":"series","key":"series:tmdb:50002"},{"mediaType":"series","key":"series:tmdb:50003"},{"mediaType":"series","key":"series:tmdb:50004"},{"mediaType":"series","key":"series:tmdb:50005"},{"mediaType":"series","key":"series:tmdb:50006"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
@@ -308,7 +308,7 @@ func TestQueryPilotProductionRejectsInventedSelection(t *testing.T) {
 	}
 	responses := queryPilotResponses(t, corpus.Cases[index])
 	responses[len(responses)-1] = testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:99999999"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`)
-	generator, observer, err := NewEmbeddedQueryPilotGenerator(testkit.NewLLM(responses...))
+	generator, observer, err := NewEmbeddedQueryPilotGenerator(testkit.NewLLM(t, responses...))
 	if err != nil {
 		t.Fatal(err)
 	}

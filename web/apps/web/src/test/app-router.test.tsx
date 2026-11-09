@@ -569,15 +569,14 @@ describe("admin-only routes", () => {
 
     renderApp("/settings");
 
-    // The index's one destination for a member: Notifications, by its description line.
-    expect(
-      await screen.findByText("Choose how Loomarr tells you about activity and problems."),
-    ).toBeInTheDocument();
+    // The index's one card for a member: Notifications.
+    expect(await screen.findByRole("heading", { name: "Notifications", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Server" })).not.toBeInTheDocument();
     // ⚠ Only after the 403 has landed does the absence mean anything: the error arrives a beat
     // after the index first paints, so checking at once passed with the bug still in place.
     await waitFor(() => expect(reads).toBe(1));
     await expect(screen.findByText("Forbidden", {}, { timeout: 300 })).rejects.toThrow();
-    expect(screen.getByText("Choose how Loomarr tells you about activity and problems.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Notifications", level: 2 })).toBeInTheDocument();
     expect(screen.queryByText("Admins only")).not.toBeInTheDocument();
   });
 

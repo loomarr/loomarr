@@ -388,6 +388,8 @@ describe("Users page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(state.revokes).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(state.revokes).toEqual(["opaque-session-hash"]);
   });
 
@@ -476,8 +478,11 @@ describe("Users page", () => {
       getListUsersMockHandler(() => ({ users: [ADA, { ...GRACE, lastSeenAt: Date.now() - 2 * 3_600_000 }] })),
     );
     renderAt("/people");
-    expect(await screen.findByRole("button", { name: /^Manage Grace/ })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: /^Manage Ada/ })).toHaveTextContent("Never");
+    const row = (manage: RegExp) =>
+      screen.getByRole("button", { name: manage }).closest('[role="listitem"]') as HTMLElement;
+    await screen.findByRole("button", { name: /^Manage Grace/ });
+    expect(row(/^Manage Grace/)).toHaveTextContent("seen 2h ago");
+    expect(row(/^Manage Ada/)).toHaveTextContent("Never seen");
   });
 });
 
@@ -510,6 +515,10 @@ describe("Your account", () => {
 
     const phone = screen.getByText("Safari on iPhone").closest("li") as HTMLElement;
     expect(phone).toHaveTextContent("3h ago");
+    await userEvent.click(within(phone).getByRole("button", { name: "Sign out" }));
+    // The first press only asks; the session ends on the confirm.
+    expect(within(phone).getByText(/that device has to sign in again/i)).toBeInTheDocument();
+    expect(revokes).toEqual([]);
     await userEvent.click(within(phone).getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(revokes).toEqual(["phone"]));
   });

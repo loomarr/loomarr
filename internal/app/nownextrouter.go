@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -57,7 +57,7 @@ type nowNextRouter struct {
 	// channels maps a Loomarr channel id to its record, for the backend decision.
 	channels channelLister
 	// internalFor reports whether a channel is served by internal playout.
-	internalFor func(store.Channel) bool
+	internalFor func(channelstore.Channel) bool
 	// appliedBackend reads the durable checkpoint once per router operation. Production uses this
 	// seam so a request on any Postgres replica routes from the published backend.
 	appliedBackend func(context.Context) (string, error)
@@ -69,26 +69,26 @@ type nowNextRouter struct {
 // tunarrGuideReader is keyed by Tunarr's remote channel ids. nowNextRouter translates that
 // adapter-specific shape into api.GuideReader's Loomarr-id contract at this seam.
 type tunarrGuideReader interface {
-	NowNext(ctx context.Context, now time.Time) (map[string]api.ChannelNowNext, error)
-	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]api.NowNextEntry, error)
+	NowNext(ctx context.Context, now time.Time) (map[string]guideapi.ChannelNowNext, error)
+	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]guideapi.NowNextEntry, error)
 }
 
-// broadcastReader is the resolver slice the router needs — satisfied by *playoutResolver.
+// broadcastReader is the resolver slice the router needs — satisfied by *playoutresolve.Resolver.
 type broadcastReader interface {
 	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
 }
 
 // channelLister is the one store read the router makes.
 type channelLister interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 }
 
 // NowNext returns what is on and what follows, per channel, from the right backend.
 //
 // The returned map is keyed by Loomarr channel id. Translation from Tunarr's remote ids happens
 // here, while an internal channel needs no remote identity at all.
-func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]api.ChannelNowNext, error) {
+func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	channels, err := r.channels.ListChannels(ctx)
 	if err != nil {
 		return nil, err
@@ -102,14 +102,14 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 	// than per channel — the property the original adapter was built around, preserved. A
 	// failure is not fatal: internal channels can still be answered, and the Tunarr-backed ones
 	// degrade to no entry exactly as they did when the guide was unreachable.
-	var fromTunarr map[string]api.ChannelNowNext
+	var fromTunarr map[string]guideapi.ChannelNowNext
 	if r.tunarr != nil && r.anyOnTunarr(channels, applied) {
 		if g, gerr := r.tunarr.NowNext(ctx, now); gerr == nil {
 			fromTunarr = g
 		}
 	}
 
-	out := make(map[string]api.ChannelNowNext, len(channels))
+	out := make(map[string]guideapi.ChannelNowNext, len(channels))
 	for _, ch := range channels {
 		if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
 			continue // paused/detached channels are deliberately off Loomarr's guide surfaces
@@ -135,7 +135,7 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 // An install that has moved every channel to internal playout should not pay a round trip to
 // Tunarr on every list render — and, more importantly, should not have its list view degraded by
 // a Tunarr that is slow or down when nothing on screen depends on it.
-func (r nowNextRouter) anyOnTunarr(channels []store.Channel, applied string) bool {
+func (r nowNextRouter) anyOnTunarr(channels []channelstore.Channel, applied string) bool {
 	for _, ch := range channels {
 		if ch.Status.Reconcilable() && ch.Status != schedule.StatusEmpty &&
 			ch.TunarrID != "" && !r.isInternal(ch, applied) {
@@ -151,19 +151,19 @@ func (r nowNextRouter) anyOnTunarr(channels []store.Channel, applied string) boo
 // containment test is written out rather than assuming ordering, matching guideAdapter — an
 // overlapping or out-of-order timeline must not mislabel what is airing.
 func (r nowNextRouter) internalNowNext(
-	ctx context.Context, ch store.Channel, now time.Time,
-) (api.ChannelNowNext, bool) {
+	ctx context.Context, ch channelstore.Channel, now time.Time,
+) (guideapi.ChannelNowNext, bool) {
 	if r.internal == nil {
-		return api.ChannelNowNext{}, false
+		return guideapi.ChannelNowNext{}, false
 	}
 	bs, err := r.internal.BroadcastsBetween(ctx, ch.ID, now, now.Add(r.window))
 	if err != nil || len(bs) == 0 {
 		// A channel with nothing scheduled is a real state, not a failure — the card shows
 		// "nothing scheduled" rather than blanking the page.
-		return api.ChannelNowNext{}, false
+		return guideapi.ChannelNowNext{}, false
 	}
 
-	var current, upcoming *api.NowNextEntry
+	var current, upcoming *guideapi.NowNextEntry
 	for _, b := range bs {
 		entry := broadcastToNowNext(b)
 		switch {
@@ -176,24 +176,24 @@ func (r nowNextRouter) internalNowNext(
 		}
 	}
 	if current == nil && upcoming == nil {
-		return api.ChannelNowNext{}, false
+		return guideapi.ChannelNowNext{}, false
 	}
-	return api.ChannelNowNext{Now: current, Next: upcoming}, true
+	return guideapi.ChannelNowNext{Now: current, Next: upcoming}, true
 }
 
 // Upcoming returns one channel's "what's on later" strip from the right backend.
 func (r nowNextRouter) Upcoming(
 	ctx context.Context, channelID string, now time.Time, limit int,
-) ([]api.NowNextEntry, error) {
+) ([]guideapi.NowNextEntry, error) {
 	if limit <= 0 {
 		limit = 6
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
-		return []api.NowNextEntry{}, nil
+		return []guideapi.NowNextEntry{}, nil
 	}
 	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
-		return []api.NowNextEntry{}, nil
+		return []guideapi.NowNextEntry{}, nil
 	}
 	applied, err := r.resolveApplied(ctx)
 	if err != nil {
@@ -203,7 +203,7 @@ func (r nowNextRouter) Upcoming(
 		return r.internalUpcoming(ctx, ch, now, limit)
 	}
 	if r.tunarr == nil || ch.TunarrID == "" {
-		return []api.NowNextEntry{}, nil
+		return []guideapi.NowNextEntry{}, nil
 	}
 	return r.tunarr.Upcoming(ctx, ch.TunarrID, now, limit)
 }
@@ -215,7 +215,7 @@ func (r nowNextRouter) resolveApplied(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func (r nowNextRouter) isInternal(ch store.Channel, applied string) bool {
+func (r nowNextRouter) isInternal(ch channelstore.Channel, applied string) bool {
 	if r.appliedBackend != nil {
 		return schedule.PlaysInternally(ch.Policy, applied)
 	}
@@ -226,15 +226,15 @@ func (r nowNextRouter) isInternal(ch store.Channel, applied string) bool {
 }
 
 func (r nowNextRouter) internalUpcoming(
-	ctx context.Context, ch store.Channel, now time.Time, limit int,
-) ([]api.NowNextEntry, error) {
+	ctx context.Context, ch channelstore.Channel, now time.Time, limit int,
+) ([]guideapi.NowNextEntry, error) {
 	// A wider window than now/next: the strip lists several programmes, and gaps are dropped
 	// below so the span has to cover more than `limit` blocks' worth of wall clock.
 	bs, err := r.internal.BroadcastsBetween(ctx, ch.ID, now, now.Add(upcomingWindow))
 	if err != nil {
-		return []api.NowNextEntry{}, nil // a strip that cannot load shows nothing, never an error
+		return []guideapi.NowNextEntry{}, nil // a strip that cannot load shows nothing, never an error
 	}
-	out := make([]api.NowNextEntry, 0, limit)
+	out := make([]guideapi.NowNextEntry, 0, limit)
 	for _, b := range bs {
 		entry := broadcastToNowNext(b)
 		if entry.Gap {
@@ -263,12 +263,12 @@ const upcomingWindow = 12 * time.Hour
 // SeriesTitle is folded into Title for a series so the card reads "The Simpsons" rather than an
 // episode name with no context — the same choice the XMLTV writer makes for `<title>`, and the
 // one the FE's card layout is built around.
-func broadcastToNowNext(b playout.Broadcast) api.NowNextEntry {
+func broadcastToNowNext(b playout.Broadcast) guideapi.NowNextEntry {
 	title := b.Title
 	if b.SeriesTitle != "" {
 		title = b.SeriesTitle
 	}
-	return api.NowNextEntry{
+	return guideapi.NowNextEntry{
 		Title:   title,
 		StartMs: b.Start.UnixMilli(),
 		StopMs:  b.Stop.UnixMilli(),

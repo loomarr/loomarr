@@ -53,7 +53,7 @@ describe("FirstChannelStep", () => {
     }
   });
 
-  it("picking a template completes setup and hands off to the Guide with the intent", async () => {
+  it("picking a template completes setup and hands off to the request page with the intent", async () => {
     const { patches } = stubSettings();
     const router = renderStep();
 
@@ -63,7 +63,7 @@ describe("FirstChannelStep", () => {
     // Completing the wizard is what flips `setup.completed`, so `/` stops routing here.
     await waitFor(() => expect(patches).toEqual([{ edits: { "setup.completed": "true" } }]));
     await waitFor(() => {
-      expect(router.history.location.pathname).toBe("/guide");
+      expect(router.history.location.pathname).toBe("/requests/new");
       expect(decodeURIComponent(router.history.location.search)).toContain(String(first?.description));
     });
   });

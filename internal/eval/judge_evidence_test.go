@@ -12,7 +12,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -298,9 +297,9 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
 	candidates := make([]proposals.DecisionCandidate, 65)
 	for i := range candidates {
-		candidates[i] = proposals.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", 90000001+i), Ownership: "library", Rank: proposals.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", 90000001+i)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
+		candidates[i] = proposals.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", 90000001+i), Ownership: "library", Rank: proposals.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", 90000001+i)}, Disposition: proposals.DispositionNotSelected, Reason: proposals.ReasonNotSelected}
 	}
-	proposal := proposals.Proposal{Trace: proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
+	proposal := proposals.Proposal{Trace: proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
 	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -308,18 +307,18 @@ func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T
 	if len(evidence.DecisionTrace.Candidates) != JudgeMaxTraceCandidates || !evidence.DecisionTrace.Truncated {
 		t.Fatalf("trace was not bounded: %+v", evidence.DecisionTrace)
 	}
-	proposal.Trace.Version = suggest.DecisionTraceVersion + 1
+	proposal.Trace.Version = proposals.DecisionTraceVersion + 1
 	if _, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil); err == nil {
 		t.Fatal("mismatched trace version certified")
 	}
 }
 
 func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
-	provider := testkit.NewLLM(testkit.FinalResponse(`{"overall":1,"relevance":1,"serendipity":1,"reason":"should not run"}`))
+	provider := testkit.NewLLM(t) // must not run: no script, so a call errors
 	evidence := JudgeEvidence{
 		Rubric:        "grounded evidence only",
 		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: JudgeOwnershipLibrary}},
-		DecisionTrace: proposals.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
+		DecisionTrace: proposals.DecisionTrace{Version: proposals.DecisionTraceVersion + 1},
 	}
 	if _, err := (modelJudge{provider: provider}).Score(context.Background(), evidence); err == nil {
 		t.Fatal("model judge accepted a mismatched decision trace")

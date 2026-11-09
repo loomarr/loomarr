@@ -2,15 +2,24 @@ import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { ListDiagnosticProcessesParams } from "@loomarr/api/models/listDiagnosticProcessesParams";
 import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosticProcessesStatus";
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
-import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  CompactSelect,
+  Field,
+  Icon,
+  icons,
+  PressableRow,
+  StatusDot,
+  type StatusTone,
+  Surface,
+  Tooltip,
+} from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Check, Clipboard, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CopyValue } from "../copy-value";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
@@ -77,27 +86,6 @@ const readOutput = async (id: string): Promise<OutputResult> => {
   };
 };
 
-const CopyValue = ({ label, value }: { label: string; value: string }) => {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="relative h-auto max-w-full justify-start px-2 py-1 font-mono text-xs"
-      onClick={() =>
-        void navigator.clipboard.writeText(value).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1_500);
-        })
-      }
-    >
-      {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-      {/* The name is the content, so it holds the visible value (WCAG 2.5.3). */}
-      <span className="sr-only">Copy {label}:</span> <span className="truncate">{value}</span>
-    </Button>
-  );
-};
-
 const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
   const [search, setSearch] = useState("");
   const [wrap, setWrap] = useState(true);
@@ -161,40 +149,30 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
             value={search}
           />
         </Surface>
-        <Button
-          variant={wrap ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={wrap}
-          onClick={() => setWrap(!wrap)}
-        >
+        <Action aria-pressed={wrap} onPress={() => setWrap(!wrap)} selected={wrap} tone="secondary">
           Wrap
-        </Button>
+        </Action>
         <Tooltip content="Keep the newest output line in view">
-          <Button
-            variant={follow ? "secondary" : "outline"}
-            size="sm"
-            aria-pressed={follow}
-            onClick={() => setFollow(!follow)}
-          >
+          <Action aria-pressed={follow} onPress={() => setFollow(!follow)} selected={follow} tone="secondary">
             Follow tail
-          </Button>
+          </Action>
         </Tooltip>
-        <Button
-          variant={timestamps ? "secondary" : "outline"}
-          size="sm"
+        <Action
           aria-pressed={timestamps}
-          onClick={() => setTimestamps(!timestamps)}
+          onPress={() => setTimestamps(!timestamps)}
+          selected={timestamps}
+          tone="secondary"
         >
           Timestamps
-        </Button>
+        </Action>
         <Action icon="download" onPress={() => void download()} variant="outline">
           Download output
         </Action>
       </div>
       {(query.data.truncated || query.data.discarded > 0) && (
         <p className="text-caution flex items-center gap-1 text-xs">
-          <AlertTriangle aria-hidden className="size-3" /> Output is truncated; {query.data.discarded} earlier
-          lines were discarded.
+          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Output is truncated;{" "}
+          {query.data.discarded} earlier lines were discarded.
         </p>
       )}
       <pre
@@ -249,14 +227,14 @@ const ProcessDetail = ({
             <div className="flex">
               <CopyValue label="Channel" value={run.channelId} />
               {onOpenChannel && (
-                <Button
+                <Action
+                  icon="external"
+                  layout="icon"
+                  onPress={() => onOpenChannel(run.channelId ?? "")}
                   variant="ghost"
-                  size="icon"
-                  aria-label="Open Channel"
-                  onClick={() => onOpenChannel(run.channelId ?? "")}
                 >
-                  <ExternalLink aria-hidden />
-                </Button>
+                  Open Channel
+                </Action>
               )}
             </div>
           </div>
@@ -380,39 +358,29 @@ const PlayoutDiagnostics = ({
         </div>
       </div>
       <div className="border-border bg-card grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
-        <Select
+        <CompactSelect<DiagnosticsSearch["processRange"]>
+          label="Process time range"
+          onValueChange={(processRange) => update({ ...filters, processRange })}
+          options={[
+            { value: "1h", label: "Last hour" },
+            { value: "6h", label: "Last 6 hours" },
+            { value: "24h", label: "Last 24 hours" },
+          ]}
           value={filters.processRange}
-          onValueChange={(value) =>
-            update({ ...filters, processRange: value as DiagnosticsSearch["processRange"] })
-          }
-        >
-          <SelectTrigger aria-label="Process time range">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1h">Last hour</SelectItem>
-            <SelectItem value="6h">Last 6 hours</SelectItem>
-            <SelectItem value="24h">Last 24 hours</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
+        />
+        <CompactSelect<DiagnosticsSearch["processStatus"]>
+          label="Process status"
+          onValueChange={(processStatus) => update({ ...filters, processStatus })}
+          options={[
+            { value: "all", label: "All statuses" },
+            { value: "running", label: "Running" },
+            { value: "succeeded", label: "Succeeded" },
+            { value: "failed", label: "Failed" },
+            { value: "cancelled", label: "Cancelled" },
+            { value: "interrupted", label: "Interrupted" },
+          ]}
           value={filters.processStatus}
-          onValueChange={(value) =>
-            update({ ...filters, processStatus: value as DiagnosticsSearch["processStatus"] })
-          }
-        >
-          <SelectTrigger aria-label="Process status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="running">Running</SelectItem>
-            <SelectItem value="succeeded">Succeeded</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-            <SelectItem value="cancelled">Cancelled</SelectItem>
-            <SelectItem value="interrupted">Interrupted</SelectItem>
-          </SelectContent>
-        </Select>
+        />
         <details className="sm:col-span-2">
           <summary className="text-muted-foreground cursor-pointer py-1 text-sm">More filters</summary>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
@@ -493,22 +461,26 @@ const PlayoutDiagnostics = ({
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <button
-                        type="button"
-                        className={`border-border hover:bg-muted/20 grid h-full w-full cursor-pointer gap-1 border-b px-3 py-3 text-left ${selected?.id === run.id ? "bg-muted/30" : ""}`}
+                      <PressableRow
                         aria-pressed={selected?.id === run.id}
-                        onClick={() => onFiltersChange({ ...filters, processId: run.id })}
+                        divided
+                        onPress={() => onFiltersChange({ ...filters, processId: run.id })}
+                        selected={selected?.id === run.id}
                       >
-                        <span className="flex items-center justify-between gap-2">
-                          <strong className="truncate text-sm">{run.purpose}</strong>
-                          <span className="inline-flex items-center gap-1 text-xs">
-                            <StatusDot tone={tone(run.status)} label={run.status} />
-                            {run.status}
+                        <div className="grid w-full gap-1 text-left">
+                          <span className="flex items-center justify-between gap-2">
+                            <strong className="truncate text-sm">{run.purpose}</strong>
+                            <span className="inline-flex items-center gap-1 text-xs">
+                              <StatusDot tone={tone(run.status)} label={run.status} />
+                              {run.status}
+                            </span>
                           </span>
-                        </span>
-                        <span className="text-muted-foreground truncate text-xs">{run.target ?? run.id}</span>
-                        <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
-                      </button>
+                          <span className="text-muted-foreground truncate text-xs">
+                            {run.target ?? run.id}
+                          </span>
+                          <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                        </div>
+                      </PressableRow>
                     </li>
                   );
                 })}

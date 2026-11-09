@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 )
@@ -18,7 +19,7 @@ import (
 func durableInternalTransportPlayable(
 	ctx context.Context,
 	st interface {
-		GetChannel(context.Context, string) (store.Channel, error)
+		GetChannel(context.Context, string) (channelstore.Channel, error)
 	},
 	checkpoint lifecycleCheckpoint,
 	channelID string,
@@ -233,7 +234,7 @@ type acceptedTimeline struct {
 
 // rememberSchedule records a channel's latest committed cycle. Initial catch-up primes the map
 // from the rows it lists.
-func (l *postgresPlayoutLifecycle) rememberSchedule(ch store.Channel) {
+func (l *postgresPlayoutLifecycle) rememberSchedule(ch channelstore.Channel) {
 	l.schedulesMu.Lock()
 	defer l.schedulesMu.Unlock()
 	if l.schedules == nil {
@@ -257,7 +258,7 @@ func (l *postgresPlayoutLifecycle) onAirMoved(ctx context.Context, channelID, ve
 	if known && previous.version == version {
 		return false
 	}
-	var ch store.Channel
+	var ch channelstore.Channel
 	var err error
 	if l.store != nil {
 		ch, err = l.store.GetChannel(ctx, channelID)

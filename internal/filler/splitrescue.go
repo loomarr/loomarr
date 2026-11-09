@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -33,7 +34,7 @@ import (
 // rescuedSpan is one advert the LLM found inside an over-long segment, with its
 // product label (which becomes the segment's proposed name).
 type rescuedSpan struct {
-	Interval
+	tools.Interval
 	Product string
 }
 
@@ -65,7 +66,7 @@ type rescueOutput struct {
 // transcript offsets are relative to its start. Returns the spans — exactly one
 // spanning (nearly) the whole segment when the transcript is a single advert,
 // which the caller treats as "keep whole", NOT as unsplittable.
-func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []TranscriptSegment, segDurMs int64, floor segmentFloor) ([]rescuedSpan, error) {
+func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []tools.TranscriptSegment, segDurMs int64, floor segmentFloor) ([]rescuedSpan, error) {
 	text := TranscriptText(transcript)
 	if text == "" {
 		return nil, fmt.Errorf("empty transcript")
@@ -109,7 +110,7 @@ func validateRescueSpans(out rescueOutput, segDurMs int64, floor segmentFloor) (
 		if product == "" {
 			product = "unknown"
 		}
-		spans = append(spans, rescuedSpan{Interval: Interval{StartMs: start, EndMs: end}, Product: product})
+		spans = append(spans, rescuedSpan{Interval: tools.Interval{StartMs: start, EndMs: end}, Product: product})
 	}
 	if len(spans) == 0 {
 		return nil, fmt.Errorf("no valid advert spans in model output")

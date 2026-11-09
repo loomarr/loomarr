@@ -3,11 +3,10 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SourceContentPreview } from "../source-content-preview";
 
@@ -210,10 +209,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
             value={input}
           />
         </div>
-        <Button
-          type="submit"
-          variant={selected ? "default" : "outline"}
-          className="transition-none"
+        <Action
           disabled={
             !enabled ||
             !input.trim() ||
@@ -223,6 +219,8 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
             selected?.alreadyAdded ||
             Boolean(selected && !verified)
           }
+          submit
+          variant={selected ? undefined : "outline"}
         >
           {resolveSource.isPending
             ? "Checking…"
@@ -233,7 +231,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
                 : selected
                   ? provider.findAdd
                   : "Search"}
-        </Button>
+        </Action>
       </form>
 
       {!enabled && (
@@ -293,9 +291,9 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
               <span className="text-muted-foreground text-xs">
                 {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
               </span>
-              <Button type="button" variant="ghost" size="sm" onClick={cancelSelection}>
+              <Action onPress={cancelSelection} variant="ghost">
                 Cancel
-              </Button>
+              </Action>
             </div>
           </div>
           <SourceContentPreview

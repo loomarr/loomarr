@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // The auto-confirm gate (§10 V43). ⚠ Every assertion here is about REFUSING to cut. A gate that
@@ -25,15 +27,15 @@ func policy(on bool, minConf int, maxDur time.Duration) *filler.AutoSplitPolicy 
 // ⚠ `BoundaryConfidence` is part of "qualifies" since V54: the gate's LAST check is the score, so
 // a segment perfect in every other respect is still held back if Loomarr has no evidence for where
 // it was cut. 90 is the "black and silence agreed" ceiling — what a well-detected cut earns.
-func goodSeg(i int, startMs, endMs int64) filler.SplitSegment {
-	return filler.SplitSegment{
+func goodSeg(i int, startMs, endMs int64) split.Segment {
+	return split.Segment{
 		Index: i, StartMs: startMs, EndMs: endMs,
-		Name: "Advert", Era: 1993, Audience: filler.Kids, Category: "toys",
+		Name: "Advert", Era: 1993, Audience: clips.Kids, Category: "toys",
 		BoundaryConfidence: 90, StartEvidence: "black + silence", EndEvidence: "black + silence",
 	}
 }
 
-func proposalOf(segs ...filler.SplitSegment) filler.SplitProposal {
+func proposalOf(segs ...split.Segment) filler.SplitProposal {
 	return filler.SplitProposal{ID: "p1", ClipHash: "reel-hash", Segments: segs}
 }
 
@@ -121,7 +123,7 @@ func TestAutoConfirmable_PartitionsRatherThanSinkingTheReel(t *testing.T) {
 // the field. If this ever fails, the ordering has been inverted and a score is standing in for a
 // refusal.
 func TestAutoConfirmable_RefusalsBeatAnyScore(t *testing.T) {
-	perfectBoundaries := func(s filler.SplitSegment) filler.SplitSegment {
+	perfectBoundaries := func(s split.Segment) split.Segment {
 		s.BoundaryConfidence = 100
 		s.StartEvidence, s.EndEvidence = "chapter", "chapter"
 		return s
@@ -138,7 +140,7 @@ func TestAutoConfirmable_RefusalsBeatAnyScore(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		seg  filler.SplitSegment
+		seg  split.Segment
 		want filler.AutoSplitReject
 	}{
 		{"a guessed era", guessed, filler.RejectUngrounded},
@@ -246,7 +248,7 @@ func TestAutoConfirmable_RefusesAGuessedEraAtAnyThreshold(t *testing.T) {
 // A segment pod assembly cannot match on is one that could only ever be a fallback pick — not
 // something to create unattended out of a file the operator still had.
 func TestAutoConfirmable_RefusesAnUnclassifiedSegment(t *testing.T) {
-	bare := filler.SplitSegment{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Unknown"}
+	bare := split.Segment{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Unknown"}
 	p := proposalOf(bare)
 
 	if got := filler.AutoConfirmable(p, policy(true, 85, 120*time.Second), floor).Verdict(); got != filler.RejectUntagged {

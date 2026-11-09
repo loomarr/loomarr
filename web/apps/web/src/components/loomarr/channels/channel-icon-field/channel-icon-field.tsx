@@ -1,12 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Field, Surface } from "@loomarr/design-system";
-import { ImageOff, Loader2, Upload } from "lucide-react";
+import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
@@ -43,9 +42,24 @@ const ChannelIconField = ({
   const pickerId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [urlDraft, setUrlDraft] = useState("");
-  const [savingUrl, setSavingUrl] = useState(false);
   const [urlError, setUrlError] = useState<string>();
+  // The pasted address stays in the box when the save fails, so it can be corrected.
+  const urlForm = useAppForm({
+    defaultValues: { url: "" },
+    onSubmit: async ({ value, formApi }) => {
+      const next = value.url.trim();
+      if (!next) return;
+      setUrlError(undefined);
+      try {
+        await onSetLogo(next);
+        formApi.reset();
+      } catch (e) {
+        setUrlError(toProblem(e).title ?? "Couldn't set that icon.");
+      }
+    },
+  });
+  const urlDraft = useStore(urlForm.store, (state) => state.values.url);
+  const savingUrl = useStore(urlForm.store, (state) => state.isSubmitting);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
@@ -63,21 +77,6 @@ const ChannelIconField = ({
   // A 501 means TMDB isn't configured on this install — that's a normal, expected shape
   // (not every deployment grounds against TMDB), so it renders as guidance, not an error.
   const tmdbUnconfigured = suggestions.error instanceof ApiError && suggestions.error.status === 501;
-
-  const setUrl = async () => {
-    const next = urlDraft.trim();
-    if (!next) return;
-    setSavingUrl(true);
-    setUrlError(undefined);
-    try {
-      await onSetLogo(next);
-      setUrlDraft("");
-    } catch (e) {
-      setUrlError(toProblem(e).title ?? "Couldn't set that icon.");
-    } finally {
-      setSavingUrl(false);
-    }
-  };
 
   const pickSuggestion = async (url: string) => {
     setUrlError(undefined);
@@ -144,12 +143,12 @@ const ChannelIconField = ({
               image={logoImage}
               alt="Channel icon"
               sizes="48px"
-              fallback={<ImageOff className="text-static-500 size-6" aria-hidden />}
+              fallback={<Icon decorative glyph={icons.noImage} size="control" tone="muted" />}
             />
           ) : logo ? (
             <img src={logo} alt="Channel icon" className="size-full object-cover" />
           ) : (
-            <ImageOff className="text-static-500 size-6" aria-hidden />
+            <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -159,17 +158,15 @@ const ChannelIconField = ({
           </p>
         </div>
         {isAdmin && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            aria-expanded={suggestionsOpen}
+          <Action
             aria-controls={pickerId}
-            onClick={() => setSuggestionsOpen((open) => !open)}
+            aria-expanded={suggestionsOpen}
+            onPress={() => setSuggestionsOpen((open) => !open)}
+            style={{ flexShrink: 0 }}
+            variant="outline"
           >
             Change…
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -179,24 +176,21 @@ const ChannelIconField = ({
         <div id={pickerId} className="border-border rounded-md border p-4">
           <div className="flex flex-col gap-4">
             {logo && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground self-start"
+              <Action
                 disabled={clearing}
-                onClick={() => void clear()}
+                onPress={() => void clear()}
+                style={{ alignSelf: "flex-start" }}
+                variant="ghost"
               >
-                {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-                Clear
-              </Button>
+                {clearing ? "Clearing…" : "Clear"}
+              </Action>
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
               <p className="text-sm font-medium">From your titles</p>
               {suggestions.isLoading && (
                 <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  <ActivityIndicator decorative size="compact" tone="inherit" />
                   Looking for posters…
                 </p>
               )}
@@ -244,7 +238,7 @@ const ChannelIconField = ({
                             image={s.image}
                             alt={s.title}
                             sizes="(min-width: 640px) 6rem, 4rem"
-                            fallback={<ImageOff className="text-static-500 size-4" aria-hidden />}
+                            fallback={<Icon decorative glyph={icons.noImage} size="compact" tone="muted" />}
                           />
                         ) : (
                           <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
@@ -258,9 +252,9 @@ const ChannelIconField = ({
 
             {/* (b) Upload a file. */}
             <div>
-              <Label htmlFor={`${urlInputId}-file`} className="text-sm font-medium">
+              <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
                 Upload a file
-              </Label>
+              </Text>
               <div className="mt-2 flex items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -274,9 +268,7 @@ const ChannelIconField = ({
                   }}
                   className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
-                {uploading && (
-                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
-                )}
+                {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
               </div>
               <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
               {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
@@ -284,9 +276,9 @@ const ChannelIconField = ({
 
             {/* (c) Paste a direct image URL. */}
             <div>
-              <Label htmlFor={urlInputId} className="text-sm font-medium">
+              <Text as="label" htmlFor={urlInputId} textRole="label">
                 Paste an image URL
-              </Label>
+              </Text>
               <div className="mt-2 flex items-center gap-2">
                 <Surface
                   backgroundColor="transparent"
@@ -296,34 +288,31 @@ const ChannelIconField = ({
                   maxWidth={384}
                   minWidth={0}
                 >
-                  <Field
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    disabled={savingUrl}
-                    id={urlInputId}
-                    keyboardType="url"
-                    onChangeText={(text) => {
-                      setUrlDraft(text);
-                      setUrlError(undefined);
-                    }}
-                    onSubmitEditing={() => void setUrl()}
-                    placeholder="https://example.com/icon.png"
-                    value={urlDraft}
-                  />
+                  <urlForm.Field name="url">
+                    {(field) => (
+                      <Field
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        disabled={savingUrl}
+                        id={urlInputId}
+                        keyboardType="url"
+                        onChangeText={(text) => {
+                          field.handleChange(text);
+                          setUrlError(undefined);
+                        }}
+                        onSubmitEditing={() => void urlForm.handleSubmit()}
+                        placeholder="https://example.com/icon.png"
+                        value={field.state.value}
+                      />
+                    )}
+                  </urlForm.Field>
                 </Surface>
-                <Button
-                  type="button"
-                  size="sm"
+                <Action
                   disabled={savingUrl || urlDraft.trim() === ""}
-                  onClick={() => void setUrl()}
+                  onPress={() => void urlForm.handleSubmit()}
                 >
-                  {savingUrl ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Upload className="size-4" aria-hidden />
-                  )}
-                  Set
-                </Button>
+                  {savingUrl ? "Setting…" : "Set"}
+                </Action>
               </div>
               {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
             </div>

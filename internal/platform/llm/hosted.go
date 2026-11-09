@@ -17,8 +17,8 @@ import (
 // This file is the curated catalog of HOSTED (OpenAI-compatible) PROVIDERS Loomarr
 // exposes (§8.1) — the hosted analog of catalog.go. The curation here is
 // deliberately PROVIDER-LEVEL only (label, base URL, keys URL, note): those are
-// stable and don't rot. Live models are projected by advertised capability; model
-// recommendations belong to the versioned role policy in role_policy.go. The only per-model
+// stable and don't rot. Live models are projected by advertised capability; the
+// recommended picks are rule-selected from live metadata (see HostedModel). The only per-model
 // hardcoding is a tiny FALLBACK list shown before a key is entered (when no live
 // metadata is available), clearly marked as such.
 //

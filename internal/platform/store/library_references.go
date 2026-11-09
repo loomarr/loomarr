@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -244,11 +246,14 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 			}
 		}
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(channelSelect+` ORDER BY number`))
+	rows, err := tx.QueryContext(ctx, s.ph(channelstore.Select(s.channelCluster)+` ORDER BY number`))
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
 	}
-	channels, err := scanChannels(rows)
+	channels, err := channelstore.ScanChannels(rows)
+	if err == nil {
+		err = rows.Err() // ScanChannels checks it too; naming it here keeps the invariant visible to rowserrcheck
+	}
 	_ = rows.Close()
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
@@ -259,16 +264,19 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		if !dirty {
 			continue
 		}
-		if _, err := s.saveChannel(ctx, tx, channels[i]); err != nil {
+		if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, channels[i]); err != nil {
 			return 0, fmt.Errorf("channels: %w", err)
 		}
 		changed++
 	}
-	prows, err := tx.QueryContext(ctx, s.ph(proposalSelect+` WHERE status = ?`), openProposalStatus)
+	prows, err := tx.QueryContext(ctx, s.ph(proposalstore.ProposalSelect+` WHERE status = ?`), openProposalStatus)
 	if err != nil {
 		return 0, fmt.Errorf("proposals: %w", err)
 	}
-	open, err := scanProposals(prows)
+	open, err := proposalstore.ScanProposals(prows)
+	if err == nil {
+		err = prows.Err() // ScanProposals checks it too; naming it here keeps the invariant visible to rowserrcheck
+	}
 	_ = prows.Close()
 	if err != nil {
 		return 0, fmt.Errorf("proposals: %w", err)
@@ -279,7 +287,7 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		if !dirty {
 			continue
 		}
-		body, err := encodeProposalBody(open[i])
+		body, err := proposalstore.EncodeProposalBody(open[i])
 		if err != nil {
 			return 0, err
 		}
@@ -287,13 +295,6 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 			return 0, fmt.Errorf("proposals: %w", err)
 		}
 		changed++
-	}
-	// The media server's episode and path caches answer by its ids; nothing reads them once the
-	// references are the Library's.
-	for _, q := range []string{`DELETE FROM series_episodes`, `DELETE FROM library_item_paths`} {
-		if _, err := tx.ExecContext(ctx, q); err != nil {
-			return 0, fmt.Errorf("drop caches: %w", err)
-		}
 	}
 	return changed, nil
 }

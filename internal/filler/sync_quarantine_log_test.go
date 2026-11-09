@@ -7,13 +7,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // A quarantined artifact is revisited by every sync pass. It must warn when it first lands there
 // and again only if the reason changes — not once per pass.
 func TestSyncerWarnQuarantined_RepeatsOnlyWhenTheReasonChanges(t *testing.T) {
 	var buf bytes.Buffer
-	s := NewSyncer(nil, nil, Layout{}, time.Now,
+	s := NewSyncer(nil, nil, cliplibrary.Layout{}, time.Now,
 		slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	for pass := 0; pass < 10; pass++ {
@@ -28,7 +30,7 @@ func TestSyncerWarnQuarantined_RepeatsOnlyWhenTheReasonChanges(t *testing.T) {
 }
 
 func TestSyncerWarnQuarantined_ThrottleIsWiredByTheConstructor(t *testing.T) {
-	if NewSyncer(nil, nil, Layout{}, nil, nil).quarantined == nil {
+	if NewSyncer(nil, nil, cliplibrary.Layout{}, nil, nil).quarantined == nil {
 		t.Fatal("NewSyncer left the quarantine throttle nil, so every pass would warn")
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -70,7 +70,7 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 		ID: PlannerDiagnosticToolCallID, Name: catalogToolName,
 		Arguments: map[string]any{"genres": []any{"Science Fiction"}, "media_type": "movie", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
 	}
-	candidates := []catalog.Candidate{{
+	candidates := []titlesearch.Candidate{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999,
 		InLibrary: true, Genres: []string{"Action", "Science Fiction"},
 		Overview: "A grounded synthetic catalog candidate for adapter diagnostics.",

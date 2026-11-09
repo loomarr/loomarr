@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
-// Attach serves a media-server tuner the channel's packaged timeline as MPEG-TS (#1512 phase 2b).
+// Attach serves a media-server tuner the channel's packaged timeline as MPEG-TS (#1512).
 // It reads the same channel packager as browser HLS, so a channel watched in the browser and on a
 // TV is one encode; each tuner gets its own TSWriter (its own continuity counters), joins at the
 // segment airing now, and is paced by the listing gate like a player.

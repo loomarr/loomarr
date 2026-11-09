@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -31,7 +31,7 @@ func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
 
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"
@@ -149,7 +149,7 @@ func TestReconcile_KeepsItsNumberWhenTunarrHasNothingThere(t *testing.T) {
 	tun.SeedForeignChannel(7, "Unrelated")
 
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"

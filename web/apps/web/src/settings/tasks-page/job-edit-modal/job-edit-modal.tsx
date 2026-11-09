@@ -9,13 +9,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Field,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { toast } from "sonner";
-import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useAppForm } from "@/lib/app-form";
 import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
 
@@ -27,13 +25,6 @@ import type { JobEditModalProps } from "./job-edit-modal.type";
 // Tasks list refreshes without a manual reload.
 const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) => {
   const queryClient = useQueryClient();
-  // The picked preset value (a cron string) or CUSTOM_VALUE; seeded from the job's current
-  // schedule — a matching preset if there is one, else Custom (advanced).
-  const [choice, setChoice] = useState<string>(() =>
-    isPreset(job.schedule, presets) ? job.schedule.trim() : CUSTOM_VALUE,
-  );
-  const [advancedCron, setAdvancedCron] = useState<string>(job.schedule);
-  const advanced = choice === CUSTOM_VALUE;
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
@@ -49,60 +40,74 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
     },
   });
 
-  const save = () => {
-    const cron = advanced ? advancedCron.trim() : choice;
-    patch.mutate({ data: { edits: { [job.scheduleKey]: cron } } });
-  };
+  // `choice` is the picked preset value (a cron string) or CUSTOM_VALUE, seeded from the job's
+  // current schedule: a matching preset if there is one, else Custom (advanced).
+  const form = useAppForm({
+    defaultValues: {
+      choice: isPreset(job.schedule, presets) ? job.schedule.trim() : CUSTOM_VALUE,
+      advancedCron: job.schedule,
+    },
+    onSubmit: ({ value }) => {
+      const cron = value.choice === CUSTOM_VALUE ? value.advancedCron.trim() : value.choice;
+      patch.mutate({ data: { edits: { [job.scheduleKey]: cron } } });
+    },
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Modify {job.title}</DialogTitle>
-          <DialogDescription>How often this task runs.</DialogDescription>
-        </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Modify {job.title}</DialogTitle>
+            <DialogDescription>How often this task runs.</DialogDescription>
+          </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <BrowserSelectControl
-            appearance="field"
-            label="Frequency"
-            onValueChange={setChoice}
-            options={[
-              ...presets.map((preset) => ({ label: preset.label, value: preset.value })),
-              { label: "Custom (advanced)…", value: CUSTOM_VALUE },
-            ]}
-            value={choice}
-          />
+          <form.AppField name="choice">
+            {(field) => (
+              <field.SelectField
+                label="Frequency"
+                options={[
+                  ...presets.map((preset) => ({ label: preset.label, value: preset.value })),
+                  { label: "Custom (advanced)…", value: CUSTOM_VALUE },
+                ]}
+              />
+            )}
+          </form.AppField>
 
           {/* Advanced: the raw cron field, revealed only for the Custom choice. */}
-          {advanced && (
-            <div className="flex flex-col gap-1.5">
-              <Field
-                autoCapitalize="none"
-                autoCorrect={false}
-                label="Cron expression"
-                onChangeText={setAdvancedCron}
-                placeholder="0 */5 * * * *"
-                spellCheck={false}
-                value={advancedCron}
-              />
-              <p className="text-muted-foreground text-xs">
-                6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
-              </p>
-            </div>
-          )}
+          <form.Subscribe selector={(state) => state.values.choice === CUSTOM_VALUE}>
+            {(advanced) =>
+              advanced && (
+                <div className="flex flex-col gap-1.5">
+                  <form.AppField name="advancedCron">
+                    {(field) => <field.TextField label="Cron expression" placeholder="0 */5 * * * *" />}
+                  </form.AppField>
+                  <p className="text-muted-foreground text-xs">
+                    6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
+                  </p>
+                </div>
+              )
+            }
+          </form.Subscribe>
 
           {patch.error != null && <ErrorState error={patch.error} />}
-        </div>
 
-        <DialogFooter>
-          <Action disabled={patch.isPending} onPress={() => onOpenChange(false)} variant="ghost">
-            Cancel
-          </Action>
-          <Action disabled={patch.isPending} onPress={save}>
-            {patch.isPending ? "Saving…" : "Save"}
-          </Action>
-        </DialogFooter>
+          <DialogFooter>
+            <Action disabled={patch.isPending} onPress={() => onOpenChange(false)} variant="ghost">
+              Cancel
+            </Action>
+            <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
+              {patch.isPending ? "Saving…" : "Save"}
+            </Action>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

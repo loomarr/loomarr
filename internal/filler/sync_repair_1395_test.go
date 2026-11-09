@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 const missingMediaReason = "manifested media is missing, symlinked, or not a regular file"
@@ -23,11 +27,11 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 	if err := os.WriteFile(temporary, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(temporary)
+	clipHash, err := asset.ClipID(temporary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	media, err := filler.ClipPath(dir, clipHash, ".mp4")
+	media, err := cliplibrary.ClipPath(dir, clipHash, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +41,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 	if err := os.Rename(temporary, media); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(media)
+	digest, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,15 +50,15 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 		t.Fatal(err)
 	}
 	now = time.Unix(1_800_000_000, 0).UTC()
-	authority = &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority = &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",
 		SidecarPath: "download.info.json", MediaSHA256: digest, MediaBytes: size,
-		ClipHash: clipHash, State: filler.ArtifactRepair, RepairReason: reason,
+		ClipHash: clipHash, State: acquisition.ArtifactRepair, RepairReason: reason,
 		CompletedAt: now, UpdatedAt: now,
 	}}
-	source = &fakeSource{clips: []filler.RawClip{raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0)}}
+	source = &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Downloaded ad", clips.Commercial, 30_000, 0)}}
 	source.clips[0].Path = filepath.ToSlash(relative)
 	return dir, authority, source, now
 }
@@ -74,7 +78,7 @@ func TestSync_TransientMissingMediaRepairIsReverifiedAndConsumed(t *testing.T) {
 	if _, ok := st.clips[authority.artifact.ClipHash]; !ok {
 		t.Fatal("clip whose file is present and intact never entered the catalog")
 	}
-	if authority.artifact.State != filler.ArtifactConsumed || authority.artifact.RepairReason != "" {
+	if authority.artifact.State != acquisition.ArtifactConsumed || authority.artifact.RepairReason != "" {
 		t.Fatalf("artifact = %+v, want consumed with the stale repair reason cleared", authority.artifact)
 	}
 }

@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // iconMaxSuggestions caps how many candidate icons a channel offers (§icon P2). A
@@ -17,9 +18,8 @@ import (
 // not an exhaustive catalog, so we stop well short of the full lineup.
 const iconMaxSuggestions = 12
 
-// iconLogoWidth is the rung a suggestion's `url` points at. It matches the w500 these URLs used
-// to carry from TMDB directly, which is the size a channel tile wants and the size Tunarr gets
-// pushed — the difference is that the bytes are now ours and the other rungs exist alongside it.
+// iconLogoWidth is the rung a suggestion's `url` points at: the size a channel tile wants and the
+// size Tunarr gets pushed. The bytes are ours, with the other rungs alongside it.
 const iconLogoWidth = 500
 
 // iconFetchBudget bounds the synchronous warm-up below.
@@ -58,7 +58,7 @@ type iconAdapter struct {
 //
 // Best-effort per title throughout (§icon): one TMDB or adopt failure is logged and skipped rather
 // than failing the whole request — one bad title must not deny every other suggestion.
-func (a iconAdapter) IconSuggestions(ctx context.Context, channelID string) ([]api.IconSuggestion, error) {
+func (a iconAdapter) IconSuggestions(ctx context.Context, channelID string) ([]channelsapi.IconSuggestion, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return nil, err
@@ -66,14 +66,14 @@ func (a iconAdapter) IconSuggestions(ctx context.Context, channelID string) ([]a
 
 	candidates := a.posterCandidates(ctx, ch, channelID)
 	if len(candidates) == 0 {
-		return []api.IconSuggestion{}, nil
+		return []channelsapi.IconSuggestion{}, nil
 	}
 
 	// ⚠ No image service means no suggestions, NOT a fallback to TMDB's CDN. Removing third-party
 	// origins from the operator's browser is what §22 is for, so a degraded install shows the
 	// channel's designed empty state (its monogram) rather than quietly restoring the beacon.
 	if a.images == nil || a.fetch == nil {
-		return []api.IconSuggestion{}, nil
+		return []channelsapi.IconSuggestion{}, nil
 	}
 
 	adopted := make([]images.Image, 0, len(candidates))
@@ -95,13 +95,13 @@ func (a iconAdapter) IconSuggestions(ctx context.Context, channelID string) ([]a
 
 	warm := a.fetch.FetchNow(ctx, adopted, iconFetchBudget)
 
-	out := make([]api.IconSuggestion, 0, len(candidates))
+	out := make([]channelsapi.IconSuggestion, 0, len(candidates))
 	for _, c := range candidates {
 		rec, ok := warm[c.src]
 		if !ok {
 			continue // still cold — the every-minute job owns it; the next open will show it
 		}
-		out = append(out, api.IconSuggestion{
+		out = append(out, channelsapi.IconSuggestion{
 			Title:     c.title,
 			URL:       a.images.URLFor(rec.Hash, iconLogoWidth, images.FormatJPEG),
 			ImageHash: rec.Hash,
@@ -116,7 +116,7 @@ type posterCandidate struct{ title, src string }
 // posterCandidates resolves a channel's lineup to deduplicated TMDB poster URLs, capped at
 // iconMaxSuggestions. Split out so IconSuggestions reads as the three phases it actually has —
 // resolve, adopt, warm — rather than one loop doing all three.
-func (a iconAdapter) posterCandidates(ctx context.Context, ch store.Channel, channelID string) []posterCandidate {
+func (a iconAdapter) posterCandidates(ctx context.Context, ch channelstore.Channel, channelID string) []posterCandidate {
 	seen := make(map[string]struct{}, len(ch.Lineup))
 	out := make([]posterCandidate, 0, iconMaxSuggestions)
 	for _, entry := range ch.Lineup {

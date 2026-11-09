@@ -5,7 +5,7 @@
 
 ## Result: the adapter was ALREADY correct
 
-The Phase-11 TMDB adapter (`internal/tmdb`) was built against TMDB's documented v3 shape while the
+The Phase-11 TMDB adapter (`internal/library/tmdb`) was built against TMDB's documented v3 shape while the
 key was unavailable. The live capture **confirms every assumption** — no adapter change needed. This
 is the sanctioned live-verification of a previously-deferred contract.
 
@@ -26,9 +26,10 @@ Key facts the adapter depends on, all confirmed:
    Year parsed from the first 4 chars.
 3. **Exists-check: 200 = real, 404 = fabricated.** This is the belt-and-suspenders re-validation
    that drops any id the LLM proposed but that doesn't exist (§8 grounding).
-4. **The Matrix is `id=603`** — matches the testkit TMDB mock AND the Emby search fixture
-   (`emby/search_matrix.json`), so the whole grounding chain (Emby search → TMDB dedup by id →
-   exists-validation) is consistent with reality.
+4. **The Matrix is `id=603`** — matched the testkit TMDB mock AND the Emby search fixture
+   (`emby/search_matrix.json`, retired in #2151 step 16 when search moved to the Library), so the
+   whole grounding chain (Emby search → TMDB dedup by id → exists-validation) was consistent with
+   reality.
 
 ## Fixtures (this dir)
 

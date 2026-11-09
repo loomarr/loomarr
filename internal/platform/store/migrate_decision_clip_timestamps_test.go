@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // Migration 00131 repairs the clip and pipeline rows an applied admission decision stamped in Unix
@@ -31,12 +32,12 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 	for _, hash := range []string{"decided", "untouched"} {
 		// Seeded through the schema as it stood at 00130: current UpsertClip writes later columns.
 		if _, err := s.db.ExecContext(ctx, `INSERT INTO clips (hash, path, name, kind, duration_ms, created_at, updated_at)
-			VALUES (?, ?, ?, ?, 0, ?, ?)`, hash, hash+".mp4", hash, string(filler.Commercial),
+			VALUES (?, ?, ?, ?, 0, ?, ?)`, hash, hash+".mp4", hash, string(clips.Commercial),
 			untouchedAt.Unix(), untouchedAt.Unix()); err != nil {
 			t.Fatal(err)
 		}
-		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageID("admission"),
-			Status: filler.StatusDone, Disposition: filler.DispositionDismissed, UpdatedAt: untouchedAt}); err != nil {
+		if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{ClipHash: hash, Stage: pipelinestate.StageID("admission"),
+			Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionDismissed, UpdatedAt: untouchedAt}); err != nil {
 			t.Fatal(err)
 		}
 	}

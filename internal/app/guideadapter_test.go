@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -112,7 +112,7 @@ func TestUpcoming_AiringThenNextPrograms_SkipsGapsAndFinished(t *testing.T) {
 	}
 }
 
-func titles(es []api.NowNextEntry) []string {
+func titles(es []guideapi.NowNextEntry) []string {
 	out := make([]string, len(es))
 	for i, e := range es {
 		out[i] = e.Title

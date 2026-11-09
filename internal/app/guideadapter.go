@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -21,16 +21,16 @@ type guideAdapter struct {
 // NowNext reads the guide once for every channel and reduces each timeline to the pair a
 // channel card shows. Selection lives here, not in the UI, so "what is on" means the same
 // thing everywhere (§9) and the FE never reimplements interval math.
-func (a guideAdapter) NowNext(ctx context.Context, now time.Time) (map[string]api.ChannelNowNext, error) {
+func (a guideAdapter) NowNext(ctx context.Context, now time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	guide, err := a.tunarr.Guide(ctx, now, now.Add(a.window))
 	if err != nil {
 		return nil, err
 	}
 	nowMs := now.UnixMilli()
-	out := make(map[string]api.ChannelNowNext, len(guide))
+	out := make(map[string]guideapi.ChannelNowNext, len(guide))
 
 	for tunarrID, entries := range guide {
-		var current, upcoming *api.NowNextEntry
+		var current, upcoming *guideapi.NowNextEntry
 		for _, e := range entries {
 			entry := toNowNextEntry(e)
 			switch {
@@ -47,7 +47,7 @@ func (a guideAdapter) NowNext(ctx context.Context, now time.Time) (map[string]ap
 		if current == nil && upcoming == nil {
 			continue // nothing scheduled in the window
 		}
-		out[tunarrID] = api.ChannelNowNext{Now: current, Next: upcoming}
+		out[tunarrID] = guideapi.ChannelNowNext{Now: current, Next: upcoming}
 	}
 	return out, nil
 }
@@ -59,7 +59,7 @@ func (a guideAdapter) NowNext(ctx context.Context, now time.Time) (map[string]ap
 // NowNext, the selection lives here so the strip is the same everywhere and the FE never does
 // interval math. Airtimes are Tunarr's (§6). tunarrID is the channel's Tunarr id; an unknown
 // id or an empty guide yields an empty slice, not an error (a fresh channel has no guide yet).
-func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]api.NowNextEntry, error) {
+func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]guideapi.NowNextEntry, error) {
 	if limit <= 0 {
 		limit = 6
 	}
@@ -71,10 +71,10 @@ func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Ti
 	}
 	entries, ok := guide[tunarrID]
 	if !ok {
-		return []api.NowNextEntry{}, nil
+		return []guideapi.NowNextEntry{}, nil
 	}
 	nowMs := now.UnixMilli()
-	out := make([]api.NowNextEntry, 0, limit)
+	out := make([]guideapi.NowNextEntry, 0, limit)
 	for _, e := range entries {
 		if e.IsGap() {
 			continue // skip commercial/flex gaps — the strip lists shows, not breaks
@@ -90,8 +90,8 @@ func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Ti
 	return out, nil
 }
 
-func toNowNextEntry(e tunarr.GuideEntry) api.NowNextEntry {
-	return api.NowNextEntry{
+func toNowNextEntry(e tunarr.GuideEntry) guideapi.NowNextEntry {
+	return guideapi.NowNextEntry{
 		Title:   e.Title,
 		StartMs: e.StartMs,
 		StopMs:  e.StopMs,

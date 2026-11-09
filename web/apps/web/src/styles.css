@@ -170,18 +170,17 @@ body {
   }
 }
 
-/* Select/popover entrance — a small fade + rise on open (this repo doesn't use
-   tailwindcss-animate, so the Select recipe's animate-in classes are provided here as a
-   project-native keyframe). Applied via `motion-safe:animate-select-in`, so it's off under
-   reduced-motion and frozen in the visual suite by the killswitch below. */
+/* Select/popover entrance — a 120ms fade on open, no rise or scale (#2789: outside the tune and
+   sheets, motion is a fade). This repo doesn't use tailwindcss-animate, so the Select recipe's
+   animate-in classes are provided here as a project-native keyframe. Applied via
+   `motion-safe:animate-select-in`, so it's off under reduced-motion and frozen in the visual
+   suite by the killswitch below. */
 @keyframes select-in {
   from {
     opacity: 0;
-    transform: translateY(-2px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
@@ -292,33 +291,6 @@ body {
     backdrop-filter: grayscale(1) contrast(0.6);
     background-color: color-mix(in srgb, var(--color-static-950) 88%, transparent);
   }
-}
-
-/* Reveal — animate a collapsible section open/closed WITHOUT knowing its height, via the
-   grid 0fr→1fr trick (the modern height:auto transition). The wizard's connection blocks
-   use it so a section slides open delightfully when picked from the rail (§13). The inner
-   child must be min-h-0 + overflow-hidden so it clips while closed. Frozen to instant under
-   the reduced-motion killswitch below. */
-.reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 260ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-/* ⚠ TWO selectors for two attribute SHAPES, and the omission is the load-bearing part.
-   `[data-open="true"]` is a React boolean (connection-block passes `data-open={open}`);
-   `[data-open=""]` is Base UI's Collapsible.Panel, which emits `data-open` valueless when
-   open and swaps to `data-closed` when shut (CollapsibleSection, since V50c).
-   Do NOT collapse these into a bare `.reveal[data-open]`. React renders `data-open={false}`
-   as the STRING "false", not as an absent attribute, so presence-matching would hold
-   connection-block permanently open — and nothing here would catch it: jsdom does not apply
-   this stylesheet, and connection-block has no story for the visual suite to snapshot. */
-.reveal[data-open="true"],
-.reveal[data-open=""] {
-  grid-template-rows: 1fr;
-}
-.reveal > .reveal-inner {
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* scroll-thin — a token-keyed slim scrollbar for inner-scroll regions (e.g. the cycle

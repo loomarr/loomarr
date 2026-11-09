@@ -3,10 +3,12 @@ import type { ComponentProps, ElementType, ReactNode } from "react";
 import { createElement, useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 
+import { themeColors } from "../config";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import { TamaguiText } from "../text-base";
 import { brandChroma, type Density, type TextRole, typography } from "../tokens";
+import { Tooltip } from "../tooltip";
 import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
 const ScreenFrame = styled(View, {
@@ -141,10 +143,12 @@ type TextTone =
   | "inverse"
   | "live"
   | "muted"
+  | "onDecade"
   | "primary"
   | "secondary"
   | "signal"
   | "success"
+  | "suggest"
   | "warning";
 type TextProps = Omit<
   TamaguiTextProps,
@@ -230,12 +234,40 @@ const textTones = {
   inverse: "contentInverse",
   live: "stateLive",
   muted: "contentMuted",
+  // A channel number on its decade's fill (#2767).
+  onDecade: "decadeInk",
   primary: "contentPrimary",
   secondary: "contentSecondary",
   signal: "actionPrimary",
   success: "stateSuccess",
+  suggest: "accentSuggest",
   warning: "stateWarning",
 } as const;
+
+// The monogram ident's colours (#3011): a 14% wash of the brand hue, with the letters in that hue's
+// on-tint text stop (the web's `-300` stops in dark; each theme's own text stop in light) rather
+// than the full hue, which fails AA on its own wash. `tone` is how a Text draws the letters, so
+// each theme resolves its own stop. The keys are `@loomarr/core/guide`'s ident hues.
+const CHANNEL_IDENT_WASH_PERCENT = 14;
+const channelIdentHues = {
+  tune: { wash: brandChroma[3], tone: "info" },
+  suggest: { wash: brandChroma[4], tone: "suggest" },
+  signal: { wash: brandChroma[0], tone: "signal" },
+  onair: { wash: brandChroma[5], tone: "live" },
+} as const satisfies Record<string, { wash: string; tone: TextTone }>;
+
+type ChannelIdentColorHue = keyof typeof channelIdentHues;
+
+/** Each ident hue's wash and letter colour as concrete values in one theme (for the contrast test). */
+const channelIdentColors = (mode: "dark" | "light") => {
+  const colors = themeColors(mode);
+  return Object.fromEntries(
+    Object.entries(channelIdentHues).map(([hue, { wash, tone }]) => [
+      hue,
+      { text: colors[textTones[tone]], wash },
+    ]),
+  ) as Record<ChannelIdentColorHue, { text: string; wash: string }>;
+};
 
 const roleTracking = (textRole: TextRole, size: number) =>
   textRole === "display"
@@ -736,14 +768,82 @@ const StatusDot = ({ label, reducedMotion, size = "default", tone }: StatusDotPr
   );
 };
 
+/**
+ * The five states a Settings row can be in, and nothing else. Every surface that reports a service,
+ * a task or a credential picks one of these rather than writing its own word, so the same state
+ * reads the same on the index, Connections, Diagnostics and Tasks.
+ */
+type StatusWordKind = "attention" | "expired" | "notSetUp" | "ok" | "overdue";
+
+const statusWords: Record<
+  StatusWordKind,
+  { dot: StatusTone; label: string; text: TextTone; explanation?: string }
+> = {
+  ok: { dot: "ok", label: "OK", text: "success" },
+  attention: { dot: "error", label: "Needs attention", text: "danger" },
+  notSetUp: { dot: "off", label: "Not set up", text: "muted" },
+  overdue: { dot: "warn", label: "Overdue", text: "warning" },
+  expired: {
+    dot: "progress",
+    label: "Expired",
+    text: "info",
+    explanation: "This is no longer valid. Sign in or enter it again to keep it working.",
+  },
+};
+
+type StatusWordProps = {
+  kind: StatusWordKind;
+};
+
+/**
+ * A status as a coloured dot and a plain word. The word is the meaning and the colour backs it up,
+ * so it reads without colour vision. `expired` is the one word that needs explaining, so it carries
+ * a tooltip.
+ */
+const StatusWord = ({ kind }: StatusWordProps) => {
+  const { dot, explanation, label, text } = statusWords[kind];
+  const word = (
+    <View
+      alignItems="center"
+      flexDirection="row"
+      gap={6}
+      {...(isWeb ? ({ display: "inline-flex", render: "span" } as const) : {})}
+      {...(explanation ? { focusable: true } : {})}
+    >
+      <StatusDot label="" tone={dot} />
+      <Text textRole="compact" tone={text} strong>
+        {label}
+      </Text>
+    </View>
+  );
+  return explanation ? <Tooltip content={explanation}>{word}</Tooltip> : word;
+};
+
 export type {
   ArtworkState,
   BadgeShape,
   BadgeTone,
+  ChannelIdentColorHue,
   ProgressTone,
   ScreenProps,
   StatusTone,
+  StatusWordKind,
+  StatusWordProps,
   TextProps,
   TextTone,
 };
-export { ArtworkFrame, Badge, FocusSurface, lineHeightPx, ProgressTrack, Screen, StatusDot, Surface, Text };
+export {
+  ArtworkFrame,
+  Badge,
+  CHANNEL_IDENT_WASH_PERCENT,
+  channelIdentColors,
+  channelIdentHues,
+  FocusSurface,
+  lineHeightPx,
+  ProgressTrack,
+  Screen,
+  StatusDot,
+  StatusWord,
+  Surface,
+  Text,
+};

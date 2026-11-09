@@ -1,32 +1,39 @@
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 
-// Channel origination's state lives in the Guide's search params (§12). The panel is open while
-// any of them is present, and every action is a navigation to the next set.
+// Channel origination's state lives in the search params of its own route, `/requests/new` (§12),
+// and every action is a navigation to the next set. No params is the empty describe form.
 type OriginationSearch = {
   // Seeds the describe form: the wizard's template (§13), or the manual builder's description
   // handed back to AI.
   intent?: string;
   // The Proposal Job under review or generation. Opaque and server-authorized (My Requests).
   job?: string;
-  // The empty describe form — the Requests page's "Request a channel".
-  new?: "1";
-  // The manual/AI-off builder (#1817, G2) — Home's "Describe your own channel".
-  manual?: "1";
+  // The manual/AI-off builder (#1817, G2) — Home's "Describe your own channel". A number, so the
+  // router writes it as `?manual=1`, not `?manual=%221%22`.
+  manual?: 1;
   // Seeds the manual builder from one channel idea — Home's "Edit first".
   ideaId?: string;
 };
+
+const flag = (value: unknown): 1 | undefined => (value === 1 || value === "1" ? 1 : undefined);
 
 // The route's validateSearch, and how the panel reads the same params outside the real route.
 const parseOriginationSearch = (search: Record<string, unknown>): OriginationSearch => ({
   intent: typeof search.intent === "string" ? search.intent : undefined,
   job: typeof search.job === "string" ? search.job : undefined,
-  new: search.new === "1" || search.new === 1 ? "1" : undefined,
-  manual: search.manual === "1" || search.manual === 1 ? "1" : undefined,
+  manual: flag(search.manual),
   ideaId: typeof search.ideaId === "string" ? search.ideaId : undefined,
 });
 
-const isOriginating = (search: OriginationSearch) =>
-  Boolean(search.new || search.manual || search.intent || search.job);
+// The flow used to live on the Guide route (`/guide?new=1`, `?job=`, `?manual=1`, `?intent=`). Where
+// an old URL of that kind should go now: the request route's params, or nothing for an ordinary
+// Guide visit. `?new=1` was the empty describe form, which is now just the route itself.
+const legacyGuideOrigination = (search: Record<string, unknown>): OriginationSearch | undefined => {
+  const next = parseOriginationSearch(search);
+  const arrived = Boolean(flag(search.new) || next.manual || next.intent || next.job || next.ideaId);
+  if (!arrived) return undefined;
+  return Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
+};
 
 type OriginationStage = "describe" | "generating" | "review" | "updating" | "failed";
 
@@ -36,7 +43,7 @@ const originationStage = (run: SuggestionRun): OriginationStage => {
   return run.failed ? "failed" : "describe";
 };
 
-// The Guide's one PageHeader names the current task, so the panel nests no heading of its own.
+// The page's one PageHeader names the current task, so the panel nests no heading of its own.
 const originationHeading = (
   stage: OriginationStage,
   isAdmin: boolean,
@@ -69,4 +76,4 @@ const originationHeading = (
 };
 
 export type { OriginationSearch, OriginationStage };
-export { isOriginating, originationHeading, originationStage, parseOriginationSearch };
+export { legacyGuideOrigination, originationHeading, originationStage, parseOriginationSearch };

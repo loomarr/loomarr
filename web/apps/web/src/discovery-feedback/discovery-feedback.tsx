@@ -3,7 +3,6 @@ import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedback
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type DiscoveryFeedbackAction = "keep" | "less" | "never" | "surprise";
@@ -48,6 +47,9 @@ interface DiscoveryFeedbackControlsProps {
   effective?: DiscoveryFeedbackDTO;
   disabled?: boolean;
   compact?: boolean;
+  // A list that states "affects future suggestions only" once, above its rows, turns the per-row
+  // copy off; the row still says which choice is in effect.
+  effectNote?: boolean;
   onSet: (action: DiscoveryFeedbackAction) => void;
   onClear: () => void;
 }
@@ -64,6 +66,7 @@ const DiscoveryFeedbackControls = ({
   effective,
   disabled,
   compact,
+  effectNote = true,
   onSet,
   onClear,
 }: DiscoveryFeedbackControlsProps) => {
@@ -81,18 +84,17 @@ const DiscoveryFeedbackControls = ({
       <fieldset className="flex flex-wrap gap-1 border-0 p-0">
         <legend className="sr-only">Taste feedback for {name}</legend>
         {actions.map(({ action, label }) => (
-          <Button
+          <Action
             key={action}
-            type="button"
-            variant={selected === action ? "secondary" : "ghost"}
-            size="sm"
-            disabled={disabled}
+            accessibilityLabel={`${label} — ${name}`}
             aria-pressed={selected === action}
-            aria-label={`${label} — ${name}`}
-            onClick={() => onSet(action)}
+            disabled={disabled}
+            onPress={() => onSet(action)}
+            // Flat until chosen, so four of them fit beside a title in a lineup row.
+            variant={selected === action ? "secondary" : "ghost"}
           >
             {compact && action === "less" ? "Less" : compact && action === "surprise" ? "Surprise" : label}
-          </Button>
+          </Action>
         ))}
         {canClear && (
           <Action disabled={disabled} onPress={onClear} variant="link">
@@ -100,9 +102,12 @@ const DiscoveryFeedbackControls = ({
           </Action>
         )}
       </fieldset>
-      <p className="text-muted-foreground text-xs">
-        {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}Affects future suggestions only.
-      </p>
+      {(selected || effectNote) && (
+        <p className="text-muted-foreground text-xs">
+          {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}
+          {effectNote ? "Affects future suggestions only." : ""}
+        </p>
+      )}
     </div>
   );
 };

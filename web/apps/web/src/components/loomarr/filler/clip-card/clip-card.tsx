@@ -1,11 +1,10 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Badge, Card } from "@loomarr/design-system";
-import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
-import { Play, Scissors } from "lucide-react";
+import { Icon, icons, Tooltip } from "@loomarr/design-system";
+import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
+import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -78,19 +77,13 @@ const ClipFrame = ({
   selected,
   onToggleSelect,
   onPlay,
-  compact,
 }: {
-  // ⚠ `thumbImage` is REQUIRED here even though it is optional on ClipDTO. The frame exists only
-  // when there is artwork to put in it, and stating that in the type is what lets this component
-  // hand the record straight to <ServedImage> — the caller's `clip.thumbImage &&` guard is then the one
-  // place the absence is handled, rather than a narrowing TypeScript cannot carry across the
-  // component boundary and a redundant re-check in here.
-  clip: ClipDTO & { thumbImage: NonNullable<ClipDTO["thumbImage"]> };
+  clip: ClipDTO;
   selected?: boolean;
   onToggleSelect?: () => void;
   onPlay?: () => void;
-  compact?: boolean | undefined;
 }) => {
+  const { thumbImage } = clip;
   // ⚠ **Unmounted on leave, and that is what makes the animation RESTART.** An animated WebP
   // begins at frame 0 when it decodes and then runs on its own — the browser keeps it going while
   // the element lives, whether or not anyone is looking. Keeping it mounted and merely hiding it
@@ -119,11 +112,8 @@ const ClipFrame = ({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: decorative hover only, see above
     <div
-      // The frame bleeds to the card's edge, so its negative margin is the card's padding.
-      className={cn(
-        "group bg-static-800 relative aspect-video overflow-hidden rounded-t-[inherit]",
-        compact ? "-mx-2 -mt-2" : "-mx-3 -mt-3",
-      )}
+      // Fills the picture card's media box, which sets the ratio and crops to it.
+      className="group relative size-full overflow-hidden"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       // Focus counts as hover so a keyboard user tabbing to the play button sees the same preview
@@ -141,7 +131,13 @@ const ClipFrame = ({
 
           No `priority`: a catalog is hundreds of cards, and <ServedImage> defaults to lazy +
           async, which is exactly right below the fold. */}
-      <ServedImage image={clip.thumbImage} alt="" sizes="(max-width: 640px) 45vw, 220px" />
+      {/* A clip with no extracted frame still fills the card's picture slot with the neutral
+          code-drawn fallback, as every card with a picture does (#1817 Q12). */}
+      {thumbImage ? (
+        <ServedImage image={thumbImage} alt="" sizes="(max-width: 640px) 45vw, 220px" />
+      ) : (
+        <ArtworkFallback />
+      )}
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
@@ -169,10 +165,7 @@ const ClipFrame = ({
           top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
           — a thumbnail is arbitrary video, so text with no backing plate has NO guaranteed
           contrast against it. That is a legibility rule, not a style choice. */}
-      <span className="bg-static-900/80 text-2xs text-static-100 absolute right-1.5 bottom-1.5 rounded px-1.5 py-0.5 font-mono tabular-nums">
-        {formatClipDuration(clip.durationMs)}
-      </span>
-      {clip.quality && !compact && (
+      {clip.quality && (
         // ⚠ `role="img"` is load-bearing, not decoration. `aria-label` on a BARE span is ignored —
         // ARIA only permits naming on an element that has a role, and the chip-row version below
         // gets one from Badge. Without it the label silently does nothing and "1080P" is announced
@@ -206,160 +199,105 @@ const ClipFrame = ({
           ⚠ Always in the DOM, revealed on hover/focus by opacity — NOT conditionally rendered.
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
-      {onPlay && (
+      {onPlay && thumbImage && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {/* The app's `Button` primitive, not a hand-rolled <button>: the pointer cursor (which
-              Tailwind v4's Preflight stopped giving <button>), the focus ring and the disabled
-              handling all live there once. Only the disc SHAPE is local. */}
-          <Button
-            variant="ghost"
-            size="icon"
+          {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
+              control box of its own, which no Action layout draws. So the pointer cursor (which
+              Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
+              Only the disc is visible. */}
+          <button
+            type="button"
             onClick={onPlay}
             // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
             // control and meaningless in a screen reader's element list.
             aria-label={`Preview ${clip.name}`}
-            title={`Preview ${clip.name}`}
             className={cn(
-              "text-static-950 pointer-events-auto h-full w-full rounded-none bg-transparent hover:bg-transparent",
-              "group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
+              "text-static-950 pointer-events-auto flex h-full w-full cursor-pointer items-center justify-center",
               // Visible focus ring against arbitrary video underneath.
-              "focus-visible:ring-static-100 focus-visible:ring-offset-0",
+              "focus-visible:ring-static-100 outline-none focus-visible:ring-2 focus-visible:ring-inset",
             )}
           >
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
             <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-              <Play className="ml-0.5 size-5 fill-current" aria-hidden />
+              <span className="ml-0.5 flex">
+                <Icon decorative glyph={icons.play} size="default" tone="inherit" />
+              </span>
             </span>
-          </Button>
+          </button>
         </div>
       )}
     </div>
   );
 };
 
-const ClipCard = ({
-  clip,
-  onOpen,
-  onSplit,
-  splitPending,
-  selected,
-  onToggleSelect,
-  compact,
-}: ClipCardProps) => {
-  // Ready is the default and wears no chip (#1817, decided on #1908): a healthy library of a
-  // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
-  // its state.
+// ClipCard is a picture card (#2765): the frame at a square ratio with its length in the corner, the
+// name, ONE metadata line (what is wrong with it, kind, era, audience, how much it has aired) and ONE
+// action. Brand, category and the other tags live in the details panel.
+const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelect }: ClipCardProps) => {
+  // Ready is the default and wears no status (#1817, decided on #1908): a healthy library of a
+  // thousand clips shouldn't carry a thousand warnings. Only a clip that is NOT ready names its
+  // state.
   const exception = clip.held ? "Preparing" : clip.isComposite ? "Recording" : undefined;
-  const exceptionChip = exception ? (
-    <Badge shape="square" tone="neutral">
-      {exception}
-    </Badge>
-  ) : null;
   // One exception per clip: a clip still preparing or a recording is not yet the thing to tag.
-  // Only the server's `needsDetails`, never kind + tagged, so the chip agrees with the filter.
-  const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
+  // Only the server's `needsDetails`, never kind + tagged, so the status agrees with the filter.
+  const needsDetails = !exception && clip.needsDetails;
+  const status = exception ? (
+    <CardStatus key="status" label={exception} tone={clip.held ? "pending" : "progress"} />
+  ) : needsDetails ? (
+    <CardStatus key="status" label="Needs details" tone="warn" />
+  ) : null;
+  const meta = [
+    ...(status ? [status] : []),
+    ...(clip.role !== "unclassified" ? [ROLE_LABEL[clip.role]] : []),
+    ...(clip.era ? [eraLabel(clip.era)] : []),
+    ...(clip.audience ? [AUDIENCE_LABEL[clip.audience] ?? clip.audience] : []),
+    playsLine(clip),
+  ];
+  // A composite offers its split as the one action, so its name opens the details instead.
+  const nameOpens = onSplit && onOpen;
   return (
-    <Card
-      // Selection is neutral (#1909): amber is for focus and the primary action.
-      className={cn(selected && "ring-foreground ring-1")}
-      gap={compact ? 6 : 10}
-      padding={compact ? 8 : 12}
-    >
-      {clip.thumbImage ? (
-        <ClipFrame
-          clip={{ ...clip, thumbImage: clip.thumbImage }}
-          selected={selected}
-          onToggleSelect={onToggleSelect}
-          onPlay={onOpen}
-          compact={compact}
-        />
-      ) : null}
-      <div className="flex items-start gap-2">
-        {!clip.thumbImage && onToggleSelect ? (
-          <ClipSelect
-            clipName={clip.name}
-            selected={Boolean(selected)}
-            onSelectedChange={() => onToggleSelect()}
-          />
-        ) : null}
-        {onOpen ? (
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={`View details for ${clip.name}`}
-            title={clip.name}
-            // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
-            // shared `data-touch-target` box can't be used here: `truncate` clips it.
-            className={cn(
-              "hover:text-signal focus-visible:ring-ring -my-0.5 min-w-0 flex-1 truncate rounded-sm py-0.5 text-left font-medium focus-visible:ring-2 focus-visible:outline-none",
-              compact ? "text-[13px]" : "text-sm",
-            )}
-          >
-            {clip.name}
-          </button>
-        ) : (
-          <p className={cn("min-w-0 flex-1 truncate font-medium", compact ? "text-[13px]" : "text-sm")}>
-            {clip.name}
-          </p>
-        )}
-        {!clip.thumbImage ? (
-          <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
-            {formatClipDuration(clip.durationMs)}
-          </span>
-        ) : null}
-      </div>
-      {compact ? (
-        (exceptionChip || needsDetailsChip) && <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
-      ) : (
-        <>
-          {clip.brand ? <p className="text-muted-foreground truncate text-xs">{clip.brand}</p> : null}
-          <div className="flex flex-wrap gap-1.5">
-            {exceptionChip}
-            {clip.role !== "unclassified" ? (
-              <Badge shape="square" tone="neutral">
-                {ROLE_LABEL[clip.role]}
-              </Badge>
-            ) : null}
-            {clip.era ? (
-              <Badge shape="square" tone="neutral">
-                {eraLabel(clip.era)}
-              </Badge>
-            ) : null}
-            {clip.audience ? (
-              <Badge shape="square" tone="neutral">
-                {AUDIENCE_LABEL[clip.audience]}
-              </Badge>
-            ) : null}
-            {clip.category ? (
-              <Badge shape="square" tone="neutral">
-                {clip.category}
-              </Badge>
-            ) : null}
-            {!clip.thumbImage && clip.quality ? (
-              <Badge shape="square" tone="neutral" aria-label={`Resolution ${clip.quality}`}>
-                {clip.quality}
-              </Badge>
-            ) : null}
-            {needsDetailsChip}
-          </div>
-          <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
-        </>
-      )}
-      {onSplit ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={splitPending}
-          onClick={onSplit}
-          title="Detect commercials inside this compilation and review the cuts"
-        >
-          <Scissors aria-hidden />
-          {splitPending ? "Splitting…" : "Split into clips"}
-        </Button>
-      ) : null}
-    </Card>
+    <div className={cn("rounded-lg", selected && "ring-foreground ring-1")}>
+      <PictureCard
+        action={
+          onSplit ? (
+            <Tooltip content="Detect commercials inside this compilation and review the cuts">
+              <CardAction disabled={splitPending} icon="split" onPress={onSplit}>
+                {splitPending ? "Splitting…" : "Split into clips"}
+              </CardAction>
+            </Tooltip>
+          ) : onOpen ? (
+            <CardAction
+              accessibilityLabel={`View details for ${clip.name}`}
+              attention={needsDetails}
+              onPress={onOpen}
+            >
+              Details
+            </CardAction>
+          ) : undefined
+        }
+        corner={formatClipDuration(clip.durationMs)}
+        media={<ClipFrame clip={clip} selected={selected} onToggleSelect={onToggleSelect} onPlay={onOpen} />}
+        meta={meta}
+        orientation="top"
+        ratio="1/1"
+        title={
+          nameOpens ? (
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label={`View details for ${clip.name}`}
+              className="hover:text-signal focus-visible:ring-ring rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
+            >
+              {clip.name}
+            </button>
+          ) : (
+            clip.name
+          )
+        }
+      />
+    </div>
   );
 };
 

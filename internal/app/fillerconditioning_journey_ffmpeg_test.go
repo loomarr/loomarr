@@ -19,6 +19,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -36,11 +42,11 @@ func (t realReviewedSplitTools) Cut(ctx context.Context, in string, start, end i
 	return t.ffmpeg.Cut(ctx, in, start, end, out)
 }
 
-func (t realReviewedSplitTools) Chapters(ctx context.Context, file string) ([]filler.Chapter, error) {
+func (t realReviewedSplitTools) Chapters(ctx context.Context, file string) ([]tools.Chapter, error) {
 	return t.ffmpeg.Chapters(ctx, file)
 }
 
-func (t realReviewedSplitTools) Boundaries(ctx context.Context, file string, startMs, endMs int64) ([]filler.Interval, []filler.Interval, error) {
+func (t realReviewedSplitTools) Boundaries(ctx context.Context, file string, startMs, endMs int64) ([]tools.Interval, []tools.Interval, error) {
 	return t.ffmpeg.Boundaries(ctx, file, startMs, endMs)
 }
 
@@ -54,7 +60,7 @@ type conditionedJourney struct {
 	fixtures    testkit.FillerConditioningFixtures
 	conditioned clipstore.Clip
 	mezzanine   string
-	tags        filler.SidecarTags
+	tags        asset.SidecarTags
 }
 
 // conditionReviewedCompilationChild splits the compilation's first segment at reviewedEnd, runs the
@@ -75,27 +81,27 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	fixtures := testkit.FillerConditioningMedia(t, dir)
 	mediaTools := tools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
 
-	parentHash, err := filler.ClipID(fixtures.Compilation)
+	parentHash, err := asset.ClipID(fixtures.Compilation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	st := testkit.MigratedSQLiteStore(t)
 	parentRel := filepath.Base(fixtures.Compilation)
 	parentProbe, err := probe(ctx, fixtures.Compilation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Role: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clips.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Role: clips.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{ClipHash: parentHash, Stage: filler.StageSplit, Status: filler.StatusQueued, Disposition: filler.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{ClipHash: parentHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, realReviewedSplitTools{
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), realReviewedSplitTools{
 		splitFakeTools: splitFakeTools{}, ffmpeg: mediaTools,
 	}, nil, dir, func() time.Duration { return 0 }, func() string { return "real-ffmpeg-proposal" }, time.Now, nil)
 	proposal, err := splitter.Propose(ctx, parentHash)
@@ -107,7 +113,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	}
 	// Detection produced the candidate; the reviewed operator edit trims its transition tail to the
 	// measured content interval used by this fixture. No chapter is supplied to Propose.
-	reviewed := append([]filler.SplitSegment(nil), proposal.Segments[0])
+	reviewed := append([]split.Segment(nil), proposal.Segments[0])
 	reviewed[0].EndMs = reviewedEnd
 	childHashes, err := splitter.Confirm(ctx, proposal.ID, reviewed)
 	if err != nil || len(childHashes) != 1 {
@@ -115,15 +121,15 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	}
 	childHash := childHashes[0]
 	reviewedStart, reviewedEnd := reviewed[0].StartMs, reviewed[0].EndMs
-	stage := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, dir,
+	stage := filler.NewTranscodeStage(storeadapter.NewPipelineClips(st), probe, dir,
 		tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
 		WithConditioning(func(ctx context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 			measurement, err := mediaTools.MeasureConditioning(ctx, req)
 			t.Logf("conditioning %s: %+v err=%v", filepath.Base(req.Path), measurement, err)
 			return measurement, err
 		})
-	pipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{
-		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, dir, nil,
+	pipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), []filler.Stage{
+		filler.NewProbeStage(probe, storeadapter.NewPipelineClips(st), dir, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now), stage,
 		filler.NewFinishStage(),
 	}, filler.Budget{}, nil, time.Now, nil)
@@ -145,36 +151,36 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if !productive {
 		t.Fatalf("pipeline passes were not productive: %+v", passes)
 	}
-	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	listed, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var conditioned clipstore.Clip
-	for _, candidate := range clips {
+	for _, candidate := range listed {
 		if candidate.ParentHash == parentHash && candidate.Hash != childHash {
 			conditioned = candidate
 		}
 	}
 	if conditioned.Hash == "" {
-		t.Fatalf("conditioning pipeline did not prepare a child: %+v", clips)
+		t.Fatalf("conditioning pipeline did not prepare a child: %+v", listed)
 	}
 	// Since #1255 an enrolled clip whose ladder finishes clean is published automatically: the
 	// conditioned child settles Ready, released from hold, with a playable placement.
 	pipelineRow, found, err := st.GetClipPipeline(ctx, conditioned.Hash)
-	if err != nil || !found || pipelineRow.Status != filler.StatusDone ||
-		pipelineRow.Disposition != filler.DispositionReady || conditioned.Held ||
-		conditioned.Placement == filler.PlacementNotPlayable {
+	if err != nil || !found || pipelineRow.Status != pipelinestate.StatusDone ||
+		pipelineRow.Disposition != pipelinestate.DispositionReady || conditioned.Held ||
+		conditioned.Placement == clips.PlacementNotPlayable {
 		t.Fatalf("durable conditioned publication = %+v, held=%v placement=%q found=%v err=%v",
 			pipelineRow, conditioned.Held, conditioned.Placement, found, err)
 	}
-	if conditioned.Role != filler.Commercial {
+	if conditioned.Role != clips.Commercial {
 		t.Fatalf("conditioned child role = %q, want inherited commercial", conditioned.Role)
 	}
 	if conditioned.Hash == childHash || conditioned.DurationMs <= 0 {
 		t.Fatalf("real conditioned transcode = %+v", conditioned)
 	}
 	mezzanine := filepath.Join(dir, filepath.FromSlash(conditioned.Path))
-	tags, ok := filler.ReadSidecarTags(mezzanine)
+	tags, ok := asset.ReadSidecarTags(mezzanine)
 	if !ok || tags.Conditioning == nil || tags.MediaQuality == nil ||
 		tags.ConditioningLineage == nil || tags.ConditioningLineage.ParentHash != parentHash ||
 		tags.ConditioningLineage.ChildHash != childHash || tags.ConditioningLineage.IntendedStartMs != reviewedStart ||

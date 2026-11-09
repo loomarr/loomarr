@@ -90,11 +90,10 @@ type Probed struct {
 	// problem at playout, not grounds for a reject. This is the harder failure: a video-only file
 	// plays as dead air in the middle of a break, which reads as the stream having dropped.
 	//
-	// ⚠ **Phrased NEGATIVELY on purpose, so the zero value is permissive.** The first cut was
-	// `HasAudio bool`, which made `false` mean "reject" — and retroactively changed the meaning
-	// of every `Probed{...}` literal written before this field existed. Nine test doubles that
-	// were correct when written started rejecting every clip, and the suite panicked on an empty
-	// catalog. A gate whose zero value denies is a gate that breaks its own callers.
+	// ⚠ **Phrased NEGATIVELY on purpose, so the zero value is permissive.** A `HasAudio bool`
+	// would make `false` mean "reject", so every `Probed{...}` literal that does not set it (test
+	// doubles included) would reject every clip. A gate whose zero value denies is a gate that
+	// breaks its own callers.
 	//
 	// Costs nothing extra to fill: the probe already asks for `codec_type` per stream so it can
 	// find the VIDEO height, and this reads the same answer.

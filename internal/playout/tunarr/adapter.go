@@ -7,10 +7,9 @@ import (
 
 // Adapter is the single seam for Loomarr's optional Tunarr playout backend (§6/§9,
 // Refs #1564). It composes the existing Programmer port (channel + lineup + filler-list)
-// with the Tunarr-shaped concerns that previously had no port of their own — guide
+// with the Tunarr-shaped concerns that are not part of Programmer — guide
 // reads, media-source wiring, local filler-source annotation, and Live TV URL
-// selection — each reached before this PR via a type-assertion, a parallel ad hoc
-// private interface, or a concrete *Tunarr parameter. *Tunarr is the only production
+// selection — so callers need no type-assertion or concrete *Tunarr parameter. *Tunarr is the only production
 // implementation; app wires the interface everywhere above it, never the concrete
 // client.
 type Adapter interface {
@@ -24,8 +23,7 @@ type Adapter interface {
 	ConnectLibraries(ctx context.Context, sourceID string) (int, error)
 	MediaLibrariesReady(ctx context.Context) (bool, error)
 
-	// Local filler-source annotation (previously the private tunarrFillerClient
-	// interface in app/filler.go, narrowed off a concrete *Tunarr parameter).
+	// Local filler-source annotation.
 	EnsureLocalFillerSource(ctx context.Context, dir string) (EnsureLocalSourceResult, error)
 	ListLocalFillerClipsAll(ctx context.Context) ([]LocalClip, error)
 

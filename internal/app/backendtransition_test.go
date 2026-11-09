@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
@@ -131,7 +131,7 @@ func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) 
 	ctx := context.Background()
 	seed := func(id string, policy *schedule.PlayoutPolicy) {
 		t.Helper()
-		_, err := st.SaveChannel(ctx, store.Channel{
+		_, err := st.SaveChannel(ctx, channelstore.Channel{
 			Channel: schedule.Channel{ID: id, Name: id, Number: len(id), Status: schedule.StatusLive},
 			Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: policy}},
 		})
@@ -157,7 +157,7 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testkit.MigratedSQLiteStore(t)
-	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "legacy", Name: "Legacy", Number: 7, Status: schedule.StatusLive,
 	}}); err != nil {
 		t.Fatal(err)

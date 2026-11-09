@@ -70,11 +70,6 @@ func TestNon2xxPathsAreHTTPXStatusErrors(t *testing.T) {
 		err := NewOllama(replyServer(t, http.StatusBadRequest, body).URL, "m").Warm(ctx)
 		requireStatus(t, err, http.StatusBadRequest, httpx.ClassPermanent, "ollama warm: status 400")
 	})
-	t.Run("ollama evict", func(t *testing.T) {
-		t.Parallel()
-		err := NewOllama(replyServer(t, http.StatusBadRequest, body).URL, "m").Evict(ctx)
-		requireStatus(t, err, http.StatusBadRequest, httpx.ClassPermanent, "ollama evict: status 400")
-	})
 	t.Run("ollama ps", func(t *testing.T) {
 		t.Parallel()
 		_, err := NewOllama(replyServer(t, http.StatusForbidden, body).URL, "m").ListResident(ctx)

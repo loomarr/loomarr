@@ -226,13 +226,12 @@ describe("TV channel switch overlay (B4, #1627)", () => {
         surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true, schedule: {} }),
       ),
     );
-    const spinner = container.querySelector('[aria-label="Loading channels"]');
-    if (!spinner) throw new Error("no loading spinner rendered");
-    // A spinner that aligns itself to the start sits at the screen's left edge unless a
-    // shrink-wrapping, centred wrapper carries it.
-    expect(dom.getComputedStyle(spinner).alignSelf).toBe("flex-start");
-    expect(dom.getComputedStyle(spinner.parentElement).alignSelf).toBe("center");
-    // Unmount: a tree left mounted keeps its spinner animating after jsdom tears down, and the
+    const strip = container.querySelector('[aria-label="Loading channels"]');
+    if (!strip) throw new Error("no loading strip rendered");
+    // The strip sits at the screen's left edge unless a shrink-wrapping, centred wrapper carries it.
+    expect(strip.getAttribute("role")).toBe("progressbar");
+    expect(dom.getComputedStyle(strip.parentElement).alignSelf).toBe("center");
+    // Unmount: a tree left mounted keeps its strip animating after jsdom tears down, and the
     // next frame throws "window is not defined" as an unhandled error that fails the run.
     act(() => root.unmount());
     container.remove();

@@ -66,6 +66,29 @@ describe("BackupPanel", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("The backup could not be written.");
   });
 
+  it("flags nights missing from the series and links to Tasks", async () => {
+    const onOpenTasks = vi.fn();
+    const day = 86_400;
+    const gap = {
+      ...base,
+      backups: [0, 2, 4, 5].map((n, i) => ({
+        name: `loomarr-${i}.db`,
+        bytes: 1,
+        writtenAt: 1_800_000_000 - n * day,
+      })),
+    };
+    render(<BackupPanel list={gap} onBackUpNow={noop} onDownload={noop} onOpenTasks={onOpenTasks} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("2 nights missing");
+    await userEvent.click(screen.getByRole("button", { name: "Open Tasks" }));
+    expect(onOpenTasks).toHaveBeenCalledOnce();
+  });
+
+  it("stays quiet when every night is there", () => {
+    render(<BackupPanel list={base} onBackUpNow={noop} onDownload={noop} />);
+    expect(screen.queryByText(/missing/i)).not.toBeInTheDocument();
+  });
+
   // A fresh install has none. The empty state has to point somewhere, or it reads as the
   // feature having failed to load.
   it("explains an empty directory rather than rendering nothing", () => {

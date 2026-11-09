@@ -37,8 +37,9 @@ const LastStep: Story = {
   },
 };
 const Done: Story = { args: { step: 3, next: undefined } };
-// A phone-width page: the next step wraps under the message rather than squeezing it.
+// A phone-width page: one line of the Demo badge, the next step and the X, under 56px (#2750).
 const Narrow: Story = {
+  args: { compact: true },
   decorators: [
     (Story) => (
       <div style={{ boxSizing: "border-box", maxWidth: 390 }}>
@@ -47,7 +48,8 @@ const Narrow: Story = {
     ),
   ],
 };
+const NarrowDone: Story = { ...Narrow, args: { compact: true, next: undefined } };
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { Done, FirstStep, LastStep, Light, Narrow, SecondStep };
+export { Done, FirstStep, LastStep, Light, Narrow, NarrowDone, SecondStep };

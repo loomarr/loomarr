@@ -1,6 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCandidateDTO } from "@loomarr/api/models/libraryCandidateDTO";
 import type { LibraryNeedDTO } from "@loomarr/api/models/libraryNeedDTO";
+import type { LibraryOrderNeedDTO } from "@loomarr/api/models/libraryOrderNeedDTO";
 import type { LibraryProblemDTO } from "@loomarr/api/models/libraryProblemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import type {
@@ -8,6 +9,7 @@ import type {
   LibraryNeedCandidate,
   LibraryNeedSearch,
   LibraryNeedsAnswers,
+  LibraryOrderNeed,
   LibraryProblem,
 } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,7 +33,7 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
 });
 
 const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
-  tmdbId: c.tmdbId,
+  externalId: c.externalId,
   kind: c.kind,
   name: c.name,
   year: c.year,
@@ -41,6 +43,16 @@ const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
   yearMatches: c.yearMatches,
   lengthMatches: c.lengthMatches,
   episodesMatches: c.episodesMatches,
+});
+
+// A show whose files don't say which of TMDB's orders they follow (#2151 decision 53).
+const orderNeedOf = (o: LibraryOrderNeedDTO): LibraryOrderNeed => ({
+  id: o.item.id,
+  name: o.item.name,
+  poster: o.item.poster ? <ServedImage alt="" image={o.item.poster} sizes={THUMB_SIZES} /> : undefined,
+  disk: o.disk,
+  files: o.files,
+  choices: o.choices,
 });
 
 // The best guess is the first, when its name agrees; the rest are the others to pick from.
@@ -61,7 +73,7 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   const body = unwrap(await libraryApi.searchLibraryTitles({ q: query, kind }));
   if (!body) throw new Error("Couldn't search");
   return body.results.map((r) => ({
-    tmdbId: r.tmdbId,
+    externalId: r.externalId,
     kind: r.kind,
     name: r.name,
     year: r.year,
@@ -77,6 +89,7 @@ const useLibraryNeeds = () => {
   const queryClient = useQueryClient();
   const list = libraryApi.useListLibraryNeeds();
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
+  const orders = useMemo(() => (unwrap(list.data)?.orders ?? []).map(orderNeedOf), [list.data]);
   const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);
 
   const refresh = useCallback(
@@ -90,22 +103,25 @@ const useLibraryNeeds = () => {
   );
   const link = libraryApi.useLinkLibraryItem({ mutation: { onSettled: refresh } });
   const ignore = libraryApi.useIgnoreLibraryItem({ mutation: { onSettled: refresh } });
+  const order = libraryApi.useChooseLibraryEpisodeOrder({ mutation: { onSettled: refresh } });
 
-  // A mutation that answers with an error status still resolves; unwrap turns it into a rejection
-  // so the card puts the question back.
+  // A mutation that answers with an error status rejects, so the card puts the question back and
+  // says it wasn't saved.
   const answers: LibraryNeedsAnswers = {
-    onLink: async (id, tmdbId) => {
-      const res = await link.mutateAsync({ id, data: { tmdbId } });
-      if (res.status !== 204) throw new Error("Couldn't save your answer");
+    onLink: async (id, externalId) => {
+      await link.mutateAsync({ id, data: { externalId } });
     },
     onIgnore: async (id) => {
-      const res = await ignore.mutateAsync({ id });
-      if (res.status !== 204) throw new Error("Couldn't save your answer");
+      await ignore.mutateAsync({ id });
+    },
+    onChooseOrder: async (id, answer) => {
+      await order.mutateAsync({ id, data: answer });
     },
   };
 
   return {
     needs,
+    orders,
     problems,
     loaded: list.data !== undefined,
     error: list.error,

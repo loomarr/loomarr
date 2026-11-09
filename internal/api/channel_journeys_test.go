@@ -10,14 +10,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/channeljourney"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
@@ -60,7 +62,7 @@ func TestReferenceChannelJourneys(t *testing.T) {
 // approveReferenceJourney preserves the ordinary approval boundary for all reference
 // variants. It returns durable scheduling state, the production preview, and the
 // public Channel response so reconciliation notes cannot disappear at the API seam.
-func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channel, []schedule.Slot, api.ChannelDTO) {
+func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore.Channel, []schedule.Slot, channelsapi.ChannelDTO) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -68,10 +70,10 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
+		Approver: accept.NewApprover(st, b, channeljourney.Clock),
 	}))
 	t.Cleanup(srv.Close)
-	if err := createProposalWithJob(st, ctx, store.Proposal{
+	if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
 		ID: "reference", JobID: "reference-job", Status: "submitted",
 		Body: tc.Proposal, CreatedBy: "alice",
 	}); err != nil {
@@ -123,7 +125,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("read Channel: %d", response.StatusCode)
 	}
-	var public api.ChannelDTO
+	var public channelsapi.ChannelDTO
 	if err := json.NewDecoder(response.Body).Decode(&public); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +146,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
 				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-				Approver: suggest.NewApprover(st, b, func() time.Time { return now }),
+				Approver: accept.NewApprover(st, b, func() time.Time { return now }),
 			}))
 			t.Cleanup(srv.Close)
 			// An entirely acquisition-dependent sparse library must not appear live.
@@ -153,7 +155,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			pick.InLibrary, pick.LibraryItemID = false, ""
 			fixture.Proposal.Lineup = nil
 			fixture.Proposal.Acquisitions = []proposals.ProposalItem{pick}
-			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
+			if err := createProposalWithJob(st, ctx, proposalstore.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
 				t.Fatal(err)
 			}
 			resp := do(t, srv, http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")
@@ -174,7 +176,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			if err != nil || record.State != provision.Wanted {
 				t.Fatalf("approved acquisition: %+v, %v", record, err)
 			}
-			materialize := func() store.Channel {
+			materialize := func() channelstore.Channel {
 				t.Helper()
 				// A fresh production availability adapter also proves reconstruction
 				// from durable state without relying on an in-process arrival event.

@@ -79,6 +79,16 @@ const semanticThemes = {
       onAir: "#E5484D",
       reconciling: "#FFC14D",
     },
+    // A channel's era colour, drawn only on its number block (#2767). The decade picks the first
+    // colour of the on-screen logo's era palette (internal/playout/watermark/design.go eraPalettes),
+    // from the brand chroma, so it is the same in both themes; a decade with no palette is neutral.
+    // The number on it is the brand ground.
+    decade: {
+      "1970": brandChroma[1],
+      "1980": brandChroma[5],
+      "1990": brandChroma[3],
+      ink: brandContract.ground,
+    },
   },
   light: {
     surface: {
@@ -127,8 +137,10 @@ const semanticThemes = {
       focus: "#8A5700",
       disabled: "#8B93A3",
     },
+    // The magenta's own text stop on white: #DC5BAC is 3.4:1 there, this is 6.7:1 (and 5.5:1 on
+    // the suggest badge's 15% wash). Amber's light text stop is `action.primary` (#795000, 7.1:1).
     accent: {
-      suggest: "#DC5BAC",
+      suggest: "#A8246F",
     },
     artwork: {
       placeholder: "#E7EAF0",
@@ -149,6 +161,12 @@ const semanticThemes = {
       clipPlain: "#D2D6DE",
       onAir: "#E5484D",
       reconciling: "#FFC14D",
+    },
+    decade: {
+      "1970": brandChroma[1],
+      "1980": brandChroma[5],
+      "1990": brandChroma[3],
+      ink: brandContract.ground,
     },
   },
 } as const;

@@ -25,7 +25,8 @@ describe("SourceContentPreview", () => {
     expect(screen.getByRole("link", { name: /Open on Registry Name/ })).toBeVisible();
     expect(screen.getByText("A few from the registry")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading examples…");
-    expect(screen.getByRole("status").querySelector(".animate-spin")).not.toBeNull();
+    // The section wait is the colour-bar strip (#2789), decorative beside the words.
+    expect(screen.getByRole("status").querySelector('[aria-hidden="true"]')).not.toBeNull();
 
     rerender(
       <SourceContentPreview

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -16,7 +16,7 @@ type encryptionService struct {
 	destinations *notifications.ProtectedRepository
 }
 
-func buildEncryptionService(st store.Store, manager *secretprotection.Manager) api.EncryptionService {
+func buildEncryptionService(st store.Store, manager *secretprotection.Manager) system.EncryptionService {
 	if st == nil || manager == nil {
 		return nil
 	}
@@ -26,14 +26,14 @@ func buildEncryptionService(st store.Store, manager *secretprotection.Manager) a
 	}
 }
 
-func (s encryptionService) Status(ctx context.Context) (api.EncryptionStatus, error) {
+func (s encryptionService) Status(ctx context.Context) (system.EncryptionStatus, error) {
 	if s.manager == nil {
-		return api.EncryptionStatus{}, nil
+		return system.EncryptionStatus{}, nil
 	}
 	if err := s.manager.Refresh(ctx); err != nil {
-		return api.EncryptionStatus{}, err
+		return system.EncryptionStatus{}, err
 	}
-	return api.EncryptionStatus{
+	return system.EncryptionStatus{
 		Enabled: true, InstallationKeyFingerprint: s.manager.Fingerprint(), DataKeyCount: s.manager.DataKeyCount(),
 	}, nil
 }

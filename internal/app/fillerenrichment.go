@@ -7,16 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -91,11 +93,11 @@ func activeFillerVisionCapability(set resolved) enrichment.CapabilitySelection {
 }
 
 type fillerTranscriptObserver interface {
-	Observe(context.Context, filler.StoreClip) (filler.StageResult, string, error)
+	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, string, error)
 }
 
 type fillerVisionObserver interface {
-	Observe(context.Context, filler.StoreClip) (filler.StageResult, filler.VisionObservation, error)
+	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error)
 }
 
 // fillerMediaExecutor is intentionally narrower than filler.Stage: the enrichment coordinator has
@@ -116,7 +118,7 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate enrichment.Candi
 	if err != nil {
 		return enrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
 	}
-	storeClip := fillerClip(clip)
+	storeClip := storeadapter.StoreClip(clip)
 	if e.kind == enrichment.CapabilityTranscript {
 		if e.transcript == nil {
 			return enrichment.CapabilityResult{}, nil
@@ -240,7 +242,7 @@ type fillerResearchSignals struct{ files fs.FS }
 
 func (l fillerResearchSignals) Load(_ context.Context, candidate research.Candidate) (research.Input, error) {
 	input := research.Input{Title: candidate.Name}
-	if metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path); ok {
+	if metadata, ok := asset.ReadSourceMetadataFS(l.files, candidate.Path); ok {
 		input.Title = metadata.Title
 		input.Description = metadata.Description
 		input.SourceURL = metadata.WebpageURL
@@ -279,49 +281,14 @@ func (r fillerDetailRunner) Run(ctx context.Context) (enrichment.RunResult, erro
 type fillerEnrichmentSignals struct {
 	store    records.FillerSourceStore
 	files    fs.FS
-	stations *stationDirectory // nil: no station is ever named
-}
-
-// stationDirectory loads the broadcast station directory on first use. Boot seeds it and nothing
-// rewrites it while the process runs, so one load serves every pass; a failed load is retried.
-type stationDirectory struct {
-	list func(context.Context) ([]station.Station, error)
-	mu   sync.Mutex
-	dir  *station.Directory
-}
-
-func (s *stationDirectory) get(ctx context.Context) (*station.Directory, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.dir == nil {
-		stations, err := s.list(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("load broadcast stations: %w", err)
-		}
-		s.dir = station.NewDirectory(stations)
-	}
-	return s.dir, nil
-}
-
-// resolveDuring adapts the directory for research, which names a call sign and a span. An
-// unreadable directory resolves nothing, so the named station answers no geography.
-func (s *stationDirectory) resolveDuring(log *slog.Logger) research.StationResolver {
-	return func(callSign, from, to string) (string, string, bool) {
-		dir, err := s.get(context.Background())
-		if err != nil {
-			log.Warn("filler research: broadcast stations unavailable; the named station is unresolved", "err", err)
-			return "", "", false
-		}
-		station, ok := dir.ResolveDuring(callSign, from, to)
-		return station.ID, station.Country, ok
-	}
+	stations *station.Lazy // nil: no station is ever named
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.Candidate, observedAt time.Time) (enrichment.Signals, error) {
 	signals := enrichment.Signals{ClipHash: candidate.ClipHash, Kind: candidate.Kind,
 		Title: candidate.Name, OriginalName: candidate.Name, Transcript: candidate.Transcript,
 		VisibleText: candidate.VisibleText, ObservedAt: observedAt}
-	metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path)
+	metadata, ok := asset.ReadSourceMetadataFS(l.files, candidate.Path)
 	if ok {
 		signals.Title = metadata.Title
 		signals.Description = metadata.Description
@@ -330,7 +297,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.
 		signals.SourceID = metadata.SourceID
 	}
 	if l.stations != nil {
-		directory, err := l.stations.get(ctx)
+		directory, err := l.stations.Get(ctx)
 		if err != nil {
 			return enrichment.Signals{}, err
 		}
@@ -360,7 +327,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.
 		// station makes a clip local.
 		geography := source.Geography.Normalize()
 		if geography.Country != "" {
-			signals.Source = enrichment.Geography{Scope: string(filler.GeographicNational), Country: geography.Country}
+			signals.Source = enrichment.Geography{Scope: string(pod.GeographicNational), Country: geography.Country}
 		}
 		break
 	}

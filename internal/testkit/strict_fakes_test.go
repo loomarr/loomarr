@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -130,7 +131,7 @@ func TestNotificationRepositoryRefusesAnInvalidCompletion(t *testing.T) {
 
 func approvalCommit(t *testing.T) store.ProposalApproval {
 	t.Helper()
-	p := store.Proposal{ID: "proposal-1", JobID: "job-1", Status: "approved"}
+	p := proposalstore.Proposal{ID: "proposal-1", JobID: "job-1", Status: "approved"}
 	ch, err := (&ApprovalChannels{}).PlanApprovedChannel(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +146,7 @@ func TestApprovalStoreRefusesASecondApprovalOfOneProposal(t *testing.T) {
 	if _, err := s.CommitProposalApproval(t.Context(), commit); err != nil {
 		t.Fatalf("first approval: %v", err)
 	}
-	if _, err := s.CommitProposalApproval(t.Context(), commit); !errors.Is(err, store.ErrProposalNotSubmitted) {
+	if _, err := s.CommitProposalApproval(t.Context(), commit); !errors.Is(err, proposalstore.ErrProposalNotSubmitted) {
 		t.Fatalf("second approval = %v, want ErrProposalNotSubmitted", err)
 	}
 }

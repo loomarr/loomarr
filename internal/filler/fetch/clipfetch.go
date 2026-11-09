@@ -1,18 +1,12 @@
 // Package fetch downloads filler clips into the drop-folder (design §10, §16).
 //
 // It runs IN THE CORE, and the tooling it shells out to ships in the single image (§16) —
-// so the `ingest` feature gate now reports a DEGRADED install (a binary that will not run)
-// rather than an opt-in an operator has to take. ⚠ This doc used to describe both a
-// `loomarr-ingest` sidecar and a `loomarr:filler` image variant (retired-ok);
-// §10 records why each was
-// reversed, and neither exists.
+// so the `ingest` feature gate reports a DEGRADED install (a binary that will not run) rather
+// than an opt-in an operator has to take. There is no ingest sidecar and no filler image variant;
+// §10 records why each was reversed.
 //
-// ⚠ Named clipfetch, NOT ingest — but the reason has itself been retired-ok. This doc said
-// "because internal/ingest is the Sonarr/Radarr WEBHOOK handler"; there is no internal/ingest
-// package and there is no inbound arr hook (acquisition state comes from polling — see
-// internal/provisionbackstop). The name still earns its keep, for a smaller reason: `ingest` is what
-// §10 calls the CLIP pipeline in internal/filler, so a package named ingest here would collide
-// with that one autocomplete apart.
+// ⚠ Named clipfetch, NOT ingest, because `ingest` is what §10 calls the CLIP pipeline in
+// internal/filler, so a package named ingest here would collide with that one autocomplete apart.
 //
 // The orchestration here is testable with fake downloaders; the real yt-dlp exec +
 // Archive HTTP live behind the Downloader interface, so unit tests never touch the
@@ -32,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -69,7 +63,7 @@ type Source struct {
 	// size the fallback reservation when the provider cannot report a size at download time.
 	DurationMS int64
 	Height     int
-	// Gap is the channel coverage gap this item was selected for (filler.EraGapKey, #749). Metadata
+	// Gap is the channel coverage gap this item was selected for (acquisition.EraGapKey, #749). Metadata
 	// only, like AcquisitionID: it is recorded on the artifact and never changes admission.
 	Gap string
 	// PublicationDir is set only by the Ingestor while downloading into hidden staging. It lets
@@ -127,7 +121,7 @@ type Downloader interface {
 }
 
 type ArtifactWriter interface {
-	UpsertAcquisitionArtifacts(context.Context, []filler.AcquisitionArtifact) error
+	UpsertAcquisitionArtifacts(context.Context, []acquisition.Artifact) error
 }
 
 // ArchiveCommitter advances provider deduplication only after the downloaded output has a
@@ -149,16 +143,11 @@ type Ingestor struct {
 	now         func() time.Time
 }
 
-// New builds an Ingestor from the providers' (real or fake) downloaders + the drop dir.
-func New(downloaders Downloaders, dropDir string, log *slog.Logger) *Ingestor {
-	return &Ingestor{downloaders: downloaders, dropDir: dropDir, log: log, now: time.Now}
-}
-
-// WithArtifactWriter enables durable staged publication. Production always supplies it; the
-// writer-free form remains useful for the narrow dispatcher tests that use filesystem-free fakes.
-func (i *Ingestor) WithArtifactWriter(writer ArtifactWriter) *Ingestor {
-	i.writer = writer
-	return i
+// New builds an Ingestor from the providers' (real or fake) downloaders, the drop dir and the
+// writer that records each acquisition's artifacts. Every download stages into a hidden directory
+// first and is published only after its manifest is durable, so the writer is required.
+func New(downloaders Downloaders, dropDir string, writer ArtifactWriter, log *slog.Logger) *Ingestor {
+	return &Ingestor{downloaders: downloaders, dropDir: dropDir, log: log, writer: writer, now: time.Now}
 }
 
 // WithStorageGovernor requires provider metadata and an atomic reservation
@@ -328,7 +317,7 @@ type Result struct {
 	// Empty counts sources that returned no clips and no error — a
 	// nonexistent/typo'd id or empty source (surfaced so it isn't silent).
 	Empty     int
-	Artifacts []filler.AcquisitionArtifact
+	Artifacts []acquisition.Artifact
 }
 
 // Run ingests every source once. A failed source is logged and counted, never
@@ -370,27 +359,24 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 				continue
 			}
 		}
-		outputDir := i.dropDir
-		if i.writer != nil {
-			outputDir = filepath.Join(i.dropDir, ".loomarr-acquisitions", src.AcquisitionID, fmt.Sprintf("%03d", sourceIndex))
-			if err := os.MkdirAll(outputDir, 0o750); err != nil {
-				i.logf("prepare quarantine for %s: %v", src.URL, err)
-				res.Failed++
-				continue
-			}
-			src.PublicationDir = i.dropDir
-			src.archiveAttempt = true
+		outputDir := filepath.Join(i.dropDir, ".loomarr-acquisitions", src.AcquisitionID, fmt.Sprintf("%03d", sourceIndex))
+		if err := os.MkdirAll(outputDir, 0o750); err != nil {
+			i.logf("prepare quarantine for %s: %v", src.URL, err)
+			res.Failed++
+			continue
 		}
+		src.PublicationDir = i.dropDir
+		src.archiveAttempt = true
 		download, err := dl.Download(ctx, src, outputDir)
 		var capacityErr *CapacityError
-		if i.writer != nil && (errors.Is(err, ErrWriteCeilingExceeded) || errors.As(err, &capacityErr)) {
+		if errors.Is(err, ErrWriteCeilingExceeded) || errors.As(err, &capacityErr) {
 			if cleanupErr := os.RemoveAll(outputDir); cleanupErr != nil {
 				err = errors.Join(err, fmt.Errorf("clean unsafe acquisition staging: %w", cleanupErr))
 			}
 			download = DownloadResult{}
 		}
 		manifests := i.manifests(src, outputDir, download.Outputs)
-		if len(manifests) > 0 && i.writer != nil {
+		if len(manifests) > 0 {
 			if persistErr := i.writer.UpsertAcquisitionArtifacts(ctx, manifests); persistErr != nil {
 				i.logf("record acquisition outputs for %s: %v", src.URL, persistErr)
 				res.Failed++
@@ -447,9 +433,9 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 	return res
 }
 
-func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []filler.AcquisitionArtifact {
+func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []acquisition.Artifact {
 	now := i.now().UTC()
-	manifests := make([]filler.AcquisitionArtifact, 0, len(outputs))
+	manifests := make([]acquisition.Artifact, 0, len(outputs))
 	for _, output := range outputs {
 		outputRelative, outputErr := filepath.Rel(outputDir, output.MediaPath)
 		stagingPath, stageErr := filepath.Rel(i.dropDir, output.MediaPath)
@@ -468,15 +454,15 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 				sidecarPath = strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 			}
 		}
-		state := filler.ArtifactStaged
+		state := acquisition.ArtifactStaged
 		if src.Kind == YouTube && output.ArchiveEntry == "" && output.Repair == "" {
 			output.Repair = "yt-dlp output has no exact provider archive entry"
 		}
 		if output.Repair != "" {
-			state = filler.ArtifactRepair
+			state = acquisition.ArtifactRepair
 		}
 		identity := sha256.Sum256([]byte(src.AcquisitionID + "\x00" + src.URL + "\x00" + mediaPath + "\x00" + output.SHA256))
-		manifests = append(manifests, filler.AcquisitionArtifact{
+		manifests = append(manifests, acquisition.Artifact{
 			ID: hex.EncodeToString(identity[:]), AcquisitionID: src.AcquisitionID, SourceID: src.ID,
 			Provider: string(src.Kind), SourceURL: src.URL, RemoteID: src.RemoteID, StagingPath: stagingPath,
 			MediaPath: mediaPath, SidecarPath: sidecarPath, MediaSHA256: output.SHA256,
@@ -488,17 +474,17 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 	return manifests
 }
 
-func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionArtifact, outputs []Output) ([]filler.AcquisitionArtifact, error) {
-	updated := append([]filler.AcquisitionArtifact(nil), manifests...)
+func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact, outputs []Output) ([]acquisition.Artifact, error) {
+	updated := append([]acquisition.Artifact(nil), manifests...)
 	for index := range updated {
-		if updated[index].State == filler.ArtifactRepair {
+		if updated[index].State == acquisition.ArtifactRepair {
 			continue
 		}
 		// Publish portable provenance first. A sidecar without media is inert; media without its
 		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
 			if err := publishSidecar(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath), updated[index]); err != nil {
-				updated[index].State = filler.ArtifactRepair
+				updated[index].State = acquisition.ArtifactRepair
 				updated[index].RepairReason = "publish sidecar: " + err.Error()
 				updated[index].UpdatedAt = i.now().UTC()
 				_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
@@ -507,13 +493,13 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 		}
 		target := filepath.Join(i.dropDir, updated[index].MediaPath)
 		if err := publishFile(outputs[index].MediaPath, target); err != nil {
-			updated[index].State = filler.ArtifactRepair
+			updated[index].State = acquisition.ArtifactRepair
 			updated[index].RepairReason = "publish media: " + err.Error()
 			updated[index].UpdatedAt = i.now().UTC()
 			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
 			return updated, err
 		}
-		updated[index].State = filler.ArtifactPublished
+		updated[index].State = acquisition.ArtifactPublished
 		updated[index].UpdatedAt = i.now().UTC()
 	}
 	if err := i.writer.UpsertAcquisitionArtifacts(ctx, updated); err != nil {
@@ -525,7 +511,7 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 // publishSidecar publishes the provenance sidecar idempotently: an existing target that is this
 // artifact's own earlier attempt counts as published, while one belonging to another item is a
 // conflict and is left untouched.
-func publishSidecar(source, target string, artifact filler.AcquisitionArtifact) error {
+func publishSidecar(source, target string, artifact acquisition.Artifact) error {
 	if _, err := os.Lstat(target); err == nil {
 		return acceptExistingSidecar(source, target, artifact)
 	} else if !errors.Is(err, os.ErrNotExist) {

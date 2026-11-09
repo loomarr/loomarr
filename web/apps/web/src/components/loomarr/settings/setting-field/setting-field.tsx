@@ -1,16 +1,29 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
+import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
-import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { SettingUnit } from "@loomarr/api/models/settingUnit";
+import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
+import {
+  Action,
+  Badge,
+  CompactSelect,
+  Field,
+  FieldHint,
+  Icon,
+  icons,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
-import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { CronField } from "./cron-field";
+import { DurationField, type DurationUnit } from "./duration-field";
 import type { SettingFieldProps } from "./setting-field.type";
 
 // SettingField — one registry key as a form control (config-design §2, §3, §6). The
@@ -25,28 +38,24 @@ const keyboardFor = (kind: SettingKind): ComponentProps<typeof Field>["keyboardT
   return "default";
 };
 
-type DurationUnit = "days" | "hours" | "minutes" | "seconds";
-
-const durationParts = (raw: string): { amount: number; unit: DurationUnit } => {
+// A Go duration string ("6h0m0s", "90s", "1h30m") as seconds; anything unreadable is zero.
+const durationSeconds = (raw: string): number => {
   const factors: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0.001 };
   let seconds = 0;
-  let matched = false;
   for (const match of raw.matchAll(/(-?\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
     const factor = factors[match[2] ?? ""];
-    if (factor === undefined) continue;
-    matched = true;
-    seconds += Number(match[1]) * factor;
+    if (factor !== undefined) seconds += Number(match[1]) * factor;
   }
-  if (!matched || !Number.isFinite(seconds)) return { amount: 0, unit: "hours" };
-  if (seconds !== 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
-  if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: "hours" };
-  if (seconds % 60 === 0) return { amount: seconds / 60, unit: "minutes" };
-  return { amount: seconds, unit: "seconds" };
+  return Number.isFinite(seconds) ? seconds : 0;
 };
 
-const durationRaw = (amount: number, unit: DurationUnit): string => {
-  const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
-  return `${Number(seconds.toFixed(3))}s`;
+const durationRaw = (seconds: number): string => `${Number(seconds.toFixed(3))}s`;
+
+// A whole number of time, per its registry-declared unit: what one stored step is worth in seconds
+// and the units it can be edited in. Only this unit and larger ones, so every edit stays whole.
+const TIME_UNITS: Partial<Record<SettingUnit, { seconds: number; units: readonly DurationUnit[] }>> = {
+  [SettingUnit.seconds]: { seconds: 1, units: ["days", "hours", "minutes", "seconds"] },
+  [SettingUnit.hours]: { seconds: 3600, units: ["days", "hours"] },
 };
 
 // The Custom choice offered after the registry's presets. It cannot collide with a preset: preset
@@ -89,6 +98,8 @@ const SettingField = ({
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
+  // ⚠ A pinned VALUE is real, so it is shown read-only at full strength, never in the dimmed
+  // disabled look that reads as an empty placeholder (#2759): every control takes `readOnly`.
   const overriding = entry.envOverride === true;
   // Offer the affordance only where it can actually do something: the environment must set
   // the key, and the surface must have supplied a handler.
@@ -144,26 +155,21 @@ const SettingField = ({
     }
     if (entry.kind === SettingKind.enum) {
       return (
-        <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
-          <SelectTrigger
-            id={id}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Prefer the registry-owned {value,label} options (config-design §5) so the
-                dropdown shows "OpenAI"/"Emby", not the raw stored value. Fall back to the
-                bare value list for any enum that ships no labels. */}
-            {(entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))).map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          // Prefer the registry-owned {value,label} options (config-design §5) so the dropdown
+          // shows "OpenAI"/"Emby", not the raw stored value. Fall back to the bare value list for
+          // any enum that ships no labels.
+          options={entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))}
+          readOnly={pinned}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.filler_download_schedule) {
@@ -171,12 +177,15 @@ const SettingField = ({
       const presets = entry.presets ?? [];
       const matched = presets.find((option) => option.value === value);
       const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
-      const current = durationParts(value);
       return (
         <div className="flex flex-col gap-2">
-          <Select
-            value={preset}
-            disabled={pinned || disabledReason !== undefined}
+          <CompactSelect
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            disabled={disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            label={label}
             onValueChange={(next) => {
               if (next === CUSTOM_PRESET) {
                 setEditingCustomSchedule(true);
@@ -185,83 +194,99 @@ const SettingField = ({
               setEditingCustomSchedule(false);
               onChange(next);
             }}
-          >
-            <SelectTrigger
-              id={id}
-              aria-describedby={describedBy}
-              aria-labelledby={labelledBy}
-              aria-invalid={invalid ? "true" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_PRESET}>Custom</SelectItem>
-            </SelectContent>
-          </Select>
+            options={[...presets, { label: "Custom", value: CUSTOM_PRESET }]}
+            readOnly={pinned}
+            value={preset}
+          />
           {preset === CUSTOM_PRESET && (
-            <div className="flex gap-2">
-              <NumberField
-                accessibilityLabel="Custom check interval"
-                amount={current.amount}
-                disabled={pinned || disabledReason !== undefined}
-                onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
-              />
-              <Select
-                value={current.unit}
-                disabled={pinned || disabledReason !== undefined}
-                onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-              >
-                <SelectTrigger aria-label="Custom check interval unit" className="w-32 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["days", "hours", "minutes"] as const).map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <DurationField
+              amountLabel="Custom check interval"
+              disabled={pinned || disabledReason !== undefined}
+              label="Custom check interval"
+              onSeconds={(seconds) => onChange(durationRaw(seconds))}
+              seconds={durationSeconds(value)}
+              units={["days", "hours", "minutes"]}
+            />
           )}
         </div>
       );
     }
-    if (entry.kind === SettingKind.duration) {
-      const current = durationParts(value);
+    if (entry.kind === SettingKind.cron) {
       return (
-        <div className="flex gap-2">
-          <NumberField
-            amount={current.amount}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
-            id={id}
-            invalid={invalid}
-            onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
-          />
-          <Select
-            value={current.unit}
-            disabled={pinned || disabledReason !== undefined}
-            onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-          >
-            <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["days", "hours", "minutes", "seconds"] as const).map((unit) => (
-                <SelectItem key={unit} value={unit}>
-                  {unit}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <CronField
+          id={id}
+          label={label}
+          value={value}
+          presets={entry.presets ?? []}
+          onChange={onChange}
+          disabled={disabledReason !== undefined}
+          readOnly={pinned}
+          invalid={invalid}
+          describedBy={describedBy}
+          labelledBy={labelledBy}
+        />
+      );
+    }
+    if (entry.kind === SettingKind.duration) {
+      return (
+        <DurationField
+          describedBy={describedBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          labelledBy={labelledBy}
+          onSeconds={(seconds) => onChange(durationRaw(seconds))}
+          seconds={durationSeconds(value)}
+          units={["days", "hours", "minutes", "seconds"]}
+        />
+      );
+    }
+    const timeUnit = entry.kind === SettingKind.int && entry.unit ? TIME_UNITS[entry.unit] : undefined;
+    if (timeUnit) {
+      const stored = Number(value);
+      return (
+        <DurationField
+          describedBy={describedBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          labelledBy={labelledBy}
+          onSeconds={(seconds) => onChange(String(Math.round(seconds / timeUnit.seconds)))}
+          seconds={(Number.isFinite(stored) ? stored : 0) * timeUnit.seconds}
+          units={timeUnit.units}
+        />
+      );
+    }
+    if (
+      entry.kind === SettingKind.string &&
+      (entry.presentation === SettingPresentation.timezone ||
+        entry.presentation === SettingPresentation.language)
+    ) {
+      // The server's choices, never free text. A pinned or stored value outside them (a legacy zone
+      // name, a rare language) is still shown as chosen rather than silently swapped for another.
+      const presets = entry.presets ?? [];
+      const choices = presets.some((option) => option.value === value)
+        ? presets
+        : [...presets, { value, label: value }];
+      // Language names are interface copy, localized from CLDR; the registry's labels are codes.
+      const optionLabel = (option: SettingPreset) =>
+        entry.presentation === SettingPresentation.language && option.value
+          ? languageName(option.value)
+          : option.label;
+      return (
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          options={choices.map((option) => ({ value: option.value, label: optionLabel(option) }))}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.bytes) {
@@ -272,10 +297,11 @@ const SettingField = ({
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
+            disabled={disabledReason !== undefined}
             id={id}
             invalid={invalid}
             onAmount={(amount) => onChange(String(Math.round(amount * 1024 ** 2)))}
+            readOnly={pinned}
           />
         </WithUnit>
       );
@@ -288,12 +314,13 @@ const SettingField = ({
           autoCapitalize="none"
           autoComplete={entry.secret ? "new-password" : "off"}
           autoCorrect={false}
-          disabled={pinned || disabledReason !== undefined}
+          disabled={disabledReason !== undefined}
           id={id}
           invalid={invalid}
           keyboardType={keyboardFor(entry.kind)}
           onChangeText={onChange}
           placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
+          readOnly={pinned}
           secureTextEntry={entry.secret}
           value={value}
         />
@@ -321,7 +348,8 @@ const SettingField = ({
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
     <div
       className={cn(
-        "group",
+        // `relative` anchors the absolutely positioned `sr-only` doc below to this field.
+        "group relative",
         inlineSwitch
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
           : "flex flex-col gap-1.5",
@@ -329,17 +357,12 @@ const SettingField = ({
       )}
     >
       <div className="flex items-center gap-2">
-        <Label htmlFor={id}>{label}</Label>
-        {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
-            so the form isn't a wall of helper paragraphs. It stays programmatically associated
-            via the sr-only doc below (aria-describedby), so screen readers still get it. */}
-        {entry.doc && (
-          // `describedById` points at the sr-only doc this component already renders below, so the
-          // help prose lives in the DOM ONCE rather than once per carrier.
-          <FieldHelp label={label} describedById={`${id}-doc`}>
-            {entry.doc}
-          </FieldHelp>
-        )}
+        <Text as="label" htmlFor={id} textRole="label">
+          {label}
+        </Text>
+        {/* The registry's one plain sentence sits under the field; the rest of the help (trade-offs,
+            units, edge cases) waits behind this (i), so the form reads at a glance (#2741). */}
+        {entry.detail && <FieldHelp label={label}>{entry.detail}</FieldHelp>}
         {/* THE LOCK IS THE CONTROL (config-design §3.1). The chip already says why the field
             is read-only, so hanging a separate "unlock" button beside it would put the
             explanation and the way out in two places — the operator reads "set via
@@ -393,15 +416,13 @@ const SettingField = ({
               <Badge
                 shape="square"
                 icon={
-                  <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
-                    <Lock
-                      className="absolute size-3 transition-all duration-200 group-hover/unlock:scale-90 group-hover/unlock:opacity-0 group-focus-visible/unlock:scale-90 group-focus-visible/unlock:opacity-0"
-                      aria-hidden
-                    />
-                    <LockOpen
-                      className="absolute size-3 scale-90 opacity-0 transition-all duration-200 group-hover/unlock:scale-100 group-hover/unlock:opacity-100 group-focus-visible/unlock:scale-100 group-focus-visible/unlock:opacity-100"
-                      aria-hidden
-                    />
+                  <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
+                    <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
+                      <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
+                    </span>
+                    <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
+                      <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
+                    </span>
                   </span>
                 }
                 className="group-hover/unlock:bg-signal-tint-15! group-hover/unlock:text-signal! group-focus-visible/unlock:bg-signal-tint-15! group-focus-visible/unlock:text-signal! transition-colors duration-200"
@@ -410,7 +431,10 @@ const SettingField = ({
               </Badge>
             </button>
           ) : (
-            <Badge shape="square" icon={<Lock className="size-3" aria-hidden />}>
+            <Badge
+              shape="square"
+              icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
+            >
               set via environment
             </Badge>
           ))}
@@ -425,12 +449,20 @@ const SettingField = ({
               aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
-              <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
+              <Badge
+                shape="square"
+                tone="caution"
+                icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
+              >
                 overriding {entry.envVar ?? "the environment"}
               </Badge>
             </button>
           ) : (
-            <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
+            <Badge
+              shape="square"
+              tone="caution"
+              icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
+            >
               overriding {entry.envVar ?? "the environment"}
             </Badge>
           ))}
@@ -446,32 +478,30 @@ const SettingField = ({
           <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
             {entry.preview ?? "stored"}
           </span>
-          <button
-            type="button"
-            onClick={() => {
+          <Action
+            onPress={() => {
               setReplacing(true);
               onChange("");
             }}
-            className="border-input hover:bg-accent cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors"
+            variant="outline"
           >
             Replace
-          </button>
+          </Action>
         </div>
       ) : (
         control()
       )}
 
-      {/* The doc, kept in the DOM for `aria-describedby` (screen readers) but visually hidden —
-          the visible affordance is the FieldHelp (i) tooltip in the label row. */}
+      {/* The summary: one sentence, always visible, and the control's description. */}
       {entry.doc && (
-        <p id={`${id}-doc`} className="sr-only">
+        <FieldHint id={`${id}-doc`} className={cn(inlineSwitch && "col-span-2")}>
           {entry.doc}
-        </p>
+        </FieldHint>
       )}
 
       {entry.caution && (
         <FieldHint tone="error" className={cn("flex items-center gap-1", inlineSwitch && "col-span-2")}>
-          <TriangleAlert className="size-3" aria-hidden />
+          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
           The stored value was invalid and has been reset to the default.
         </FieldHint>
       )}
@@ -483,7 +513,9 @@ const SettingField = ({
           tone="error"
           className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
         >
-          <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          </span>
           {disabledReason}
         </FieldHint>
       )}
@@ -501,8 +533,12 @@ const SettingField = ({
             inlineSwitch && "col-span-2",
           )}
         >
-          {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
-          {formatRelative(entry.updatedAt)}
+          {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
+          {entry.updatedByYou
+            ? `Changed by you, ${formatAgo(entry.updatedAt)}`
+            : entry.updatedBy
+              ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
+              : `Changed ${formatAgo(entry.updatedAt)}`}
         </p>
       )}
 

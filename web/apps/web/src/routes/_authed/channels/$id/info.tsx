@@ -1,16 +1,16 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Disclosure } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
+import { ChannelHero } from "@/components/loomarr/channels/channel-hero";
 import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
 import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
 import { OnAirIndicator } from "@/components/loomarr/channels/on-air-indicator";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ChannelAdvanced } from "./-channel-advanced";
 import { useChannelDetail } from "./-channel-detail-context";
 
@@ -29,6 +29,8 @@ const InfoScreen = () => {
 
   return (
     <>
+      {/* The page opens on a picture (#2753): the title backdrop, else generated channel art. */}
+      <ChannelHero channelId={id} channel={{ name: ch.name, number: ch.number }} />
       <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
         <div className="flex items-center gap-3">
           <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>
@@ -111,13 +113,12 @@ const InfoScreen = () => {
           applied + the Tunarr channel id are STATUS, not settings — so they live here as a
           collapsed disclosure rather than a top-level "Advanced" tab. A viewer never sees it. */}
       {isAdmin && (
-        <CollapsibleSection
-          size="compact"
-          title="Diagnostics"
+        <Disclosure
           description="Technical details about how Loomarr builds this channel."
+          label="Diagnostics"
         >
           <ChannelAdvanced channel={ch} onPolicyChange={savePolicy} />
-        </CollapsibleSection>
+        </Disclosure>
       )}
     </>
   );

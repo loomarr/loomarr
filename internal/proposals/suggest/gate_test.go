@@ -21,7 +21,7 @@ import (
 // record — the state that causes an acquisition — is created in exactly ONE place.
 //
 // ⚠ NOT asserting "only Approve calls UpsertTitle". That is false and would be a brittle test:
-// internal/provisionbackstop advances existing titles through their lifecycle, and api/titles.go marks
+// internal/library/provisionbackstop advances existing titles through their lifecycle, and api/titles.go marks
 // a given-up title `unavailable` and re-enqueues a cancelled one. Those are transitions on
 // titles that already exist. The invariant is about CREATING an acquisition, not about touching
 // the table.
@@ -78,7 +78,7 @@ func TestOnlyApproveCreatesWantedTitles(t *testing.T) {
 
 	// Two sanctioned creators, and the distinction between them is the point.
 	//
-	//   suggest/approve.go — the gate. The ONLY path from a PROPOSAL to an acquisition, which
+	//   accept/approve.go — the gate. The ONLY path from a PROPOSAL to an acquisition, which
 	//     is what D-K protects: edit-before-approve must not grow a bypass.
 	//   api/titles.go     — POST /v1/titles, an admin typing a title id directly. A different
 	//     act with its own admin check and its own audit trail, not a proposal being approved
@@ -88,8 +88,8 @@ func TestOnlyApproveCreatesWantedTitles(t *testing.T) {
 	// Anything else creating a `wanted` record is a proposal-to-acquisition path that skipped
 	// the gate.
 	sanctioned := map[string]bool{
-		filepath.Join("suggest", "approve.go"): true,
-		filepath.Join("api", "titles.go"):      true,
+		filepath.Join("accept", "approve.go"): true,
+		filepath.Join("api", "titles.go"):     true,
 	}
 	for _, o := range offenders {
 		if sanctioned[o] {

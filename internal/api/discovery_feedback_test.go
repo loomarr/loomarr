@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehold(t *testing.T) {
 	harness := newAPIHarness(t)
 	ctx := context.Background()
-	channel := store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
+	channel := channelstore.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
 		Number: 43, Strategy: schedule.Sequential, Status: schedule.StatusLive},
 		ReconcileDeadline: time.Now().Add(time.Hour)}
 	_, err := harness.Store.SaveChannel(ctx, channel)
@@ -152,7 +152,7 @@ func TestDiscoveryFeedbackAuthorizationAndRoundTrip(t *testing.T) {
 func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testing.T) {
 	harness := newAPIHarness(t)
 	ctx := context.Background()
-	_, err := harness.Store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
+	_, err := harness.Store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
 		Number: 44, Strategy: schedule.Sequential, Status: schedule.StatusLive}, ReconcileDeadline: time.Now().Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)

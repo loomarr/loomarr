@@ -43,7 +43,6 @@ type Store interface {
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 	PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error)
-	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
 	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error)
@@ -56,7 +55,12 @@ type Store interface {
 	PurgeClientCrashReports(ctx context.Context, before time.Time, keep int) (int, error)
 	MaintainQualityLedger(ctx context.Context, now time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	RecordTableRows(ctx context.Context, at, before time.Time) (int, error)
 }
+
+// tableRowHistory is how long the nightly row counts are kept: over a year, so a table's growth
+// can be compared with the same season last year.
+const tableRowHistory = 400 * 24 * time.Hour
 
 // Service runs the purges.
 type Service struct {
@@ -198,10 +202,6 @@ func (s *Service) PurgeDiagnostics(ctx context.Context) (diagnostics.PurgeResult
 // for a page to pick up again. A fixed product policy, like notifications: nothing reads it after.
 const FinishedOperationRetention = 7 * 24 * time.Hour
 
-// RecipientGrace is how long a requester row may point at a title that isn't written yet:
-// approval records who asked before provisioning writes the title.
-const RecipientGrace = 30 * 24 * time.Hour
-
 // UnusedTitleRetention is how long a settled title no channel or open request names is kept. It
 // outlasts a channel being rebuilt or a request being refined, either of which may name it again.
 const UnusedTitleRetention = 180 * 24 * time.Hour
@@ -224,9 +224,6 @@ func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 			return s.store.PurgeFinishedInteractiveOperations(ctx, now.Add(-FinishedOperationRetention))
 		}},
 		{"superseded discovery feedback", func() (int, error) { return s.store.PurgeSupersededDiscoveryFeedback(ctx) }},
-		{"orphan notification recipients", func() (int, error) {
-			return s.store.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-RecipientGrace))
-		}},
 		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
 		{"unused titles", func() (int, error) { return s.store.PurgeUnusedTitles(ctx, now.Add(-UnusedTitleRetention)) }},
 		// After the titles: a title purged tonight releases its episode list and paths.
@@ -293,6 +290,10 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 		if n > 0 && s.log != nil {
 			s.log.Info("expired sessions purged", "rows", n)
 		}
+	}
+	// After the purges, so each table's count is what retention keeps (#2793).
+	if _, err := s.store.RecordTableRows(ctx, s.now(), s.now().Add(-tableRowHistory)); err != nil {
+		errs = append(errs, fmt.Errorf("record table rows: %w", err))
 	}
 	// Last, so it returns what every purge above freed.
 	var freed int64

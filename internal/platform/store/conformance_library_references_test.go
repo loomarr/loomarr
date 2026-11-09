@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -71,13 +70,6 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "emby-show", FetchedAt: at}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SetLibraryItemPath(ctx, "emby-film", "/server/film.mkv"); err != nil {
-		t.Fatal(err)
-	}
-
 	refs, err := st.LibraryReferences(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -129,12 +121,6 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	if open, err := st.GetProposal(ctx, "open"); err != nil || open.Body.Refused[0].Item.LibraryItemID != "lib-film" ||
 		open.Body.Policy.Scope.Collections[0] != "own-8" {
 		t.Errorf("open proposal after = %+v, %v", open.Body, err)
-	}
-	if _, err := st.GetSeriesEpisodes(ctx, "emby-show"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("episode cache kept: %v", err)
-	}
-	if _, ok, err := st.LibraryItemPath(ctx, "emby-film"); err != nil || ok {
-		t.Errorf("path cache kept: %v, %v", ok, err)
 	}
 	// Run again: nothing left to change.
 	if n, err := st.RewriteLibraryReferences(ctx, items, collections); err != nil || n != 0 {

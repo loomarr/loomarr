@@ -40,7 +40,7 @@ func TestComputeDesired_CycleSummarySizesTheWholeDeck(t *testing.T) {
 	// A one-hour window slices the deck to a handful of programmes; the summary must not.
 	ch := seqChannel()
 	ch.DefaultWindow = time.Hour
-	got := schedule.ComputeDesired(ch, entries, avail, schedule.PodFill)
+	got := computeDesired(ch, entries, avail, schedule.PodFill)
 
 	want := schedule.CycleSummary{Episodes: 14, Movies: 1, Series: 2, RuntimeMs: (10*20 + 4*30 + 100) * min}
 	if got.Cycle != want {
@@ -152,7 +152,7 @@ func TestComputeDesired_CycleSummaryCountsSeriesByIdentityNotTitle(t *testing.T)
 		"series:tvdb:90000001": ep("a"), "series:tvdb:90000002": ep("b"),
 	}}
 	entries := []schedule.LineupEntry{entry("series:tvdb:90000001", "Ferrocene Station"), entry("series:tvdb:90000002", "Ferrocene Station")}
-	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill).Cycle
+	got := computeDesired(seqChannel(), entries, avail, schedule.PodFill).Cycle
 	if got.Series != 2 || got.Episodes != 2 {
 		t.Fatalf("Cycle = %+v, want 2 series / 2 episodes", got)
 	}

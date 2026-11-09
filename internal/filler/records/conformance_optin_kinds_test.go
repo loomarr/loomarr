@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 )
 
@@ -18,8 +18,8 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	for hash, kind := range map[string]filler.Role{
-		"campaign": filler.Commercial, "forecast": filler.Interstitial, "safety": filler.PSA, "spot": filler.Commercial,
+	for hash, kind := range map[string]clips.Role{
+		"campaign": clips.Commercial, "forecast": clips.Interstitial, "safety": clips.PSA, "spot": clips.Commercial,
 	} {
 		clip := sampleClip(hash, hash, kind, 0, "", "")
 		clip.CreatedAt, clip.UpdatedAt = at, at
@@ -38,8 +38,8 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("%s: %v", hash, err)
 		}
 	}
-	for hash, want := range map[string]filler.Role{
-		"campaign": filler.Political, "forecast": filler.News, "safety": filler.PSA, "spot": filler.Commercial,
+	for hash, want := range map[string]clips.Role{
+		"campaign": clips.Political, "forecast": clips.News, "safety": clips.PSA, "spot": clips.Commercial,
 	} {
 		clip, err := s.GetClip(ctx, hash)
 		if err != nil {
@@ -53,7 +53,7 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 	// The real relabel path: the free pass's earlier version recorded the source's "commercial",
 	// the new version reads the wording as political, and a later corrected rule takes it back.
 	// Each answer replaces the same producer's older one, and the row follows.
-	if err := s.UpsertClip(ctx, sampleClip("relabel", "relabel", filler.Commercial, 0, "", "")); err != nil {
+	if err := s.UpsertClip(ctx, sampleClip("relabel", "relabel", clips.Commercial, 0, "", "")); err != nil {
 		t.Fatal(err)
 	}
 	for step, answer := range []struct{ version, kind string }{
@@ -72,7 +72,7 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if clip.Role != filler.Role(answer.kind) {
+		if clip.Role != clips.Role(answer.kind) {
 			t.Errorf("after v%s the row says %q, want %q", answer.version, clip.Role, answer.kind)
 		}
 	}

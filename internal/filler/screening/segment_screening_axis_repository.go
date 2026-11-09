@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -64,7 +64,7 @@ func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisEvidence
 // GetSegmentScreeningAxisRecord opens only the provider-neutral record. Browser-safe read models
 // use it to reproduce closed evaluator identity without loading private raw evidence into memory.
 func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisRecord(ctx context.Context, evidenceSHA256 string) (SegmentScreeningAxisEvidence, error) {
-	if r == nil || r.files == nil || !filler.IsContentHash(evidenceSHA256) {
+	if r == nil || r.files == nil || !split.IsContentHash(evidenceSHA256) {
 		return SegmentScreeningAxisEvidence{}, fmt.Errorf("segment screening axis evidence identity is invalid")
 	}
 	raw, err := r.files.ReadBlob(ctx, segmentScreeningAxisRecordKind, evidenceSHA256, segmentScreeningAxisRecordMaxBytes)

@@ -13,7 +13,11 @@ const SIGNAL = brandChroma[0];
 
 // DemoBanner tells a visitor they are on the demo site and offers the next step of a short tour
 // (#2268). It sits at the top of every page while the server says it is a demo site.
-const DemoBanner = ({ step, stepCount, next, onDismiss }: DemoBannerProps) => (
+//
+// `compact` is the phone layout (#2750). The wide layout wraps into a message row, a next-step row
+// and a row for the X, about 100px of an 844px screen. Compact keeps one line under 56px: the Demo
+// badge already says what the sentence said, so the line is the badge, the next step and the X.
+const DemoBanner = ({ compact = false, step, stepCount, next, onDismiss }: DemoBannerProps) => (
   <Surface
     aria-label="Demo tour"
     borderColor={withAlpha(SIGNAL, 0.35)}
@@ -31,10 +35,10 @@ const DemoBanner = ({ step, stepCount, next, onDismiss }: DemoBannerProps) => (
       borderWidth={0}
       borderRadius={0}
       flexDirection="row"
-      flexWrap="wrap"
+      flexWrap={compact ? "nowrap" : "wrap"}
       gap="inline"
       paddingHorizontal={16}
-      paddingVertical={8}
+      paddingVertical={compact ? 4 : 8}
     >
       {/* Its own row: a square Badge aligns itself to the top, so beside the 40px actions it would
           ride above the message instead of sitting level with it. */}
@@ -46,15 +50,31 @@ const DemoBanner = ({ step, stepCount, next, onDismiss }: DemoBannerProps) => (
         flexGrow={1}
         flexShrink={1}
         gap="inline"
+        minWidth={0}
       >
         <Badge shape="square" tone="signal">
           Demo
         </Badge>
-        <Text flexShrink={1} textRole="compact" tone="primary">
-          {next ? "You're exploring the Loomarr demo." : "That's the tour. It's a demo, so explore freely."}
-        </Text>
+        {compact && next ? (
+          <>
+            <Text textRole="compact" tone="secondary">
+              Next:
+            </Text>
+            <Action accessibilityRole="link" render={next.link} variant="link">
+              {next.label}
+            </Action>
+          </>
+        ) : (
+          <Text flexShrink={1} numberOfLines={compact ? 1 : undefined} textRole="compact" tone="primary">
+            {next
+              ? "You're exploring the Loomarr demo."
+              : compact
+                ? "That's the tour."
+                : "That's the tour. It's a demo, so explore freely."}
+          </Text>
+        )}
       </Surface>
-      {next ? (
+      {next && !compact ? (
         <Surface
           alignItems="center"
           backgroundColor="transparent"

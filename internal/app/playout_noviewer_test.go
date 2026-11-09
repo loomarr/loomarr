@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -41,7 +41,7 @@ func TestNoFFmpegRunsUntilAViewerTunes(t *testing.T) {
 
 	st := testkit.MigratedSQLiteStore(t)
 	for i := range 8 {
-		if _, err := st.SaveChannel(t.Context(), store.Channel{Channel: schedule.Channel{
+		if _, err := st.SaveChannel(t.Context(), channelstore.Channel{Channel: schedule.Channel{
 			ID: fmt.Sprintf("g1-%d", i), Name: fmt.Sprintf("G1 %d", i), Number: i + 1,
 			Strategy: schedule.Sequential, Status: schedule.StatusLive,
 		}}); err != nil {

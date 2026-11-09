@@ -6,12 +6,11 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
@@ -123,6 +122,13 @@ const ChannelDetailLayout = () => {
   const queryClient = useQueryClient();
   // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
   const { pathname } = useLocation();
+  // Every section renders in the one scroller below, so a new tab would open at the last tab's
+  // offset (#2744). Each section starts at its own top.
+  const sectionScroller = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the path is the trigger, not a value read.
+  useLayoutEffect(() => {
+    if (sectionScroller.current) sectionScroller.current.scrollTop = 0;
+  }, [pathname]);
 
   const channel = channelsApi.useGetChannel(id);
   // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
@@ -227,7 +233,7 @@ const ChannelDetailLayout = () => {
           aria-label="Back to channels"
           className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
         >
-          <ArrowLeft className="size-4" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         </Link>
         {ch.logo ? (
           <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">
@@ -334,7 +340,7 @@ const ChannelDetailLayout = () => {
 
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" data-testid="channel-section-scroller" ref={sectionScroller}>
         <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
           <ChannelDetailProvider
             value={{

@@ -5,6 +5,7 @@ export type {
   PlayerController,
   PlayerControllerOptions,
   PlayerErrorReport,
+  PlayerFailureCause,
   PlayerReconnecting,
   PlayerRecoveryOptions,
   PlayerSnapshot,

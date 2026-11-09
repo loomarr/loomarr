@@ -7,7 +7,9 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -56,10 +58,10 @@ func (l *liveStructureRuntime) Current() filler.StructureRuntime {
 	return l.current
 }
 
-func buildCertifiedWindowStructureRuntime(st records.Store, set resolved, layout filler.Layout,
+func buildCertifiedWindowStructureRuntime(st records.Store, set resolved, layout cliplibrary.Layout,
 	authority *window.MaterializationAuthority,
 	deployment *openrouter.Deployment, cutFamily func() encode.Family,
-) (filler.CompleteTimelineStructureDecisioner, error) {
+) (split.CompleteTimelineDecisioner, error) {
 	if authority == nil || deployment == nil {
 		return nil, nil
 	}

@@ -129,7 +129,7 @@ type BudgetFacts struct {
 	// Costs are the probe's measurements. Nil means the probe has not completed and falls back
 	// to MeasuredCapacity. A non-nil empty table means no class succeeded, so none is admitted.
 	Costs map[CostKey]ClassCost
-	// MeasuredCapacity is the legacy whole-stream budget used before per-class costs exist: each
+	// MeasuredCapacity is the whole-stream budget used while no per-class costs exist: each
 	// transcode costs one of it, whatever its class. 0 means unmeasured, which never blocks playout.
 	MeasuredCapacity int
 	// ToneCurve is the curve HDR maps with now; it picks the HDR cells. Empty = Hable.
@@ -148,8 +148,8 @@ type BudgetFacts struct {
 // their grace and unfetched premium variants (PackagerHLS.admit, #1780), and only then is refused.
 //
 // The ledger is the only count. A hardware transcode also passes the host-memory gate (memory),
-// which the retired encode pool used to apply behind a second, rung-0 slot count that could refuse
-// what the ledger admitted at a dropped rung (#1562, the #1505 class).
+// but no second, rung-0 slot count sits behind the ledger: it could refuse what the ledger
+// admitted at a dropped rung (#1562, the #1505 class).
 type ResourceBudget struct {
 	facts  func() BudgetFacts
 	memory *hostMemory

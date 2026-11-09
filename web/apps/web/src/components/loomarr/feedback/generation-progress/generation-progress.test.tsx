@@ -43,7 +43,7 @@ describe("GenerationProgress", () => {
   ] as const)("shows one calm status for %s before the first snapshot", (phase, label) => {
     const { container } = render(<GenerationProgress phase={phase} round={4} elapsedSeconds={3} />);
     expect(screen.getByText(label)).toBeInTheDocument();
-    expect(container.querySelectorAll(".animate-spin")).toHaveLength(1);
+    expect(container.querySelectorAll("svg")).toHaveLength(1);
     expect(screen.queryByText(/pass|\d+s/i)).not.toBeInTheDocument();
   });
 
@@ -56,7 +56,7 @@ describe("GenerationProgress", () => {
     const { container } = render(<GenerationProgress phase="failed" error="Generation failed" />);
     // The theme provider's wrapper spans stay; the component itself renders nothing.
     expect(container.textContent).toBe("");
-    expect(container.querySelector(".animate-spin")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
   });
 
   const stages: [ProposalJourneyProgressDTO["stage"], string[], string][] = [
@@ -111,10 +111,9 @@ describe("GenerationProgress", () => {
     expect(live).not.toHaveTextContent(/picked|\d s/);
   });
 
-  it("uses one motion, and none for reduced motion", () => {
+  it("uses one motion: the design system's spinner, which holds still for reduced motion", () => {
     const { container } = render(<GenerationProgress phase="reasoning" progress={progress()} />);
-    const spinner = container.querySelector(".animate-spin");
-    expect(container.querySelectorAll(".animate-spin, .animate-pulse")).toHaveLength(1);
-    expect(spinner?.getAttribute("class")).toContain("motion-reduce:animate-none");
+    expect(container.querySelectorAll("svg")).toHaveLength(1);
+    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(0);
   });
 });

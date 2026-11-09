@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -16,7 +16,7 @@ const PremeasureHorizon = 48 * time.Hour
 // premeasureAhead hands each library item the committed cycle airs between now and
 // PremeasureHorizon to the measure hook, once per pass. The worker skips revisions it already
 // measured, so a repeat pass costs a lookup per item and no media work.
-func (e *Engine) premeasureAhead(ctx context.Context, ch store.Channel) {
+func (e *Engine) premeasureAhead(ctx context.Context, ch channelstore.Channel) {
 	if e.premeasure == nil || ch.PlayoutAnchor.IsZero() || len(ch.Desired) == 0 {
 		return
 	}

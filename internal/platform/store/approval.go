@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -125,7 +128,7 @@ func (s *sqlStore) commitProposalApproval(
 	}
 
 	p := commit.Proposal
-	body, err := encodeProposalBody(p)
+	body, err := proposalstore.EncodeProposalBody(p)
 	if err != nil {
 		return 0, err
 	}
@@ -193,13 +196,20 @@ func (s *sqlStore) commitProposalApproval(
 	enqueued := 0
 	for _, item := range encoded {
 		r := item.record
+		// A pending row (a title a lineup names that nothing has asked for) is no record, so the
+		// approval writes over it; a real record is left as it is.
 		result, err := tx.ExecContext(ctx, s.ph(
 			`INSERT INTO titles
 			   (key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(key) DO NOTHING`),
+			 ON CONFLICT(key) DO UPDATE SET
+			   title_json=excluded.title_json, state=excluded.state, library_id=excluded.library_id,
+			   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
+			   last_error=excluded.last_error, updated_at=excluded.updated_at
+			 WHERE titles.state = ?`),
 			string(r.Key), item.json, string(r.State), r.LibraryID,
-			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt))
+			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt),
+			storedb.PendingTitle)
 		if err != nil {
 			return 0, fmt.Errorf("approve proposal %s: insert title %s: %w", p.ID, r.Key, err)
 		}
@@ -211,10 +221,10 @@ func (s *sqlStore) commitProposalApproval(
 			enqueued++
 		}
 	}
-	if err := validateApprovalBinding(ctx, tx, s.ph, p, commit.Channel); err != nil {
+	if err := s.validateApprovalBinding(ctx, tx, p, commit.Channel); err != nil {
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
-	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
+	if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
 			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
 		}
@@ -223,13 +233,13 @@ func (s *sqlStore) commitProposalApproval(
 	if p.CreatedBy != "" {
 		for _, item := range encoded {
 			if err := identitystore.InsertNotificationReferenceRecipient(
-				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
+				ctx, tx, s.ph, notifications.ReferenceTitle, string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
 			); err != nil {
 				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
 			}
 		}
 		if err := identitystore.InsertNotificationReferenceRecipient(
-			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
+			ctx, tx, s.ph, notifications.ReferenceChannel, commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
 		); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
 		}
@@ -278,16 +288,21 @@ func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User,
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
-	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalstore.ProposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanProposals(rows)
+	out, err := proposalstore.ScanProposals(rows)
+	if err != nil {
+		return nil, err
+	}
+	return out, rows.Err() // ScanProposals checks it too; naming it here keeps the invariant visible to rowserrcheck
 }
 
 func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
+	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ? AND state <> ?`),
+		string(key), storedb.PendingTitle))
 }
 
 // isConstraintViolation is storedb.IsConstraintViolation under the name this package's 14 call
@@ -310,8 +325,8 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 // validateApprovalBinding checks, inside the approval transaction, that the planned channel is
 // the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
 // channel the job originated. A job with no channel yet may only create one it originates.
-func validateApprovalBinding(ctx context.Context, q channelDB, ph placeholder, p Proposal, ch Channel) error {
-	bound, err := channelForJob(ctx, q, ph, p.JobID)
+func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.DB, p Proposal, ch Channel) error {
+	bound, err := channelstore.ChannelForJobIn(ctx, s.channelCluster, q, p.JobID)
 	switch {
 	case err == nil:
 		if bound.ID != ch.ID {

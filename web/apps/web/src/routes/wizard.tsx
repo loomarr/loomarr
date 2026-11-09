@@ -6,9 +6,9 @@ import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenan
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
+import { LoadingStrip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback";
@@ -188,7 +188,7 @@ const WizardScreen = () => {
   if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
       <main className="bg-background flex min-h-screen items-center justify-center" aria-busy="true">
-        <Loader2 className="text-muted-foreground size-6 animate-spin" aria-label="Checking your setup" />
+        <LoadingStrip accessibilityLabel="Checking your setup" />
       </main>
     );
   }

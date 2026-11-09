@@ -7,15 +7,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Icon,
+  icons,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
-import { ShieldCheck } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Label } from "@/components/ui/label";
 import type { ImportDialogProps } from "./import-dialog.type";
 
 type CandidateFilter = "all" | "available" | "imported" | "disabled" | "admin";
@@ -202,31 +202,32 @@ const ImportDialog = ({
                               disabled={candidate.imported || importing}
                               onCheckedChange={() => toggle(candidate.id)}
                             />
-                            <Label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2 font-normal">
-                              <span className="block">
-                                <span className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium">{candidate.name}</span>
-                                  {candidate.imported && (
-                                    <Badge shape="square" tone="lock">
-                                      Already imported
-                                    </Badge>
-                                  )}
-                                  {candidate.disabled && (
-                                    <Badge shape="square" tone="onair">
-                                      Disabled on server
-                                    </Badge>
-                                  )}
-                                  {candidate.isAdmin && (
-                                    <Badge shape="square" tone="tune">
-                                      Server admin
-                                    </Badge>
-                                  )}
-                                </span>
-                                <span className="text-static-400 mt-1 block text-xs">
-                                  Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
-                                </span>
+                            <label
+                              htmlFor={id}
+                              className="min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none"
+                            >
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{candidate.name}</span>
+                                {candidate.imported && (
+                                  <Badge shape="square" tone="lock">
+                                    Already imported
+                                  </Badge>
+                                )}
+                                {candidate.disabled && (
+                                  <Badge shape="square" tone="onair">
+                                    Disabled on server
+                                  </Badge>
+                                )}
+                                {candidate.isAdmin && (
+                                  <Badge shape="square" tone="tune">
+                                    Server admin
+                                  </Badge>
+                                )}
                               </span>
-                            </Label>
+                              <span className="text-static-400 mt-1 block text-xs">
+                                Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
+                              </span>
+                            </label>
                           </li>
                         );
                       })}
@@ -237,7 +238,7 @@ const ImportDialog = ({
                 <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
                   <div>
                     <p className="flex items-center gap-2 font-medium">
-                      <ShieldCheck className="text-lock size-4" aria-hidden />
+                      <Icon decorative glyph={icons.verified} size="compact" tone="success" />
                       Passwords stay private
                     </p>
                     <p className="text-muted-foreground mt-1">

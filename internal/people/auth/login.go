@@ -16,7 +16,7 @@ var ErrRateLimited = errors.New("too many login attempts")
 // ErrInvalidCredentials is returned for a bad username/password.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
-// Authenticator verifies media-server credentials (the Phase-5 library adapter).
+// Authenticator verifies media-server credentials (the library adapter).
 type Authenticator interface {
 	AuthenticateByName(ctx context.Context, username, password string) (library.User, error)
 }

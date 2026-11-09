@@ -20,6 +20,11 @@ type CompactSelectProps<Value extends string> = {
   label: string;
   onValueChange: (value: Value) => void;
   options: readonly CompactSelectOption<Value>[];
+  /**
+   * A value something else owns (a setting the environment pins): it cannot be changed, but it is
+   * real, so it reads at full strength rather than in the dimmed disabled look of an empty field.
+   */
+  readOnly?: boolean;
   value: Value;
   /** A fixed width for a toolbar slot; without one the select fills its row. */
   width?: number;

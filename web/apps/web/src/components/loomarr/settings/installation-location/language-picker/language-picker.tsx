@@ -1,5 +1,4 @@
-import { Field } from "@loomarr/design-system";
-import { Check, Lock } from "lucide-react";
+import { Field, Icon, icons } from "@loomarr/design-system";
 import { useEffect, useId, useMemo, useState } from "react";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
@@ -40,7 +39,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
         </label>
         {locked && lockedLabel && (
           <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
-            <Lock className="size-3" aria-hidden /> {lockedLabel}
+            <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
           </span>
         )}
       </div>
@@ -103,7 +102,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
                 onClick={() => choose(code, label)}
               >
                 <span>{label}</span>
-                {code === value && <Check className="size-4" aria-hidden />}
+                {code === value && <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />}
               </button>
             ))}
             {choices.length === 0 && (

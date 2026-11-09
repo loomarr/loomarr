@@ -17,11 +17,18 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -36,14 +43,14 @@ type fakeFiller struct {
 	fetchedSourceIDs []string
 	rewinds          []struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}
 	retries  []string
 	ingested []string
 	// sourceItems records exact result-row acquisitions. Unlike `asked`, these retain their
 	// registered parent and must never create another source.
-	sourceItems []filler.AcquisitionTarget
+	sourceItems []acquisition.AcquisitionTarget
 	// asked records only what came through IngestAsked — the operator-initiated path, and the
 	// only one that may register a source. Separate from `ingested` so a test can tell the two
 	// entry points apart; collapsing them is how the real adapter's bug hid.
@@ -76,14 +83,14 @@ type fakeFiller struct {
 	confirmNotFound       bool
 	confirmInvalid        bool
 	confirmFiled          bool
-	fetchStatus           filler.FetchStatus
-	fetchResult           filler.FetchResult
+	fetchStatus           acquisition.FetchStatus
+	fetchResult           acquisition.FetchResult
 	fetchErr              error
 	readiness             filler.Readiness
-	cleanupPreview        filler.StorageCleanupPreview
-	cleanupResult         filler.StorageCleanupResult
+	cleanupPreview        acquisition.StorageCleanupPreview
+	cleanupResult         acquisition.StorageCleanupResult
 	pullID                string
-	pullTargets           []filler.AcquisitionTarget
+	pullTargets           []acquisition.AcquisitionTarget
 	sourceSuggestions     []source.Suggestion
 	sourceSuggestionErr   error
 	resolvedSource        source.Suggestion
@@ -101,23 +108,23 @@ type fakeFiller struct {
 
 func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
 
-func (f *fakeFiller) PreviewStorageCleanup(context.Context) (filler.StorageCleanupPreview, error) {
+func (f *fakeFiller) PreviewStorageCleanup(context.Context) (acquisition.StorageCleanupPreview, error) {
 	return f.cleanupPreview, nil
 }
 
-func (f *fakeFiller) CleanupStorage(context.Context) (filler.StorageCleanupResult, error) {
+func (f *fakeFiller) CleanupStorage(context.Context) (acquisition.StorageCleanupResult, error) {
 	return f.cleanupResult, nil
 }
 
-func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
+func (f *fakeFiller) FetchStatus(context.Context) (acquisition.FetchStatus, error) {
 	return f.fetchStatus, nil
 }
 
-func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResult, error) {
+func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (acquisition.FetchResult, error) {
 	f.fetches++
 	f.fetchedSourceIDs = append(f.fetchedSourceIDs, sourceID)
 	if f.fetchErr != nil {
-		return filler.FetchResult{}, f.fetchErr
+		return acquisition.FetchResult{}, f.fetchErr
 	}
 	return f.fetchResult, nil
 }
@@ -157,10 +164,10 @@ func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (s
 	}, nil
 }
 
-func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {
+func (f *fakeFiller) Rewind(_ context.Context, hash string, from pipelinestate.StageID, force bool) error {
 	f.rewinds = append(f.rewinds, struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}{hash: hash, from: from, force: force})
 	return nil
@@ -182,13 +189,13 @@ func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 // Discover records the query so a test can prove the handler passes it through, and returns a
 // total LARGER than the item count — the real API pages, and a fake that returned len(items)
 // would let a handler reporting the page length pass.
-func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	f.discovered = append(f.discovered, query)
 	f.discoverLimit = limit
 	if f.discoverErr != nil {
 		return nil, 0, f.discoverErr
 	}
-	return []api.DiscoveredClip{
+	return []fillerapi.DiscoveredClip{
 		{ID: "cm-1993-4", Title: "Commercials 1993", Year: 1993, URL: "https://archive.org/details/cm-1993-4"},
 		{ID: "no-year-item", Title: "Untitled reel", URL: "https://archive.org/details/no-year-item"},
 	}, 54, nil
@@ -196,14 +203,14 @@ func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api
 
 // DiscoverCollection returns a DIFFERENT item set from Discover, deliberately: identical
 // fixtures would let a handler that called the wrong method pass every assertion.
-func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	f.collections = append(f.collections, ref)
 	f.collectionQueries = append(f.collectionQueries, query)
 	f.discoverLimit = limit
 	if f.discoverErr != nil {
 		return nil, 0, f.discoverErr
 	}
-	return []api.DiscoveredClip{
+	return []fillerapi.DiscoveredClip{
 		{ID: "pack-1", Title: "Starter reel", Year: 1985, URL: "https://archive.org/details/pack-1"},
 	}, 667, nil
 }
@@ -212,24 +219,24 @@ func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, li
 // never probed has no duration, and a fake that answered for everything would let a handler
 // (or a UI) that renders 0 as "0:00" pass — which is the whole failure this split-out route
 // exists around.
-func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
+func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[string]fillerapi.DiscoveredClipStats, error) {
 	f.enriched = append(f.enriched, ids...)
 	if f.enrichErr != nil {
 		return nil, f.enrichErr
 	}
-	out := map[string]api.DiscoveredClipStats{}
+	out := map[string]fillerapi.DiscoveredClipStats{}
 	for _, id := range ids {
 		if id == "unprobed" {
 			continue // absent, never zeroed
 		}
-		out[id] = api.DiscoveredClipStats{DurationMS: 91_090, Height: 960}
+		out[id] = fillerapi.DiscoveredClipStats{DurationMS: 91_090, Height: 960}
 	}
 	return out, nil
 }
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", api.ErrIngestUnavailable
+		return "", fillerapi.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	return "job-1", nil
@@ -237,33 +244,33 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 
 func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	if f.unavailable {
-		return "", api.ErrIngestUnavailable
+		return "", fillerapi.ErrIngestUnavailable
 	}
 	for _, item := range items {
-		f.sourceItems = append(f.sourceItems, filler.AcquisitionTarget{
+		f.sourceItems = append(f.sourceItems, acquisition.AcquisitionTarget{
 			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
 		})
 	}
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (string, error) {
+func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []acquisition.AcquisitionTarget, commit func(context.Context, acquisition.AcquisitionRun) error) (string, error) {
 	if f.beforePull != nil {
 		f.beforePull()
 	}
 	f.pullMu.Lock()
 	defer f.pullMu.Unlock()
 	if f.unavailable {
-		return "", api.ErrIngestUnavailable
+		return "", fillerapi.ErrIngestUnavailable
 	}
 	if f.ingestPullErr != nil {
 		return "", f.ingestPullErr
 	}
-	if err := commit(ctx, filler.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := commit(ctx, acquisition.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: acquisition.TriggerPull, Status: acquisition.RunQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		return "", err
 	}
 	f.pullID = pullID
-	f.pullTargets = append([]filler.AcquisitionTarget(nil), targets...)
+	f.pullTargets = append([]acquisition.AcquisitionTarget(nil), targets...)
 	for _, target := range targets {
 		f.ingested = append(f.ingested, target.URL)
 	}
@@ -275,7 +282,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []fi
 // wrong for a release — a double that collapsed them could not have caught it.
 func (f *fakeFiller) IngestAsked(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", api.ErrIngestUnavailable
+		return "", fillerapi.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	f.asked = append(f.asked, urls...)
@@ -292,7 +299,7 @@ type fakeSplitCall struct {
 
 func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	if f.splitUnavailable {
-		return "", api.ErrSplitUnavailable
+		return "", fillerapi.ErrSplitUnavailable
 	}
 	if f.splitNotFound {
 		return "", store.ErrNotFound
@@ -301,7 +308,7 @@ func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	return "split-job-1", nil
 }
 
-func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []filler.SplitSegment) error {
+func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []split.Segment) error {
 	if f.confirmNotFound {
 		return store.ErrNotFound
 	}
@@ -319,11 +326,11 @@ func newFillerServer(t *testing.T) (*httptest.Server, records.Store, *fakeFiller
 	return newFillerServerWithImages(t, nil)
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithImages(t *testing.T, imageService imagesapi.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithConfig(t, imageService, nil)
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithConfig(t *testing.T, imageService imagesapi.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, imageService, stringSettings(liveConfig), nil)
 }
 
@@ -331,12 +338,12 @@ func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, 
 	return newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.incoming.ready_window": readyWindow}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{
-		fetchResult: filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+		fetchResult: acquisition.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
@@ -361,9 +368,8 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 	// tests across three files went red the moment the migration landed, none of them wrong.
 	//
 	// Clearing here rather than teaching each assertion to say "+4" keeps them readable AND keeps
-	// them honest when the seeded set changes again — which it will. The seeding itself is not
-	// untested: `TestMigrations_SeedDefaultSources` owns exactly that, and is the ONLY test that
-	// should ever depend on what 00034 inserts.
+	// them honest when the seeded set changes again — which it will. No test here should depend on
+	// what 00034 inserts; the seeding belongs to a store-level test, not to these route tests.
 	clearSeededSources(t, st)
 	return srv, st, ff
 }
@@ -382,8 +388,8 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 	srv, st, _ := newFillerServerWithImages(t, imageService)
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
-		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Role: filler.Commercial,
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
+		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Role: clips.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
 	}}); err != nil {
 		t.Fatal(err)
@@ -394,7 +400,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		t.Fatalf("list status = %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Clips []api.ClipDTO `json:"clips"`
+		Clips []fillerapi.ClipDTO `json:"clips"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -420,9 +426,9 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
-		Role: filler.Commercial, DurationMs: 30_000, Source: source.ID,
+		Role: clips.Commercial, DurationMs: 30_000, Source: source.ID,
 	}}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -460,12 +466,12 @@ func clearSeededSources(t *testing.T, st records.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era int, aud filler.Audience, cat string) {
+func seedClip(t *testing.T, st records.Store, id string, kind clips.Role, era int, aud clips.Audience, cat string) {
 	t.Helper()
 	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
 	// both so assertions stay legible — the store does not care what a hash looks like, and the
-	// 64-hex shape is enforced (and tested) in `filler.ClipPath`.
+	// 64-hex shape is enforced (and tested) in `cliplibrary.ClipPath`.
 	c.Hash = id
 	c.Path = id
 	c.TunarrProgramID = "tun-" + id
@@ -483,7 +489,7 @@ func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era i
 
 // tagCategory asserts a fixture's category as a taxonomy leaf. Category is derived from the tags
 // on read (#2323), so it exists only once the clip is tagged.
-func tagCategory(t *testing.T, st store.Store, c filler.Clip) {
+func tagCategory(t *testing.T, st store.Store, c clips.Clip) {
 	t.Helper()
 	if c.Category == "" {
 		return
@@ -495,9 +501,9 @@ func tagCategory(t *testing.T, st store.Store, c filler.Clip) {
 
 func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
-	seedClip(t, st, "b1", filler.Bumper, 1992, filler.General, "")
+	seedClip(t, st, "c1", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "c2", clips.Commercial, 1994, clips.Kids, "toys")
+	seedClip(t, st, "b1", clips.Bumper, 1992, clips.General, "")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler?role=commercial", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -522,8 +528,8 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 
 func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "cereal-ad", filler.Commercial, 1992, filler.Kids, "")
-	seedClip(t, st, "beer-ad", filler.Commercial, 1994, filler.General, "")
+	seedClip(t, st, "cereal-ad", clips.Commercial, 1992, clips.Kids, "")
+	seedClip(t, st, "beer-ad", clips.Commercial, 1994, clips.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"cereal-ad","tags":["cereal"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag cereal-ad → %d", p.StatusCode)
@@ -549,8 +555,8 @@ func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
 
 func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "classified-bumper", filler.Bumper, 0, "", "")
-	seedClip(t, st, "unclassified-bumper", filler.Bumper, 0, "", "")
+	seedClip(t, st, "classified-bumper", clips.Bumper, 0, "", "")
+	seedClip(t, st, "unclassified-bumper", clips.Bumper, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"classified-bumper","tags":["promo"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag classified-bumper → %d", p.StatusCode)
@@ -572,8 +578,8 @@ func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
 
 func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "format-only", filler.Bumper, 0, "", "")
-	seedClip(t, st, "product-and-format", filler.Commercial, 0, "", "")
+	seedClip(t, st, "format-only", clips.Bumper, 0, "", "")
+	seedClip(t, st, "product-and-format", clips.Commercial, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"format-only","tags":["promo"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag format-only → %d", p.StatusCode)
@@ -599,7 +605,7 @@ func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
 
 func TestPatchClip_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", "", `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member patch → %d, want 401", resp.StatusCode)
@@ -608,7 +614,7 @@ func TestPatchClip_RequiresAdmin(t *testing.T) {
 
 func TestPatchClip_AdminEditsTags(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
 	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":"  Brightfield's  ","tags":["cereal"]}`)
@@ -683,13 +689,13 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 
 func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
+	seedClip(t, st, "geo", clips.Commercial, 1994, "kids", "cereal")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"geo","era":1991,"audience":"kids","geography":{"scope":"local","network":"Kestrel One","station":"wews-tv","airDate":"1991-03-10"}}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("geography patch → %d", resp.StatusCode)
 	}
-	var dto api.ClipDTO
+	var dto fillerapi.ClipDTO
 	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
 		t.Fatal(err)
 	}
@@ -702,7 +708,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	}
 	// The typed call sign resolves against the broadcast station directory: the station's id and
 	// country are stored, never the text (#2059 decision 5).
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Network != "Kestrel One" ||
+	if got.GeographicScope != pod.GeographicLocal || got.Country != "US" || got.Network != "Kestrel One" ||
 		got.Station != "fcc:59441" || got.AirDate != "1991-03-10" || got.GeoEvidence != "operator" {
 		t.Fatalf("stored geography = %+v", got.Clip)
 	}
@@ -746,14 +752,14 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 		t.Fatalf("station by id → %d, want 200", kept.StatusCode)
 	}
 	if got, err := st.GetClip(context.Background(), "geo"); err != nil || got.Station != "fcc:25453" ||
-		got.GeographicScope != filler.GeographicNational || got.Country != "US" {
+		got.GeographicScope != pod.GeographicNational || got.Country != "US" {
 		t.Fatalf("national clip kept station = %+v (%v)", got.Clip, err)
 	}
 }
 
 func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	seedClip(t, st, "stuck", filler.Commercial, 0, "", "")
+	seedClip(t, st, "stuck", clips.Commercial, 0, "", "")
 
 	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"vision"}`)
 	if member.StatusCode != http.StatusForbidden {
@@ -763,7 +769,7 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	if admin.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin rewind → %d, want 204", admin.StatusCode)
 	}
-	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageVision || ff.rewinds[0].force {
+	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != pipelinestate.StageVision || ff.rewinds[0].force {
 		t.Errorf("rewinds = %+v, want stuck from vision without force", ff.rewinds)
 	}
 
@@ -777,7 +783,7 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 // PATCHing era confirms it: once the clip has a verified era the suggestion's era is hidden.
 func TestPatchClip_ConfirmsObservedEra(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	seedClip(t, st, "u1", clips.Commercial, 0, "", "")
 	if err := st.RecordFillerEraObservation(context.Background(), "u1", 1985, research.ObservedByVision, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -843,8 +849,8 @@ func TestSyncFiller_AdminOnly(t *testing.T) {
 // LLM grounding path — the leak §10 exists to prevent.
 func TestFiller_NameSearch(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
+	seedClip(t, st, "c1", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "c2", clips.Commercial, 1994, clips.Kids, "toys")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler?q=C1", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -871,7 +877,7 @@ func TestFiller_NameSearch(t *testing.T) {
 // structurally wrong pods rather than merely a mis-tagged clip.
 func TestFiller_PatchCorrectsRole(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
+	seedClip(t, st, "t1", clips.Commercial, 1994, clips.Kids, "toys")
 
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"t1","era":1994,"audience":"kids","tags":["toys"],"role":"trailer"}`)
@@ -882,7 +888,7 @@ func TestFiller_PatchCorrectsRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Role != filler.Trailer {
+	if got.Role != clips.Trailer {
 		t.Errorf("kind = %q, want trailer", got.Role)
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "t1")
@@ -904,7 +910,7 @@ func TestFiller_PatchCorrectsRole(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tag-only patch → %d, want 200", resp.StatusCode)
 	}
-	if got, _ = st.GetClip(context.Background(), "t1"); got.Role != filler.Trailer {
+	if got, _ = st.GetClip(context.Background(), "t1"); got.Role != clips.Trailer {
 		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Role)
 	}
 }
@@ -978,7 +984,7 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 	if len(ff.sourceItems) != 1 {
 		t.Fatalf("source item calls = %+v, want one", ff.sourceItems)
 	}
-	want := filler.AcquisitionTarget{
+	want := acquisition.AcquisitionTarget{
 		SourceID: "archive:classic", RemoteID: "HearthpotSoupAdvert", Kind: "archive",
 		URL: "https://archive.org/details/HearthpotSoupAdvert",
 	}
@@ -1151,10 +1157,10 @@ func TestDiscoverFiller_UpstreamFailureIsABadGateway(t *testing.T) {
 
 // --- per-result stats, fetched on demand (V35) ---
 
-func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]api.DiscoveredClipStats {
+func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]fillerapi.DiscoveredClipStats {
 	t.Helper()
 	var body struct {
-		Stats map[string]api.DiscoveredClipStats `json:"stats"`
+		Stats map[string]fillerapi.DiscoveredClipStats `json:"stats"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -1385,8 +1391,8 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	srv, st, _ := newFillerServerWithImages(t, imageService)
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
-		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
+		Segments: []split.Segment{
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: clips.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
 	}
@@ -1398,7 +1404,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get split → %d", resp.StatusCode)
 	}
-	var got api.SplitReviewProposalDTO
+	var got fillerapi.SplitReviewProposalDTO
 	_ = json.NewDecoder(resp.Body).Decode(&got)
 	if got.ID != "sp_1" || len(got.Segments) != 2 {
 		t.Fatalf("proposal = %+v", got)
@@ -1421,7 +1427,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_detecting", ClipHash: "long-reel", CreatedAt: time.Now().UTC(),
-		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+		Detection: &split.DetectionProgress{ScannedThroughMs: 600_000},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1448,7 +1454,7 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1488,7 +1494,7 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1562,7 +1568,7 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	for i := range 120 {
-		seedClip(t, st, fmt.Sprintf("p%03d", i), filler.Commercial, 1992, filler.Kids, "cereal")
+		seedClip(t, st, fmt.Sprintf("p%03d", i), clips.Commercial, 1992, clips.Kids, "cereal")
 	}
 
 	var body struct {
@@ -1608,8 +1614,8 @@ func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
 // an unreviewed clip identically to a filed one.
 func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
-	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
+	seedClip(t, st, "filed", clips.Commercial, 1992, clips.Kids, "cereal")
+	seedClip(t, st, "waiting", clips.Commercial, 1992, clips.Kids, "cereal")
 	if _, err := st.HoldClips(context.Background(), []string{"waiting"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -1650,7 +1656,7 @@ func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	for _, id := range []string{"k1", "k2", "k3"} {
-		seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "cereal")
+		seedClip(t, st, id, clips.Commercial, 1992, clips.Kids, "cereal")
 	}
 	var body struct {
 		Clips []struct{ Hash string }

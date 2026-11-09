@@ -20,11 +20,10 @@ type FeatureSet struct {
 	// derived from settings completeness (config-design §7): it depends on whether
 	// yt-dlp + ffmpeg are actually RUNNABLE, which no setting can assert.
 	//
-	// ⚠ This used to mean "you are on loomarr:latest, switch to loomarr:filler". That
-	// two-tag split no longer exists — the single image always ships the tooling (§16) —
-	// so OFF now means a DEGRADED install: a custom image without the vendored binaries,
-	// or a configured path that is missing or not executable. The UI copy must not send
-	// an operator hunting for an image tag that is not published.
+	// ⚠ There is a single image and it always ships the tooling (§16), so OFF means a
+	// DEGRADED install: a custom image without the vendored binaries, or a configured path
+	// that is missing or not executable. The UI copy must not send an operator hunting for
+	// an image tag that is not published.
 	//
 	// ⚠ **`Ingest` means "SOME source can download", not "everything works"** (V38b). It is the OR
 	// of the two gates below, kept so existing callers that only ask "is downloading possible at
@@ -172,7 +171,7 @@ func (s *Service) isEmpty(key string) bool {
 // than completeness-derived. execProbe is injectable so tests never touch the disk.
 // ingestArchiveAvailable reports whether archive.org fetches can run: HTTP plus ffmpeg.
 //
-// ⚠ It deliberately does NOT consult yt-dlp. `clipfetch` routes archive.org through a plain
+// ⚠ It deliberately does NOT consult yt-dlp. the `fetch` package routes archive.org through a plain
 // net/http downloader; requiring yt-dlp here is what made a source build with ffmpeg installed
 // report "downloading unavailable" while being able to fetch perfectly well.
 func (s *Service) ingestArchiveAvailable() bool {
@@ -187,10 +186,10 @@ func (s *Service) ingestYouTubeAvailable() bool {
 
 // toolRunnable resolves one tool path and reports whether it names something executable.
 //
-// ⚠ An UNSET path falls back to a `PATH` lookup (V38b). §15 has always described these as
-// "defaulted to the vendored binaries", but the registry defaults were the empty string and only
-// the Docker image set them — so every source build had ingest off even with the tools installed,
-// and the doc and the code disagreed. Looking on PATH is what makes the documented behaviour true.
+// ⚠ An UNSET path falls back to a `PATH` lookup (V38b). §15 describes these as
+// "defaulted to the vendored binaries", but the registry defaults are the empty string and only
+// the Docker image sets them — so without the lookup every source build would have ingest off even
+// with the tools installed. Looking on PATH is what makes the documented behaviour true.
 func (s *Service) toolRunnable(key string) bool {
 	probe := s.execProbe
 	if probe == nil {

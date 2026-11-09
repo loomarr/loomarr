@@ -1,10 +1,11 @@
 import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
-import { StartFailure } from "../start-failure";
+import { ServerUnreachable, StartFailure } from "../start-failure";
 import type {
   LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
+  PlayerFailureCause,
   PlayerSnapshot,
   TuneDirection,
   TuneReason,
@@ -61,7 +62,8 @@ const createPlayerController = ({
   const warmer = createNeighbourWarmer({ prefetchStill, radius: warmRadius, source });
 
   const publish = (next: PlayerSnapshot) => {
-    snapshot = next;
+    // A cause belongs to the failure it names; snapshots spread from a failed one must not carry it on.
+    snapshot = next.status !== "failed" && next.failureCause ? { ...next, failureCause: undefined } : next;
     for (const listener of listeners) listener(snapshot);
   };
 
@@ -117,7 +119,13 @@ const createPlayerController = ({
       } catch {
         // Diagnostics must never affect playback.
       }
-      publish({ ...snapshot, error: STALL_FAILURE, reconnecting: undefined, status: "failed" });
+      publish({
+        ...snapshot,
+        error: STALL_FAILURE,
+        failureCause: "server",
+        reconnecting: undefined,
+        status: "failed",
+      });
     }, STALL_FAIL_MS);
   };
 
@@ -127,7 +135,7 @@ const createPlayerController = ({
    * start the server refused (`StartFailure`) is final at once: retrying it waits out the server's
    * start deadline again for the same answer.
    */
-  const recordFailure = (message: string, startFailure?: StartFailure) => {
+  const recordFailure = (message: string, cause: PlayerFailureCause, startFailure?: StartFailure) => {
     const channel = snapshot.channel;
     if (!channel) return;
     clearTimeout(stableTimer);
@@ -147,7 +155,13 @@ const createPlayerController = ({
       // Diagnostics must never affect playback.
     }
     if (!retryable) {
-      publish({ ...snapshot, error: message, reconnecting: undefined, status: "failed" });
+      publish({
+        ...snapshot,
+        error: message,
+        failureCause: cause,
+        reconnecting: undefined,
+        status: "failed",
+      });
       return;
     }
     publish({
@@ -205,6 +219,7 @@ const createPlayerController = ({
     const replacing = ready ? transport.replace(ready, { attemptId, signal: request.signal }) : undefined;
     replacing?.catch(() => undefined); // awaited below; never an unhandled rejection meanwhile
     let starting = false;
+    let minting = false;
     publish({
       attemptId,
       catalog: snapshot.catalog,
@@ -232,7 +247,9 @@ const createPlayerController = ({
       if (replacing) {
         await replacing;
       } else {
+        minting = !warmedSource;
         const nextSource = warmedSource ?? (await source.mint(channel, request.signal));
+        minting = false;
         if (!isCurrentAttempt(attemptId, request.signal)) return;
         // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
         // channel's still on demand, so the overlay can show it while the stream starts.
@@ -257,16 +274,20 @@ const createPlayerController = ({
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       const message = error instanceof Error ? error.message : "Couldn't tune that channel.";
       if (error instanceof StartFailure) {
-        recordFailure(message, error);
+        recordFailure(message, "channel", error);
         return;
       }
+      // No answer (or no stream address) from the server is the server's; an answer that wasn't a
+      // started channel is the channel's; anything later is a stream that came down.
+      const cause: PlayerFailureCause =
+        minting || error instanceof ServerUnreachable ? "server" : starting ? "channel" : "stream";
       // A start that failed without the server's reason (a dropped connection, a warm-up 404) gets
       // the automatic retries it got when the player made that request itself.
       if (recovering || starting) {
-        recordFailure(message);
+        recordFailure(message, cause);
         return;
       }
-      publish({ ...snapshot, error: message, status: "failed" });
+      publish({ ...snapshot, error: message, failureCause: cause, status: "failed" });
     }
   };
 
@@ -307,6 +328,7 @@ const createPlayerController = ({
       if (!retryTimer) {
         recordFailure(
           event.error,
+          event.startStatus === undefined ? "stream" : "channel",
           event.startStatus === undefined ? undefined : new StartFailure(event.error, event.startStatus),
         );
       }

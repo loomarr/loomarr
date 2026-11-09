@@ -25,17 +25,17 @@ func TestV8TypedDateRefusalRunnerMatrix(t *testing.T) {
 		passed    bool
 		certified bool
 	}{
-		{name: "conflict accepts conflict", expected: suggest.TerminalConstraintsConflict, err: typedDateFailure(suggest.TerminalConstraintsConflict), quality: true, schema: true, passed: true, certified: true},
-		{name: "ambiguity accepts ambiguity", expected: suggest.TerminalDateSemanticsUnclear, err: typedDateFailure(suggest.TerminalDateSemanticsUnclear), quality: true, schema: true, passed: true, certified: true},
-		{name: "conflict rejects ambiguity", expected: suggest.TerminalConstraintsConflict, err: typedDateFailure(suggest.TerminalDateSemanticsUnclear), schema: true, passed: true},
-		{name: "ambiguity rejects conflict", expected: suggest.TerminalDateSemanticsUnclear, err: typedDateFailure(suggest.TerminalConstraintsConflict), schema: true, passed: true},
-		{name: "wrapped conflict accepts conflict", expected: suggest.TerminalConstraintsConflict, err: fmt.Errorf("wrapped: %w", typedDateFailure(suggest.TerminalConstraintsConflict)), quality: true, schema: true, passed: true, certified: true},
-		{name: "generic no grounded titles is not typed quality", expected: suggest.TerminalConstraintsConflict, err: suggest.ErrNoGroundedTitles, schema: true, passed: true},
-		{name: "successful empty proposal is not typed quality", expected: suggest.TerminalConstraintsConflict, schema: true, passed: true},
-		{name: "malformed terminal is not typed", expected: suggest.TerminalConstraintsConflict, err: typedDateFailure(suggest.TerminalMalformedExhausted), passed: false},
-		{name: "wrong failure code is not typed", expected: suggest.TerminalConstraintsConflict, err: suggest.NewFailure(suggest.FailureProvider, validDateTrace(suggest.TerminalConstraintsConflict), errors.New("provider failed")), passed: false},
-		{name: "invalid trace version is not typed", expected: suggest.TerminalConstraintsConflict, err: suggest.NewFailure(suggest.FailureCodeNoGroundedTitles, proposals.DecisionTrace{Version: suggest.DecisionTraceVersion + 1, Terminal: suggest.TerminalConstraintsConflict}, errors.New("date refusal")), passed: false},
-		{name: "typed refusal with picks is not typed", expected: suggest.TerminalConstraintsConflict, proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "unexpected pick"}}}, err: typedDateFailure(suggest.TerminalConstraintsConflict), passed: false},
+		{name: "conflict accepts conflict", expected: proposals.TerminalConstraintsConflict, err: typedDateFailure(proposals.TerminalConstraintsConflict), quality: true, schema: true, passed: true, certified: true},
+		{name: "ambiguity accepts ambiguity", expected: proposals.TerminalDateSemanticsUnclear, err: typedDateFailure(proposals.TerminalDateSemanticsUnclear), quality: true, schema: true, passed: true, certified: true},
+		{name: "conflict rejects ambiguity", expected: proposals.TerminalConstraintsConflict, err: typedDateFailure(proposals.TerminalDateSemanticsUnclear), schema: true, passed: true},
+		{name: "ambiguity rejects conflict", expected: proposals.TerminalDateSemanticsUnclear, err: typedDateFailure(proposals.TerminalConstraintsConflict), schema: true, passed: true},
+		{name: "wrapped conflict accepts conflict", expected: proposals.TerminalConstraintsConflict, err: fmt.Errorf("wrapped: %w", typedDateFailure(proposals.TerminalConstraintsConflict)), quality: true, schema: true, passed: true, certified: true},
+		{name: "generic no grounded titles is not typed quality", expected: proposals.TerminalConstraintsConflict, err: proposals.ErrNoGroundedTitles, schema: true, passed: true},
+		{name: "successful empty proposal is not typed quality", expected: proposals.TerminalConstraintsConflict, schema: true, passed: true},
+		{name: "malformed terminal is not typed", expected: proposals.TerminalConstraintsConflict, err: typedDateFailure(proposals.TerminalMalformedExhausted), passed: false},
+		{name: "wrong failure code is not typed", expected: proposals.TerminalConstraintsConflict, err: suggest.NewFailure(suggest.FailureProvider, validDateTrace(proposals.TerminalConstraintsConflict), errors.New("provider failed")), passed: false},
+		{name: "invalid trace version is not typed", expected: proposals.TerminalConstraintsConflict, err: suggest.NewFailure(suggest.FailureCodeNoGroundedTitles, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion + 1, Terminal: proposals.TerminalConstraintsConflict}, errors.New("date refusal")), passed: false},
+		{name: "typed refusal with picks is not typed", expected: proposals.TerminalConstraintsConflict, proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "unexpected pick"}}}, err: typedDateFailure(proposals.TerminalConstraintsConflict), passed: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			card := typedDateRefusalRunner(tc.proposal, tc.err).Run(context.Background(), []Case{{
@@ -62,11 +62,11 @@ func TestV8TypedDateRefusalKeepsAbstentionAndNoFabricationContracts(t *testing.T
 		passed     bool
 		noTypedRef bool
 	}{
-		{name: "old abstention accepts ordinary no grounded titles", err: suggest.ErrNoGroundedTitles, quality: true, schema: true, passed: true},
-		{name: "old abstention rejects typed ordinary cause", err: typedDateFailure(suggest.TerminalConstraintsConflict), schema: false, passed: false},
+		{name: "old abstention accepts ordinary no grounded titles", err: proposals.ErrNoGroundedTitles, quality: true, schema: true, passed: true},
+		{name: "old abstention rejects typed ordinary cause", err: typedDateFailure(proposals.TerminalConstraintsConflict), schema: false, passed: false},
 		{name: "old abstention rejects successful empty proposal", quality: false, schema: true, passed: true},
 		{name: "old abstention rejects nonempty proposal", proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}, quality: false, schema: true, passed: true},
-		{name: "no typed expectation preserves rejection of typed ordinary cause", err: typedDateFailure(suggest.TerminalConstraintsConflict), quality: true, schema: false, passed: false, noTypedRef: true},
+		{name: "no typed expectation preserves rejection of typed ordinary cause", err: typedDateFailure(proposals.TerminalConstraintsConflict), quality: true, schema: false, passed: false, noTypedRef: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := Case{Name: tc.name, NoFabrication: true}
@@ -86,8 +86,8 @@ func TestV8TypedDateRefusalKeepsAbstentionAndNoFabricationContracts(t *testing.T
 
 func TestV8TypedDateRefusalRetainsGroundingAndDateAccuracyInvariants(t *testing.T) {
 	t.Run("minimum grounded still fails", func(t *testing.T) {
-		result := typedDateRefusalRunner(proposals.Proposal{}, typedDateFailure(suggest.TerminalConstraintsConflict)).Run(context.Background(), []Case{{
-			Name: "minimum grounded", NoFabrication: true, MinGrounded: 1, ExpectedProposalTerminal: suggest.TerminalConstraintsConflict,
+		result := typedDateRefusalRunner(proposals.Proposal{}, typedDateFailure(proposals.TerminalConstraintsConflict)).Run(context.Background(), []Case{{
+			Name: "minimum grounded", NoFabrication: true, MinGrounded: 1, ExpectedProposalTerminal: proposals.TerminalConstraintsConflict,
 		}}).Results[0]
 		if result.Passed() || !result.SchemaValid || !result.ProposalQuality {
 			t.Fatalf("typed refusal bypassed minimum grounding: %+v", result)
@@ -95,10 +95,10 @@ func TestV8TypedDateRefusalRetainsGroundingAndDateAccuracyInvariants(t *testing.
 	})
 
 	t.Run("failed proposal cannot satisfy explicit no dates", func(t *testing.T) {
-		card := NewRunner(scriptedGenerator{err: typedDateFailure(suggest.TerminalConstraintsConflict)}, RunnerConfig{Contract: &CertificationContract{
+		card := NewRunner(scriptedGenerator{err: typedDateFailure(proposals.TerminalConstraintsConflict)}, RunnerConfig{Contract: &CertificationContract{
 			Thresholds: CertificationThresholds{MinPolicyAccuracyRate: 1},
 		}}).Run(context.Background(), []Case{{
-			Name: "failed none", NoFabrication: true, ExpectedProposalTerminal: suggest.TerminalConstraintsConflict, ExpectedDateScope: &schedule.DateScope{},
+			Name: "failed none", NoFabrication: true, ExpectedProposalTerminal: proposals.TerminalConstraintsConflict, ExpectedDateScope: &schedule.DateScope{},
 		}})
 		result := card.Results[0]
 		if result.PolicyAccurate || !result.SchemaValid || !result.ProposalQuality || !result.Passed() || card.Certified {
@@ -125,13 +125,13 @@ func TestV8TypedDateRefusalRequiresNoCatalogActivity(t *testing.T) {
 		{name: "source dispatch in failure trace", dispatches: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			trace := validDateTrace(suggest.TerminalConstraintsConflict)
+			trace := validDateTrace(proposals.TerminalConstraintsConflict)
 			trace.SourceQueriesDispatched = tc.dispatches
 			err := suggest.NewFailure(suggest.FailureCodeNoGroundedTitles, trace, errors.New("date conflict"))
 			card := NewRunner(scriptedGenerator{err: err}, RunnerConfig{Contract: &CertificationContract{
 				Thresholds: CertificationThresholds{MinProposalQualityRate: 1, MinCorrectToolOperationRate: 1},
 			}}).WithObserver(&scriptedObserver{value: Observation{ToolCalls: tc.toolCalls}}).Run(context.Background(), []Case{{
-				Name: tc.name, NoFabrication: true, ExpectedProposalTerminal: suggest.TerminalConstraintsConflict, ExpectedToolOperation: "none",
+				Name: tc.name, NoFabrication: true, ExpectedProposalTerminal: proposals.TerminalConstraintsConflict, ExpectedToolOperation: "none",
 			}})
 			if card.Certified != tc.certified || !card.Results[0].Passed() {
 				t.Fatalf("certified=%v want=%v assessment=%+v failures=%v", card.Certified, tc.certified, card.Assessment, card.Results[0].Failures)
@@ -148,7 +148,7 @@ func boolRate(value bool) float64 {
 }
 
 func validDateTrace(terminal string) proposals.DecisionTrace {
-	return proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: terminal}
+	return proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: terminal}
 }
 
 func typedDateFailure(terminal string) error {

@@ -18,9 +18,12 @@ const CompactSelect = <Value extends string>({
   label,
   onValueChange,
   options,
+  readOnly = false,
   value,
   width,
 }: CompactSelectProps<Value>) => {
+  // A <select> has no read-only state, so a locked one is disabled but keeps full strength.
+  const locked = disabled || readOnly;
   const [ringed, setRinged] = useState(false);
   const text = typography[density].compact;
   return (
@@ -29,7 +32,7 @@ const CompactSelect = <Value extends string>({
       aria-invalid={invalid || undefined}
       aria-label={labelledBy ? undefined : label}
       aria-labelledby={labelledBy}
-      disabled={disabled}
+      disabled={locked}
       id={id}
       onBlur={() => setRinged(false)}
       onChange={(event) => onValueChange(event.currentTarget.value as Value)}
@@ -42,7 +45,7 @@ const CompactSelect = <Value extends string>({
         borderWidth: 1,
         boxSizing: "border-box",
         color: "var(--contentPrimary)",
-        cursor: disabled ? "not-allowed" : "pointer",
+        cursor: disabled ? "not-allowed" : readOnly ? "default" : "pointer",
         fontFamily: typography.family.body.web,
         fontSize: text.size,
         lineHeight: `${text.lineHeight}px`,

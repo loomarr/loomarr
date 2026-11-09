@@ -78,7 +78,7 @@ func TestReleaseGateScorecardRecordsBoundedPhasesWithoutRawPrompt(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := testkit.NewLLM(llm.Response{
+	provider := testkit.NewLLM(t, llm.Response{
 		Content: `{"picks":[{"mediaType":"series","key":"series:tmdb:999997","name":"Full House"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 		Attribution: llm.Attribution{
 			RequestedProvider: "ollama", RequestedModel: "fixture-model",
@@ -224,7 +224,7 @@ func TestReleaseGateStructuralCasesUseProductionGrounding(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			provider := testkit.NewLLM(testkit.FinalResponse(withReleaseDateMeaning(t, tc.response, map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}})))
+			provider := testkit.NewLLM(t, testkit.FinalResponse(withReleaseDateMeaning(t, tc.response, map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}})))
 			generator, _, err := NewEmbeddedReleaseGateGenerator(provider)
 			if err != nil {
 				t.Fatal(err)
@@ -235,7 +235,7 @@ func TestReleaseGateStructuralCasesUseProductionGrounding(t *testing.T) {
 			}
 			prop, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
 			if tc.wantError {
-				if !errors.Is(suggestErr, suggest.ErrNoGroundedTitles) || len(allItems(prop)) != 0 {
+				if !errors.Is(suggestErr, proposals.ErrNoGroundedTitles) || len(allItems(prop)) != 0 {
 					t.Fatalf("ungrounded response = (%+v, %v), want explicit abstention", prop, suggestErr)
 				}
 				return
@@ -312,7 +312,7 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			provider := testkit.NewLLM(releaseScriptedResponses(t, c, tc.arguments, tc.response)...)
+			provider := testkit.NewLLM(t, releaseScriptedResponses(t, c, tc.arguments, tc.response)...)
 			generator, _, err := NewEmbeddedReleaseGateGenerator(provider)
 			if err != nil {
 				t.Fatal(err)
@@ -401,7 +401,7 @@ func TestReleaseGateRunsMoreThanOneThousandScriptedInputVariants(t *testing.T) {
 	}
 	checked := 0
 	for _, fixture := range fixtures {
-		provider := testkit.NewLLM()
+		provider := testkit.NewLLM(t)
 		rawGenerator, observer, generatorErr := NewEmbeddedReleaseGateGenerator(provider)
 		if generatorErr != nil {
 			t.Fatal(generatorErr)

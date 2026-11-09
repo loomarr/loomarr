@@ -44,6 +44,10 @@ const MOVIE: LibraryTitleDetail = {
   seasons: [],
   match: { by: "app", app: "Radarr" },
   detailsFrom: { description: "TMDB", rating: "TMDB" },
+  channels: [
+    { id: "ch-90000932", name: "Late Show", number: 7 },
+    { id: "ch-90000931", name: "Quiet Hours", number: 21 },
+  ],
 };
 
 const SERIES: LibraryTitleDetail = {
@@ -68,6 +72,7 @@ const SERIES: LibraryTitleDetail = {
   ],
   match: { by: "none" },
   detailsFrom: { description: "TMDB", episodeNames: "Sonarr" },
+  channels: [],
 };
 
 const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}) => {
@@ -114,8 +119,14 @@ describe("LibraryTitle", () => {
     expect(host.textContent).toContain("R");
     expect(host.textContent).toContain("Crime, Thriller");
     expect(host.textContent).toContain("bursting at the seams");
-    expect(host.textContent).not.toContain("Paper Kites.mkv");
+    // Closed, the file is mounted but hidden until found (find-in-page can still reach it).
+    const hiddenFile = () =>
+      Array.from(host.querySelectorAll('[hidden="until-found"]')).some((n) =>
+        n.textContent?.includes("Paper Kites.mkv"),
+      );
+    expect(hiddenFile()).toBe(true);
     act(() => button("Technical details").click());
+    expect(hiddenFile()).toBe(false);
     expect(host.textContent).toContain("/media/movies/Paper Kites (1996)/Paper Kites.mkv");
     expect(host.textContent).toContain("7.5 GB");
     expect(host.textContent).toContain("Description and rating from TMDB.");
@@ -184,6 +195,21 @@ describe("LibraryTitle", () => {
     series.cleanup();
   });
 
+  it("names the channels it's on, by number, and has no such section when it's on none", () => {
+    const movie = render(MOVIE);
+    const section = movie.host.querySelectorAll('[aria-label="On these channels"]');
+    expect(section.length).toBe(1);
+    const text = section[0]?.textContent ?? "";
+    expect(text).toContain("On these channels");
+    expect(text.indexOf("Late Show")).toBeGreaterThan(-1);
+    expect(text.indexOf("Late Show")).toBeLessThan(text.indexOf("Quiet Hours"));
+    movie.cleanup();
+
+    const series = render(SERIES);
+    expect(series.host.querySelectorAll('[aria-label="On these channels"]').length).toBe(0);
+    series.cleanup();
+  });
+
   it("goes back to the Library", () => {
     const { onBack, button, cleanup } = render(MOVIE);
     act(() => button("Library").click());
@@ -207,6 +233,34 @@ describe("LibraryTitle", () => {
     expect(host.textContent).toContain("Episode 3");
     expect(host.textContent).toContain("Getting ready");
     cleanup();
+  });
+
+  // #2151 decision 53: episodes that wait on the show's order say so, and Choose opens Needs you.
+  it("says which episodes wait on the show's episode order, and opens Needs you", () => {
+    const onChooseOrder = vi.fn();
+    const waiting: LibraryTitleDetail = {
+      ...SERIES,
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            { id: "90000901", name: "Pilot", number: 1, ready: true },
+            { id: "90000902", name: "Harbour Lights S01E02", number: 2, ready: true, fromFile: true },
+          ],
+        },
+      ],
+    };
+    const { host, button, cleanup } = render(waiting, { onChooseOrder });
+    expect(host.textContent).toContain("We're not sure which order these episodes are in.");
+    act(() => button("Season 1").click());
+    expect(host.textContent?.match(/Name from the file/g)).toHaveLength(1);
+    act(() => button("Choose").click());
+    expect(onChooseOrder).toHaveBeenCalled();
+    cleanup();
+    // Nothing waits: no hint.
+    const plain = render(SERIES, { onChooseOrder });
+    expect(plain.host.textContent).not.toContain("We're not sure which order");
+    plain.cleanup();
   });
 
   it("checks the files again and says so, and says when updating the details failed", async () => {

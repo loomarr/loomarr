@@ -326,10 +326,8 @@ var (
 	fillerAudiences = map[string]bool{
 		"kids": true, "family": true, "general": true, "late_night": true,
 	}
-	// ⚠ `fillerCategories` was DELETED (§10 V45a). It was the THIRD hardcoded copy of the flat
-	// category enum (the tagger's knownCategories and the LLM prompt were the others, both also gone),
-	// and the taxonomy replaced all three with an operator-editable graph. A selection's Categories are
-	// now taxonomy SLUGS — an open, operator-editable set this pure domain package cannot know
+	// ⚠ There is no hardcoded category enum (§10 V45a): the taxonomy is an operator-editable
+	// graph. A selection's Categories are taxonomy SLUGS — an open, operator-editable set this pure domain package cannot know
 	// (validating against a fixed list would drift AND reject operator-added taxa). So they are OPAQUE
 	// here, exactly like Pinned/Excluded clip ids: not validated in `schedule`, matched at assembly
 	// (a stale slug simply matches nothing in filterCategories). The API layer, which can reach the

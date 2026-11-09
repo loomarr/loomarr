@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	peopleapi "github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -50,7 +51,7 @@ func newProvisioningHarness(t *testing.T, configs ...provisioningHarnessConfig) 
 
 		return api.Router(defaults.Log, api.Options{
 			Store:        defaults.Store,
-			Auth:         api.NewSessionAuthorizer(mgr, adminToken),
+			Auth:         sessionAuth(mgr, adminToken),
 			Log:          defaults.Log,
 			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
 			Sessions:     mgr,
@@ -313,14 +314,14 @@ func TestImportCandidates(t *testing.T) {
 		t.Errorf("candidates without admin → %d, want 401", resp.StatusCode)
 	}
 
-	decode := func() []api.ImportCandidate {
+	decode := func() []peopleapi.ImportCandidate {
 		t.Helper()
 		resp := do(t, srv, http.MethodGet, "/v1/users/candidates", adminToken, "")
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("candidates → %d", resp.StatusCode)
 		}
 		var body struct {
-			Candidates []api.ImportCandidate `json:"candidates"`
+			Candidates []peopleapi.ImportCandidate `json:"candidates"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&body)
 		return body.Candidates
@@ -330,7 +331,7 @@ func TestImportCandidates(t *testing.T) {
 	if len(before) == 0 {
 		t.Fatal("expected the media server's accounts to be listed")
 	}
-	var admin api.ImportCandidate
+	var admin peopleapi.ImportCandidate
 	for _, c := range before {
 		if c.ID == adminID {
 			admin = c

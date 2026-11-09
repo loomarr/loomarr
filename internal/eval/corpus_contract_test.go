@@ -13,7 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -135,7 +134,7 @@ func TestNoFabricationDoesNotTurnProviderFailureIntoPass(t *testing.T) {
 
 func TestRunnerAggregatesRetrievalAndGenerationFailuresSeparately(t *testing.T) {
 	generator := &sequenceErrorGenerator{errors: []error{
-		suggest.ErrNoGroundedTitles,
+		proposals.ErrNoGroundedTitles,
 		errors.New("llm chat: upstream unavailable"),
 	}}
 	observer := &observedProvider{}

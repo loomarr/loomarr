@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -31,10 +32,10 @@ import (
 // of a table that models attempts.
 //
 // ⚠ **Cron: ONE dialect, gronx's (GH #1724).** Settings validate a schedule with gronx and the
-// Tasks page's next run (`nextRun`) comes from gronx, so River's gate asks gronx too. It used to
-// parse with robfig/cron, which rejects `L`, `W`, `#`, `@daily` and `7` for Sunday, all of
-// which settings accept: a saved value like that failed boot with "invalid default cron", or,
-// saved while running, never fired while the Tasks page showed a next run. Don't add a second
+// Tasks page's next run (`nextRun`) comes from gronx, so River's gate asks gronx too. A
+// robfig/cron parse would reject `L`, `W`, `#`, `@daily` and `7` for Sunday, all of
+// which settings accept: a saved value like that would fail boot with "invalid default cron", or,
+// saved while running, never fire while the Tasks page showed a next run. Don't add a second
 // parser, and don't follow River's docs to `cron.ParseStandard` (five-field: every Loomarr
 // schedule is six-field seconds-leading, `0 */5 * * * *`).
 
@@ -68,16 +69,16 @@ type riverWorker struct {
 
 // Timeout is how long THIS job may run before River cancels its context.
 //
-// ⚠ **Without this override every job ran under River's `JobTimeoutDefault`, which is ONE
-// MINUTE** — `river.Config.JobTimeout` was never set, and zero means the default. That ceiling
-// was inherited from a dependency rather than chosen, and it is far below what the media jobs
+// ⚠ **Without this override every job would run under River's `JobTimeoutDefault`, which is ONE
+// MINUTE** — `river.Config.JobTimeout` is not set, and zero means the default. That ceiling is
+// inherited from a dependency rather than chosen, and it is far below what the media jobs
 // need: measured 2026-08-11, one `blackdetect`/`silencedetect` pass over a 20-minute recording
 // takes **40s on its own**, before the dedup and whisper work that follows it in the same pass.
 //
-// ⚠ The failure it produced never said "timeout". `exec.CommandContext` SIGKILLs its child when
-// the deadline fires, so the operator-visible symptom was `signal: killed` from ffmpeg and
-// whisper — which reads as a corrupt file or a broken binary, and sent this session chasing
-// both. A job that is out of time should say so; see `Job.Timeout` for the rest of that note.
+// ⚠ The failure never says "timeout". `exec.CommandContext` SIGKILLs its child when
+// the deadline fires, so the operator-visible symptom is `signal: killed` from ffmpeg and
+// whisper — which reads as a corrupt file or a broken binary. A job that is out of time should
+// say so; see `Job.Timeout` for the rest of that note.
 //
 // Returning 0 keeps River's default, which is right for the cheap jobs: a sweep that has not
 // finished in a minute is stuck, not slow.
@@ -104,7 +105,15 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if j.Disabled() {
 		return nil
 	}
-	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
+	paused, err := w.s.isPaused(ctx, j.Name)
+	if err != nil {
+		// Fail open: the run proceeds. A job with no state row yet is an ordinary first run.
+		if !errors.Is(err, store.ErrNotFound) {
+			w.s.log.Warn("scheduler: could not read the pause flag; running the job", "job", j.Name, "err", err)
+		}
+		paused = false
+	}
+	if paused && !rj.Args.Manual {
 		return nil
 	}
 	out := w.s.execute(ctx, j, rj.Args.Manual)
@@ -427,11 +436,11 @@ func (s *Scheduler) TriggerRiver(ctx context.Context, name string) error {
 	// which any future `ScheduledAt` makes it, including `now+10ms` — waits for the
 	// job-scheduler maintenance pass, `JobSchedulerIntervalDefault = 5 * time.Second`.
 	//
-	// A first cut set `ScheduledAt: now+10ms` to keep the insert clear of a periodic insert
-	// landing in the same instant. That "tiny" offset made EVERY Run-now take ~4.97s, measured
-	// consistently — a click that reads as broken, and enough to make the poll-availability
-	// safety proof (TestScanAvailability_NoWebhook) flaky. The 10ms bought nothing: River
-	// deduplicates nothing here, and two inserts of the same kind are simply two jobs.
+	// Do not set a `ScheduledAt` offset (e.g. now+10ms) to keep the insert clear of a periodic
+	// insert landing in the same instant: even a "tiny" offset made EVERY Run-now take ~4.97s,
+	// measured consistently — a click that reads as broken, and enough to make the
+	// poll-availability safety proof (TestScanAvailability_NoWebhook) flaky. River deduplicates
+	// nothing here, and two inserts of the same kind are simply two jobs.
 	// ⚠ **Run-now must take the same queue the schedule would**, and forgetting it here is the easy
 	// miss: nothing else in the suite covers this path, and the symptom is one already observed
 	// live — a manually triggered `filler-sync` waiting out a 30-minute pipeline pass because it

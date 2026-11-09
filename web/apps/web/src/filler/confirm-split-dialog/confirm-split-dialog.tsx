@@ -1,7 +1,5 @@
 import { formatMmSs } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
-import { Scissors, TriangleAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Card, Icon, icons } from "@loomarr/design-system";
 import type { ConfirmSplitDialogProps } from "./confirm-split-dialog.type";
 
 // ConfirmSplitDialog — the confirmation "Split into clips" never had (§10 V54 A8).
@@ -25,7 +23,9 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
     <Card>
       <section aria-label={`Split ${clip.name} into clips`} className="flex flex-col gap-4 p-4">
         <div className="flex items-start gap-3">
-          <TriangleAlert className="text-signal mt-0.5 size-5 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="default" tone="primary" />
+          </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold">Split “{clip.name}” into clips?</h2>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -43,13 +43,12 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Action onPress={onClose} variant="ghost">
             Cancel
-          </Button>
-          <Button size="sm" onClick={onConfirm}>
-            <Scissors aria-hidden />
+          </Action>
+          <Action icon="split" onPress={onConfirm}>
             Find the clips
-          </Button>
+          </Action>
         </div>
       </section>
     </Card>

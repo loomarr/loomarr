@@ -1,9 +1,9 @@
 import { getGetDocMockHandler, getListDocsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -125,23 +125,25 @@ describe("Help page", () => {
     const router = renderAt("/help?page=quickstart&section=upgrading");
     await waitFor(() => expect(router.state.location.search).toEqual({ page: "upgrade" }));
     expect(await screen.findByText("Pull the new image.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
   });
 
   it("filters the page list", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.type(screen.getByLabelText("Search"), "quick");
-    expect(screen.getByRole("button", { name: "Quickstart" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Troubleshooting" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quickstart" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Troubleshooting" })).not.toBeInTheDocument();
   });
 
-  it("switches pages from the nav", async () => {
+  it("switches pages from the nav, whose items are links with their own URL (#2751)", async () => {
     stubHelp();
     renderAt("/help");
-    await userEvent.click(await screen.findByRole("button", { name: "Troubleshooting" }));
+    const link = await screen.findByRole("link", { name: "Troubleshooting" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("page=troubleshooting"));
+    await userEvent.click(link);
     expect(await screen.findByRole("heading", { name: "Tunarr" })).toBeInTheDocument();
   });
 });
@@ -153,16 +155,44 @@ describe("Command palette", () => {
   it("opens from the shell's Search button", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.click(screen.getByRole("button", { name: /search/i }));
     expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
   });
 
+  // #2751: below `md` the rail (and its Search button) is gone; the phone header's Search icon,
+  // top right, opens the same search full screen, and Close shuts it without a key or a backdrop.
+  it("opens full-screen from the phone header's Search icon", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: false,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      stubHelp();
+      renderAt("/help");
+
+      // Exactly "Search": the rail's own button (CSS-hidden here, still in jsdom's tree) is named
+      // "Search…" plus its shortcut.
+      await userEvent.click(await screen.findByRole("button", { name: "Search" }));
+      const dialog = await screen.findByRole("dialog", { name: /search loomarr/i });
+      expect(dialog.style.inset).toBe("0px");
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Close search" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: /search loomarr/i })).not.toBeInTheDocument(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("opens and closes on the keyboard shortcut", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.keyboard("{Meta>}k{/Meta}");
     expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();

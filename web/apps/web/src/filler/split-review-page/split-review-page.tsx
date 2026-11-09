@@ -5,10 +5,9 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
@@ -148,7 +147,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
           to={backTo}
           className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
         >
-          <ArrowLeft className="size-3.5" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
           {from === "incoming" ? "Incoming" : "Library"}
         </Link>
         <h1 className="text-xl font-semibold">Review clips</h1>

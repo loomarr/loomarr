@@ -171,7 +171,7 @@ func (o OutputProfile) premiumCodecs() string {
 	return fmt.Sprintf("hvc1.%s.L%d.90,mp4a.40.2", profile, level)
 }
 
-// FormatOutput is what a channel's packager for class encodes (#1512 phase 2). The baseline is H.264
+// FormatOutput is what a channel's packager for class encodes (#1512). The baseline is H.264
 // at the profile's geometry for every client and plan, even on a channel whose profile encoder is
 // HEVC (ChannelOutput follows the encoder); a premium class is PremiumOutput over that baseline. ok
 // is false for an unknown class.

@@ -20,7 +20,7 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   });
 
   await page.goto("/guide");
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("link", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("Saturday morning cartoons");
   await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
@@ -35,18 +35,18 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   await expect(page.getByRole("button", { name: /^TMDB/ })).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Your channel draft is saved")).toBeVisible();
 
-  // Arriving at the Guide reopens the kept draft, which is the describe form in the URL.
+  // The request page reopens the kept draft in its describe form.
   await page.getByRole("link", { name: "Return to channel" }).click();
-  await expect(page).toHaveURL(/\/guide\?new=/);
+  await expect(page).toHaveURL(/\/requests\/new$/);
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue(
     "Saturday morning cartoons",
   );
-  await page.getByRole("button", { name: "Add details" }).click();
+  // The details the draft carried come back open (#2746).
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
 
   await page.getByRole("button", { name: "Close" }).click();
-  await page.reload();
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await expect(page).toHaveURL(/\/requests/);
+  await page.goto("/requests/new");
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
 });
 
@@ -56,7 +56,7 @@ test("a failed builder journey preserves the complete intent through authorized 
   const mock = await installMockBackend(page, { authed: true, role: "admin", failedProposalJourney: true });
 
   await page.goto("/guide");
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("link", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("90s action movies");
   await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
@@ -78,7 +78,7 @@ test("a failed builder journey preserves the complete intent through authorized 
   // persisted constraint before the operator sends the next request.
   await page.getByRole("button", { name: "Edit description" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("90s action movies");
-  await page.getByRole("button", { name: "Add details" }).click();
+  // The failed request's details come back open (#2746).
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
   await expect(page.getByLabel("Target length (minutes)")).toHaveValue("180");
   await expect(page.getByLabel("Must include")).toHaveValue(
@@ -141,7 +141,7 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
   );
 
   await page.goto("/guide");
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("link", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("Create a QFUN channel");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
@@ -160,22 +160,22 @@ test("discarding clears a deep-linked Journey so a reload is genuinely fresh", a
   // Seed a real persisted Journey, then enter through the same opaque `?job=` link used by
   // recovery navigation. This rules out a test that only observes in-memory reset state.
   await page.goto("/guide");
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("link", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("90s action movies");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
   await expect.poll(() => mock.state.proposalJobRequests).toHaveLength(1);
 
-  await page.goto("/guide?job=proposal-job-1&intent=stale%20template");
+  await page.goto("/requests/new?job=proposal-job-1&intent=stale%20template");
   await expect(page.getByText("The Velvet Cartographer")).toBeVisible();
   await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
-  await expect(page).toHaveURL(/\/guide\?new=/);
+  await expect(page).toHaveURL(/\/requests\/new$/);
 
   // The URL holds the fresh form, so a reload keeps it; arriving anew must not resume the Job.
   await page.reload();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   await page.goto("/guide");
-  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("link", { name: "Add a channel" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   expect(mock.state.channelCreationRequests).toEqual([]);
   expect(mock.state.approvalRequests).toEqual([]);

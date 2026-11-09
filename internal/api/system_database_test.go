@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 )
 
 // errFake stands in for any copy failure the engine can report.
@@ -17,8 +18,8 @@ var errFake = errors.New("target ran out of disk after 506 of 1204 rows")
 // fakeDatabase is a scriptable DatabaseService for the API-layer tests. It records what
 // it was asked so the gate assertions can prove the request never reached the engine.
 type fakeDatabase struct {
-	status       api.DatabaseStatus
-	checks       []api.DatabaseCheck
+	status       system.DatabaseStatus
+	checks       []system.DatabaseCheck
 	preflightErr error
 	preflightAt  string
 	migrateErr   error
@@ -27,19 +28,19 @@ type fakeDatabase struct {
 	backupHit    bool
 }
 
-func (f *fakeDatabase) Status(context.Context) (api.DatabaseStatus, error) { return f.status, nil }
+func (f *fakeDatabase) Status(context.Context) (system.DatabaseStatus, error) { return f.status, nil }
 
-func (f *fakeDatabase) Preflight(_ context.Context, dsn string) ([]api.DatabaseCheck, error) {
+func (f *fakeDatabase) Preflight(_ context.Context, dsn string) ([]system.DatabaseCheck, error) {
 	f.preflightAt = dsn
 	return f.checks, f.preflightErr
 }
 
-func (f *fakeDatabase) Backup(context.Context) (api.DatabaseBackup, error) {
+func (f *fakeDatabase) Backup(context.Context) (system.DatabaseBackup, error) {
 	f.backupHit = true
 	if f.backupErr != nil {
-		return api.DatabaseBackup{}, f.backupErr
+		return system.DatabaseBackup{}, f.backupErr
 	}
-	return api.DatabaseBackup{Path: "/data/backups/loomarr-x.db", Bytes: 4096, WrittenAt: 1_700_000_000}, nil
+	return system.DatabaseBackup{Path: "/data/backups/loomarr-x.db", Bytes: 4096, WrittenAt: 1_700_000_000}, nil
 }
 
 func (f *fakeDatabase) Migrate(_ context.Context, dsn string) error {
@@ -52,7 +53,7 @@ func (f *fakeDatabase) Migrate(_ context.Context, dsn string) error {
 
 // newSystemDatabaseHarness hides the fixed database-route assembly behind the
 // common API lifecycle. Tests vary only database-service behavior.
-func newSystemDatabaseHarness(t *testing.T, svc api.DatabaseService) *apiHarness {
+func newSystemDatabaseHarness(t *testing.T, svc system.DatabaseService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
@@ -96,7 +97,7 @@ func TestSystemDatabase_NotConfigured501(t *testing.T) {
 // ⚠ THE PHASE GATE: the backup cannot be skipped, and it is the SERVER that says so.
 // A client that ignores the disabled button and POSTs straight to /migrate is refused.
 func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: api.ErrNoBackup}
+	fake := &fakeDatabase{migrateErr: system.ErrNoBackup}
 	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
@@ -119,7 +120,7 @@ func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
 // A target that has not passed preflight is refused for the same reason and separately,
 // so the operator learns which precondition is missing.
 func TestSystemDatabase_PreflightRequired(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: api.ErrPreflightFailed}
+	fake := &fakeDatabase{migrateErr: system.ErrPreflightFailed}
 	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
@@ -139,11 +140,11 @@ func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
 	}{
 		{
 			name: "preflight", path: "/v1/system/database/preflight",
-			configure: func(f *fakeDatabase) { f.preflightErr = api.ErrNotSQLite },
+			configure: func(f *fakeDatabase) { f.preflightErr = system.ErrNotSQLite },
 		},
 		{
 			name: "migrate", path: "/v1/system/database/migrate",
-			configure: func(f *fakeDatabase) { f.migrateErr = api.ErrNotSQLite },
+			configure: func(f *fakeDatabase) { f.migrateErr = system.ErrNotSQLite },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,7 +163,7 @@ func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
 // Preflight reports failed checks as data with ok:false, not as an error — the operator
 // needs to see WHICH check failed, which a 4xx with a single message cannot express.
 func TestSystemDatabase_PreflightReportsFailedChecks(t *testing.T) {
-	fake := &fakeDatabase{checks: []api.DatabaseCheck{
+	fake := &fakeDatabase{checks: []system.DatabaseCheck{
 		{Name: "Reachable", Detail: "connected in 3ms", OK: true},
 		{Name: "Target is empty", Detail: "10 table(s) already present", OK: false},
 	}}
@@ -174,8 +175,8 @@ func TestSystemDatabase_PreflightReportsFailedChecks(t *testing.T) {
 		t.Fatalf("preflight with a failing check → %d, want 200 (the checks are the payload)", resp.StatusCode)
 	}
 	var body struct {
-		Checks []api.DatabaseCheck `json:"checks"`
-		Passed bool                `json:"passed"`
+		Checks []system.DatabaseCheck `json:"checks"`
+		Passed bool                   `json:"passed"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -193,7 +194,7 @@ func TestSystemDatabase_PreflightReportsFailedChecks(t *testing.T) {
 
 // Passed is true only when every check passed — a partial pass is not a pass.
 func TestSystemDatabase_PreflightPassedIsUnanimous(t *testing.T) {
-	fake := &fakeDatabase{checks: []api.DatabaseCheck{
+	fake := &fakeDatabase{checks: []system.DatabaseCheck{
 		{Name: "Reachable", OK: true},
 		{Name: "Version", OK: true},
 	}}
@@ -222,7 +223,7 @@ func TestSystemDatabase_MigrationFailureIsAConflictNotA500(t *testing.T) {
 }
 
 func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: api.ErrDatabaseURLPinned}
+	fake := &fakeDatabase{migrateErr: system.ErrDatabaseURLPinned}
 	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
@@ -240,7 +241,7 @@ func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
 }
 
 func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: api.ErrMigrationUnavailable}
+	fake := &fakeDatabase{migrateErr: system.ErrMigrationUnavailable}
 	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)

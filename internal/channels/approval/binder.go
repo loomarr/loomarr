@@ -3,9 +3,9 @@
 // refine. Local persistence belongs to the approval transaction; codec measurement
 // and backend reconciliation run only after that transaction commits.
 //
-// binder is deliberately neutral: it imports store/schedule/proposals/suggest/channels, but
-// nothing in those packages imports binder back, so nothing new is coupled to it.
-// Consumers (internal/api, internal/proposals/suggest) declare the narrow interface they
+// approval is deliberately neutral: it imports the store, schedule, proposals/accept and
+// provision packages, but nothing in those imports it back, so nothing new is coupled to it.
+// Consumers (internal/api, internal/proposals/accept) declare the narrow interface they
 // need and take a *Binder as a structural implementation — dependency inversion,
 // not a shared concrete dependency.
 package approval
@@ -22,7 +22,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -31,11 +34,11 @@ import (
 type Store interface {
 	// ListChannels backs nextFreeChannelNumber ONLY — that genuinely needs every number in
 	// use. Looking a channel up BY something is GetChannelForJob below.
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
-	GetJob(ctx context.Context, id string) (store.Job, error)
-	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
+	GetJob(ctx context.Context, id string) (proposalstore.Job, error)
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (proposalstore.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -99,8 +102,8 @@ func New(st Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binde
 	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
 
-// WithActivity attaches the durable recorder. Chained rather than added to New's signature so
-// every existing caller and test keeps compiling — the same nil-means-skip idiom `rec`/`codec` use.
+// WithActivity attaches the durable recorder. Chained rather than added to New's signature,
+// with the same nil-means-skip idiom `rec`/`codec` use.
 func (b *Binder) WithActivity(a ActivityRecorder) *Binder { b.acts = a; return b }
 
 // WithChannelNumbers lets numbering see Tunarr's occupied numbers as well as Loomarr's own.
@@ -132,19 +135,19 @@ func NewChannelID() string { return newChannelID() }
 // method does not query "newest approved" by job: before the approval transaction
 // commits, the candidate is necessarily not visible through that query, and resolving
 // again could pair the candidate's audit identity with another proposal's content.
-func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+func (b *Binder) PlanApprovedChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	if p.Status != "approved" {
-		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
 	}
 	return b.planChannel(ctx, p)
 }
 
 // PlanSubmittedChannel derives an unsaved channel for a pending proposal outlook.
 // It shares approval planning while preserving the submitted status and performs
-// no writes or post-commit work. Callers first use suggest.PrepareApproval.
-func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+// no writes or post-commit work. Callers first use accept.PrepareApproval.
+func (b *Binder) PlanSubmittedChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	if p.Status != "submitted" {
-		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
 	}
 	return b.planChannel(ctx, p)
 }
@@ -152,14 +155,14 @@ func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (st
 // planChannel is the impure shell around Bind: it reads the channel the job changes, the job
 // itself, a free number and the availability of the existing lineup, hands them to the pure Bind,
 // and logs what an unattended auto-curate bind dropped.
-func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+func (b *Binder) planChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
-		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
 	existing, err := b.channelForJob(ctx, intentRef)
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 
 	in := BindInput{Proposal: p, Existing: existing, Now: time.Now().UTC()}
@@ -169,13 +172,13 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		// one here would duplicate that channel. This is a plain error for the approver to
 		// surface, not a "no channel yet" answer that replans.
 		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
-			return store.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
-				suggest.ErrProposalJobGone, p.ID, intentRef)
+			return channelstore.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
+				accept.ErrProposalJobGone, p.ID, intentRef)
 		} else if jerr != nil {
-			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
+			return channelstore.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
 		}
 		if in.Number, err = b.nextFreeChannelNumber(ctx); err != nil {
-			return store.Channel{}, err
+			return channelstore.Channel{}, err
 		}
 	} else if isAutoCurate(p) {
 		in.Unavailable = b.unavailableTitles(ctx, existing.Lineup)
@@ -183,7 +186,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 
 	bound, err := Bind(in)
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	if b.log != nil {
 		for _, e := range bound.Retired {
@@ -243,7 +246,7 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
-				b.acts.Error(ctx, store.ActivityKindChannel, channelID,
+				b.acts.Error(ctx, activitystore.ActivityKindChannel, channelID,
 					fmt.Sprintf("%q couldn't converge its playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}
@@ -257,46 +260,31 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 //
 // ⚠ A job that names a channel which was removed is an ERROR, never "create a new one": approving
 // a refine of a deleted channel must not resurrect it as a second, differently numbered channel.
-func (b *Binder) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (b *Binder) channelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	ch, err := b.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, nil
+		return channelstore.Channel{}, nil
 	}
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	return ch, nil
 }
 
-// nextFreeChannelNumber returns the lowest unused positive channel number, so an
-// operator never has to pick one to get on air (§7). Channel counts here are
-// household-scale, so a scan is cheaper and clearer than tracking a counter.
-// ⚠ **"Free" means free on BOTH sides — Loomarr's store AND Tunarr** (§9 V54). Consulting only the
-// store is how an approved channel got number 1 while Tunarr already had a channel there: the
-// create then failed with `500` and an empty body, permanently, and the operator saw nothing but
-// "Creating". Tunarr accumulates channels an earlier install or a reset database left behind, so
-// "my store has no channel 1" says nothing about whether 1 is usable.
-//
-// ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
-// store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
-// renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
 // NumberInUse reports whether a channel number is already taken — by one of Loomarr's own
 // channels, or by a channel that exists only in TUNARR.
 //
-// ⚠ **There is deliberately no `exceptChannelID` escape.** The first cut had one, so a no-op
-// renumber onto a channel's own number would not self-conflict. It cannot work: Tunarr's channel
-// list is a bare `map[int]bool` with no identity, so excluding a Loomarr row does nothing about
-// the same number appearing on the Tunarr side — which it always does for a live channel,
-// because Loomarr pushed it there. The parameter answered correctly for the store and wrongly
+// ⚠ **There is deliberately no `exceptChannelID` escape.** Tunarr's channel list is a bare
+// `map[int]bool` with no identity, so excluding a Loomarr row would do nothing about the same
+// number appearing on the Tunarr side — which it always does for a live channel, because
+// Loomarr pushed it there. Such a parameter would answer correctly for the store and wrongly
 // for Tunarr, which is worse than not offering it. Callers must not ask about a number a channel
-// already holds; `channeledit` only runs this check when the number actually changes.
+// already holds; `edit` only runs this check when the number actually changes.
 //
-// ⚠ **This exists because §258 fixed numbering in ONE of the two places that assign a number.**
-// `nextFreeChannelNumber` (the approve path) unions both sources; `api.createChannel` — where an
-// operator TYPES a number — checked only `GetChannelByNumber`, so a number Tunarr already held
-// was accepted with a 201 and then renumbered underneath the operator by the reconcile (§9 V54).
-// A conflict with a Loomarr channel got a clean 409 from the same handler; the two answers
-// disagreed for no reason a user could see.
+// ⚠ **This exists so both places that assign a number agree.** `nextFreeChannelNumber` (the
+// approve path) unions both sources, and a number an operator TYPES must be checked against both
+// too: otherwise a number Tunarr already held is accepted and then renumbered underneath the
+// operator by the reconcile (§9 V54), while a conflict with a Loomarr channel gets a clean 409.
 //
 // ⚠ Best-effort on the Tunarr side, matching `nextFreeChannelNumber`: an unreachable Tunarr
 // reports NOT-in-use rather than propagating an error. Refusing to create a channel because
@@ -324,6 +312,19 @@ func (b *Binder) NumberInUse(ctx context.Context, number int) (bool, error) {
 	return taken[number], nil
 }
 
+// nextFreeChannelNumber returns the lowest unused positive channel number, so an
+// operator never has to pick one to get on air (§7). Channel counts here are
+// household-scale, so a scan is cheaper and clearer than tracking a counter.
+//
+// ⚠ **"Free" means free on BOTH sides — Loomarr's store AND Tunarr** (§9 V54). Consulting only the
+// store is how an approved channel got number 1 while Tunarr already had a channel there: the
+// create then failed with `500` and an empty body, permanently, and the operator saw nothing but
+// "Creating". Tunarr accumulates channels an earlier install or a reset database left behind, so
+// "my store has no channel 1" says nothing about whether 1 is usable.
+//
+// ⚠ Read-only on the Tunarr side, and a failure to reach it is NOT fatal: numbering falls back to
+// store-only. A channel that gets a possibly-colliding number is recoverable (the reconcile
+// renumbers it); a bind that refuses to complete because Tunarr is briefly down is not.
 func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	all, err := b.store.ListChannels(ctx)
 	if err != nil {

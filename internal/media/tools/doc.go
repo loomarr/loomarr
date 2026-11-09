@@ -12,8 +12,7 @@
 // ⚠ **The types here are TOOL OUTPUT, and that is why they moved.** Interval, Chapter, Probed and
 // TranscriptSegment lived in filler because the splitter needed them first, but their own doc
 // comments always described them as ffprobe/whisper results rather than domain concepts. They are
-// re-exported as aliases from internal/filler (mediatypes.go) so the domain keeps its vocabulary
-// without a second definition.
+// used by internal/filler through this package directly, with no second definition.
 //
 // ⚠ **Unit tests never execute the binaries** (AGENTS.md §19). The exec paths are exercised only
 // against real media, by hand; what is tested here is the PARSING — given this ffmpeg stderr,

@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := seedPull(t, st, "pull-note-exact-target", []filler.PullPlanRow{
+	created := seedPull(t, st, "pull-note-exact-target", []acquisition.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "reel-1", URL: "https://archive.org/details/reel-1"},
 	})
 	approved := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve",
@@ -30,7 +30,7 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
 	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := seedPull(t, st, "pull-gap-carried", []filler.PullPlanRow{
+	created := seedPull(t, st, "pull-gap-carried", []acquisition.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "in-gap", URL: "https://archive.org/details/in-gap", Gap: "era:1990-1999"},
 		{SourceID: "classic", Provider: "archive", RemoteID: "modern", URL: "https://archive.org/details/modern"},
 	})
@@ -54,8 +54,8 @@ func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
 func TestApproveFillerPull_NoteIsAnAnnotationForLegacySourceLevelPlan(t *testing.T) {
 	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	pull := filler.Pull{
-		ID: "legacy-pull", Status: filler.PullPending, Plan: []filler.PullPlanRow{{
+	pull := acquisition.Pull{
+		ID: "legacy-pull", Status: acquisition.PullPending, Plan: []acquisition.PullPlanRow{{
 			SourceID: "classic", Name: "Classic collection",
 		}},
 	}

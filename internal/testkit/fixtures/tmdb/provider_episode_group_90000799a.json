@@ -1,0 +1,40 @@
+{
+  "id": "90000799a",
+  "name": "DVD Order",
+  "type": 3,
+  "description": "As released on disc.",
+  "episode_count": 5,
+  "group_count": 3,
+  "network": null,
+  "groups": [
+    {
+      "id": "90000799b",
+      "name": "Season 2",
+      "order": 2,
+      "locked": true,
+      "episodes": [
+        { "id": 90000794, "episode_number": 1, "season_number": 2, "show_id": 90000701, "name": "High Water", "overview": "The harbor floods.", "air_date": "2020-03-02", "runtime": 44, "vote_average": 7.1, "vote_count": 8, "still_path": null, "order": 0 },
+        { "id": 0, "episode_number": 2, "season_number": 2, "show_id": 90000701, "name": "", "overview": "", "air_date": null, "runtime": null, "vote_average": 0, "vote_count": 0, "still_path": null, "order": 1 }
+      ]
+    },
+    {
+      "id": "90000799c",
+      "name": "Season 1",
+      "order": 1,
+      "locked": true,
+      "episodes": [
+        { "id": 90000792, "episode_number": 2, "season_number": 1, "show_id": 90000701, "name": "Low Water", "overview": "A storm cuts the harbor off.", "air_date": "2019-03-11", "runtime": 41, "vote_average": 0, "vote_count": 0, "still_path": null, "order": 1 },
+        { "id": 90000791, "episode_number": 1, "season_number": 1, "show_id": 90000701, "name": "First Light", "overview": "The keeper arrives at the station.", "air_date": "2019-03-04", "runtime": 43, "vote_average": 7.6, "vote_count": 12, "still_path": null, "order": 0 }
+      ]
+    },
+    {
+      "id": "90000799d",
+      "name": "Specials",
+      "order": 0,
+      "locked": true,
+      "episodes": [
+        { "id": 90000790, "episode_number": 1, "season_number": 0, "show_id": 90000701, "name": "Behind the Light", "overview": "", "air_date": "2019-02-25", "runtime": 22, "vote_average": 0, "vote_count": 0, "still_path": null, "order": 0 }
+      ]
+    }
+  ]
+}

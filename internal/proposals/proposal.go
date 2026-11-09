@@ -10,10 +10,18 @@
 package proposals
 
 import (
+	"errors"
+
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/provision"
 )
+
+// ErrNoGroundedTitles is returned when a run produced no grounded picks at all — the intent
+// surfaced no themed, real content. The worker fails the job with this (a clear operator-facing
+// reason), and it is NOT cached, so a re-submit re-runs. The suggester returns it and the workflow
+// refuses to commit a Proposal that carries nothing, so both name the one sentinel here.
+var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
 
 // EditorialRole records the grounded origin of a selected pick in one proposal run.
 // A missing role is unknown; ownership never means favorite or explicit preference.
@@ -27,7 +35,7 @@ const (
 
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
 // Identity is always a real external id (the grounding guarantee); Name/Year are
-// for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
+// for display only. It mirrors a titlesearch.Candidate plus the LLM's rationale.
 type ProposalItem struct {
 	EditorialRole EditorialRole       `json:"editorialRole,omitempty" enum:"core,adjacent,discovery"`
 	MediaType     provision.MediaType `json:"mediaType"`
@@ -139,11 +147,10 @@ type Proposal struct {
 	// binder — never by the suggester, and never by a human approval.
 	//
 	// ⚠ It rides the PROPOSAL rather than being applied directly to the channel, and that is
-	// the whole point of the field. `recurate` used to trim `ch.Lineup` and call UpsertChannel
-	// itself, which made it a second lineup writer racing the binder's additive union — the
-	// two were ordered against each other by a code comment, and an additive union that ran
-	// first would put every retired title straight back. One writer (the binder), one
-	// primitive (schedule.ApplyLineup), and the retirement is now an INPUT to it.
+	// the whole point of the field. If `recurate` trimmed `ch.Lineup` and called UpsertChannel
+	// itself it would be a second lineup writer racing the binder's additive union, and an
+	// additive union that ran first would put every retired title straight back. One writer
+	// (the binder), one primitive (schedule.ApplyLineup), and the retirement is an INPUT to it.
 	Retired []provision.Key `json:"retired,omitempty"`
 	// Refused are picks the model grounded that this proposal's OWN extracted policy cannot
 	// air (§4). They are moved out of Lineup/Acquisitions and kept here with a reason, so the

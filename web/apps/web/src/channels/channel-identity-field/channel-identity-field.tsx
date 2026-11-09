@@ -1,7 +1,5 @@
-import { Field, typography } from "@loomarr/design-system";
-import { Check, X } from "lucide-react";
+import { Action, Field, typography } from "@loomarr/design-system";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
@@ -44,8 +42,11 @@ const ChannelIdentityField = ({
     setSeeded(committed);
   }
 
+  // What a save sends, and so what the server stores: dirty compares this, not the raw draft, so a
+  // padded draft stops being dirty once its trimmed value comes back as `value`.
+  const normalised = type === "number" ? Number(draft) : draft.trim();
   const validationError = validate?.(draft);
-  const dirty = draft !== committed;
+  const dirty = String(normalised) !== committed;
   const canSave = dirty && !validationError && !saving;
 
   const reset = () => {
@@ -58,9 +59,10 @@ const ChannelIdentityField = ({
     setSaving(true);
     setServerError(undefined);
     try {
-      await onSave(type === "number" ? Number(draft) : draft.trim());
-      // Success: the parent's mutation updated the source; `committed` will follow on the next
-      // render. Nothing to reset here — dirty resolves once `value` reflects the save.
+      await onSave(normalised);
+      // Success: the parent's mutation updated the source; `committed` follows on the next render.
+      // The input shows the value that was saved.
+      setDraft(String(normalised));
     } catch (e) {
       setServerError(e instanceof Error ? e.message : "Couldn't save. Try a different value.");
     } finally {
@@ -117,32 +119,26 @@ const ChannelIdentityField = ({
             explicit per-field confirmation. */}
         {dirty && (
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="suggest"
-              size="icon"
-              className="size-8"
+            <Action
               disabled={!canSave}
-              aria-label={`Save ${label}`}
-              onClick={() => void save()}
+              icon="success"
+              layout="icon"
+              onPress={() => void save()}
+              variant="suggest"
             >
-              <Check className="size-4" aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              disabled={saving}
-              aria-label={`Cancel ${label} edit`}
-              onClick={reset}
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
+              {`Save ${label}`}
+            </Action>
+            <Action disabled={saving} icon="close" layout="icon" onPress={reset} variant="ghost">
+              {`Cancel ${label} edit`}
+            </Action>
           </div>
         )}
       </div>
-      {error && <p className="text-onair-300 text-xs">{error}</p>}
+      {error && (
+        <p className="text-onair-300 text-xs" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 };

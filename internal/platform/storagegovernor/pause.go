@@ -6,9 +6,9 @@ import "fmt"
 // that outgrew its lease. It is OPERATIONAL state, never a fact about the item being written
 // (#2031), so callers that retry on failure must recognise it with errors.As and wait instead.
 //
-// ⚠ Every refusal the governor hands out goes through Pause. The filler pipeline once saw
-// these as ordinary stage failures and, after its retries, rejected good clips as `unplayable`
-// because the library allowance was full.
+// ⚠ Every refusal the governor hands out goes through Pause. Seen as an ordinary stage failure,
+// a refusal would, after the pipeline's retries, reject good clips as `unplayable` because the
+// library allowance was full.
 type PauseError struct {
 	Operation string
 	Reason    Reason

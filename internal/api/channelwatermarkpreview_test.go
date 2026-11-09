@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -42,17 +43,17 @@ func (f *fakeWatermarks) Preview(_ context.Context, id string, change schedule.W
 	return f.png, false, nil
 }
 
-func (f *fakeWatermarks) Options(_ context.Context, id string, now time.Time) (api.WatermarkOptions, error) {
+func (f *fakeWatermarks) Options(_ context.Context, id string, now time.Time) (channelsapi.WatermarkOptions, error) {
 	if id != "ch-1" {
-		return api.WatermarkOptions{}, store.ErrNotFound
+		return channelsapi.WatermarkOptions{}, store.ErrNotFound
 	}
 	f.gotNow = now
-	return api.WatermarkOptions{AutoCallsign: "SC", Era: "1980s", EraPalette: []string{"red", "amber", "cyan"},
-		Holidays: []api.WatermarkHolidayOption{{ID: "halloween", Name: "Halloween", Start: "2026-10-01", End: "2026-10-31",
-			Active: true, Picture: "pumpkin", Pictures: []api.WatermarkPicture{{ID: "pumpkin", Name: "Pumpkin"}}}}}, nil
+	return channelsapi.WatermarkOptions{AutoCallsign: "SC", Era: "1980s", EraPalette: []string{"red", "amber", "cyan"},
+		Holidays: []channelsapi.WatermarkHolidayOption{{ID: "halloween", Name: "Halloween", Start: "2026-10-01", End: "2026-10-31",
+			Active: true, Picture: "pumpkin", Pictures: []channelsapi.WatermarkPicture{{ID: "pumpkin", Name: "Pumpkin"}}}}}, nil
 }
 
-func newWatermarkServer(t *testing.T, wm api.WatermarkPreviewer, now time.Time) *httptest.Server {
+func newWatermarkServer(t *testing.T, wm channelsapi.WatermarkPreviewer, now time.Time) *httptest.Server {
 	t.Helper()
 	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Now: func() time.Time { return now }}
 	if wm != nil {
@@ -174,7 +175,7 @@ func TestWatermarkOptionsRoute(t *testing.T) {
 	srv := newWatermarkServer(t, wm, now)
 
 	res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/options")
-	var got api.WatermarkOptions
+	var got channelsapi.WatermarkOptions
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil || res.StatusCode != http.StatusOK {
 		t.Fatalf("options = %d %v", res.StatusCode, err)
 	}

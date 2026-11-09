@@ -10,7 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -38,7 +39,7 @@ func TestStructureAssessmentWindowPreparerRendersCompleteSetAndReusesVerifiedMed
 		window := plan.Windows[ordinal]
 		if prepared.Window != window || prepared.Media != first.Authority.Windows[ordinal] ||
 			prepared.Media.Media.ProfileSHA256 != cut.SoftwareProfile().SHA256 ||
-			!filler.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
+			!split.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
 			t.Fatalf("prepared window %d = %+v", ordinal, prepared)
 		}
 		want := cut.PartArguments(cut.SoftwareProfile(), calls.snapshots[ordinal], window.MediaStartMS, window.MediaEndMS-window.MediaStartMS, calls.outputs[ordinal])
@@ -151,15 +152,15 @@ func TestStructureAssessmentWindowPreparerRejectsIncompleteDecode(t *testing.T) 
 func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*testing.T, *filler.StructureAssessmentSource)
+		mutate func(*testing.T, *split.AssessmentSource)
 	}{
-		{name: "bytes", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+		{name: "bytes", mutate: func(t *testing.T, input *split.AssessmentSource) {
 			t.Helper()
 			if err := os.WriteFile(input.FullPath, []byte("changed source"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "symlink", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+		{name: "symlink", mutate: func(t *testing.T, input *split.AssessmentSource) {
 			t.Helper()
 			target := filepath.Join(filepath.Dir(input.FullPath), "target.mp4")
 			if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
@@ -172,7 +173,7 @@ func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t
 				t.Fatal(err)
 			}
 		}},
-		{name: "path", mutate: func(_ *testing.T, input *filler.StructureAssessmentSource) { input.FullPath += ".other" }},
+		{name: "path", mutate: func(_ *testing.T, input *split.AssessmentSource) { input.FullPath += ".other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -214,7 +215,7 @@ func TestStructureAssessmentWindowOutputRejectsPerWindowByteOverrun(t *testing.T
 		t.Fatal(err)
 	}
 	window := window.Window{MediaStartMS: 0, MediaEndMS: 10_000}
-	probe := filler.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
+	probe := tools.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
 	if err := validateStructureAssessmentWindowOutput(path, probe, window, profile, media); err == nil {
 		t.Fatal("oversized normalized window was accepted")
 	}
@@ -227,7 +228,7 @@ type structureAssessmentWindowCalls struct {
 	outputs          []string
 }
 
-func structureAssessmentWindowSource(t *testing.T) (string, filler.StructureAssessmentSource, window.Plan) {
+func structureAssessmentWindowSource(t *testing.T) (string, split.AssessmentSource, window.Plan) {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "incoming", "compilation.mp4")
@@ -237,16 +238,16 @@ func structureAssessmentWindowSource(t *testing.T) (string, filler.StructureAsse
 	if err := os.WriteFile(path, []byte(strings.Repeat("long-source", 128)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(path)
+	digest, size, err := asset.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(path)
+	clipHash, err := asset.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := filler.StructureAssessmentSource{Source: filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
+	input := split.AssessmentSource{Source: split.SourceAsset{
+		Role: split.SourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
 		Path: "incoming/compilation.mp4", DurationMs: 300_000,
 	}, FullPath: path}
 	plan, err := window.NewPlan(structure.Source{SHA256: digest, Bytes: size, DurationMS: 300_000}, cut.SoftwareProfile())
@@ -260,7 +261,7 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 	t.Helper()
 	calls := &structureAssessmentWindowCalls{}
 	preparer := &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: filler.SnapshotOwnedFile,
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: asset.SnapshotOwnedFile,
 		profile: cut.SoftwareProfile(),
 		identify: func(context.Context, string) (tools.MediaToolIdentity, error) {
 			return structureAssessmentToolFixture(), nil
@@ -289,13 +290,13 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 		calls.outputs = append(calls.outputs, output)
 		return os.WriteFile(output, []byte(strings.Repeat("window-"+strconv.Itoa(ordinal), 128)), 0o600)
 	}
-	preparer.probe = func(_ context.Context, path string) (filler.Probed, error) {
+	preparer.probe = func(_ context.Context, path string) (tools.Probed, error) {
 		if strings.Contains(filepath.Base(path), "structure-source-") {
-			return filler.Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+			return tools.Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return filler.Probed{}, err
+			return tools.Probed{}, err
 		}
 		ordinal := -1
 		for candidate := range plan.Windows {
@@ -305,10 +306,10 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 			}
 		}
 		if ordinal < 0 {
-			return filler.Probed{}, errors.New("unknown fixture media")
+			return tools.Probed{}, errors.New("unknown fixture media")
 		}
 		window := plan.Windows[ordinal]
-		return filler.Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+		return tools.Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 	}
 	preparer.decode = func(_ context.Context, _ string, _ string) error {
 		calls.decodes++

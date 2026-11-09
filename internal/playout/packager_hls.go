@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,7 +53,7 @@ type PackagerItem struct {
 // then airs bug-free.
 type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *Watermark
 
-// PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
+// PackagerSource is the application's side of the channel packager (#1512): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
 // lease's).
 type PackagerSource interface {
@@ -73,7 +74,7 @@ type packagedKey struct {
 
 // PackagerHLS serves in-app HLS from one channel packager per (channel, format): one encoder per
 // scheduled item at a time, stitched in-process, no continuous transcode and no remux. It is an
-// hlsOrigin, so Origin serves it exactly as it serves the remux: master.m3u8 is a master playlist
+// hlsOrigin, which is how Origin serves it: master.m3u8 is a master playlist
 // naming each format's media playlist, and every asset is flat, named `<format>-<file>`.
 type PackagerHLS struct {
 	ffmpeg, root string
@@ -103,6 +104,10 @@ type PackagerHLS struct {
 	channels map[packagedKey]*packagedChannel
 	// premiumTakers is when each viewer (WithViewer) last requested a premium playlist (#1037).
 	premiumTakers map[string]time.Time
+
+	// speeds holds each running packager's latest item-encoder speed (a *atomic.Uint64 of float64
+	// bits, keyed by packagedKey), for SessionStat.Speed; removeLocked drops a stopped packager's.
+	speeds sync.Map
 
 	// observer and onChange see packagers start and stop. Both are set before the first tune.
 	observer SessionObserver
@@ -138,8 +143,8 @@ type packagedChannel struct {
 const DefaultGrace = 30 * time.Second
 
 func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Duration, log *slog.Logger) (*PackagerHLS, error) {
-	// The same scratch rule as the remux (playout.hls_dir): a private, locked per-process root,
-	// removed by Stop (scratch.go).
+	// The scratch rule (playout.hls_dir): a private, locked per-process root, removed by Stop
+	// (scratch.go).
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -161,7 +166,7 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 }
 
 // acquirePlaylist serves the channel's master playlist. Every client gets the baseline variant: a
-// browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
+// browser on a channel whose profile is HEVC still gets H.264 (#1512). Beside
 // it the master names the channel's premium format when it airs one here and the ledger has room
 // (#1512 G10). The premium is described from its output alone: only a client that plays it starts
 // its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path. A
@@ -529,14 +534,14 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 }
 
 // schedule adapts the application's items to the packager: each Open builds the item's command
-// with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
+// with the pipeline builder (BuildItem) and starts its encoder. Each item moves the channel's lease to its
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
 // only reads the schedule: an item airs when a viewer receives its segments (PackagerItem.RecordAiringServed).
 func (m *PackagerHLS) schedule(
 	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
-	ladder := &itemLadder{}
+	ladder := &itemLadder{speed: m.speedFor(key)}
 	tuneIn := true // the packager's first lookup; the schedule runs on one goroutine
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
@@ -606,7 +611,7 @@ func (m *PackagerHLS) schedule(
 		if stepped {
 			item.Wait = ladderResumeWait
 		}
-		// The channel's bug, programmes only (#1512 phase 1d): resolved once per item at this
+		// The channel's bug, programmes only (#1512): resolved once per item at this
 		// packager's encoder and output size, so a retried Open reuses it.
 		var wm *Watermark
 		if it.Watermark != nil {
@@ -642,9 +647,9 @@ func (m *PackagerHLS) schedule(
 						"item", it.Label, "decode_fault", decodeFault, "tonemapper", pl.Tonemapper)
 				}
 			}, func(cpu time.Duration) {
-				// The ledger learns the class's real CPU cost from delivered items (#1520), as it
-				// did from the retired chain's finished programmes: CPU over the media the item put
-				// on the timeline, not its slot, so an encoder closed early cannot over-count.
+				// The ledger learns the class's real CPU cost from delivered items (#1520):
+				// CPU over the media the item put on the timeline, not its slot, so an encoder
+				// closed early cannot over-count.
 				if frames := delivered.Load(); frames > 0 && itemOut.FPS > 0 {
 					media := time.Duration(frames) * time.Second / time.Duration(itemOut.FPS)
 					lease.ObserveCPU(itemClass, cpu, media)
@@ -695,6 +700,9 @@ const ladderResumeWait = 10 * time.Second
 // air, which outlives its encoder restarts (a new airing starts a new monitor). The schedule reads
 // it; the item encoder's progress goroutine feeds it.
 type itemLadder struct {
+	// speed is where every item encoder's reported realtime multiple lands (float64 bits), whether
+	// or not the host has a monitor; PackagerHLS.Stats reads it.
+	speed   *atomic.Uint64
 	mu      sync.Mutex
 	airing  string
 	monitor *RungMonitor
@@ -725,13 +733,17 @@ func (l *itemLadder) resume(airing string) (rung SoftwareRung, resumed, stepped 
 	return l.monitor.Rung(), true, stepped
 }
 
-// watch feeds an item encoder's samples to m and ends that encoder on a step. Samples from an
-// encoder of an airing no longer on air are ignored. Nil when there is no monitor (GPU hosts).
+// watch records an item encoder's speed, feeds its samples to m and ends that encoder on a step.
+// Samples from an encoder of an airing no longer on air are ignored by the monitor. m is nil on a
+// host with no monitor (GPU hosts): the encoder's progress is still read for its speed.
 func (l *itemLadder) watch(m *RungMonitor, log *slog.Logger, label string) func(SpeedSample) bool {
-	if m == nil {
-		return nil
-	}
 	return func(s SpeedSample) bool {
+		if l.speed != nil && s.Speed > 0 {
+			l.speed.Store(math.Float64bits(s.Speed))
+		}
+		if m == nil {
+			return false
+		}
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		if l.monitor != m || l.stepped {
@@ -776,8 +788,7 @@ func (p *prefetchedItem) take(at time.Time) (PackagerItem, bool) {
 
 // itemFault is what a failed encode of one source proved about this host. After a failed item the
 // packager asks the schedule again, so the next attempt at the same source builds without the stage
-// that failed, as the retired chain's retry ladder did (§9.1 V47). The encoder never changes: the
-// channel's init must still match.
+// that failed (§9.1 V47). The encoder never changes: the channel's init must still match.
 type itemFault struct {
 	// cpuDecode: the GPU decoder faulted on this source (IsHardwareDecodeFault); retrying the same
 	// -hwaccel path fails identically.
@@ -840,7 +851,7 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 	return true
 }
 
-// packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
+// packagerItemArgs is one item's encoder command for its slot: the pipeline builder's output on
 // the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
 // a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
 func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
@@ -877,6 +888,7 @@ func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 	if m.channels[key] == c {
 		delete(m.channels, key)
+		m.speeds.Delete(key)
 		m.observe(func(o SessionObserver) { o.PlayoutSessionActive(-1) })
 		m.changed()
 	}
@@ -1032,8 +1044,7 @@ func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, 
 const audioRateHz = 48000
 
 // startFragmentEncoder runs one item's ffmpeg and returns its stdout. Close (or cancelling ctx)
-// stops it; a failure that was not a stop is logged with ffmpeg's last words.
-// startFragmentEncoder starts one item's encoder. failed, when set, hears an encoder that exited
+// stops it; a failure that was not a stop is logged with ffmpeg's last words. failed, when set, hears an encoder that exited
 // on its own with an error before any output: a fault of this source on this host, not a slow
 // start (a late item's context is cancelled first) and not an item the packager finished.
 //
@@ -1085,7 +1096,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 				return
 			}
 			cpu, _ := processCPUTime(pid)
-			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu}) {
+			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu, Speed: p.Speed}) {
 				cut.stop.Store(true)
 			}
 		})

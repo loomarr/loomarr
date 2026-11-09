@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
@@ -55,15 +58,15 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfCountrySo
 		{"unknown", ""},
 	} {
 		src := records.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
-		src.Geography = filler.Geography{Country: tc.country}
+		src.Geography = pod.Geography{Country: tc.country}
 		if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 			t.Fatal(err)
 		}
 	}
-	adapter := fetchStoreAdapter{
-		st: st, fetchEvery: func() time.Duration { return time.Hour },
-		home: func() filler.Geography { return filler.Geography{Country: "US", Place: "4560349"} },
-	}
+	adapter := storeadapter.NewFetch(
+		st, func() time.Duration { return time.Hour },
+		func() pod.Geography { return pod.Geography{Country: "US", Place: "4560349"} })
+
 	sources, err := adapter.ListFetchSources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -88,10 +91,10 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
-	adapter := fetchStoreAdapter{
-		st: st, fetchEvery: func() time.Duration { return time.Hour },
-		home: func() filler.Geography { return filler.Geography{} },
-	}
+	adapter := storeadapter.NewFetch(
+		st, func() time.Duration { return time.Hour },
+		func() pod.Geography { return pod.Geography{} })
+
 	sources, err := adapter.ListFetchSources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +166,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		if err != nil || !claimed {
 			t.Fatalf("seed check claim for %s = %v, %v", id, claimed, err)
 		}
-		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: lastChecked}); err != nil {
+		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, acquisition.SourceCheckCompletion{CheckedAt: lastChecked}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -181,18 +184,18 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := filler.NewFetcher(
-		fetchStoreAdapter{
-			st:         st,
-			fetchEvery: func() time.Duration { return 6 * time.Hour },
-			home:       func() filler.Geography { return filler.Geography{Country: "US"} },
-		},
+	fetcher := acquisition.NewFetcher(
+		storeadapter.NewFetch(
+			st,
+			func() time.Duration { return 6 * time.Hour },
+			func() pod.Geography { return pod.Geography{Country: "US"} }),
+
 		providers,
 		fetchIngestorFunc(func(context.Context, string, string, []string) (string, error) {
 			t.Fatal("an empty provider listing must not enqueue an ingest")
 			return "", nil
 		}),
-		filler.FetchLimits{
+		acquisition.FetchLimits{
 			MaxPerRun:       func() int { return 10 },
 			MaxCatalogClips: func() int { return 2000 },
 		},
@@ -234,7 +237,7 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	ffmpeg := testkit.Executable(t, "ffmpeg", "#!/bin/sh\nexit 0\n")
 	clipDir := filepath.Join(t.TempDir(), "clips")
 	watchDir := filepath.Join(t.TempDir(), "incoming")
-	layout, err := filler.NewLayout(clipDir, watchDir)
+	layout, err := cliplibrary.NewLayout(clipDir, watchDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +252,7 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, governor)
+	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), &testkit.ArtifactWriter{}, governor)
 	if fetcher == nil {
 		t.Fatal("buildFetcher returned nil with both tools configured")
 	}
@@ -260,8 +263,8 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := string(raw)
-	if !strings.Contains(args, watchDir+"/%(title)s [%(id)s].%(ext)s") {
-		t.Errorf("yt-dlp args = %q, want output under applied watch %q", args, watchDir)
+	if !strings.Contains(args, watchDir+"/.loomarr-acquisitions/") {
+		t.Errorf("yt-dlp args = %q, want output staged under applied watch %q", args, watchDir)
 	}
 	if strings.Contains(args, clipDir+"/%(title)s") {
 		t.Errorf("yt-dlp args = %q, unexpectedly write raw arrivals into clip library %q", args, clipDir)

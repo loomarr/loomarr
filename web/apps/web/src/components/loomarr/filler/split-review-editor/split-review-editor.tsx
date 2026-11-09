@@ -11,11 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Icon,
+  icons,
+  Tooltip,
 } from "@loomarr/design-system";
-import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
@@ -299,31 +300,28 @@ const SplitReviewEditor = ({
             </DialogHeader>
             <div className="flex flex-col gap-5 p-6">
               <div className="flex items-center justify-between gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                <Action
+                  accessibilityLabel="Previous clip"
                   disabled={selectedIndex === 0}
-                  onClick={() => setSelectedKey(draft[selectedIndex - 1]?.key)}
-                  aria-label="Previous clip"
+                  icon="earlier"
+                  onPress={() => setSelectedKey(draft[selectedIndex - 1]?.key)}
+                  variant="outline"
                 >
-                  <ChevronLeft aria-hidden />
                   Previous
-                </Button>
+                </Action>
                 <span className="text-muted-foreground font-mono text-xs tabular-nums">
                   {selectedIndex + 1} / {draft.length}
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                <Action
+                  accessibilityLabel="Next clip"
                   disabled={selectedIndex === draft.length - 1}
-                  onClick={() => setSelectedKey(draft[selectedIndex + 1]?.key)}
-                  aria-label="Next clip"
+                  icon="later"
+                  iconPlacement="end"
+                  onPress={() => setSelectedKey(draft[selectedIndex + 1]?.key)}
+                  variant="outline"
                 >
                   Next
-                  <ChevronRight aria-hidden />
-                </Button>
+                </Action>
               </div>
 
               <SegmentInspector
@@ -427,7 +425,7 @@ const SegmentSummaryRow = ({
               ) : null}
             </span>
           </span>
-          <ChevronRight aria-hidden className="text-muted-foreground size-4 shrink-0" />
+          <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
         </button>
       </Card>
     </li>
@@ -529,15 +527,17 @@ const SegmentInspector = ({
         </div>
         <div className="flex flex-wrap justify-end gap-1">
           {!last && (
-            <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
-              <Merge aria-hidden />
-              Join next
-            </Button>
+            <Tooltip content="Join this clip and the next">
+              <Action onPress={onMergeWithNext} variant="ghost">
+                Join next
+              </Action>
+            </Tooltip>
           )}
-          <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
-            <Trash2 aria-hidden />
-            Remove
-          </Button>
+          <Tooltip content="Do not keep this clip">
+            <Action icon="delete" onPress={onDrop} variant="ghost">
+              Remove
+            </Action>
+          </Tooltip>
         </div>
       </div>
 
@@ -576,7 +576,7 @@ const SegmentInspector = ({
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
         <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
-          <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
+          <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
           <Field

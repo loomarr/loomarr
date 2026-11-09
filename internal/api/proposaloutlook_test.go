@@ -13,8 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
 )
@@ -28,7 +28,7 @@ func TestProposalOutlookIsAuthenticatedReadOnlyAndCannotApprove(t *testing.T) {
 	engine := channels.New(st, nil, nil, nil, channels.Config{}, time.Now, log)
 	media := &outlookfixture.OutlookLibrary{}
 	observer := outlook.New(outlook.Config{Titles: st, Library: media, Episodes: media.ResolveEpisodes, Planner: planner, Preview: engine})
-	handler := api.Router(log, api.Options{Store: st, Auth: testAuthorizer{}, Log: log, ProposalOutlook: observer, Approver: suggest.NewApprover(st, planner, time.Now)})
+	handler := api.Router(log, api.Options{Store: st, Auth: testAuthorizer{}, Log: log, ProposalOutlook: observer, Approver: accept.NewApprover(st, planner, time.Now)})
 	request := func(token, route string) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodPost, route, nil)

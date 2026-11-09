@@ -10,9 +10,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -20,10 +21,10 @@ import (
 // store, clock, network or logger: the same input always gives the same Binding.
 type BindInput struct {
 	// Proposal is the exact candidate being bound: its job, requester, approver and body.
-	Proposal store.Proposal
+	Proposal proposalstore.Proposal
 	// Existing is the channel the proposal's job changes. The zero value means the job has no
 	// channel yet, so Bind creates one.
-	Existing store.Channel
+	Existing channelstore.Channel
 	// Number is the channel number a NEW channel gets. The caller chooses a free one, since
 	// "free" is a question for the store and the backend. Ignored when Existing is set.
 	Number int
@@ -38,7 +39,7 @@ type BindInput struct {
 // Binding is the result of Bind.
 type Binding struct {
 	// Channel is the complete channel state the approval commits.
-	Channel store.Channel
+	Channel channelstore.Channel
 	// Retired are existing titles an auto-curate bind dropped because the proposal's turnstile
 	// rotated them out to make room (§8.2a).
 	Retired []schedule.LineupEntry
@@ -154,8 +155,8 @@ func Bind(in BindInput) (Binding, error) {
 // (§8.2), as opposed to a human or a per-user auto-approve grant. The audit field is the
 // discriminator, so the binder applies additive (non-destructive) lineup semantics only for
 // the unattended path — every human-in-the-loop approval keeps full-replace (a person decided).
-func isAutoCurate(p store.Proposal) bool {
-	return p.ApprovedBy == suggest.AutoCuratedBy
+func isAutoCurate(p proposalstore.Proposal) bool {
+	return p.ApprovedBy == accept.AutoCuratedBy
 }
 
 // mustExcludeKeys is the set of lower-cased title terms the intent asked to exclude
@@ -191,7 +192,7 @@ func retiredKeys(body proposals.Proposal) map[provision.Key]struct{} {
 // prefers the LLM's proposed channelName (a real network-style name — "Springfield
 // Classics" — §8), falling back to a truncated intent description, then a generic label.
 // A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
-func channelNameFromIntent(p store.Proposal) string {
+func channelNameFromIntent(p proposalstore.Proposal) string {
 	if n := strings.TrimSpace(p.Body.ChannelName); n != "" {
 		return truncateLabel(n, 60)
 	}
@@ -225,11 +226,10 @@ func channelIntentJSON(p proposals.Proposal) (string, error) {
 }
 
 // lineupEntries maps an approved proposal's picks — BOTH the in-library lineup
-// AND the acquisition list — to scheduler entries. This is the fix for the #9
-// seam: acquisitions previously never entered ch.Lineup, so once a title landed
-// `available` it had no entry to fill and was permanently unschedulable (the
-// backfill sweep re-derives desired slots from ch.Lineup, so an absent key can
-// never be recovered). Every approved pick is an entry; whether it renders as a
+// AND the acquisition list — to scheduler entries. Acquisitions must enter ch.Lineup:
+// once a title lands `available` it needs an entry to fill, and the backfill sweep
+// re-derives desired slots from ch.Lineup, so an absent key can never be recovered.
+// Every approved pick is an entry; whether it renders as a
 // program or a pending slot is decided at reconcile time by resolveEntry against
 // live availability (§9), NOT by the proposal's (possibly stale) InLibrary flag.
 //

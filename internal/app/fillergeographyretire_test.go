@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type retirementFake struct {
 	settled  []records.SettledGeographyClip
-	channels []store.Channel
+	channels []channelstore.Channel
 	removed  []string
 }
 
@@ -24,7 +24,7 @@ func (f *retirementFake) ListSettledGeographyClips(context.Context) ([]records.S
 	return f.settled, nil
 }
 
-func (f *retirementFake) ListChannels(context.Context) ([]store.Channel, error) {
+func (f *retirementFake) ListChannels(context.Context) ([]channelstore.Channel, error) {
 	return f.channels, nil
 }
 
@@ -33,16 +33,16 @@ func (f *retirementFake) SetClipsRemoved(_ context.Context, paths []string, _ ti
 	return len(paths), nil
 }
 
-func channelAt(country, place string) store.Channel {
-	var ch store.Channel
+func channelAt(country, place string) channelstore.Channel {
+	var ch channelstore.Channel
 	ch.Policy.Filler = &schedule.FillerSelection{Geography: &schedule.FillerGeography{Country: country, Place: place}}
 	return ch
 }
 
 // Invented places: "harbor" reaches fcc:1, "lakeside" reaches fcc:3.
-func retirementPolicy(country string) func() filler.Policy {
-	return func() filler.Policy {
-		return filler.Policy{Geography: filler.Geography{Country: country, Place: "harbor"},
+func retirementPolicy(country string) func() pod.Policy {
+	return func() pod.Policy {
+		return pod.Policy{Geography: pod.Geography{Country: country, Place: "harbor"},
 			LocalStations: func(_, place string) map[string]bool {
 				return map[string]map[string]bool{"harbor": {"fcc:1": true}, "lakeside": {"fcc:3": true}}[place]
 			}}
@@ -58,7 +58,7 @@ func TestGeographyRetirementRemovesOnlyWhatNoPlaceCanAir(t *testing.T) {
 			{Path: "us-ad.mp4", Scope: "national", Country: "US"},
 			{Path: "foreign-ad.mp4", Scope: "national", Country: "GB"},
 		},
-		channels: []store.Channel{channelAt("US", "lakeside"), channelAt("", "")},
+		channels: []channelstore.Channel{channelAt("US", "lakeside"), channelAt("", "")},
 	}
 	retire := fillerGeographyRetirement{clips: fake, store: fake, policy: retirementPolicy("US"),
 		log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now}

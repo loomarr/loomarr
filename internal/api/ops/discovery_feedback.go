@@ -1,0 +1,146 @@
+package ops
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/provision"
+)
+
+func (s *Handlers) registerDiscoveryFeedback(api huma.API) {
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "record-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback",
+		Summary: "Record explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
+	}, httpcore.RoleAdmin), s.recordDiscoveryFeedback)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "list-discovery-feedback", Method: http.MethodGet, Path: "/v1/discovery/feedback",
+		Summary: "List effective explicit discovery feedback", Tags: []string{"discovery"},
+	}, httpcore.RoleMember), s.listDiscoveryFeedback)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "clear-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback/clear",
+		Summary: "Clear explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
+	}, httpcore.RoleAdmin), s.clearDiscoveryFeedback)
+}
+
+type discoveryFeedbackBody struct {
+	Scope     channeldatastore.FeedbackScope  `json:"scope" enum:"household,channel"`
+	ScopeID   string                          `json:"scopeId,omitempty"`
+	TargetKey provision.Key                   `json:"targetKey"`
+	Action    channeldatastore.FeedbackAction `json:"action" enum:"keep,less,never,surprise"`
+	Reason    string                          `json:"reason,omitempty" maxLength:"280"`
+}
+
+type discoveryFeedbackInput struct{ Body discoveryFeedbackBody }
+type clearDiscoveryFeedbackInput struct {
+	Body struct {
+		Scope     channeldatastore.FeedbackScope `json:"scope" enum:"household,channel"`
+		ScopeID   string                         `json:"scopeId,omitempty"`
+		TargetKey provision.Key                  `json:"targetKey"`
+	}
+}
+type listDiscoveryFeedbackInput struct {
+	Scope   channeldatastore.FeedbackScope `query:"scope" enum:"household,channel"`
+	ScopeID string                         `query:"scopeId"`
+}
+type discoveryFeedbackOutput struct{ Body discoveryFeedbackDTO }
+type listDiscoveryFeedbackOutput struct{ Body []discoveryFeedbackDTO }
+
+type discoveryFeedbackDTO struct {
+	ID        string                          `json:"id"`
+	ActorID   string                          `json:"actorId"`
+	Scope     channeldatastore.FeedbackScope  `json:"scope"`
+	ScopeID   string                          `json:"scopeId,omitempty"`
+	TargetKey provision.Key                   `json:"targetKey"`
+	Action    channeldatastore.FeedbackAction `json:"action"`
+	Reason    string                          `json:"reason,omitempty"`
+	CreatedAt time.Time                       `json:"createdAt"`
+}
+
+func (s *Handlers) recordDiscoveryFeedback(ctx context.Context, in *discoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
+	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, in.Body.Action, in.Body.Reason)
+}
+
+func (s *Handlers) clearDiscoveryFeedback(ctx context.Context, in *clearDiscoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
+	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, channeldatastore.FeedbackClear, "")
+}
+
+func (s *Handlers) appendDiscoveryFeedback(ctx context.Context, scope channeldatastore.FeedbackScope, scopeID string,
+	target provision.Key, action channeldatastore.FeedbackAction, reason string,
+) (*discoveryFeedbackOutput, error) {
+	if s.store == nil {
+		return nil, httpcore.FeatureNotConfigured("Discovery feedback unavailable", "The persistence service is not configured.")
+	}
+	if !validFeedbackRequest(scope, scopeID, target) {
+		return nil, httpcore.BadRequest("Invalid discovery feedback", "Choose household scope or a specific channel and a grounded movie or series.")
+	}
+	actor := httpcore.UserIDFrom(ctx)
+	if actor == "" {
+		actor = "api-token"
+	}
+	feedback := channeldatastore.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(httpcore.NewRequestID(), "req_"),
+		ActorID: actor, Scope: scope, ScopeID: scopeID, Target: target, Action: action,
+		Reason: strings.TrimSpace(reason), CreatedAt: time.Now().UTC()}
+	if err := s.store.AppendDiscoveryFeedback(ctx, feedback); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		}
+		return nil, err
+	}
+	return &discoveryFeedbackOutput{Body: feedbackDTO(feedback)}, nil
+}
+
+func (s *Handlers) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFeedbackInput) (*listDiscoveryFeedbackOutput, error) {
+	if s.store == nil || !validFeedbackScope(in.Scope, in.ScopeID) {
+		return nil, httpcore.BadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
+	}
+	household, err := s.store.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
+	if err != nil {
+		return nil, err
+	}
+	var channel []channeldatastore.DiscoveryFeedback
+	if in.Scope == channeldatastore.FeedbackChannel {
+		channel, err = s.store.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: in.Scope, ScopeID: in.ScopeID})
+		if err != nil {
+			return nil, err
+		}
+	}
+	events := channeldatastore.EffectiveDiscoveryFeedback(household, channel)
+	out := &listDiscoveryFeedbackOutput{Body: make([]discoveryFeedbackDTO, 0, len(events))}
+	for _, event := range events {
+		out.Body = append(out.Body, feedbackDTO(event))
+	}
+	return out, nil
+}
+
+func validFeedbackRequest(scope channeldatastore.FeedbackScope, scopeID string, target provision.Key) bool {
+	mt, provider, id, ok := provision.ParseKey(target)
+	if !ok {
+		return false
+	}
+	title := provision.Title{MediaType: mt}
+	if provider == "tmdb" {
+		title.TMDBID = id
+	} else {
+		title.TVDBID = id
+	}
+	canonical, err := title.Key()
+	return validFeedbackScope(scope, scopeID) && err == nil && canonical == target
+}
+
+func validFeedbackScope(scope channeldatastore.FeedbackScope, scopeID string) bool {
+	return (scope == channeldatastore.FeedbackHousehold && scopeID == "") || (scope == channeldatastore.FeedbackChannel && scopeID != "")
+}
+
+func feedbackDTO(feedback channeldatastore.DiscoveryFeedback) discoveryFeedbackDTO {
+	return discoveryFeedbackDTO{ID: feedback.ID, ActorID: feedback.ActorID, Scope: feedback.Scope,
+		ScopeID: feedback.ScopeID, TargetKey: feedback.Target, Action: feedback.Action,
+		Reason: feedback.Reason, CreatedAt: feedback.CreatedAt}
+}
