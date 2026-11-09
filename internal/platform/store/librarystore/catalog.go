@@ -45,12 +45,17 @@ type LibraryCatalogDue struct {
 	New   int
 	Stale int
 	// Versions is the record shape each kind is read in now. A record saved in an older one is
-	// due with the titles never fetched; a kind not listed is version 0.
+	// due with the titles never fetched; a kind not listed is version 0. A record RefreshLibrary
+	// marked (catalogRefresh) is due the same way, whatever its kind.
 	Versions map[string]int
 	// Language is the language records are read in now ("en-US"). A record saved in another is
 	// due with the titles never fetched; empty checks none.
 	Language string
 }
+
+// catalogRefresh is the version RefreshLibrary gives every fetched record: below any real one, so
+// the record is fetched again with the new titles while the old one is still read.
+const catalogRefresh = -1
 
 // LibraryFilePath is one file the scanner keeps, by its root and absolute path.
 type LibraryFilePath struct {
@@ -114,7 +119,7 @@ func (s *Store) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([
 	var out []LibraryCatalogKey
 	// outdated is a record saved in an older shape than its kind is read in now, or in another
 	// language.
-	outdated, args := "", []any{}
+	outdated, args := fmt.Sprintf(` OR version = %d`, catalogRefresh), []any{}
 	for _, kind := range slices.Sorted(maps.Keys(due.Versions)) {
 		outdated += ` OR (kind = ? AND version < ?)`
 		args = append(args, kind, due.Versions[kind])

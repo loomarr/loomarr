@@ -67,6 +67,7 @@ var scannedWhole = map[string]string{
 	"UPDATE notification_delivery_attempts": "startup recovery: attempts a crashed worker left sending",
 	"SELECT titles":                         "re-key: reads every title's library id when ids are re-mapped",
 	"DELETE viewings":                       "clear all: an admin clearing everyone's watch history removes every row",
+	"UPDATE library_files":                  "refresh everything: an admin asks for every present file to be written again",
 
 	// Totals: the answer is an aggregate over every row.
 	"SELECT diagnostic_retained_bytes":      "total: diagnostics' retained bytes, summed",

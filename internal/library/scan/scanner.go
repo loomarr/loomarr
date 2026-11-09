@@ -245,7 +245,7 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 // ErrScannerOff is a request the scanner cannot serve because it is not running.
 var ErrScannerOff = errors.New("scan: the scanner is off")
 
-// Rescan asks for a pass now ("Check again").
+// Rescan asks for a pass now ("Scan now", and "Check again" on a held removal).
 func (l *Library) Rescan() error {
 	if !l.Enabled() {
 		return ErrScannerOff
@@ -274,6 +274,21 @@ func (l *Library) Add(ctx context.Context, path string) error {
 	if l.Enabled() {
 		l.Scanner.Trigger()
 	}
+	return nil
+}
+
+// RefreshEverything is "Refresh everything", Update details for the whole library: every file is
+// written again on a pass asked for now, so what the files, sidecars and arrs say now is read, and
+// the enricher fetches every catalog record again. Headers are kept: a file's bytes are read
+// again only when they change, so no title stops playing while it runs.
+func (l *Library) RefreshEverything(ctx context.Context) error {
+	if !l.Enabled() {
+		return ErrScannerOff
+	}
+	if err := l.ItemStore.RefreshLibrary(ctx); err != nil {
+		return err
+	}
+	l.Scanner.Trigger()
 	return nil
 }
 

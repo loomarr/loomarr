@@ -12,6 +12,7 @@ import {
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
+import { ModalOverlay } from "../../overlay";
 import { LibraryPoster } from "../library-poster";
 import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
@@ -219,6 +220,44 @@ const KeepingUp = ({
   );
 };
 
+// Scan now and Refresh everything (Emby and Jellyfin's Scan library and Replace all metadata).
+// Scan now is a pass now; Refresh everything is Update details for every title, so it asks first.
+const ScanActions = ({
+  scan,
+  onRescan,
+  onRefreshEverything,
+}: Pick<LibrarySettingsProps, "scan" | "onRescan" | "onRefreshEverything">) => {
+  const [asking, setAsking] = useState(false);
+  const scanning = scan.stage !== "idle";
+  return (
+    <Line gap="control">
+      <ModalOverlay
+        actions={[
+          { label: "Not now", onPress: () => setAsking(false), preferredFocus: true, tone: "secondary" },
+          {
+            label: "Refresh everything",
+            onPress: () => {
+              setAsking(false);
+              onRefreshEverything();
+            },
+            tone: "primary",
+          },
+        ]}
+        description="Loomarr reads every title's details again, from your files and your apps, and looks each one up again. Everything keeps playing. A big library takes a while."
+        onDismiss={() => setAsking(false)}
+        title="Refresh every title?"
+        visible={asking}
+      />
+      <Action disabled={!scan.enabled || scanning} onPress={onRescan} variant="outline">
+        {scanning ? "Scanning…" : "Scan now"}
+      </Action>
+      <Action disabled={!scan.enabled} onPress={() => setAsking(true)} variant="ghost">
+        Refresh everything
+      </Action>
+    </Line>
+  );
+};
+
 const LibraryStatus = ({
   health,
   folders,
@@ -229,6 +268,7 @@ const LibraryStatus = ({
   checking,
   onCheckAgain,
   onRescan,
+  onRefreshEverything,
   onConfirmRemoval,
 }: Pick<
   LibrarySettingsProps,
@@ -241,6 +281,7 @@ const LibraryStatus = ({
   | "checking"
   | "onCheckAgain"
   | "onRescan"
+  | "onRefreshEverything"
   | "onConfirmRemoval"
 >) => {
   const inUse = folders.filter((f) => f.inUse);
@@ -285,6 +326,9 @@ const LibraryStatus = ({
         </Callout>
       ) : null}
       {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} />}
+      {health === "needs_folders" ? null : (
+        <ScanActions onRefreshEverything={onRefreshEverything} onRescan={onRescan} scan={scan} />
+      )}
     </Surface>
   );
 };
@@ -520,6 +564,7 @@ const LibrarySettings = ({
   checking,
   onCheckAgain,
   onRescan,
+  onRefreshEverything,
   onConfirmRemoval,
   onUseFolder,
   onAddFolder,
@@ -536,6 +581,7 @@ const LibrarySettings = ({
         hooks={hooks}
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}
+        onRefreshEverything={onRefreshEverything}
         onRescan={onRescan}
         readySoFar={readySoFar}
         scan={scan}
