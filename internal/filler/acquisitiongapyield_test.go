@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // #749: a run's clips are attributed to the coverage gap their download was for, including the
@@ -19,16 +20,16 @@ func TestAcquisitionGapYieldFrom_AttributesClipsAndTheirSplitsToTheDownloadsGap(
 		{ID: "c", ClipHash: "modern"},                 // unsteered: no gap row
 		{ID: "d", ClipHash: "", Gap: "era:1970-1979"}, // downloaded, not yet catalogued
 	}
-	row := func(hash string, d filler.Disposition) filler.ClipPipeline {
-		return filler.ClipPipeline{ClipHash: hash, Status: filler.StatusDone, Disposition: d}
+	row := func(hash string, d pipelinestate.Disposition) pipelinestate.ClipPipeline {
+		return pipelinestate.ClipPipeline{ClipHash: hash, Status: pipelinestate.StatusDone, Disposition: d}
 	}
-	rows := []filler.ClipPipeline{
-		row("single", filler.DispositionReady),
-		row("reel", filler.DispositionDismissed), // the compilation, cut into its spots
-		row("reel-spot-1", filler.DispositionReady),
-		row("reel-spot-2", filler.DispositionRejected),
-		row("modern", filler.DispositionReady),
-		row("dropped-by-hand", filler.DispositionReady), // no artifact: not attributed
+	rows := []pipelinestate.ClipPipeline{
+		row("single", pipelinestate.DispositionReady),
+		row("reel", pipelinestate.DispositionDismissed),
+		row("reel-spot-1", pipelinestate.DispositionReady),
+		row("reel-spot-2", pipelinestate.DispositionRejected),
+		row("modern", pipelinestate.DispositionReady),
+		row("dropped-by-hand", pipelinestate.DispositionReady),
 	}
 	parents := map[string]string{"reel-spot-1": "reel", "reel-spot-2": "reel"}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // Migration 00131 repairs the clip and pipeline rows an applied admission decision stamped in Unix
@@ -35,8 +36,8 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 			untouchedAt.Unix(), untouchedAt.Unix()); err != nil {
 			t.Fatal(err)
 		}
-		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageID("admission"),
-			Status: filler.StatusDone, Disposition: filler.DispositionDismissed, UpdatedAt: untouchedAt}); err != nil {
+		if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{ClipHash: hash, Stage: pipelinestate.StageID("admission"),
+			Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionDismissed, UpdatedAt: untouchedAt}); err != nil {
 			t.Fatal(err)
 		}
 	}

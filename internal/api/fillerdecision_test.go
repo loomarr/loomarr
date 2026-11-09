@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The operator's decision has to reach the pipeline row, not only `clips` (§10 V54). Incoming no
@@ -14,12 +15,12 @@ import (
 
 // seedForDecision puts a held clip with a pipeline row waiting on a person.
 func seedForDecision(t *testing.T, st interface {
-	UpsertClipPipeline(context.Context, filler.ClipPipeline) error
-}, put func(), hash string, d filler.Disposition) {
+	UpsertClipPipeline(context.Context, pipelinestate.ClipPipeline) error
+}, put func(), hash string, d pipelinestate.Disposition) {
 	t.Helper()
 	put()
-	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusDone,
+	if err := st.UpsertClipPipeline(context.Background(), pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
 		Disposition: d, UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -36,7 +37,7 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 			Hash: hash, Path: "1985/dismissed.mp4", Name: "Dismissed", Role: filler.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
-	}, hash, filler.DispositionReview)
+	}, hash, pipelinestate.DispositionReview)
 
 	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/bulk/remove",
 		`{"hashes":["`+hash+`"]}`, adminToken); res.StatusCode != http.StatusOK {
@@ -47,7 +48,7 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("pipeline row: found=%v err=%v", found, err)
 	}
-	if row.Disposition != filler.DispositionDismissed {
+	if row.Disposition != pipelinestate.DispositionDismissed {
 		t.Errorf("disposition = %q, want dismissed", row.Disposition)
 	}
 }
@@ -62,7 +63,7 @@ func TestBulkRemoveFiller_RestoreUndoesADismissal(t *testing.T) {
 			Hash: hash, Path: "1985/restored.mp4", Name: "Restored", Role: filler.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
-	}, hash, filler.DispositionDismissed)
+	}, hash, pipelinestate.DispositionDismissed)
 
 	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/bulk/remove",
 		`{"hashes":["`+hash+`"],"restore":true}`, adminToken); res.StatusCode != http.StatusOK {
@@ -73,7 +74,7 @@ func TestBulkRemoveFiller_RestoreUndoesADismissal(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("pipeline row: found=%v err=%v", found, err)
 	}
-	if row.Disposition != filler.DispositionReview {
+	if row.Disposition != pipelinestate.DispositionReview {
 		t.Errorf("disposition = %q, want review — a restored clip is waiting on a person again", row.Disposition)
 	}
 }

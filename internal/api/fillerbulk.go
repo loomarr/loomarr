@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -203,8 +204,8 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 		//
 		// From `review` OR `ready`: this route also serves the Catalog tab's bulk bar, where the
 		// clip being removed became Ready long ago.
-		s.settlePipeline(ctx, in.Body.Hashes, filler.DispositionDismissed,
-			filler.DispositionReview, filler.DispositionReady)
+		s.settlePipeline(ctx, in.Body.Hashes, pipelinestate.DispositionDismissed,
+			pipelinestate.DispositionReview, pipelinestate.DispositionReady)
 	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = n
@@ -266,7 +267,7 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 // Best-effort, matching `clearPipelineRejects`: the catalog half has already landed by the time
 // this runs and `removed_at`/`held` are what decide airability, so failing the request over the
 // bookkeeping half would report a failure for a decision that took effect.
-func (s *Server) settlePipeline(ctx context.Context, hashes []string, to filler.Disposition, from ...filler.Disposition) {
+func (s *Server) settlePipeline(ctx context.Context, hashes []string, to pipelinestate.Disposition, from ...pipelinestate.Disposition) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
 		if err != nil || !found || !row.SettleByOperator(to, time.Now().UTC(), from...) {

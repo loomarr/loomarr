@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -853,9 +854,9 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetClipTags(ctx, old.Hash, []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: old.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: old.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
@@ -900,7 +901,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if len(got.Tags) == 0 {
 		t.Error("taxonomy tags stayed behind on the old identity")
 	}
-	if row, found, err := s.GetClipPipeline(ctx, replacement.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+	if row, found, err := s.GetClipPipeline(ctx, replacement.Hash); err != nil || !found || row.Stage != pipelinestate.StageTranscode {
 		t.Errorf("pipeline did not follow replacement: %+v, %v, %v", row, found, err)
 	}
 	if _, found, err := s.GetClipPipeline(ctx, old.Hash); err != nil || found {
@@ -965,19 +966,19 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageFinish,
-		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
+		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
-	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
-		pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	for _, stage := range pipelinestate.StageOrder[:len(pipelinestate.StageOrder)-1] {
+		pipeline.Stages = append(pipeline.Stages, pipelinestate.StageRecord{Stage: stage, Status: pipelinestate.StatusDone, At: at})
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
 	}
-	pipeline.Status, pipeline.Disposition = filler.StatusDone, filler.DispositionReady
-	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
+	pipeline.Status, pipeline.Disposition = pipelinestate.StatusDone, pipelinestate.DispositionReady
+	pipeline.Stages = append(pipeline.Stages, pipelinestate.StageRecord{Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, At: at})
 	if err := s.CommitFillerReady(ctx, filler.ReadyCommit{Pipeline: pipeline, Event: filler.ReadyEvent{
 		ID: "ready:" + old.Hash, ClipHash: old.Hash, AcquisitionID: pipeline.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: pipeline.AcquisitionID},
@@ -1095,9 +1096,9 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: source.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: source.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1135,7 +1136,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if got.Path != target.Path || got.DurationMs != target.DurationMs || got.Quality != target.Quality {
 		t.Fatalf("adopted target lost transformed facts: %+v", got)
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 		t.Fatalf("adopted target pipeline = %+v, found=%v err=%v", pipeline, found, err)
 	}
 	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, target.Path, target.Hash)
@@ -1236,9 +1237,9 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 				t.Fatal(err)
 			}
 			if source.Hash == publication.SourceHash {
-				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-					ClipHash: publication.SourceHash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-					Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+				if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+					ClipHash: publication.SourceHash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+					Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -1262,7 +1263,7 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 				if err != nil || got.Hash != source.Hash || got.ParentHash != source.ParentHash || got.Path != source.Path {
 					t.Fatalf("ambiguous publication changed source evidence: %+v, %v", got, err)
 				}
-				if pipeline, found, err := s.GetClipPipeline(ctx, publication.SourceHash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+				if pipeline, found, err := s.GetClipPipeline(ctx, publication.SourceHash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 					t.Fatalf("ambiguous publication lost source reference: %+v, found=%v, err=%v", pipeline, found, err)
 				}
 			}
@@ -1294,9 +1295,9 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClipFingerprint(ctx, clip.Hash, "creative-test", frames(1, 2, 3)); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
@@ -1339,7 +1340,7 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if got.TunarrProgramID != "canonical-program" {
 		t.Errorf("same-path retry cleared Tunarr program id: %q", got.TunarrProgramID)
 	}
-	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != pipelinestate.StageTranscode {
 		t.Errorf("same-identity pipeline changed: %+v, found=%v err=%v", row, found, err)
 	}
 	if cached, found, err := cachedClipFingerprint(ctx, s, clip.Hash, "creative-test"); err != nil || !found || len(cached) != 3 {
@@ -1352,25 +1353,25 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	rows := []filler.ClipPipeline{
-		{ClipHash: "due", Stage: filler.StageProbe, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(-time.Minute)},
-		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
-			Disposition: filler.DispositionRunning},
-		{ClipHash: "backoff", Stage: filler.StageVision, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{ClipHash: "deferred", Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{ClipHash: "review", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview},
-		{ClipHash: "ready", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReady},
-		{ClipHash: "complete", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionComplete},
-		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
-		{ClipHash: "dismissed", Stage: filler.StageVision, Status: filler.StatusDone,
-			Disposition: filler.DispositionDismissed},
+	rows := []pipelinestate.ClipPipeline{
+		{ClipHash: "due", Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(-time.Minute)},
+		{ClipHash: "active", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+			Disposition: pipelinestate.DispositionRunning},
+		{ClipHash: "backoff", Stage: pipelinestate.StageVision, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "deferred", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "review", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview},
+		{ClipHash: "ready", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReady},
+		{ClipHash: "complete", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionComplete},
+		{ClipHash: "rejected", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable},
+		{ClipHash: "dismissed", Stage: pipelinestate.StageVision, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionDismissed},
 	}
 	for i := range rows {
 		rows[i].EnrolledAt, rows[i].UpdatedAt = now, now
@@ -1382,7 +1383,7 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filler.PipelineOverview{
+	want := pipelinestate.PipelineOverview{
 		Runnable: 1, InProgress: 1, Scheduled: 2, NeedsDecision: 1,
 		Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1, Recoverable: 1,
 	}
@@ -1428,15 +1429,15 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertAcquisitionRun(ctx, queued); err != nil {
 		t.Fatal(err)
 	}
-	pipelines := []filler.ClipPipeline{
-		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageVision, Status: filler.StatusRunning,
-			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReady, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: filler.StageProbe, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
+	pipelines := []pipelinestate.ClipPipeline{
+		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: pipelinestate.StageVision, Status: pipelinestate.StatusRunning,
+			Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "review", AcquisitionID: newer.ID, Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReady, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
 	}
 	for _, row := range pipelines {
 		if err := s.UpsertClipPipeline(ctx, row); err != nil {
@@ -1672,16 +1673,16 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.SetClipsRemoved(ctx, []string{clip.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	failed := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusFailed,
-		Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable,
+	failed := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed,
+		Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable,
 		Attempts: filler.MaxAttempts, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, failed); err != nil {
 		t.Fatal(err)
 	}
 	retry := failed
-	retry.Status, retry.Disposition, retry.Attempts = filler.StatusQueued, filler.DispositionRunning, 0
+	retry.Status, retry.Disposition, retry.Attempts = pipelinestate.StatusQueued, pipelinestate.DispositionRunning, 0
 	retry.RejectReason, retry.ForceRun, retry.UpdatedAt = "", true, now.Add(time.Minute)
 	if err := s.RetryClipPipeline(ctx, failed, retry, true); err != nil {
 		t.Fatal(err)
@@ -1697,7 +1698,7 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("restored clip = removed:%v held:%v, want present and held", got.RemovedAt, got.Held)
 	}
 	row, found, err := s.GetClipPipeline(ctx, clip.Hash)
-	if err != nil || !found || row.Status != filler.StatusQueued || row.Disposition != filler.DispositionRunning || !row.ForceRun {
+	if err != nil || !found || row.Status != pipelinestate.StatusQueued || row.Disposition != pipelinestate.DispositionRunning || !row.ForceRun {
 		t.Fatalf("retry row = %+v found=%v err=%v", row, found, err)
 	}
 }
@@ -2013,14 +2014,14 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.SetClipsRemoved(ctx, []string{first.Path, second.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	parentPipeline := filler.ClipPipeline{
-		ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: now.Add(time.Hour),
+	parentPipeline := pipelinestate.ClipPipeline{
+		ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: now.Add(time.Hour),
 		EnrolledAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Minute),
 	}
-	firstPipeline := filler.ClipPipeline{
-		ClipHash: first.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	firstPipeline := pipelinestate.ClipPipeline{
+		ClipHash: first.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, parentPipeline); err != nil {
 		t.Fatal(err)
@@ -2061,11 +2062,11 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("failed completion changed parent: %+v, %v", gotParent, err)
 	}
 	gotParentPipeline, found, err := s.GetClipPipeline(ctx, parent.Hash)
-	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionReview {
+	if err != nil || !found || gotParentPipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed completion changed parent pipeline: %+v, found=%v err=%v", gotParentPipeline, found, err)
 	}
 	gotFirstPipeline, found, err := s.GetClipPipeline(ctx, first.Hash)
-	if err != nil || !found || gotFirstPipeline.Disposition != filler.DispositionReview {
+	if err != nil || !found || gotFirstPipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed completion activated first child: %+v, found=%v err=%v", gotFirstPipeline, found, err)
 	}
 	active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2089,7 +2090,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("committed completion parent = %+v, %v", gotParent, err)
 	}
 	gotParentPipeline, found, err = s.GetClipPipeline(ctx, parent.Hash)
-	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionComplete {
+	if err != nil || !found || gotParentPipeline.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("committed completion parent pipeline = %+v, found=%v err=%v", gotParentPipeline, found, err)
 	}
 	active, err = s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2098,7 +2099,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	for _, hash := range []string{first.Hash, second.Hash} {
 		pipeline, found, err := s.GetClipPipeline(ctx, hash)
-		if err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+		if err != nil || !found || pipeline.Disposition != pipelinestate.DispositionRunning {
 			t.Errorf("committed child pipeline %s = %+v, found=%v err=%v", hash, pipeline, found, err)
 		}
 	}
@@ -2107,11 +2108,11 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFunc) {
 	for _, tc := range []struct {
 		name              string
-		parentDisposition *filler.Disposition
+		parentDisposition *pipelinestate.Disposition
 	}{
 		{name: "missing parent pipeline"},
-		{name: "parent already complete", parentDisposition: func() *filler.Disposition {
-			disposition := filler.DispositionComplete
+		{name: "parent already complete", parentDisposition: func() *pipelinestate.Disposition {
+			disposition := pipelinestate.DispositionComplete
 			return &disposition
 		}()},
 	} {
@@ -2133,16 +2134,16 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 			if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
 				t.Fatal(err)
 			}
-			childPipeline := filler.ClipPipeline{
-				ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-				Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+			childPipeline := pipelinestate.ClipPipeline{
+				ClipHash: child.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+				Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 			}
 			if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
 				t.Fatal(err)
 			}
 			if tc.parentDisposition != nil {
-				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-					ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+				if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+					ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
 					Disposition: *tc.parentDisposition, EnrolledAt: now, UpdatedAt: now,
 				}); err != nil {
 					t.Fatal(err)
@@ -2175,7 +2176,7 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 				t.Fatalf("failed completion changed held parent: %+v, %v", gotParent, err)
 			}
 			gotChildPipeline, found, err := s.GetClipPipeline(ctx, child.Hash)
-			if err != nil || !found || gotChildPipeline.Disposition != filler.DispositionReview {
+			if err != nil || !found || gotChildPipeline.Disposition != pipelinestate.DispositionReview {
 				t.Fatalf("failed completion activated child: %+v, found=%v err=%v", gotChildPipeline, found, err)
 			}
 			active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2203,11 +2204,11 @@ func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc
 	if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []filler.ClipPipeline{
-		{ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+	for _, p := range []pipelinestate.ClipPipeline{
+		{ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: child.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
 	} {
 		if err := s.UpsertClipPipeline(ctx, p); err != nil {
 			t.Fatal(err)
@@ -2262,9 +2263,9 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	changed := proposal
 	changed.Segments = []split.Segment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
 	changed.Spawned = []string{"claim-child"}
-	childPipeline := filler.ClipPipeline{
-		ClipHash: "claim-child", Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	childPipeline := pipelinestate.ClipPipeline{
+		ClipHash: "claim-child", Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
 		t.Fatal(err)
@@ -2297,7 +2298,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	if err := s.CompletePartialSplitConfirmation(ctx, partial); err == nil {
 		t.Fatal("partial completion succeeded without every staged child pipeline")
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionReview {
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed partial completion activated first child: %+v, found=%v err=%v", pipeline, found, err)
 	}
 	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || !reflect.DeepEqual(got.Segments, proposal.Segments) {
@@ -2311,7 +2312,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	if err != nil || !reflect.DeepEqual(got.Segments, changed.Segments) {
 		t.Fatalf("winning partial completion = %+v, %v", got, err)
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != pipelinestate.DispositionRunning {
 		t.Fatalf("winning partial completion pipeline: %+v, found=%v err=%v", pipeline, found, err)
 	}
 	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-c", now.Add(2*time.Minute), now.Add(3*time.Minute)); err != nil {
@@ -4067,16 +4068,16 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("ListClipsWithoutPipeline = %+v, want just %s", missing, clip.Hash)
 	}
 
-	p := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageVision, Status: filler.StatusRunning,
-		Progress: 40, Disposition: filler.DispositionRunning,
+	p := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageVision, Status: pipelinestate.StatusRunning,
+		Progress: 40, Disposition: pipelinestate.DispositionRunning,
 		Attempts: 1, ForceRun: true, NextRun: now, EnrolledAt: now, UpdatedAt: now,
 		PreparationAttempt: 2, PreparationStartedAt: now.Add(-5 * time.Minute),
-		PreparationStartReason: filler.PreparationStartedByRestart, PreparationProgress: 61,
+		PreparationStartReason: pipelinestate.PreparationStartedByRestart, PreparationProgress: 61,
 		StageQueuedAt: now.Add(-2 * time.Minute), StageStartedAt: now.Add(-time.Minute),
-		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, StartedAt: now.Add(-4 * time.Minute), At: now},
-			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: now},
+		Stages: []pipelinestate.StageRecord{
+			{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, StartedAt: now.Add(-4 * time.Minute), At: now},
+			{Stage: pipelinestate.StageTranscribe, Status: pipelinestate.StatusSkipped, Note: "the description already says enough", At: now},
 		},
 	}
 	if err := s.UpsertClipPipeline(ctx, p); err != nil {
@@ -4093,25 +4094,25 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !found {
 		t.Fatalf("GetClipPipeline = (%+v, %v, %v)", got, found, err)
 	}
-	if got.Stage != filler.StageVision || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
+	if got.Stage != pipelinestate.StageVision || got.Status != pipelinestate.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
 		t.Errorf("header round-trip lost fields: %+v", got)
 	}
 	if !got.ForceRun {
 		t.Error("pipeline round-trip lost the explicit rerun marker")
 	}
 	if got.PreparationAttempt != 2 || got.PreparationProgress != 61 ||
-		got.PreparationStartReason != filler.PreparationStartedByRestart ||
+		got.PreparationStartReason != pipelinestate.PreparationStartedByRestart ||
 		!got.PreparationStartedAt.Equal(p.PreparationStartedAt) || !got.StageQueuedAt.Equal(p.StageQueuedAt) ||
 		!got.StageStartedAt.Equal(p.StageStartedAt) || !got.Stages[0].StartedAt.Equal(p.Stages[0].StartedAt) {
 		t.Errorf("preparation evidence round-trip lost fields: %+v", got)
 	}
 	// The LADDER is what the Incoming tab renders as history — including WHY a stage was skipped.
 	// A skip with no note reads as "nothing happened", which is a different and false claim.
-	if len(got.Stages) != 2 || got.Stages[1].Status != filler.StatusSkipped ||
+	if len(got.Stages) != 2 || got.Stages[1].Status != pipelinestate.StatusSkipped ||
 		got.Stages[1].Note != "the description already says enough" {
 		t.Errorf("ladder round-trip = %+v", got.Stages)
 	}
-	preparation, err := s.ListPreparationWork(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}, Limit: 1})
+	preparation, err := s.ListPreparationWork(ctx, pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}, Limit: 1})
 	if err != nil || len(preparation) != 1 || preparation[0].Pipeline.ClipHash != clip.Hash || preparation[0].DurationMs != 30_000 {
 		t.Fatalf("ListPreparationWork = %+v, err=%v", preparation, err)
 	}
@@ -4145,8 +4146,8 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	// terminal here: the pipeline has done all it can and is waiting on a person, so re-running
 	// the ladder would burn Whisper and vision calls on a clip whose only missing input is a
 	// human decision.
-	for _, d := range []filler.Disposition{
-		filler.DispositionReview, filler.DispositionReady, filler.DispositionComplete, filler.DispositionRejected,
+	for _, d := range []pipelinestate.Disposition{
+		pipelinestate.DispositionReview, pipelinestate.DispositionReady, pipelinestate.DispositionComplete, pipelinestate.DispositionRejected,
 	} {
 		term := p
 		term.Disposition = d
@@ -4161,19 +4162,19 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 
 	// --- The rejected read model carries the CODE and the measured detail. ---
 	rej := p
-	rej.Disposition = filler.DispositionRejected
-	rej.RejectReason = filler.ReasonTooShort
+	rej.Disposition = pipelinestate.DispositionRejected
+	rej.RejectReason = pipelinestate.ReasonTooShort
 	rej.RejectDetail = "8.2s; floor is 10s"
 	if err := s.UpsertClipPipeline(ctx, rej); err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := s.ListClipPipelines(ctx, filler.PipelineFilter{
-		Dispositions: []filler.Disposition{filler.DispositionRejected},
+	rejected, err := s.ListClipPipelines(ctx, pipelinestate.PipelineFilter{
+		Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRejected},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rejected) != 1 || rejected[0].RejectReason != filler.ReasonTooShort ||
+	if len(rejected) != 1 || rejected[0].RejectReason != pipelinestate.ReasonTooShort ||
 		rejected[0].RejectDetail != "8.2s; floor is 10s" {
 		t.Fatalf("rejected read model = %+v — the code AND the measured fact must both survive", rejected)
 	}
@@ -4213,9 +4214,9 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, Clip{Clip: keeper, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	kept := filler.ClipPipeline{
-		ClipHash: keeper.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	kept := pipelinestate.ClipPipeline{
+		ClipHash: keeper.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, kept); err != nil {
 		t.Fatal(err)
@@ -5098,9 +5099,9 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-			ClipHash: c.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -5257,22 +5258,22 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	current := filler.ClipPipeline{
-		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageFinish,
-		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+	current := pipelinestate.ClipPipeline{
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
+		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
-	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
-		current.Stages = append(current.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	for _, stage := range pipelinestate.StageOrder[:len(pipelinestate.StageOrder)-1] {
+		current.Stages = append(current.Stages, pipelinestate.StageRecord{Stage: stage, Status: pipelinestate.StatusDone, At: at})
 	}
 	if err := s.UpsertClipPipeline(ctx, current); err != nil {
 		t.Fatal(err)
 	}
 	settled := current
-	settled.Status = filler.StatusDone
-	settled.Disposition = filler.DispositionReady
+	settled.Status = pipelinestate.StatusDone
+	settled.Disposition = pipelinestate.DispositionReady
 	settled.NextRun = time.Time{}
-	settled.Stages = append(settled.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
+	settled.Stages = append(settled.Stages, pipelinestate.StageRecord{Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, At: at})
 	event := filler.ReadyEvent{
 		ID: "ready:" + hash, ClipHash: hash, AcquisitionID: current.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: current.AcquisitionID},
@@ -5287,7 +5288,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("ready clip = %+v, err = %v", clip, err)
 	}
 	row, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || row.Disposition != filler.DispositionReady || row.Status != filler.StatusDone {
+	if err != nil || !found || row.Disposition != pipelinestate.DispositionReady || row.Status != pipelinestate.StatusDone {
 		t.Fatalf("ready pipeline = %+v, found=%t err=%v", row, found, err)
 	}
 	gotEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
@@ -5316,7 +5317,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	restarted.ForceRun = true
 	restarted.PreparationAttempt = 2
 	restarted.PreparationStartedAt = restartedAt
-	restarted.PreparationStartReason = filler.PreparationStartedByRestart
+	restarted.PreparationStartReason = pipelinestate.PreparationStartedByRestart
 	restarted.StageQueuedAt = restartedAt
 	restarted.StageStartedAt = restartedAt
 	restarted.UpdatedAt = restartedAt
@@ -5339,8 +5340,8 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("restarted clip was not republished = %+v, err=%v", republishedClip, err)
 	}
 	republishedRow, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || republishedRow.Disposition != filler.DispositionReady ||
-		republishedRow.Status != filler.StatusDone || republishedRow.PreparationAttempt != 2 {
+	if err != nil || !found || republishedRow.Disposition != pipelinestate.DispositionReady ||
+		republishedRow.Status != pipelinestate.StatusDone || republishedRow.PreparationAttempt != 2 {
 		t.Fatalf("restarted conveyor was not settled = %+v, found=%t err=%v", republishedRow, found, err)
 	}
 	unchangedEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
@@ -5385,7 +5386,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 	driftedCurrent := current
 	driftedCurrent.ClipHash = driftHash
-	driftedCurrent.Stages = append([]filler.StageRecord(nil), current.Stages...)
+	driftedCurrent.Stages = append([]pipelinestate.StageRecord(nil), current.Stages...)
 	driftedCurrent.Stages[0].Note = "the persisted probe evidence changed"
 	if err := s.UpsertClipPipeline(ctx, driftedCurrent); err != nil {
 		t.Fatal(err)

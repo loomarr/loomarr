@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -16,14 +17,14 @@ import (
 )
 
 type readinessStoreFuncs struct {
-	pipeline func(context.Context, time.Time) (filler.PipelineOverview, error)
+	pipeline func(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
 	runs     func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
 	repairs  func(context.Context) (filler.AcquisitionRepairSummary, error)
 }
 
 func (readinessStoreFuncs) CountReadySplitProposals(context.Context) (int, error) { return 0, nil }
 
-func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
+func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
 	return s.pipeline(ctx, at)
 }
 
@@ -52,8 +53,8 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 	}
 	a := fillerServiceAdapter{
 		readiness: readinessStoreFuncs{
-			pipeline: func(context.Context, time.Time) (filler.PipelineOverview, error) {
-				return filler.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
+			pipeline: func(context.Context, time.Time) (pipelinestate.PipelineOverview, error) {
+				return pipelinestate.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
 			},
 			runs: func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error) { return nil, nil },
 			repairs: func(context.Context) (filler.AcquisitionRepairSummary, error) {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -65,12 +66,12 @@ type DefectClip struct {
 	// Stage is a held clip's conveyor rung. The floor measures it only once it reaches the
 	// defects rung: before then the bytes are not yet the ones that air, and a whole break not yet
 	// split would be judged as one ad.
-	Stage filler.StageID
+	Stage pipelinestate.StageID
 }
 
 // awaitingFloor is a clip the floor should measure now: published, or held at or past the rung.
 func (c DefectClip) awaitingFloor() bool {
-	return !c.Held || filler.StageIndex(c.Stage) >= filler.StageIndex(filler.StageDefects)
+	return !c.Held || pipelinestate.StageIndex(c.Stage) >= pipelinestate.StageIndex(pipelinestate.StageDefects)
 }
 
 // MeasureDefectsFunc decodes one file's defect readings (tools.MeasureDefects).

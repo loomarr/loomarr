@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 const (
@@ -98,9 +99,9 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 				conditioningSHA256 = filler.ConditioningEvidenceSHA256(*tags.Conditioning)
 			}
 			switch verdict, _, _ := filler.EvaluateMediaQuality(tags.MediaAssets.Playback.Quality); verdict {
-			case filler.VerdictReject:
+			case pipelinestate.VerdictReject:
 				outcome, reasonCode = ScreenReject, "playback_quality_reject"
-			case filler.VerdictReview:
+			case pipelinestate.VerdictReview:
 				outcome, reasonCode = ScreenHold, "playback_quality_hold"
 			default:
 				outcome, reasonCode = ScreenPass, "playback_verified"

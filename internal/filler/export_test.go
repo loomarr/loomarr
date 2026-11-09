@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -43,8 +44,8 @@ func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate
 
 // SummarizePipelines is the in-memory adapter for tests. Production SQL groups equivalent facts
 // before calling Add, but both paths cross Lifecycle for the actual decision.
-func SummarizePipelines(rows []ClipPipeline, at time.Time) PipelineOverview {
-	var out PipelineOverview
+func SummarizePipelines(rows []pipelinestate.ClipPipeline, at time.Time) pipelinestate.PipelineOverview {
+	var out pipelinestate.PipelineOverview
 	for _, row := range rows {
 		out.AddLifecycle(row.Lifecycle(at), 1)
 	}

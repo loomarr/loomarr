@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 func TestFillerReadyDispositionsMigrationSQLite(t *testing.T) {
@@ -45,9 +45,9 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 			hash, hash+".mp4", hash, !composite, composite, at.Unix()); err != nil {
 			t.Fatal(err)
 		}
-		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageID("score"), Status: filler.StatusDone, Progress: 100,
-			Disposition: filler.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
+		if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{
+			ClipHash: hash, Stage: pipelinestate.StageID("score"), Status: pipelinestate.StatusDone, Progress: 100,
+			Disposition: pipelinestate.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -58,11 +58,11 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 	if _, err := provider.UpTo(ctx, 108); err != nil {
 		t.Fatalf("apply ready dispositions migration: %v", err)
 	}
-	for hash, want := range map[string]filler.Disposition{
-		"playable": filler.DispositionReady, "container": filler.DispositionComplete,
+	for hash, want := range map[string]pipelinestate.Disposition{
+		"playable": pipelinestate.DispositionReady, "container": pipelinestate.DispositionComplete,
 	} {
 		var got string
-		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT disposition FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(&got); err != nil || filler.Disposition(got) != want {
+		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT disposition FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(&got); err != nil || pipelinestate.Disposition(got) != want {
 			t.Fatalf("%s disposition = %q, err=%v; want %q", hash, got, err, want)
 		}
 	}
@@ -98,12 +98,12 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 		hash, hash+".mp4", true, at.Unix()); err != nil {
 		t.Fatal(err)
 	}
-	if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, Attempts: 2, ForceRun: true,
-		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, At: at},
-			{Stage: filler.StageID("admission"), Status: filler.StatusDone, At: at},
+	if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageID("admission"), Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, Attempts: 2, ForceRun: true,
+		Stages: []pipelinestate.StageRecord{
+			{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, At: at},
+			{Stage: pipelinestate.StageID("admission"), Status: pipelinestate.StatusDone, At: at},
 		},
 		EnrolledAt: at, UpdatedAt: at,
 	}); err != nil {
@@ -121,15 +121,15 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 		&stage, &status, &disposition, &attempts, &forceRun, &stagesJSON); err != nil {
 		t.Fatal(err)
 	}
-	if filler.StageID(stage) != filler.StageID("score") || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 ||
-		forceRun || filler.Disposition(disposition) != filler.DispositionRunning {
+	if pipelinestate.StageID(stage) != pipelinestate.StageID("score") || pipelinestate.StageStatus(status) != pipelinestate.StatusQueued || attempts != 0 ||
+		forceRun || pipelinestate.Disposition(disposition) != pipelinestate.DispositionRunning {
 		t.Fatalf("interrupted legacy row = stage=%s status=%s disposition=%s attempts=%d force=%t", stage, status, disposition, attempts, forceRun)
 	}
-	var stages []filler.StageRecord
+	var stages []pipelinestate.StageRecord
 	if err := json.Unmarshal([]byte(stagesJSON), &stages); err != nil {
 		t.Fatal(err)
 	}
-	if len(stages) != 1 || stages[0].Stage != filler.StageProbe {
+	if len(stages) != 1 || stages[0].Stage != pipelinestate.StageProbe {
 		t.Fatalf("legacy admission record survived: %+v", stages)
 	}
 }
@@ -164,13 +164,13 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 		hash, hash+".mp4", true, at.Unix(), at.Unix()); err != nil {
 		t.Fatal(err)
 	}
-	legacyTagStage := filler.StageID("tag") // retired-ok: migration fixture
-	if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-		ClipHash: hash, Stage: legacyTagStage, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, Attempts: 2, ForceRun: true,
-		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, At: at},
-			{Stage: legacyTagStage, Status: filler.StatusDone, At: at},
+	legacyTagStage := pipelinestate.StageID("tag") // retired-ok: migration fixture
+	if err := insertLegacyClipPipeline(ctx, s, pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: legacyTagStage, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, Attempts: 2, ForceRun: true,
+		Stages: []pipelinestate.StageRecord{
+			{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, At: at},
+			{Stage: legacyTagStage, Status: pipelinestate.StatusDone, At: at},
 		},
 		EnrolledAt: at, UpdatedAt: at,
 	}); err != nil {
@@ -191,14 +191,14 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 		FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(&stage, &status, &attempts, &forceRun, &stagesJSON); err != nil {
 		t.Fatal(err)
 	}
-	if filler.StageID(stage) != filler.StageVision || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 || forceRun {
+	if pipelinestate.StageID(stage) != pipelinestate.StageVision || pipelinestate.StageStatus(status) != pipelinestate.StatusQueued || attempts != 0 || forceRun {
 		t.Fatalf("interrupted row = stage=%s status=%s attempts=%d force=%t", stage, status, attempts, forceRun)
 	}
-	var stages []filler.StageRecord
+	var stages []pipelinestate.StageRecord
 	if err := json.Unmarshal([]byte(stagesJSON), &stages); err != nil {
 		t.Fatal(err)
 	}
-	if len(stages) != 1 || stages[0].Stage != filler.StageProbe {
+	if len(stages) != 1 || stages[0].Stage != pipelinestate.StageProbe {
 		t.Fatalf("legacy text-classification record survived: %+v", stages)
 	}
 	var settings int
@@ -212,7 +212,7 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 
 // insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
 // The production writer always speaks the current schema and must not grow a compatibility path.
-func insertLegacyClipPipeline(ctx context.Context, st Store, p filler.ClipPipeline) error {
+func insertLegacyClipPipeline(ctx context.Context, st Store, p pipelinestate.ClipPipeline) error {
 	s, ok := adapterOf(st)
 	if !ok {
 		return fmt.Errorf("%T is not the SQL store", st)
@@ -238,24 +238,24 @@ func insertLegacyClipPipeline(ctx context.Context, st Store, p filler.ClipPipeli
 // readClipPipelineRow reads the pipeline columns the migration tests assert on. The pipeline's own
 // methods are the filler store's (internal/filler/records), which a core test cannot import, so the
 // tests seed with insertLegacyClipPipeline and read back here.
-func readClipPipelineRow(ctx context.Context, st Store, hash string) (filler.ClipPipeline, bool, error) {
+func readClipPipelineRow(ctx context.Context, st Store, hash string) (pipelinestate.ClipPipeline, bool, error) {
 	s, ok := adapterOf(st)
 	if !ok {
-		return filler.ClipPipeline{}, false, fmt.Errorf("%T is not the SQL store", st)
+		return pipelinestate.ClipPipeline{}, false, fmt.Errorf("%T is not the SQL store", st)
 	}
-	var p filler.ClipPipeline
+	var p pipelinestate.ClipPipeline
 	var stage, status, disposition string
 	var nextRun, updatedAt int64
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT clip_hash, stage, status, disposition, attempts, next_run, updated_at
 		FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).
 		Scan(&p.ClipHash, &stage, &status, &disposition, &p.Attempts, &nextRun, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.ClipPipeline{}, false, nil
+		return pipelinestate.ClipPipeline{}, false, nil
 	}
 	if err != nil {
-		return filler.ClipPipeline{}, false, err
+		return pipelinestate.ClipPipeline{}, false, err
 	}
-	p.Stage, p.Status, p.Disposition = filler.StageID(stage), filler.StageStatus(status), filler.Disposition(disposition)
+	p.Stage, p.Status, p.Disposition = pipelinestate.StageID(stage), pipelinestate.StageStatus(status), pipelinestate.Disposition(disposition)
 	p.NextRun, p.UpdatedAt = fromEpoch(nextRun), fromEpoch(updatedAt)
 	return p, true, nil
 }

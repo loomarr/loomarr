@@ -1,4 +1,4 @@
-package filler
+package pipelinestate
 
 import (
 	"testing"
@@ -56,7 +56,7 @@ func TestClipPipelineLifecycle(t *testing.T) {
 		{
 			name: "exhausted transcode execution can retry after repair",
 			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageTranscode,
-				Status: StatusFailed, Attempts: MaxAttempts, RejectReason: ReasonUnplayable},
+				Status: StatusFailed, Attempts: 3, RejectReason: ReasonUnplayable},
 			want: PipelineLifecycle{State: LifecycleRejected, FailureCode: FailureUnplayable,
 				Recovery: RecoveryRetry, RetryStage: StageTranscode},
 		},

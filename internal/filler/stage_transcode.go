@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
@@ -157,8 +158,8 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 	}
 }
 
-func (s *TranscodeStage) ID() StageID     { return StageTranscode }
-func (s *TranscodeStage) Cost() StageCost { return CostTranscode }
+func (s *TranscodeStage) ID() pipelinestate.StageID { return pipelinestate.StageTranscode }
+func (s *TranscodeStage) Cost() StageCost           { return CostTranscode }
 
 // Applies unless this clip already carries this profile's mark.
 //
@@ -183,7 +184,7 @@ func (s *TranscodeStage) Applies(ctx context.Context, c StoreClip) (bool, string
 	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.target().profile.ID() && tags.MediaQuality != nil {
 		// A clean report is finished work. An anomalous report must remain applicable so a
 		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
-		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == VerdictContinue {
+		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == pipelinestate.VerdictContinue {
 			if s.evidenceTranscode != nil && (tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil) {
 				return true, ""
 			}
@@ -314,14 +315,14 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		// still encodes, because its input is the conditioned cut, not the master.
 		quality = evidence.Quality
 		err = copyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
-		reportProgress(ctx, StageTranscode, 90)
+		reportProgress(ctx, pipelinestate.StageTranscode, 90)
 	} else {
 		quality, err = s.transcode(transcodeCtx, req, func(pct int) {
 			if evidence != nil {
-				reportProgress(ctx, StageTranscode, 40+pct*50/100)
+				reportProgress(ctx, pipelinestate.StageTranscode, 40+pct*50/100)
 				return
 			}
-			reportProgress(ctx, StageTranscode, pct*90/100)
+			reportProgress(ctx, pipelinestate.StageTranscode, pct*90/100)
 		})
 	}
 	if err != nil {
@@ -396,7 +397,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			}
 			return reject, nil
 		}
-		reportProgress(ctx, StageTranscode, 95)
+		reportProgress(ctx, pipelinestate.StageTranscode, 95)
 	}
 	newHash, err := asset.ClipID(stageFull)
 	if err != nil {
@@ -558,7 +559,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			removeSource = os.Remove
 		}
 		if err := removeSource(oldFull); err != nil && !os.IsNotExist(err) {
-			return StageResult{Clip: updated, Verdict: VerdictContinue,
+			return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue,
 				Note: "re-encoded, but the original file could not be deleted"}, nil
 		}
 		_ = os.Remove(sidecarPathFor(oldFull))
@@ -654,7 +655,7 @@ func tooQuietToCorrect(target float64, l tools.ConditioningLoudness) (StageResul
 		return StageResult{}, false
 	}
 	return StageResult{
-		Verdict: VerdictReject, Reason: ReasonTooQuiet,
+		Verdict: pipelinestate.VerdictReject, Reason: pipelinestate.ReasonTooQuiet,
 		Note: "too quiet to correct",
 		Detail: fmt.Sprintf("%.1f LUFS; reaching %.0f LUFS needs +%.1f dB, at most +%.0f dB",
 			measured, target, target-measured, measure.MaxBoostDB),
@@ -798,7 +799,7 @@ func clearConditioningPublication(targetFull string, publication *ConditioningPu
 }
 
 func conditioningReview(c StoreClip, note string) StageResult {
-	return StageResult{Clip: c, Verdict: VerdictReview, Note: note}
+	return StageResult{Clip: c, Verdict: pipelinestate.VerdictReview, Note: note}
 }
 
 func conditioningCommitOutcome(c StoreClip, err error) (StageResult, error) {
@@ -848,9 +849,9 @@ func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
 	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
 	switch verdict {
-	case VerdictReject:
+	case pipelinestate.VerdictReject:
 		result.Reason, result.Detail = reason, detail
-	case VerdictReview:
+	case pipelinestate.VerdictReview:
 		result.Note = detail
 	}
 	return result

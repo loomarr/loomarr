@@ -14,13 +14,13 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`filler`** · 10 importers · → `filler/asset`, `filler/clips`, `filler/language`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 10 importers · → `filler/asset`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
 - **`filler/asset`** · 4 importers · → `media/tools`
   The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
 - **`filler/clips`** · 6 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`filler/defectfloor`** · 2 importers · → `filler`, `media/creative`, `media/defects`, `platform/llm`
+- **`filler/defectfloor`** · 2 importers · → `filler`, `filler/pipelinestate`, `media/creative`, `media/defects`, `platform/llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/media/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`filler/enrichment`** · 3 importers · → `filler/station`, `filler/taxonomy`, `platform/llm`
   Owns progressive descriptive understanding for filler clips.
@@ -30,13 +30,15 @@ One area of the [package map](../package-map.md#start-here).
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
+- **`filler/pipelinestate`** · 6 importers
+  Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
 - **`filler/pod`** · 6 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
-- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
+- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 4 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/split`, `filler/structure/assessment`, `media/tools`
+- **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`filler/source`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
