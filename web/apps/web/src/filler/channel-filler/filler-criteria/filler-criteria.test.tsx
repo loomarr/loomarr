@@ -71,9 +71,9 @@ describe("FillerCriteria era", () => {
       <CriteriaHarness initial={{ eraWindows: [{ from: 1990, to: 1999 }] }} onChange={onChange} />,
     );
 
-    await userEvent.type(screen.getByLabelText("New date range from"), "2005");
-    await userEvent.type(screen.getByLabelText("New date range to"), "2009");
-    await userEvent.click(screen.getByRole("button", { name: "Add range" }));
+    await userEvent.type(screen.getByLabelText("Era new range from"), "2005");
+    await userEvent.type(screen.getByLabelText("Era new range to"), "2009");
+    await userEvent.click(screen.getByRole("button", { name: "Add range for Era" }));
     expect(onChange).toHaveBeenLastCalledWith({
       eraWindows: [
         { from: 1990, to: 1999 },
@@ -81,7 +81,7 @@ describe("FillerCriteria era", () => {
       ],
     });
 
-    const from = screen.getAllByLabelText("From year")[0]!;
+    const from = screen.getByLabelText("From year (Era, range 1)");
     await userEvent.clear(from);
     await userEvent.type(from, "2001");
     await userEvent.tab();
@@ -103,8 +103,8 @@ describe("FillerCriteria era", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[0]!;
-    const to = screen.getAllByLabelText("To year")[0]!;
+    const from = screen.getByLabelText("From year (Era, range 1)");
+    const to = screen.getByLabelText("To year (Era, range 1)");
     await userEvent.clear(from);
     await userEvent.type(from, "2005");
     await userEvent.tab();
@@ -122,8 +122,8 @@ describe("FillerCriteria era", () => {
         { from: 2011, to: 2014 },
       ],
     });
-    expect(screen.getAllByLabelText("From year")[0]).toHaveValue("2005");
-    expect(screen.getAllByLabelText("To year")[0]).toHaveValue("2009");
+    expect(screen.getByLabelText("From year (Era, range 1)")).toHaveValue("2005");
+    expect(screen.getByLabelText("To year (Era, range 1)")).toHaveValue("2009");
   });
 
   it("commits a recovered date pair after an invalid To edit", async () => {
@@ -132,8 +132,8 @@ describe("FillerCriteria era", () => {
       <CriteriaHarness initial={{ eraWindows: [{ from: 1990, to: 1999 }] }} onChange={onChange} />,
     );
 
-    const from = screen.getAllByLabelText("From year")[0]!;
-    const to = screen.getAllByLabelText("To year")[0]!;
+    const from = screen.getByLabelText("From year (Era, range 1)");
+    const to = screen.getByLabelText("To year (Era, range 1)");
     await userEvent.clear(to);
     await userEvent.type(to, "1985");
     await userEvent.tab();
@@ -208,7 +208,7 @@ describe("FillerCriteria era", () => {
         onChange={vi.fn()}
       />,
     );
-    expect(screen.queryByLabelText("New date range from")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Era new range from")).not.toBeInTheDocument();
   });
   it("says which era a blank field is following, rather than looking like 'any'", () => {
     renderCriteria(<FillerCriteria selection={{}} onChange={vi.fn()} scopeEra={SCOPE} />);
