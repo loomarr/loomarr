@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
@@ -461,7 +462,7 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	//
 	// The line says WHAT HAPPENED, not what was requested: a feed label is not worth reading
 	// the proposal's channel name into the approval path.
-	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(result.Enqueued))
+	s.activity.Info(ctx, activitystore.ActivityKindProposal, p.ID, approvedLine(result.Enqueued))
 	return out, nil
 }
 

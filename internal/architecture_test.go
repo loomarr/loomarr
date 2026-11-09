@@ -254,6 +254,40 @@ func TestClipStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/clipstore")
 }
 
+// internal/platform/store/crashstore is the crash-report cluster (the client_crash_reports table). It
+// builds on the storedb kernel in the same direction as the two clusters above, and store embeds it.
+func TestCrashStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/crashstore")
+}
+
+// internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
+// retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
+// above, and store embeds it.
+func TestDiagnosticsStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/diagnosticsstore")
+}
+
+// internal/platform/store/jobstore is the scheduler-state cluster (the scheduled_jobs table). It builds
+// on the storedb kernel, in the same direction as the clusters above, and store embeds it and
+// re-exports ScheduledJob.
+func TestJobStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/jobstore")
+}
+
+// internal/platform/store/activitystore is the Recent activity feed cluster (the activity table). It
+// builds on the storedb kernel, in the same direction as the clusters above, and store embeds it and
+// re-exports Activity and its value sets.
+func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
+}
+
+// internal/platform/store/channeldatastore is the cluster of data that hangs off channels (favourites and
+// recents, hidden ideas, airing history, discovery feedback). It builds on the storedb kernel, in the
+// same direction as the clusters above, and store embeds it and re-exports its types.
+func TestChannelDataStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channeldatastore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

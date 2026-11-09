@@ -14,9 +14,8 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx"
+	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
 	"github.com/riverqueue/river"
-
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Job is one named, recurring unit of work. The Run func is code; the SCHEDULE is a cron
@@ -162,10 +161,10 @@ func (g JobGroup) valid() bool {
 // package, so importing store avoids a duplicate type + per-call adapter (same precedent as
 // internal/provisionbackstop importing store).
 type ScheduleStore interface {
-	UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error
+	UpsertScheduledJob(ctx context.Context, j jobstore.ScheduledJob) error
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
-	GetScheduledJob(ctx context.Context, name string) (store.ScheduledJob, error)
-	ListScheduledJobs(ctx context.Context) ([]store.ScheduledJob, error)
+	GetScheduledJob(ctx context.Context, name string) (jobstore.ScheduledJob, error)
+	ListScheduledJobs(ctx context.Context) ([]jobstore.ScheduledJob, error)
 }
 
 // Notifier receives a job-changed signal after each run, for the SSE bus (optional).
@@ -296,7 +295,7 @@ func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 		if s.jobs[name].Disabled() {
 			continue
 		}
-		if err := s.store.UpsertScheduledJob(ctx, store.ScheduledJob{Name: name, NextRun: now, UpdatedAt: now}); err != nil {
+		if err := s.store.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: name, NextRun: now, UpdatedAt: now}); err != nil {
 			s.log.Warn("scheduler: seed job state", "job", name, "err", err)
 		}
 	}
@@ -333,7 +332,7 @@ func (s *Scheduler) execute(ctx context.Context, j Job, manual bool) jobExecutio
 	// record of a failure through the thing that failed.
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if uerr := s.store.UpsertScheduledJob(recCtx, store.ScheduledJob{
+	if uerr := s.store.UpsertScheduledJob(recCtx, jobstore.ScheduledJob{
 		Name: j.Name, LastRun: start, LastResult: result, LastError: errText, NextRun: next, UpdatedAt: now,
 	}); uerr != nil {
 		s.log.Error("scheduler: record job result", "job", j.Name, "err", uerr)
@@ -419,7 +418,7 @@ func (s *Scheduler) SetPaused(ctx context.Context, name string, paused bool) err
 // List returns the current status of every registered job (registration order), joining the
 // code registry (name/title/interval) with the state table (last/next run, result).
 func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
-	state := map[string]store.ScheduledJob{}
+	state := map[string]jobstore.ScheduledJob{}
 	rows, err := s.store.ListScheduledJobs(ctx)
 	if err != nil {
 		return nil, err

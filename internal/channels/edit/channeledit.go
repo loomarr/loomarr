@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -140,7 +141,7 @@ func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, err
 			// ERROR + the consequence (§9 V54): the channel exists but has not converged.
 			s.log().Error("initial channel reconcile FAILED — it is not live yet; the next channel sweep will retry",
 				"channel", saved.ID, "name", saved.Name, "number", saved.Number, "err", err)
-			s.Activity.Error(ctx, store.ActivityKindChannel, saved.ID,
+			s.Activity.Error(ctx, activitystore.ActivityKindChannel, saved.ID,
 				fmt.Sprintf("%q couldn't be brought live on its selected playout backend yet: %v. Loomarr will keep retrying.", saved.Name, err))
 		}
 	}
