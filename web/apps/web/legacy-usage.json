@@ -480,16 +480,10 @@
       "tailwindClasses": 18
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 37
+      "tailwindClasses": 34
     },
     "src/home/new-this-week/new-this-week.tsx": {
       "tailwindClasses": 68
-    },
-    "src/home/on-now/on-now.tsx": {
-      "tailwindClasses": 15
-    },
-    "src/home/recently-tuned/recently-tuned.tsx": {
-      "tailwindClasses": 34
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
