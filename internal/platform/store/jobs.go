@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
@@ -219,7 +220,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := s.ChannelForJobIn(ctx, tx, id)
+	channel, channelErr := channelstore.ChannelForJobIn(ctx, s.channelCluster, tx, id)
 	if channelErr == nil {
 		out.Channel = &channel
 	} else if !errors.Is(channelErr, ErrNotFound) && !errors.Is(channelErr, ErrJobChannelGone) {

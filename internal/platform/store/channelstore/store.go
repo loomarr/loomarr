@@ -146,12 +146,12 @@ func (s *Store) ChannelRequesters(ctx context.Context) (map[string]string, error
 }
 
 func (s *Store) GetChannel(ctx context.Context, id string) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE id = ?`), id)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select(s)+` WHERE id = ?`), id)
 	return ScanChannel(row)
 }
 
 func (s *Store) GetChannelByNumber(ctx context.Context, number int) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE number = ?`), number)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select(s)+` WHERE number = ?`), number)
 	return ScanChannel(row)
 }
 
@@ -168,7 +168,7 @@ func (s *Store) GetChannelByNumber(ctx context.Context, number int) (Channel, er
 // that has to be the CALLER's decision: a lookup that silently answers with an empty struct is one
 // a caller can forget to check, and the zero Channel has an empty ID that reads as valid.
 func (s *Store) GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE intent_ref = ?`), intentRef)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select(s)+` WHERE intent_ref = ?`), intentRef)
 	return ScanChannel(row)
 }
 
@@ -181,12 +181,13 @@ func (s *Store) GetChannelByIntentRef(ctx context.Context, intentRef string) (Ch
 // names a channel which has since been removed returns ErrJobChannelGone instead, so a caller
 // cannot mistake it for a first approval and create a second channel.
 func (s *Store) GetChannelForJob(ctx context.Context, jobID string) (Channel, error) {
-	return s.ChannelForJobIn(ctx, s.h, jobID)
+	return ChannelForJobIn(ctx, s, s.h, jobID)
 }
 
 // ChannelForJobIn is GetChannelForJob on q, which is a caller's transaction or the pool, so the
-// approval transaction and the job's Journey read see the same channel it does.
-func (s *Store) ChannelForJobIn(ctx context.Context, q DB, jobID string) (Channel, error) {
+// approval transaction and the job's Journey read see the same channel it does. A function, not a
+// method, like SaveChannelIn.
+func ChannelForJobIn(ctx context.Context, s *Store, q DB, jobID string) (Channel, error) {
 	ph := s.h.Rebind
 	var channelID string
 	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).Scan(&channelID)
@@ -194,13 +195,13 @@ func (s *Store) ChannelForJobIn(ctx context.Context, q DB, jobID string) (Channe
 		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
 	}
 	if channelID != "" {
-		ch, err := ScanChannel(q.QueryRowContext(ctx, ph(s.Select()+` WHERE id = ?`), channelID))
+		ch, err := ScanChannel(q.QueryRowContext(ctx, ph(Select(s)+` WHERE id = ?`), channelID))
 		if errors.Is(err, storedb.ErrNotFound) {
 			return Channel{}, fmt.Errorf("%w: job %s names channel %s", ErrJobChannelGone, jobID, channelID)
 		}
 		return ch, err
 	}
-	return ScanChannel(q.QueryRowContext(ctx, ph(s.Select()+` WHERE intent_ref = ?`), jobID))
+	return ScanChannel(q.QueryRowContext(ctx, ph(Select(s)+` WHERE intent_ref = ?`), jobID))
 }
 
 // ChannelHasUnfinishedJob reports whether one of the channel's refine or re-curation jobs is
@@ -426,7 +427,7 @@ func (s *Store) SetChannelBroadcastCodec(ctx context.Context, id string, expecte
 }
 
 func (s *Store) ListChannels(ctx context.Context) ([]Channel, error) {
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(s.Select()+` ORDER BY number`))
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(Select(s)+` ORDER BY number`))
 	if err != nil {
 		return nil, err
 	}
@@ -525,8 +526,10 @@ func PostgresLineup(table string) string {
 		FROM channel_lineup l WHERE l.channel_id = ` + table + `.id), '[]'::jsonb)`
 }
 
-// Select selects every channel column, the lineup rebuilt for this store's engine.
-func (s *Store) Select() string {
+// Select selects every channel column, the lineup rebuilt for s's engine. It is a function, not a
+// method, for the reason SaveChannelIn is: the store embeds a Store, and a method would surface on
+// the aggregate as a store method that store.Store does not declare.
+func Select(s *Store) string {
 	// The lineup rebuild is a JSON aggregate whose function names differ between the engines.
 	lineup := storedb.ByDialect(s.h.Dialect(), SQLiteLineup("channels"), PostgresLineup("channels"))
 	return `SELECT ` + Columns(lineup) + ` FROM channels`
