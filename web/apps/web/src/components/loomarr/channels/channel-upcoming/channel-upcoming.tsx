@@ -31,9 +31,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   // when it started.
   return (
     <section className={cn("flex flex-col gap-1.5", className)}>
-      <h3 className="text-2xs text-muted-foreground mb-1 font-mono font-normal tracking-wide uppercase">
-        What's on
-      </h3>
+      <h3 className="text-2xs text-muted-foreground mb-1 font-normal">What's on</h3>
       {entries.length === 0 ? (
         // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
         // the same empty list. Do not infer broadcast state from a response that cannot prove it.

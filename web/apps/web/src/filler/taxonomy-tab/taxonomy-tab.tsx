@@ -498,7 +498,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-3">
         <Card padding={16}>
-          <p className="text-muted-foreground text-xs tracking-wide uppercase">Library coverage</p>
+          <p className="text-muted-foreground text-xs">Library coverage</p>
           {data.totalClips === 0 ? (
             <>
               <p className="mt-1 text-xl font-semibold">No playable clips yet</p>

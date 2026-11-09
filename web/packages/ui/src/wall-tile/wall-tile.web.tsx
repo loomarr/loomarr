@@ -1,4 +1,4 @@
-import { decadeFill, Surface, semanticColors, Text } from "@loomarr/design-system";
+import { decadeFill, Surface, semanticColors, Text, ThemeScope } from "@loomarr/design-system";
 import { cloneElement, type ReactElement } from "react";
 
 import type { WallTileProps } from "./wall-tile.type";
@@ -81,7 +81,18 @@ const WallTile = ({
         ...own.style,
       },
     },
-    <>
+    // Words over a picture are light on the scrim in both themes (as the player's are), so the
+    // layers sit in a dark scope; the tile's own light-theme surface never shows through a dim picture.
+    <ThemeScope theme="dark">
+      <Surface
+        backgroundColor="surfaceRaised"
+        borderWidth={0}
+        bottom={0}
+        left={0}
+        position="absolute"
+        right={0}
+        top={0}
+      />
       <Surface
         backgroundColor="transparent"
         borderWidth={0}
@@ -176,7 +187,7 @@ const WallTile = ({
           />
         </Surface>
       )}
-    </>,
+    </ThemeScope>,
   );
 };
 

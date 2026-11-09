@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"context"
@@ -8,13 +8,62 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
+
+// testSelection is the main language-model selection the install's settings name, as the
+// composition root's resolver reads it: the registry rows, with the persisted brand
+// (`llm.hosted_provider`) and that brand's namespaced key (`llm.api_key.<brand>`) applied.
+func testSelection(set settings.Reader) llm.Selection {
+	sel := llm.Selection{
+		Provider: settings.LLMProvider.Get(set),
+		URL:      settings.LLMURL.Get(set),
+		Model:    settings.LLMModel.Get(set),
+		APIKey:   settings.LLMAPIKey.Get(set),
+	}
+	svc, ok := set.(*settings.Service)
+	if !ok {
+		return sel
+	}
+	if sel.Provider == "openai" {
+		if brand, err := svc.LoadRaw("llm.hosted_provider"); err == nil && brand != "" {
+			sel.Provider = brand
+		}
+	}
+	if sel.Provider != "" && sel.Provider != "ollama" {
+		if key, err := svc.LoadRaw(settings.LLMAPIKey.Key() + "." + sel.Provider); err == nil && key != "" {
+			sel.APIKey = key
+		}
+	}
+	return sel
+}
+
+func visionEndpointOf(set settings.Reader) visionWiring {
+	return visionEndpoint(set, testSelection(set))
+}
+
+func transcriptCapabilityOf(set settings.Reader) enrichment.CapabilitySelection {
+	return TranscriptCapability(set, testSelection(set))
+}
+
+func visionCapabilityOf(set settings.Reader) enrichment.CapabilitySelection {
+	return VisionCapability(set, testSelection(set))
+}
+
+// hotVisionOf builds the live provider over set, reading the selection from whatever set the test
+// has swapped in since.
+func hotVisionOf(set settings.Reader) *HotVision {
+	h := NewHotVision(set, nil, nil, nil)
+	h.selection = func() llm.Selection { return testSelection(h.set) }
+	return h
+}
 
 // visionSet builds a live settings service over the DECLARED registry, so these tests resolve
 // exactly as boot does — including defaults, kinds and validation. A hand-rolled map would let a
 // key that the registry rejects pass here and fail on the operator's box.
-func visionSet(t *testing.T, rows map[string]string) resolved {
+func visionSet(t *testing.T, rows map[string]string) *settings.Service {
 	t.Helper()
 	loader := settings.StoreLoader{List: func(context.Context) ([]settings.SettingRow, error) {
 		out := make([]settings.SettingRow, 0, len(rows))
@@ -27,17 +76,18 @@ func visionSet(t *testing.T, rows map[string]string) resolved {
 	if err != nil {
 		t.Fatalf("settings.New: %v", err)
 	}
-	return resolved{svc: svc}
+	return svc
 }
 
 // Unset vision provider ⇒ byte-identical to the pre-V54a behaviour. Every existing install must
 // keep working with no new settings.
 func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
 	t.Parallel()
-	v := visionEndpoint(visionSet(t, map[string]string{
+	v := visionEndpointOf(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "llm.api_key": "sk-main",
 	}))
+
 	if v.provider != "openai" || v.url != "https://openrouter.ai/api/v1" {
 		t.Errorf("provider/url = %q/%q, want the main LLM's", v.provider, v.url)
 	}
@@ -54,13 +104,14 @@ func TestVisionEndpoint_InheritsTheMainProviderWhenUnset(t *testing.T) {
 
 func TestVisionEndpoint_InheritsTheSelectedProvidersNamespacedKey(t *testing.T) {
 	t.Parallel()
-	v := visionEndpoint(visionSet(t, map[string]string{
+	v := visionEndpointOf(visionSet(t, map[string]string{
 		"llm.provider":           "openai",
 		"llm.hosted_provider":    "openrouter",
 		"llm.url":                "https://openrouter.ai/api/v1",
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	}))
+
 	if v.key != "provider-secret" {
 		t.Errorf("key = %q, want the selected provider's namespaced key", v.key)
 	}
@@ -82,11 +133,12 @@ func TestVisionEndpoint_NeverInheritsTheKeyOnceAProviderIsNamed(t *testing.T) {
 		{"a different hosted service", "openai", "https://vision.example.com/v1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := visionEndpoint(visionSet(t, map[string]string{
+			v := visionEndpointOf(visionSet(t, map[string]string{
 				"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1",
 				"llm.model": "openai/gpt-4o-mini", "llm.api_key": "sk-main",
 				"filler.vision.provider": tc.provider, "filler.vision.url": tc.url,
 			}))
+
 			if v.key != "" {
 				t.Fatalf("key = %q — the main LLM's key leaked to %q", v.key, v.url)
 			}
@@ -100,12 +152,13 @@ func TestVisionEndpoint_NeverInheritsTheKeyOnceAProviderIsNamed(t *testing.T) {
 // The common case — hosted text, local vision — needs the provider knob alone.
 func TestVisionEndpoint_LocalOllamaNeedsNoURL(t *testing.T) {
 	t.Parallel()
-	v := visionEndpoint(visionSet(t, map[string]string{
+	v := visionEndpointOf(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "ollama", "filler.vision.model": "llava:7b",
 	}))
-	if v.url != defaultOllamaBase {
-		t.Errorf("url = %q, want the conventional local Ollama %q", v.url, defaultOllamaBase)
+
+	if v.url != llm.DefaultOllamaBase {
+		t.Errorf("url = %q, want the conventional local Ollama %q", v.url, llm.DefaultOllamaBase)
 	}
 	if v.provider != "ollama" {
 		t.Errorf("provider = %q, want ollama", v.provider)
@@ -119,11 +172,12 @@ func TestVisionEndpoint_LocalOllamaNeedsNoURL(t *testing.T) {
 // genuinely hosted vision service, or "never inherit" would just mean "never authenticate".
 func TestVisionEndpoint_UsesItsOwnKeyWhenGiven(t *testing.T) {
 	t.Parallel()
-	v := visionEndpoint(visionSet(t, map[string]string{
+	v := visionEndpointOf(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "openai", "filler.vision.url": "https://vision.example.com/v1",
 		"filler.vision.api_key": "sk-vision",
 	}))
+
 	if v.key != "sk-vision" {
 		t.Errorf("key = %q, want the vision-specific key", v.key)
 	}
@@ -137,10 +191,11 @@ func TestVisionEndpoint_UsesItsOwnKeyWhenGiven(t *testing.T) {
 // segment, reported only as "a segment could not be classified".
 func TestVisionEndpoint_LocalModelDoesNotGoToTheHostedEndpoint(t *testing.T) {
 	t.Parallel()
-	v := visionEndpoint(visionSet(t, map[string]string{
+	v := visionEndpointOf(visionSet(t, map[string]string{
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1", "llm.api_key": "sk-main",
 		"filler.vision.provider": "ollama", "filler.vision.model": "llava:7b",
 	}))
+
 	if v.url == "https://openrouter.ai/api/v1" {
 		t.Fatal("a local vision model is still being sent to the hosted endpoint")
 	}
@@ -156,7 +211,7 @@ func TestHotVisionProvider_PicksUpASettingsChangeWithoutARestart(t *testing.T) {
 		"llm.provider": "openai", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "llm.api_key": "sk-main",
 	}
-	h := &hotVisionProvider{set: visionSet(t, rows)}
+	h := hotVisionOf(visionSet(t, rows))
 
 	if _, err := h.resolve(); err != nil {
 		t.Fatalf("resolve with the main provider: %v", err)
@@ -174,8 +229,8 @@ func TestHotVisionProvider_PicksUpASettingsChangeWithoutARestart(t *testing.T) {
 	if _, err := h.resolve(); err != nil {
 		t.Fatalf("resolve after the change: %v", err)
 	}
-	if h.last.url != defaultOllamaBase {
-		t.Errorf("url = %q, want %q — the change did not apply", h.last.url, defaultOllamaBase)
+	if h.last.url != llm.DefaultOllamaBase {
+		t.Errorf("url = %q, want %q — the change did not apply", h.last.url, llm.DefaultOllamaBase)
 	}
 	if h.cur == first {
 		t.Error("the provider was not rebuilt after the endpoint changed")
@@ -189,9 +244,10 @@ func TestHotVisionProvider_PicksUpASettingsChangeWithoutARestart(t *testing.T) {
 // on every segment — 60 of them in one pass at the default `max_split_vision`.
 func TestHotVisionProvider_ReusesTheProviderWhileSettingsAreUnchanged(t *testing.T) {
 	t.Parallel()
-	h := &hotVisionProvider{set: visionSet(t, map[string]string{
-		"llm.provider": "ollama", "llm.url": defaultOllamaBase, "llm.model": "llava:7b",
-	})}
+	h := hotVisionOf(visionSet(t, map[string]string{
+		"llm.provider": "ollama", "llm.url": llm.DefaultOllamaBase, "llm.model": "llava:7b",
+	}))
+
 	first, err := h.resolve()
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +266,7 @@ func TestHotVisionProvider_ReusesTheProviderWhileSettingsAreUnchanged(t *testing
 // vision being switched off, which is how this went unnoticed.
 func TestHotVisionProvider_SaysWhyWhenThereIsNoEndpoint(t *testing.T) {
 	t.Parallel()
-	h := &hotVisionProvider{set: visionSet(t, map[string]string{"llm.provider": "openai", "llm.url": ""})}
+	h := hotVisionOf(visionSet(t, map[string]string{"llm.provider": "openai", "llm.url": ""}))
 	_, err := h.resolve()
 	if err == nil {
 		t.Fatal("no error for a vision provider with no endpoint")
@@ -252,13 +308,11 @@ func TestHotVisionProvider_ReconcilesAVisionModelTheInheritedEndpointDoesNotServ
 		t.Run(tc.name, func(t *testing.T) {
 			status = tc.status
 			var logs strings.Builder
-			h := &hotVisionProvider{
-				set: visionSet(t, map[string]string{
-					"llm.provider": "openai", "llm.url": srv.URL + "/v1", "llm.model": "flash-next",
-					"filler.vision.model": tc.model,
-				}),
-				log: slog.New(slog.NewTextHandler(&logs, nil)),
-			}
+			h := hotVisionOf(visionSet(t, map[string]string{
+				"llm.provider": "openai", "llm.url": srv.URL + "/v1", "llm.model": "flash-next",
+				"filler.vision.model": tc.model,
+			}))
+			h.log = slog.New(slog.NewTextHandler(&logs, nil))
 			if _, err := h.resolve(); err != nil {
 				t.Fatal(err)
 			}

@@ -218,10 +218,6 @@ func resolveSelection(set resolved) llm.Selection {
 	return sel
 }
 
-// defaultOllamaBase is where a local Ollama lives when nothing says otherwise. Shared with
-// `visionEndpoint` (§10 V54a) so the two cannot drift onto different ports.
-const defaultOllamaBase = "http://localhost:11434"
-
 // ollamaBase is the Ollama base URL for local probes/pulls. It's llm.url when the
 // provider is ollama; otherwise the conventional default (a hosted-by-default
 // install can still probe/manage a local Ollama if one is running).
@@ -229,7 +225,7 @@ func ollamaBase(set resolved) string {
 	if settings.LLMProvider.Get(set) == "ollama" && settings.LLMURL.Get(set) != "" {
 		return settings.LLMURL.Get(set)
 	}
-	return defaultOllamaBase
+	return llm.DefaultOllamaBase
 }
 
 // systemLLMService implements api.SystemLLMService (§8.1). It probes the local host,

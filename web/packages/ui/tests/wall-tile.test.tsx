@@ -123,3 +123,22 @@ describe("WallTile", () => {
     expect(doc.body.textContent).not.toContain("You were here");
   });
 });
+
+describe("WallTile in the light theme", () => {
+  it("keeps its words in the dark scope, light on the scrim, as the player does", async () => {
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <LoomarrProvider theme="light">
+          <WallTile art={null} channelName="Coast 90s" number="07" title="Coastline Mysteries" />
+        </LoomarrProvider>,
+      );
+    });
+    const title = doc.body.querySelector("h3") as Node;
+    let scope: Node | null = title;
+    while (scope && !(scope.getAttribute("class") ?? "").includes("t_dark")) scope = scope.parentElement;
+    expect(scope).not.toBeNull();
+  });
+});

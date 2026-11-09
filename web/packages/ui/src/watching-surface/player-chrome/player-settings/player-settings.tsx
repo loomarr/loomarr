@@ -75,7 +75,7 @@ const OptionRow = ({
 };
 
 const SectionLabel = ({ density, label }: { density: Density; label: string }) => (
-  <Text density={density} shout textRole="guideMeta" tone="secondary" tracking={0.16}>
+  <Text density={density} textRole="guideMeta" tone="secondary">
     {label}
   </Text>
 );

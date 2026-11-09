@@ -15,7 +15,7 @@ const TunerOSD = ({ number, name, currentTitle, className }: TunerOSDProps) => (
     <p className="text-signal font-mono text-xs tracking-wide">CH {number}</p>
     <p className="text-static-50 truncate text-sm font-semibold">{name}</p>
     {currentTitle && <p className="text-static-300 truncate text-xs">{currentTitle}</p>}
-    <p className="text-static-400 mt-1 font-mono text-[0.65rem] tracking-wider uppercase">Tuning…</p>
+    <p className="text-static-400 mt-1 text-[0.65rem]">Tuning…</p>
   </div>
 );
 

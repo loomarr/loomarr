@@ -264,7 +264,7 @@ const TasksPage = () => {
                                   </span>
                                   <span className="font-medium">{job.title}</span>
                                   {job.paused && (
-                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
                                       Paused
                                     </span>
                                   )}
