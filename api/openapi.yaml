@@ -16726,13 +16726,13 @@ paths:
       description: "The override picker's per-channel note (§10 V35). For every channel: which rung of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the same per-channel selection as the pod preview — a note that disagrees with what airs is a confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every channel is listed, including paused ones — pinning to a paused channel is a decision that takes effect when it resumes."
       operationId: clip-channel-fit
       parameters:
-        - description: The clip's path (its identity, §10)
+        - description: The clip's content hash (its identity, §10)
           explode: false
           in: query
           name: clip
           required: true
           schema:
-            description: The clip's path (its identity, §10)
+            description: The clip's content hash (its identity, §10)
             type: string
       responses:
         "200":
