@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/language"
@@ -519,7 +520,7 @@ func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) 
 	return d
 }
 
-func clipMediaDTO(tags filler.SidecarTags) *ClipMediaDTO {
+func clipMediaDTO(tags asset.SidecarTags) *ClipMediaDTO {
 	if tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
 		return nil
 	}
@@ -717,7 +718,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 				}
 			}
 			if files := s.fillerLayout.FS(); files != nil {
-				if tags, ok := filler.ReadSidecarTagsFS(files, c.Path); ok {
+				if tags, ok := asset.ReadSidecarTagsFS(files, c.Path); ok {
 					d.Media = clipMediaDTO(tags)
 				}
 			}

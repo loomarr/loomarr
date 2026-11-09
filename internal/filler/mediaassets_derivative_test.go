@@ -42,7 +42,7 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(context.Background(), root, source, clipHash, SidecarTags{})
+	master, err := preserveSourceMaster(context.Background(), root, source, clipHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lineage.Asset.Role != MediaAssetEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v2" {
+	if lineage.Asset.Role != asset.MediaAssetEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v2" {
 		t.Fatalf("evidence lineage = %+v", lineage)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(lineage.Asset.Path))); err != nil {
@@ -83,7 +83,7 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(context.Background(), root, source, clipHash, SidecarTags{})
+	master, err := preserveSourceMaster(context.Background(), root, source, clipHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}

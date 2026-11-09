@@ -1,4 +1,4 @@
-package filler
+package asset
 
 import (
 	"crypto/sha256"
@@ -50,7 +50,7 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 		return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject requires complete media assets")
 	}
 	manifest := *tags.MediaAssets
-	if err := manifest.validate(); err != nil {
+	if err := manifest.Validate(); err != nil {
 		return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject media: %w", err)
 	}
 	evidence, playback := manifest.Evidence, manifest.Playback
@@ -72,10 +72,10 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 	}
 	if tags.ConditioningLineage != nil {
 		lineage := *tags.ConditioningLineage
-		if !validConditioningLineage(&lineage, lineage.ParentHash) || lineage.ParentAssetRole == "" || !split.IsContentHash(lineage.ParentAssetSHA256) || lineage.ChildHash != manifest.SourceMaster.ClipHash {
+		if !ValidConditioningLineage(&lineage, lineage.ParentHash) || lineage.ParentAssetRole == "" || !split.IsContentHash(lineage.ParentAssetSHA256) || lineage.ChildHash != manifest.SourceMaster.ClipHash {
 			return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject child lineage is invalid")
 		}
-		if tags.Conditioning == nil || validateConditioningPair(*tags.Conditioning, lineage.ChildHash, catalogHash) != nil || !conditioningEvidenceMatchesLineage(*tags.Conditioning, lineage) ||
+		if tags.Conditioning == nil || ValidateConditioningPair(*tags.Conditioning, lineage.ChildHash, catalogHash) != nil || !EvidenceMatchesLineage(*tags.Conditioning, lineage) ||
 			tags.Conditioning.AfterRewrite.ContainerDurationMs != playback.DurationMs || !reflect.DeepEqual(tags.Conditioning.AfterRewrite.Quality, playback.Quality) {
 			return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject conditioning evidence is invalid")
 		}
@@ -103,7 +103,7 @@ func ValidateSegmentScreeningSubject(subject SegmentScreeningSubject) error {
 		if subject.ConditioningSHA256 != "" {
 			return fmt.Errorf("segment screening subject has unbound conditioning")
 		}
-	} else if !validConditioningLineage(subject.Lineage, subject.Lineage.ParentHash) || subject.Lineage.ParentAssetRole == "" ||
+	} else if !ValidConditioningLineage(subject.Lineage, subject.Lineage.ParentHash) || subject.Lineage.ParentAssetRole == "" ||
 		!split.IsContentHash(subject.Lineage.ParentAssetSHA256) || subject.Lineage.ChildHash != subject.SourceMasterHash || !split.IsContentHash(subject.ConditioningSHA256) {
 		return fmt.Errorf("segment screening subject lineage is invalid")
 	}
@@ -148,7 +148,7 @@ func ScreeningBytesSHA256(raw []byte) string {
 // MediaAssetManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
 // deliberately excluding relocatable filesystem paths.
 func MediaAssetManifestAuthoritySHA256(manifest MediaAssetManifest) string {
-	if err := manifest.validate(); err != nil {
+	if err := manifest.Validate(); err != nil {
 		return ""
 	}
 	projected := manifest

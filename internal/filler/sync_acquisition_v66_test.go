@@ -56,7 +56,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 		t.Fatal(err)
 	}
 	masterRel := filepath.ToSlash(filepath.Join(
-		split.MediaAssetRootName, mediaMasterDirName, sourceSHA[:2], sourceSHA[2:4], sourceSHA+".mp4",
+		split.MediaAssetRootName, asset.MediaMasterDirName, sourceSHA[:2], sourceSHA[2:4], sourceSHA+".mp4",
 	))
 	masterPath := filepath.Join(root, filepath.FromSlash(masterRel))
 	if err := os.MkdirAll(filepath.Dir(masterPath), 0o755); err != nil {
@@ -75,20 +75,20 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	}
 
 	manifest := screeningSubjectManifest(t)
-	manifest.SourceMaster = MediaAssetIdentity{
-		Role: MediaAssetSourceMaster, SHA256: sourceSHA, Bytes: sourceBytes,
+	manifest.SourceMaster = asset.MediaAssetIdentity{
+		Role: asset.MediaAssetSourceMaster, SHA256: sourceSHA, Bytes: sourceBytes,
 		ClipHash: sourceHash, Path: masterRel,
 	}
 	manifest.Evidence = nil
-	manifest.Playback.Asset = MediaAssetIdentity{
-		Role: MediaAssetPlayback, SHA256: playbackSHA, Bytes: playbackBytes,
+	manifest.Playback.Asset = asset.MediaAssetIdentity{
+		Role: asset.MediaAssetPlayback, SHA256: playbackSHA, Bytes: playbackBytes,
 		ClipHash: playbackHash, Path: playbackRel,
 	}
 	manifest.Playback.InputSHA256 = sourceSHA
-	if err := manifest.validate(); err != nil {
+	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(playbackPath, SidecarTags{
+	if err := asset.WriteSidecarTags(playbackPath, asset.SidecarTags{
 		SourceID: "archive:classic", AcquisitionID: "acq-1", MediaAssets: &manifest,
 	}, true); err != nil {
 		t.Fatal(err)

@@ -10,7 +10,7 @@ import (
 	"io/fs"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -71,7 +71,7 @@ func segmentScreeningOperationSHA256(subjectSHA256 string, profile SegmentScreen
 	if err != nil {
 		return ""
 	}
-	return filler.ScreeningBytesSHA256(raw)
+	return asset.ScreeningBytesSHA256(raw)
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) putSegmentScreeningOperation(ctx context.Context, evidence SegmentScreeningAxisEvidence) error {

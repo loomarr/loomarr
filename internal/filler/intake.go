@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -165,7 +164,7 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 			// watch a folder that never drains. The clip itself is not lost — the copy already
 			// in the clip folder IS this file, byte for byte, which is what the hash asserts.
 			_ = os.Remove(src)
-			_ = os.Remove(sidecarPathFor(src))
+			_ = os.Remove(asset.SidecarPathFor(src))
 			res.Duplicates++
 			continue
 		}
@@ -183,9 +182,9 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 		}
 		// A sidecar the downloader wrote travels with the clip, so its title/description survive
 		// to reach the tagger.
-		_ = moveIfPresentWithStorage(ctx, sidecarPathFor(src), sidecarPathFor(dst), governor)
+		_ = moveIfPresentWithStorage(ctx, asset.SidecarPathFor(src), asset.SidecarPathFor(dst), governor)
 
-		if err := WriteSidecarTags(dst, SidecarTags{OriginalName: original, SourceID: sourceID}, fetched); err != nil && log != nil {
+		if err := asset.WriteSidecarTags(dst, asset.SidecarTags{OriginalName: original, SourceID: sourceID}, fetched); err != nil && log != nil {
 			// Not fatal: the clip is in place and catalogueable. A missing sidecar costs the
 			// filename signal, not the file.
 			log("filler intake: could not write a sidecar", "clip", dst, "err", err)
@@ -265,7 +264,7 @@ func movePathWithStorage(ctx context.Context, src, dst string, governor *storage
 	}
 	// Cross-device (EXDEV) is the case the fallback exists for, but any rename failure is worth
 	// one copy attempt — the copy either succeeds or reports the real reason.
-	if copyErr := copyFileWithStorage(ctx, src, dst, governor); copyErr != nil {
+	if copyErr := asset.CopyFileWithStorage(ctx, src, dst, governor); copyErr != nil {
 		return copyErr
 	}
 	return os.Remove(src)
@@ -278,83 +277,4 @@ func moveIfPresentWithStorage(ctx context.Context, src, dst string, governor *st
 		return nil
 	}
 	return movePathWithStorage(ctx, src, dst, governor)
-}
-
-func copyFile(src, dst string) error {
-	return copyFileWithStorage(context.Background(), src, dst, nil)
-}
-
-func copyFileWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	info, err := in.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-		if err == nil {
-			err = errors.New("source is not a non-empty regular file")
-		}
-		return err
-	}
-	var lease *storagegovernor.Lease
-	if governor != nil {
-		var decision storagegovernor.Decision
-		lease, decision = governor.Reserve(ctx, storagegovernor.Request{
-			Path: dst, Domain: storagegovernor.DomainFiller,
-			EstimatedBytes: info.Size(), Mode: storagegovernor.Automatic,
-		})
-		if lease == nil {
-			return storagegovernor.Pause("reserve cross-filesystem intake copy", decision)
-		}
-		defer lease.Release()
-	}
-
-	// ⚠ Written to a temp name and renamed into place, so a crash mid-copy cannot leave a
-	// truncated file sitting at the hash's name — where the duplicate check would then treat it
-	// as a complete clip and discard every future arrival of the real one.
-	tmp := dst + ".tmp"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	buffer := make([]byte, 128<<10)
-	var written int64
-	for {
-		n, readErr := in.Read(buffer)
-		if n > 0 {
-			if written > info.Size()-int64(n) {
-				_ = out.Close()
-				_ = os.Remove(tmp)
-				return errors.New("source grew beyond its reserved intake size")
-			}
-			if _, err := out.Write(buffer[:n]); err != nil {
-				_ = out.Close()
-				_ = os.Remove(tmp)
-				return err
-			}
-			written += int64(n)
-			if lease != nil {
-				decision := lease.Revalidate(ctx, written)
-				if !decision.Allowed {
-					_ = out.Close()
-					_ = os.Remove(tmp)
-					return storagegovernor.Pause("revalidate cross-filesystem intake copy", decision)
-				}
-			}
-		}
-		if readErr != nil {
-			if !errors.Is(readErr, io.EOF) {
-				_ = out.Close()
-				_ = os.Remove(tmp)
-				return readErr
-			}
-			break
-		}
-	}
-	if err := out.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, dst)
 }

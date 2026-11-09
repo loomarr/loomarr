@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
-// These tests pin filler.SegmentScreeningReference, the sidecar's join to a recorded aggregate. They
+// These tests pin asset.SegmentScreeningReference, the sidecar's join to a recorded aggregate. They
 // need an aggregate built through this package's axis-evidence fixtures.
 
 func TestSegmentScreeningReferenceRoundTripsBesideRenderedChild(t *testing.T) {
@@ -25,11 +25,11 @@ func TestSegmentScreeningReferenceRoundTripsBesideRenderedChild(t *testing.T) {
 	if err := os.WriteFile(media, []byte("rendered child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{SegmentScreening: &reference}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{SegmentScreening: &reference}, false); err != nil {
 		t.Fatal(err)
 	}
-	tags, state := filler.ReadSidecarTagsState(media)
-	if state != filler.SidecarValid || tags.SegmentScreening == nil || *tags.SegmentScreening != reference {
+	tags, state := asset.ReadSidecarTagsState(media)
+	if state != asset.SidecarValid || tags.SegmentScreening == nil || *tags.SegmentScreening != reference {
 		t.Fatalf("screening reference did not round-trip: state=%v tags=%+v", state, tags)
 	}
 }
@@ -39,13 +39,13 @@ func TestSegmentScreeningReferenceRejectsSubjectDrift(t *testing.T) {
 	aggregate := screeningAggregateFixture(t, subject)
 	other := subject
 	other.CatalogHash = strings.Repeat("f", 64)
-	other.SHA256 = filler.SegmentScreeningSubjectSHA256(other)
+	other.SHA256 = asset.SegmentScreeningSubjectSHA256(other)
 	if _, err := NewSegmentScreeningReference(other, aggregate); err == nil {
 		t.Fatal("reference joined an aggregate to a different subject")
 	}
 }
 
-func screeningAggregateFixture(t *testing.T, subject filler.SegmentScreeningSubject) SegmentScreeningEvidence {
+func screeningAggregateFixture(t *testing.T, subject asset.SegmentScreeningSubject) SegmentScreeningEvidence {
 	t.Helper()
 	records := passingAxisEvidence(t, subject)
 	results := make([]SegmentScreeningResult, 0, len(records))

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -55,7 +56,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		if child.Role != wantKinds[index] {
 			t.Fatalf("child %s kind=%q want=%q", childHash, child.Role, wantKinds[index])
 		}
-		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
+		tags, ok := asset.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 		lineage := tags.ConditioningLineage
 		if !ok || lineage == nil || lineage.StructureDecisionSHA256 != artifact.SHA256 ||
 			lineage.StructureRole != wantRoles[index] || tags.Kind != string(wantKinds[index]) {

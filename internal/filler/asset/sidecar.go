@@ -1,4 +1,4 @@
-package filler
+package asset
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -27,10 +28,10 @@ import (
 //   - Clip.Source     — provenance. Where the clip came from. An enum, for the catalog.
 //   - sidecar text    — description. What the clip is ABOUT. Free text, for the LLM.
 
-// sidecarInfo is the subset of the info-JSON we use. yt-dlp writes a large object;
+// SidecarInfo is the subset of the info-JSON we use. yt-dlp writes a large object;
 // Archive.org's writer emits the same field names for the ones that matter. Unknown
 // fields are ignored, so a yt-dlp version bump can't break parsing.
-type sidecarInfo struct {
+type SidecarInfo struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -65,14 +66,11 @@ type SourceMetadata struct {
 	SourceID     string
 }
 
-// sidecarPathFor returns the info-JSON path for a media file: "clip.mp4" →
+// SidecarPathFor returns the info-JSON path for a media file: "clip.mp4" →
 // "clip.info.json". Mirrors how both writers name them.
-func sidecarPathFor(mediaPath string) string {
+func SidecarPathFor(mediaPath string) string {
 	return strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 }
-
-// SidecarPathFor is sidecarPathFor for a caller outside this package. It only computes the path.
-func SidecarPathFor(mediaPath string) string { return sidecarPathFor(mediaPath) }
 
 // Loomarr's own keys inside the info-JSON (§10 V38c). Namespaced under `loomarr` so they cannot
 // collide with anything yt-dlp writes now or adds later.
@@ -173,7 +171,7 @@ type SidecarTags struct {
 	// deliberate: nil means "not inspected yet", while a non-nil report with empty intervals is
 	// the meaningful answer "inspected and clean". Keeping it beside the bytes prevents a catalog
 	// rebuild from paying for another full decode or forgetting a prior refusal.
-	MediaQuality *MediaQuality `json:"mediaQuality,omitempty"`
+	MediaQuality *tools.MediaQuality `json:"mediaQuality,omitempty"`
 	// ConditioningLineage binds a reviewed child to the exact composite bytes and intended cut
 	// that produced it. It lives beside the child because split proposals are consumed after
 	// confirmation and the clip table is a rebuildable cache. Nil identifies a top-level clip.
@@ -268,7 +266,7 @@ type ConditioningEvidence struct {
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
 // already in the file.
 //
-// ⚠ **Round-trips through a map, NOT through `sidecarInfo`.** That struct is a PARTIAL view — it
+// ⚠ **Round-trips through a map, NOT through `SidecarInfo`.** That struct is a PARTIAL view — it
 // declares only the fields we read — so unmarshalling into it and re-marshalling would silently
 // delete every key yt-dlp wrote that we do not name: formats, thumbnails, chapters, view counts.
 // Writing into someone else's file means preserving what you do not understand.
@@ -284,7 +282,7 @@ type ConditioningEvidence struct {
 // The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
 // package-level mutation and retention contracts live with the derivative publisher.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
-	path := sidecarPathFor(mediaPath)
+	path := SidecarPathFor(mediaPath)
 
 	doc := map[string]any{}
 	if raw, err := os.ReadFile(path); err == nil {
@@ -352,24 +350,20 @@ const (
 // Loomarr object into ordinary absence. A valid third-party sidecar with no Loomarr key is valid
 // and returns zero tags; only present malformed state is invalid.
 func ReadSidecarTagsState(mediaPath string) (SidecarTags, SidecarReadState) {
-	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return SidecarTags{}, SidecarAbsent
 		}
 		return SidecarTags{}, SidecarInvalid
 	}
-	tags, state, _ := decodeSidecarTags(raw)
+	tags, state, _ := DecodeSidecarTags(raw)
 	return tags, state
 }
 
 // DecodeSidecarTags parses the bytes of an info-JSON sidecar that the caller has already read and
 // bounded. It reports the tags, the read state, and whether the file carried any Loomarr keys.
 func DecodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
-	return decodeSidecarTags(raw)
-}
-
-func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return SidecarTags{}, SidecarInvalid, false
@@ -436,10 +430,10 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 	if json.Unmarshal(ours, &tags) != nil {
 		return SidecarTags{}, SidecarInvalid, true
 	}
-	if tags.Kind != "" && !validRole(Role(tags.Kind)) {
+	if tags.Kind != "" && !clips.Role(tags.Kind).Valid() {
 		return SidecarTags{}, SidecarInvalid, true
 	}
-	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.validate() != nil) {
+	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.Validate() != nil) {
 		return SidecarTags{}, SidecarInvalid, true
 	}
 	return tags, SidecarValid, true
@@ -467,11 +461,11 @@ func rawJSONInt64(fields map[string]json.RawMessage, name string) bool {
 // unreadability have the same non-authoritative meaning. Safety-sensitive rebuild uses the typed
 // state above.
 func ReadSidecarTags(mediaPath string) (SidecarTags, bool) {
-	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
 	if err != nil {
 		return SidecarTags{}, false
 	}
-	tags, state, present := decodeSidecarTags(raw)
+	tags, state, present := DecodeSidecarTags(raw)
 	return tags, state == SidecarValid && present
 }
 
@@ -482,11 +476,11 @@ func ReadSidecarTags(mediaPath string) (SidecarTags, bool) {
 // (which is what makes it testable with fstest.MapFS and confines it to that subtree). Both parse
 // the same shape; only the read differs.
 func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
-	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
 	if err != nil {
 		return SidecarTags{}, false
 	}
-	tags, state, present := decodeSidecarTags(raw)
+	tags, state, present := DecodeSidecarTags(raw)
 	return tags, state == SidecarValid && present
 }
 
@@ -494,7 +488,7 @@ func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
 //
 // ⚠ Reads the FIELD, not the file's existence. See fetchedByKey.
 func SidecarFetchedByUs(mediaPath string) bool {
-	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
 	if err != nil {
 		return false
 	}
@@ -521,11 +515,11 @@ func SidecarFetchedByUs(mediaPath string) bool {
 // grounding: `originalName` stays the grounding text (the year lives in the filename), so the two
 // concerns — what a human READS vs what the tagger GROUNDS against — do not collapse into one field.
 func SidecarTitle(mediaPath string) string {
-	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
 	if err != nil {
 		return ""
 	}
-	var info sidecarInfo
+	var info SidecarInfo
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return ""
 	}
@@ -541,11 +535,11 @@ func SidecarTitle(mediaPath string) string {
 // dump would bury the signal and burn tokens on fields (formats, thumbnails, chapter
 // markers) that say nothing about what the clip IS.
 func SidecarText(fsys fs.FS, mediaPath string) string {
-	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
 	if err != nil {
 		return "" // no sidecar is normal — drop-folder clips never had one
 	}
-	var info sidecarInfo
+	var info SidecarInfo
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return "" // malformed sidecar degrades to filename-only, never fails the tag
 	}
@@ -558,15 +552,15 @@ func ReadSourceMetadataFS(fsys fs.FS, mediaPath string) (SourceMetadata, bool) {
 	if fsys == nil {
 		return SourceMetadata{}, false
 	}
-	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
 	if err != nil {
 		return SourceMetadata{}, false
 	}
-	var info sidecarInfo
+	var info SidecarInfo
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return SourceMetadata{}, false
 	}
-	tags, state, _ := decodeSidecarTags(raw)
+	tags, state, _ := DecodeSidecarTags(raw)
 	if state == SidecarInvalid {
 		return SourceMetadata{}, false
 	}
@@ -582,7 +576,7 @@ func ReadSourceMetadataFS(fsys fs.FS, mediaPath string) (SourceMetadata, bool) {
 
 // text renders the parsed sidecar into the prompt fragment. Kept separate from the
 // file read so the rendering rules are testable without a filesystem.
-func (s sidecarInfo) text() string {
+func (s SidecarInfo) text() string {
 	var parts []string
 	if t := strings.TrimSpace(s.Title); t != "" {
 		parts = append(parts, t)

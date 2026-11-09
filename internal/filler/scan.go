@@ -188,8 +188,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// Soup Advert" while the `title` field carries just "Campbell's Soup Advert".
 		heuristicName := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 		id := ""
-		tags, sidecarState := ReadSidecarTagsState(path)
-		if sidecarState == SidecarValid {
+		tags, sidecarState := asset.ReadSidecarTagsState(path)
+		if sidecarState == asset.SidecarValid {
 			if tags.OriginalName != "" {
 				heuristicName = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
 			}
@@ -198,11 +198,11 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// so a clip that lost its sidecar stays readable rather than showing a hash. Each choice
 		// records its provenance (#1988), which is what viewer surfaces decide on.
 		name, nameSource := heuristicName, scannedNameSource(tags, sidecarState)
-		if sidecarState == SidecarValid && tags.DisplayName != "" {
+		if sidecarState == asset.SidecarValid && tags.DisplayName != "" {
 			name = tags.DisplayName // derived from grounded evidence (#1452), or a segment's name
 		}
 		// An operator's rename (#1990) outranks the source title it replaced.
-		if title := SidecarTitle(path); title != "" && nameSource != clips.NameFromCurated {
+		if title := asset.SidecarTitle(path); title != "" && nameSource != clips.NameFromCurated {
 			name, nameSource = title, clips.NameFromSidecar
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
@@ -213,19 +213,19 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		}
 		parentHash := ""
 		lineageInvalid := false
-		conditioningHold := sidecarState == SidecarInvalid || tags.SupersededByHash != "" ||
+		conditioningHold := sidecarState == asset.SidecarInvalid || tags.SupersededByHash != "" ||
 			tags.ConditioningPublication != nil ||
 			(tags.Conditioning != nil && tags.ConditioningLineage == nil)
 		if tags.ConditioningLineage != nil {
 			parentHash = tags.ConditioningLineage.ParentHash
-			lineageInvalid = !validConditioningLineage(tags.ConditioningLineage, parentHash)
+			lineageInvalid = !asset.ValidConditioningLineage(tags.ConditioningLineage, parentHash)
 			if !lineageInvalid {
 				if tags.Mezzanine == "" {
 					lineageInvalid = tags.ConditioningLineage.ChildHash != id
 					conditioningHold = !lineageInvalid
 				} else {
 					lineageInvalid = tags.Conditioning == nil || tags.MediaQuality == nil ||
-						validateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
+						asset.ValidateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
 						tools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
 						!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality)
 				}
@@ -233,7 +233,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		}
 
 		kind := RoleFromName(heuristicName)
-		if tags.Kind != "" && validRole(Role(tags.Kind)) {
+		if tags.Kind != "" && Role(tags.Kind).Valid() {
 			kind = Role(tags.Kind)
 		}
 		found = append(found, RawClip{
@@ -245,7 +245,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			ParentHash:       parentHash,
 			LineageInvalid:   lineageInvalid,
 			ConditioningHold: conditioningHold,
-			SidecarInvalid:   sidecarState == SidecarInvalid,
+			SidecarInvalid:   sidecarState == asset.SidecarInvalid,
 			// Kind + Era from the HEURISTIC name (the filename), NOT the display name — the cheapest
 			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
 			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and
@@ -292,8 +292,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 // of unrecorded origin), or are a split segment cut before #1988: the splitter put the segment's
 // name in originalName without saying whether a chapter, a model, an operator or the fallback
 // produced it. Both stay unknown rather than guessed.
-func scannedNameSource(tags SidecarTags, state SidecarReadState) clips.NameSource {
-	if state != SidecarValid {
+func scannedNameSource(tags asset.SidecarTags, state asset.SidecarReadState) clips.NameSource {
+	if state != asset.SidecarValid {
 		return clips.NameFromFilename
 	}
 	recorded := clips.NameSource(tags.NameProvenance)
@@ -316,7 +316,7 @@ func scannedNameSource(tags SidecarTags, state SidecarReadState) clips.NameSourc
 // A viewer-visible name goes to displayName beside its provenance; an info-JSON title needs
 // nothing, since it travels in the same file; an unrecorded one is marked unknown. A sidecar
 // that already names the clip keeps its own record.
-func carryNameProvenance(tags *SidecarTags, name string, source clips.NameSource) {
+func carryNameProvenance(tags *asset.SidecarTags, name string, source clips.NameSource) {
 	if tags.DisplayName != "" || tags.NameProvenance != "" {
 		return
 	}
@@ -331,7 +331,7 @@ func carryNameProvenance(tags *SidecarTags, name string, source clips.NameSource
 // WriteCuratedName records an operator's name for a clip in its sidecar (#1990), as displayName
 // with curated provenance, so the next scan restores it ahead of the filename and a source title.
 func WriteCuratedName(mediaPath, name string) error {
-	return WriteSidecarTags(mediaPath, SidecarTags{
+	return asset.WriteSidecarTags(mediaPath, asset.SidecarTags{
 		DisplayName: name, NameProvenance: string(clips.NameFromCurated),
 	}, false)
 }
@@ -678,11 +678,11 @@ func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 // at all (measured during the 2026-07-31 fixture capture), so absence is the common case and says
 // nothing about permission. Callers render "unknown", never a reassuring default.
 func licenseBeside(mediaPath string) string {
-	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(asset.SidecarPathFor(mediaPath))
 	if err != nil {
 		return ""
 	}
-	var info sidecarInfo
+	var info asset.SidecarInfo
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return ""
 	}

@@ -3,6 +3,8 @@ package filler
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // The defect floor (internal/filler/defectfloor) drops an admitted clip's evidence copy by rewriting
@@ -11,10 +13,10 @@ import (
 func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 	dir := t.TempDir()
 	manifest := screeningSubjectManifest(t)
-	clip := func(body string, m MediaAssetManifest) StoreClip {
+	clip := func(body string, m asset.MediaAssetManifest) StoreClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		rel := ClipRelPath(hash, ".mp4")
-		if err := WriteSidecarTags(filepath.Join(dir, rel), SidecarTags{MediaAssets: &m}, false); err != nil {
+		if err := asset.WriteSidecarTags(filepath.Join(dir, rel), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
 			t.Fatal(err)
 		}
 		return StoreClip{Clip: Clip{Hash: hash, Path: rel}}

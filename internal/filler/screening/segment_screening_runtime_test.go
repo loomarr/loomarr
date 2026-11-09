@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 type capturedSegmentScreeningEvaluator struct {
@@ -43,7 +43,7 @@ func (e *capturedSegmentScreeningEvaluator) Evaluate(_ context.Context, media Se
 
 type capturedSegmentScreeningRepository struct {
 	order        *[]string
-	subjects     []filler.SegmentScreeningSubject
+	subjects     []asset.SegmentScreeningSubject
 	axis         []RecordedSegmentScreeningAxisEvidence
 	aggregates   []SegmentScreeningEvidence
 	subjectErr   error
@@ -52,7 +52,7 @@ type capturedSegmentScreeningRepository struct {
 	aggregateErr error
 }
 
-func (r *capturedSegmentScreeningRepository) PutSegmentScreeningSubject(_ context.Context, subject filler.SegmentScreeningSubject) error {
+func (r *capturedSegmentScreeningRepository) PutSegmentScreeningSubject(_ context.Context, subject asset.SegmentScreeningSubject) error {
 	*r.order = append(*r.order, "persist:subject")
 	if r.subjectErr != nil {
 		return r.subjectErr

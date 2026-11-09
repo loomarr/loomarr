@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -48,15 +48,15 @@ type RecordedSegmentScreeningAxisEvidence struct {
 	RawEvidence []byte
 }
 
-func NewSegmentScreeningAxisEvidence(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, reasonCode string, suitability *AirworthinessAxisEvidence, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
-	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
+func NewSegmentScreeningAxisEvidence(subject asset.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, reasonCode string, suitability *AirworthinessAxisEvidence, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
+	if err := asset.ValidateSegmentScreeningSubject(subject); err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
 	record := RecordedSegmentScreeningAxisEvidence{
 		Evidence: SegmentScreeningAxisEvidence{
 			SchemaVersion: SegmentScreeningAxisEvidenceSchemaVersion, ContractVersion: SegmentScreeningAxisEvidenceContractVersion,
 			SubjectSHA256: subject.SHA256, Profile: profile,
-			Outcome: outcome, ReasonCode: reasonCode, RawEvidenceSHA256: filler.ScreeningBytesSHA256(rawEvidence),
+			Outcome: outcome, ReasonCode: reasonCode, RawEvidenceSHA256: asset.ScreeningBytesSHA256(rawEvidence),
 			Suitability: cloneSuitabilityAxisEvidence(suitability), AssessedAt: assessedAt.UTC(),
 		},
 		RawEvidence: append([]byte(nil), rawEvidence...),
@@ -73,7 +73,7 @@ func ValidateRecordedSegmentScreeningAxisEvidence(record RecordedSegmentScreenin
 	if err := ValidateSegmentScreeningAxisEvidence(record.Evidence); err != nil {
 		return err
 	}
-	if len(record.RawEvidence) == 0 || filler.ScreeningBytesSHA256(record.RawEvidence) != record.Evidence.RawEvidenceSHA256 {
+	if len(record.RawEvidence) == 0 || asset.ScreeningBytesSHA256(record.RawEvidence) != record.Evidence.RawEvidenceSHA256 {
 		return fmt.Errorf("segment screening axis raw evidence is missing or drifted")
 	}
 	return nil
@@ -192,5 +192,5 @@ func SegmentScreeningAxisEvidenceSHA256(evidence SegmentScreeningAxisEvidence) s
 	if err != nil {
 		return ""
 	}
-	return filler.ScreeningBytesSHA256(raw)
+	return asset.ScreeningBytesSHA256(raw)
 }

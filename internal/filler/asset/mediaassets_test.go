@@ -1,13 +1,15 @@
-package filler
+package asset
 
 import (
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/loomarr/loomarr/internal/filler/asset"
 )
+
+func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
+	return PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
+}
 
 func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 	root := t.TempDir()
@@ -16,7 +18,7 @@ func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 	if err := os.WriteFile(source, bytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := asset.ClipID(source)
+	hash, err := ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,20 +27,20 @@ func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	asset, err := preserveSourceMaster(context.Background(), root, source, hash, tags)
+	retained, err := preserveSourceMaster(context.Background(), root, source, hash, tags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	master := filepath.Join(root, filepath.FromSlash(asset.Path))
+	master := filepath.Join(root, filepath.FromSlash(retained.Path))
 	got, err := os.ReadFile(master)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(bytes) || asset.Role != MediaAssetSourceMaster || asset.Bytes != int64(len(bytes)) {
-		t.Fatalf("retained asset = %+v bytes %q", asset, got)
+	if string(got) != string(bytes) || retained.Role != MediaAssetSourceMaster || retained.Bytes != int64(len(bytes)) {
+		t.Fatalf("retained asset = %+v bytes %q", retained, got)
 	}
 	masterTags, state := ReadSidecarTagsState(master)
-	if state != SidecarValid || masterTags.MediaAssets == nil || masterTags.MediaAssets.SourceMaster != asset {
+	if state != SidecarValid || masterTags.MediaAssets == nil || masterTags.MediaAssets.SourceMaster != retained {
 		t.Fatalf("master manifest = %+v state %v", masterTags.MediaAssets, state)
 	}
 	if masterTags.SourceID != tags.SourceID || masterTags.AcquisitionID != tags.AcquisitionID || masterTags.OriginalName != tags.OriginalName {
@@ -46,8 +48,8 @@ func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 	}
 
 	second, err := preserveSourceMaster(context.Background(), root, source, hash, tags)
-	if err != nil || second != asset {
-		t.Fatalf("idempotent preserve = %+v, %v; want %+v", second, err, asset)
+	if err != nil || second != retained {
+		t.Fatalf("idempotent preserve = %+v, %v; want %+v", second, err, retained)
 	}
 }
 
@@ -61,7 +63,7 @@ func TestPreserveSourceMasterRefusesSymlink(t *testing.T) {
 	if err := os.Symlink(realPath, link); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := asset.ClipID(realPath)
+	hash, err := ClipID(realPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,15 +78,15 @@ func TestPreserveSourceMasterRefusesDifferentExistingBytes(t *testing.T) {
 	if err := os.WriteFile(source, []byte("source bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := asset.ClipID(source)
+	hash, err := ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	asset, err := preserveSourceMaster(context.Background(), root, source, hash, SidecarTags{})
+	retained, err := preserveSourceMaster(context.Background(), root, source, hash, SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	master := filepath.Join(root, filepath.FromSlash(asset.Path))
+	master := filepath.Join(root, filepath.FromSlash(retained.Path))
 	if err := os.WriteFile(master, []byte("different bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}

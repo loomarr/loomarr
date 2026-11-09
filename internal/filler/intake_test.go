@@ -109,7 +109,7 @@ func TestTakeIn_FilesUnderTheHashAndKeepsTheOriginalName(t *testing.T) {
 	// ⚠ THE point of the sidecar. Once the file is `a3f9….mp4` the path carries no year, so
 	// §10's grounding rule — an era must appear literally in a text signal — would reject every
 	// clip whose era came from its filename. This is where that signal now lives.
-	tags, ok := ReadSidecarTags(filepath.Join(clips, wantRel))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(clips, wantRel))
 	if !ok {
 		t.Fatal("no sidecar written beside the filed clip")
 	}
@@ -186,7 +186,7 @@ func TestTakeIn_RecordsFetchedByOnlyForOurOwnDownloads(t *testing.T) {
 			if len(filed) != 1 {
 				t.Fatalf("clip folder holds %v, want one clip", filed)
 			}
-			if got := SidecarFetchedByUs(filepath.Join(clips, filed[0])); got != tc.want {
+			if got := asset.SidecarFetchedByUs(filepath.Join(clips, filed[0])); got != tc.want {
 				t.Errorf("SidecarFetchedByUs = %v, want %v", got, tc.want)
 			}
 		})
@@ -199,7 +199,7 @@ func TestTakeIn_RecordsFetchedByOnlyForOurOwnDownloads(t *testing.T) {
 func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
 	src := writeClip(t, watch, "dl.mp4", 2048, 5)
-	if err := os.WriteFile(sidecarPathFor(src),
+	if err := os.WriteFile(asset.SidecarPathFor(src),
 		[]byte(`{"title":"Crunchlings","description":"They're crunchtastic","view_count":99}`),
 		0o644); err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	}
 	dst := filepath.Join(clips, filed[0])
 
-	raw, err := os.ReadFile(sidecarPathFor(dst))
+	raw, err := os.ReadFile(asset.SidecarPathFor(dst))
 	if err != nil {
 		t.Fatalf("the downloader's sidecar did not travel with the clip: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestCopyFallback_MovesBytesAndRemovesTheSource(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := copyFile(src, dst); err != nil {
+	if err := asset.CopyFile(src, dst); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(src); err != nil {
@@ -315,7 +315,7 @@ func TestCopyFallback_MovesBytesAndRemovesTheSource(t *testing.T) {
 	if string(got) != string(want) {
 		t.Errorf("copied %d bytes, want %d identical", len(got), len(want))
 	}
-	// ⚠ The temp file copyFile writes must not survive. Left behind at `<hash>.mp4.tmp` it is
+	// ⚠ The temp file asset.CopyFile writes must not survive. Left behind at `<hash>.mp4.tmp` it is
 	// only litter; left at `<hash>.mp4` after a crash it would be a TRUNCATED file that the
 	// duplicate check then treats as the complete clip, discarding every real copy that arrives.
 	if _, err := os.Stat(dst + ".tmp"); err == nil {
@@ -372,7 +372,7 @@ func TestTakeIn_FilesAClipDroppedStraightIntoTheClipFolder(t *testing.T) {
 		t.Fatalf("clip folder holds %v, want one clip at a sharded hash path", got)
 	}
 	// The era signal survived the rename, exactly as it does for a watch-folder arrival.
-	tags, ok := ReadSidecarTags(filepath.Join(clips, got[0]))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(clips, got[0]))
 	if !ok || tags.OriginalName != "Crunchlings 1993.mp4" {
 		t.Errorf("originalName = %q, want the pre-rename filename", tags.OriginalName)
 	}
@@ -519,7 +519,7 @@ func TestCrossFilesystemCopyReservesBeforeCreatingDestinationBytes(t *testing.T)
 	blocked := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
 		return storagegovernor.Policy{SoftBudgetBytes: 1}
 	})
-	if err := copyFileWithStorage(t.Context(), source, target, blocked); err == nil {
+	if err := asset.CopyFileWithStorage(t.Context(), source, target, blocked); err == nil {
 		t.Fatal("cross-filesystem copy ignored the destination storage refusal")
 	}
 	for _, path := range []string{target, target + ".tmp"} {
@@ -531,7 +531,7 @@ func TestCrossFilesystemCopyReservesBeforeCreatingDestinationBytes(t *testing.T)
 	allowed := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
 		return storagegovernor.Policy{SoftBudgetBytes: 1 << 20}
 	})
-	if err := copyFileWithStorage(t.Context(), source, target, allowed); err != nil {
+	if err := asset.CopyFileWithStorage(t.Context(), source, target, allowed); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(target)

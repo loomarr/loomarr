@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -141,11 +141,11 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	//
 	// Asserted through `filler.SidecarFetchedMarkForAcquisition` rather than a literal, so this test and the
 	// sync's `wasFetchedByUs` cannot drift apart into two spellings of the same key.
-	ours, ok := sc[filler.SidecarLoomarrKey()].(map[string]any)
+	ours, ok := sc[asset.SidecarLoomarrKey()].(map[string]any)
 	if !ok {
 		t.Fatalf("downloaded clip is not marked as ours — it would file WITHOUT REVIEW: %+v", sc)
 	}
-	for k, want := range filler.SidecarFetchedMarkForAcquisition("", "") {
+	for k, want := range asset.SidecarFetchedMarkForAcquisition("", "") {
 		if ours[k] != want {
 			t.Errorf("fetched mark %s = %v, want %v", k, ours[k], want)
 		}
@@ -168,7 +168,7 @@ func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 		if err := json.Unmarshal(raw, &sc); err != nil {
 			t.Fatal(err)
 		}
-		ours, _ := sc[filler.SidecarLoomarrKey()].(map[string]any)
+		ours, _ := sc[asset.SidecarLoomarrKey()].(map[string]any)
 		if ours["sourceId"] != "archive:classic" || ours["acquisitionId"] != "acq-17" {
 			t.Fatalf("loomarr sidecar = %#v, want source and acquisition provenance", ours)
 		}

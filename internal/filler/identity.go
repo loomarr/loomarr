@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -308,7 +309,7 @@ func (ci *CreativeIdentity) correctionNeeded(c IdentityClip) float64 {
 	if err != nil || ci.targetLUFS == nil {
 		return math.Inf(1)
 	}
-	tags, ok := ReadSidecarTags(full)
+	tags, ok := asset.ReadSidecarTags(full)
 	if !ok || tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
 		return math.Inf(1)
 	}
@@ -339,7 +340,7 @@ func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityC
 	if err != nil {
 		return fmt.Errorf("loser path: %w", err)
 	}
-	tags, _ := ReadSidecarTags(full)
+	tags, _ := asset.ReadSidecarTags(full)
 	source := loser.Hash
 	if tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.ClipHash != "" {
 		source = tags.MediaAssets.SourceMaster.ClipHash
@@ -359,8 +360,8 @@ func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityC
 // removeOwnFiles deletes a clip that is already off the catalog from disk: its playback file, its
 // sidecar, and the source master and evidence copy its sidecar names, unless another clip's sidecar
 // names them too. It reports each file it could not remove.
-func removeOwnFiles(clipDir, full string, tags SidecarTags, referenced map[string]int) map[string]error {
-	files := []string{full, sidecarPathFor(full)}
+func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
+	files := []string{full, asset.SidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays. The count drops either
 		// way, so the last of two copies removed in one pass takes it.
@@ -390,7 +391,7 @@ func removeOwnFiles(clipDir, full string, tags SidecarTags, referenced map[strin
 // deleted only when referenced (from ReferencedAssets) shows this is their last clip. The count
 // is decremented as assets are claimed. It reports each file it could not remove, and an
 // unresolvable clipRef as a single failure with nothing deleted.
-func RemoveRetiredCopy(clipDir, clipRef string, tags SidecarTags, referenced map[string]int) map[string]error {
+func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
 	full, err := ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
 	if err != nil {
 		return map[string]error{clipRef: err}
@@ -398,7 +399,7 @@ func RemoveRetiredCopy(clipDir, clipRef string, tags SidecarTags, referenced map
 	return removeOwnFiles(clipDir, full, tags, referenced)
 }
 
-func derivativePath(d *MediaDerivativeLineage) string {
+func derivativePath(d *asset.MediaDerivativeLineage) string {
 	if d == nil {
 		return ""
 	}
@@ -415,7 +416,7 @@ func ReferencedAssets(clipDir string, paths []string) map[string]int {
 		if err != nil {
 			continue
 		}
-		tags, ok := ReadSidecarTags(full)
+		tags, ok := asset.ReadSidecarTags(full)
 		if !ok || tags.MediaAssets == nil {
 			continue
 		}

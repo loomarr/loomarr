@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -75,7 +76,7 @@ func TestPatchClip_RenameIsCuratedAndSurvivesARescan(t *testing.T) {
 	}
 
 	// The scan reading this back is TestScanDir_KeepsACuratedRename.
-	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, "Widgetmax Ad 1991.mp4"))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, "Widgetmax Ad 1991.mp4"))
 	if !ok || tags.DisplayName != "Widgetmax Turbo Blender" || tags.NameProvenance != string(clips.NameFromCurated) {
 		t.Fatalf("sidecar = %+v (%v), want displayName with curated provenance", tags, ok)
 	}

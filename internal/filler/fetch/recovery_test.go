@@ -45,7 +45,7 @@ func stagedRecoveryArtifact(t *testing.T, root string) filler.AcquisitionArtifac
 	if err := os.WriteFile(stage, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(stage, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(stage, asset.SidecarTags{
 		SourceID: "youtube:classic", AcquisitionID: "acq-1",
 	}, true); err != nil {
 		t.Fatal(err)

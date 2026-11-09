@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -75,12 +76,12 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 			return RecordedSegmentScreeningAxisEvidence{}, err
 		}
 		switch state {
-		case filler.SidecarAbsent:
+		case asset.SidecarAbsent:
 			reasonCode = "playback_sidecar_missing"
-		case filler.SidecarInvalid:
+		case asset.SidecarInvalid:
 			reasonCode = "playback_sidecar_invalid"
-		case filler.SidecarValid:
-			if err := filler.VerifySegmentScreeningSubject(media.Subject, media.Subject.CatalogHash, tags); err != nil {
+		case asset.SidecarValid:
+			if err := asset.VerifySegmentScreeningSubject(media.Subject, media.Subject.CatalogHash, tags); err != nil {
 				reasonCode = "playback_subject_drift"
 				break
 			}
@@ -94,9 +95,9 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 				observation, reasonCode = confirmed, "playback_unsafe"
 				break
 			}
-			manifestSHA256 = filler.MediaAssetManifestAuthoritySHA256(*tags.MediaAssets)
+			manifestSHA256 = asset.MediaAssetManifestAuthoritySHA256(*tags.MediaAssets)
 			if tags.Conditioning != nil {
-				conditioningSHA256 = filler.ConditioningEvidenceSHA256(*tags.Conditioning)
+				conditioningSHA256 = asset.ConditioningEvidenceSHA256(*tags.Conditioning)
 			}
 			switch verdict, _, _ := filler.EvaluateMediaQuality(tags.MediaAssets.Playback.Quality); verdict {
 			case pipelinestate.VerdictReject:
@@ -140,52 +141,52 @@ func playbackArtifactHoldReason(observation segmentScreeningArtifactObservation)
 	}
 }
 
-func readSegmentScreeningSidecar(mediaPath string) (filler.SidecarTags, filler.SidecarReadState, error) {
-	path := filler.SidecarPathFor(mediaPath)
+func readSegmentScreeningSidecar(mediaPath string) (asset.SidecarTags, asset.SidecarReadState, error) {
+	path := asset.SidecarPathFor(mediaPath)
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return filler.SidecarTags{}, filler.SidecarAbsent, nil
+		return asset.SidecarTags{}, asset.SidecarAbsent, nil
 	}
 	if err != nil {
-		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("inspect playback sidecar: %w", err)
+		return asset.SidecarTags{}, asset.SidecarInvalid, fmt.Errorf("inspect playback sidecar: %w", err)
 	}
 	if infoMode := info.Mode(); infoMode&os.ModeSymlink != 0 || !infoMode.IsRegular() {
-		return filler.SidecarTags{}, filler.SidecarInvalid, nil
+		return asset.SidecarTags{}, asset.SidecarInvalid, nil
 	}
 	if info.Size() <= 0 || info.Size() > segmentScreeningSidecarMaxBytes {
-		return filler.SidecarTags{}, filler.SidecarInvalid, nil
+		return asset.SidecarTags{}, asset.SidecarInvalid, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("open playback sidecar: %w", err)
+		return asset.SidecarTags{}, asset.SidecarInvalid, fmt.Errorf("open playback sidecar: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil {
-		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("stat playback sidecar: %w", err)
+		return asset.SidecarTags{}, asset.SidecarInvalid, fmt.Errorf("stat playback sidecar: %w", err)
 	}
 	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) || opened.Size() != info.Size() {
-		return filler.SidecarTags{}, filler.SidecarInvalid, nil
+		return asset.SidecarTags{}, asset.SidecarInvalid, nil
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, segmentScreeningSidecarMaxBytes+1))
 	if err != nil {
-		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("read playback sidecar: %w", err)
+		return asset.SidecarTags{}, asset.SidecarInvalid, fmt.Errorf("read playback sidecar: %w", err)
 	}
 	after, err := file.Stat()
 	if err != nil {
-		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("restat playback sidecar: %w", err)
+		return asset.SidecarTags{}, asset.SidecarInvalid, fmt.Errorf("restat playback sidecar: %w", err)
 	}
 	if int64(len(raw)) != opened.Size() || after.Size() != opened.Size() {
-		return filler.SidecarTags{}, filler.SidecarInvalid, nil
+		return asset.SidecarTags{}, asset.SidecarInvalid, nil
 	}
-	tags, state, present := filler.DecodeSidecarTags(raw)
-	if state != filler.SidecarValid || !present {
-		if state == filler.SidecarValid {
-			state = filler.SidecarAbsent
+	tags, state, present := asset.DecodeSidecarTags(raw)
+	if state != asset.SidecarValid || !present {
+		if state == asset.SidecarValid {
+			state = asset.SidecarAbsent
 		}
-		return filler.SidecarTags{}, state, nil
+		return asset.SidecarTags{}, state, nil
 	}
-	return tags, filler.SidecarValid, nil
+	return tags, asset.SidecarValid, nil
 }
 
 var _ SegmentScreeningEvaluator = (*PlaybackIntegrityEvaluator)(nil)

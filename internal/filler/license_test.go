@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // The licence path end to end: a source declares one, the walk writes it to the sidecar, the
@@ -86,7 +88,7 @@ func TestLicenseNeverReachesTheTaggerPrompt(t *testing.T) {
 		}`)},
 	}
 
-	text := SidecarText(fsys, "a.mp4")
+	text := asset.SidecarText(fsys, "a.mp4")
 	if text == "" {
 		t.Fatal("expected the title/description to render")
 	}

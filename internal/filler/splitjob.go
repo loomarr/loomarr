@@ -1039,7 +1039,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	ext := filepath.Ext(source.Path)
 	parentPlayable := filepath.Join(sp.dropDir, filepath.FromSlash(clip.Path))
-	parentTags, _ := ReadSidecarTags(parentPlayable)
+	parentTags, _ := asset.ReadSidecarTags(parentPlayable)
 
 	// Segments are cut inside a hidden directory on the filler filesystem. Same-filesystem staging
 	// makes final publication atomic, while ScanDir's dot-directory rule keeps partial bytes out of
@@ -1100,13 +1100,13 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return nil, fmt.Errorf("split confirm: segment %d: %w", i, err)
 		}
-		childTags := SidecarTags{
+		childTags := asset.SidecarTags{
 			SourceID:              parentTags.SourceID,
 			AcquisitionID:         parentTags.AcquisitionID,
 			OriginalName:          seg.Name + ext,
 			Kind:                  string(childKind),
 			SplitPublicationToken: claimToken,
-			ConditioningLineage: &ConditioningLineage{
+			ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash:               id,
 				ParentHash:              clip.Hash,
 				ParentAssetRole:         string(source.Role),
@@ -1126,7 +1126,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				childTags.DisplayName = seg.Name
 			}
 		}
-		if err := WriteSidecarTags(tmp, childTags, false); err != nil {
+		if err := asset.WriteSidecarTags(tmp, childTags, false); err != nil {
 			return nil, fmt.Errorf("split confirm: stage segment provenance: %w", err)
 		}
 		// ⚠ An existing destination is a byte-identical cut, not a collision: the path IS the
@@ -1142,11 +1142,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}
-			existingTags, ok := ReadSidecarTags(dst)
+			existingTags, ok := asset.ReadSidecarTags(dst)
 			if !ok || !reflect.DeepEqual(existingTags.ConditioningLineage, childTags.ConditioningLineage) {
 				return nil, fmt.Errorf("split confirm: existing segment %d is not bound to this reviewed cut", i)
 			}
-			if err := WriteSidecarTags(dst, childTags, false); err != nil {
+			if err := asset.WriteSidecarTags(dst, childTags, false); err != nil {
 				return nil, fmt.Errorf("split confirm: fence existing segment %d: %w", i, err)
 			}
 			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})

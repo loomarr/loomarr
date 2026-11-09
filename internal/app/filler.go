@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -173,7 +174,7 @@ type fillerAiringClipsAdapter struct{ st records.Store }
 func (a fillerAiringClipsAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
-func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, c filler.StoreClip) error {
+func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, c filler.StoreClip) error {
 	return a.st.CommitConditioningPublication(ctx, publication, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {

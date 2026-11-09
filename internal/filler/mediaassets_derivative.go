@@ -17,7 +17,7 @@ import (
 
 type mediaDerivativeRequest struct {
 	ClipDir string
-	Source  MediaAssetIdentity
+	Source  asset.MediaAssetIdentity
 	Input   Probed
 	Recipe  tools.DerivativeRecipe
 	// Host is the hardware profile a hardware recipe opens (its VAAPI render node).
@@ -32,7 +32,7 @@ type mediaDerivativeRequest struct {
 	Storage     *storagegovernor.WriteTracker
 }
 
-func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, enc encodeTarget, storage *storagegovernor.WriteTracker) (*MediaDerivativeLineage, tools.MediaToolIdentity, error) {
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source asset.MediaAssetIdentity, input Probed, ffmpeg string, enc encodeTarget, storage *storagegovernor.WriteTracker) (*asset.MediaDerivativeLineage, tools.MediaToolIdentity, error) {
 	if s.evidenceTranscode == nil {
 		return nil, tools.MediaToolIdentity{}, nil
 	}
@@ -57,44 +57,44 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source M
 	return &built, tool, nil
 }
 
-func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (MediaDerivativeLineage, error) {
-	if err := validateMediaAssetIdentity(request.Source, MediaAssetSourceMaster, mediaMasterDirName); err != nil {
-		return MediaDerivativeLineage{}, err
+func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (asset.MediaDerivativeLineage, error) {
+	if err := asset.ValidateMediaAssetIdentity(request.Source, asset.MediaAssetSourceMaster, asset.MediaMasterDirName); err != nil {
+		return asset.MediaDerivativeLineage{}, err
 	}
 	if err := request.Recipe.Validate(); err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	if request.Recipe.Role != tools.DerivativeEvidence {
-		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: role %q is not evidence", request.Recipe.Role)
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build media derivative: role %q is not evidence", request.Recipe.Role)
 	}
 	if err := request.Tool.Validate(); err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	if request.Transcode == nil || request.Verify == nil || request.Probe == nil || request.Input.DurationMs <= 0 || request.Input.Height <= 0 {
-		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: transcode, verification, probe, and measured input are required")
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build media derivative: transcode, verification, probe, and measured input are required")
 	}
 	recipeDigest, err := request.Recipe.Digest()
 	if err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	sourcePath := filepath.Join(request.ClipDir, filepath.FromSlash(request.Source.Path))
 	stageDir := filepath.Join(request.ClipDir, split.MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
-		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: create staging directory: %w", err)
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build media derivative: create staging directory: %w", err)
 	}
 	stage, err := os.CreateTemp(stageDir, "evidence-*.mp4")
 	if err != nil {
-		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: create staging file: %w", err)
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build media derivative: create staging file: %w", err)
 	}
 	stagePath := stage.Name()
 	if err := stage.Close(); err != nil {
 		_ = os.Remove(stagePath)
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	_ = os.Remove(stagePath)
 	defer func() {
 		_ = os.Remove(stagePath)
-		_ = os.Remove(sidecarPathFor(stagePath))
+		_ = os.Remove(asset.SidecarPathFor(stagePath))
 	}()
 	writeCtx, finishStorage := request.Storage.Monitor(ctx, stagePath)
 	quality, err := request.Transcode(writeCtx, tools.TranscodeRequest{
@@ -105,50 +105,50 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	}, request.OnProgress)
 	if err != nil {
 		if storageErr := finishStorage(); storageErr != nil {
-			return MediaDerivativeLineage{}, storageErr
+			return asset.MediaDerivativeLineage{}, storageErr
 		}
-		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
 	}
 	if err := finishStorage(); err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	output, err := request.Probe(ctx, stagePath)
 	if err != nil || output.DurationMs <= 0 || output.Height <= 0 || (!request.Input.Silent && output.Silent) {
-		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: output streams are incomplete")
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: output streams are incomplete")
 	}
 	qc, err := request.Verify(ctx, request.FFmpegPath, stagePath, output.DurationMs,
 		request.Recipe.KeyframeSeconds, !output.Silent, request.Recipe.TargetLUFS)
 	if err != nil {
-		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
 	}
 	digest, size, err := asset.FileSHA256(stagePath)
 	if err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	if err := request.Storage.Record(ctx, size); err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	clipHash, err := asset.ClipID(stagePath)
 	if err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
 	rel := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, split.MediaEvidenceDirName,
 		request.Source.SHA256[:2], request.Source.SHA256[2:4], recipeDigest[:16], digest+".mp4"))
 	target := filepath.Join(request.ClipDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return MediaDerivativeLineage{}, err
+		return asset.MediaDerivativeLineage{}, err
 	}
-	if err := publishRetainedMaster(ctx, stagePath, target, digest, size); err != nil {
-		return MediaDerivativeLineage{}, fmt.Errorf("publish evidence derivative: %w", err)
+	if err := asset.PublishRetainedMaster(ctx, stagePath, target, digest, size); err != nil {
+		return asset.MediaDerivativeLineage{}, fmt.Errorf("publish evidence derivative: %w", err)
 	}
-	lineage := MediaDerivativeLineage{
-		Asset:       MediaAssetIdentity{Role: MediaAssetEvidence, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel},
+	lineage := asset.MediaDerivativeLineage{
+		Asset:       asset.MediaAssetIdentity{Role: asset.MediaAssetEvidence, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel},
 		InputSHA256: request.Source.SHA256, Recipe: request.Recipe, RecipeSHA256: recipeDigest,
 		Tool: request.Tool, DurationMs: output.DurationMs, Quality: quality, QC: qc,
 		InputProbe: request.Input, OutputProbe: output,
 	}
-	if err := validateMediaDerivative(lineage, MediaAssetEvidence, split.MediaEvidenceDirName, request.Source.SHA256); err != nil {
-		return MediaDerivativeLineage{}, err
+	if err := asset.ValidateMediaDerivative(lineage, asset.MediaAssetEvidence, split.MediaEvidenceDirName, request.Source.SHA256); err != nil {
+		return asset.MediaDerivativeLineage{}, err
 	}
 	return lineage, nil
 }

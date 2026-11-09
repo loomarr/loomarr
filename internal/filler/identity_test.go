@@ -214,12 +214,12 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(ctx, dir, sourceFile, sourceHash, SidecarTags{})
+	master, err := preserveSourceMaster(ctx, dir, sourceFile, sourceHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(softFull, SidecarTags{MediaAssets: &MediaAssetManifest{
-		Version: mediaAssetManifestVersion, SourceMaster: master,
+	if err := asset.WriteSidecarTags(softFull, asset.SidecarTags{MediaAssets: &asset.MediaAssetManifest{
+		Version: asset.MediaAssetManifestVersion, SourceMaster: master,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	if len(st.links) != 1 || !reflect.DeepEqual(st.variants[cutDown], []string{sharp}) {
 		t.Fatalf("links = %v, want the cut-down linked to the survivor once", st.links)
 	}
-	for _, gone := range []string{softFull, sidecarPathFor(softFull), masterFull} {
+	for _, gone := range []string{softFull, asset.SidecarPathFor(softFull), masterFull} {
 		if _, err := os.Stat(gone); !os.IsNotExist(err) {
 			t.Errorf("the inferior copy's file %s survived the merge: %v", gone, err)
 		}

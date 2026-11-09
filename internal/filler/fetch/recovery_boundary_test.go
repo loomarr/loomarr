@@ -18,7 +18,7 @@ func recoveryBoundaryArtifact(t *testing.T, root, id string, state filler.Acquis
 	if err := os.WriteFile(media, []byte("recovery boundary bytes "+id), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{SourceID: "youtube:classic", AcquisitionID: "acq-boundary"}, true); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{SourceID: "youtube:classic", AcquisitionID: "acq-boundary"}, true); err != nil {
 		t.Fatal(err)
 	}
 	digest, size, err := asset.FileSHA256(media)
@@ -67,7 +67,7 @@ func moveBoundaryMedia(t *testing.T, watch, catalog string, artifact filler.Acqu
 		t.Fatal(err)
 	}
 	if sidecar {
-		if err := filler.WriteSidecarTags(destination, filler.SidecarTags{SourceID: artifact.SourceID, AcquisitionID: artifact.AcquisitionID}, true); err != nil {
+		if err := asset.WriteSidecarTags(destination, asset.SidecarTags{SourceID: artifact.SourceID, AcquisitionID: artifact.AcquisitionID}, true); err != nil {
 			t.Fatal(err)
 		}
 	}

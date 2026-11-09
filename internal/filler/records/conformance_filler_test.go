@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -1116,7 +1117,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, reconstructed); err != nil {
 		t.Fatal(err)
 	}
-	publication := filler.ConditioningPublication{
+	publication := asset.ConditioningPublication{
 		State: "pending", Owner: "0123456789abcdef0123456789abcdef",
 		SourceHash: source.Hash, TargetHash: target.Hash,
 	}
@@ -1154,7 +1155,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc) {
 	for _, tc := range []struct {
 		name          string
-		mutateMarker  func(*filler.ConditioningPublication, *Clip)
+		mutateMarker  func(*asset.ConditioningPublication, *Clip)
 		mutateSource  func(*Clip)
 		mutateTarget  func(*Clip)
 		withTargetRow bool
@@ -1162,19 +1163,19 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 	}{
 		{
 			name: "owner is absent",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.Owner = ""
 			},
 		},
 		{
 			name: "marker target differs from staged target",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.TargetHash = "other-conditioned-target"
 			},
 		},
 		{
 			name: "marker collapses source and target ownership",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.TargetHash = publication.SourceHash
 			},
 		},
@@ -1221,7 +1222,7 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 			target.Path = clipPathFor(target.Hash)
 			target.DurationMs = 30_033
 			target.Quality = "480p"
-			publication := filler.ConditioningPublication{
+			publication := asset.ConditioningPublication{
 				State: "pending", Owner: "0123456789abcdef0123456789abcdef",
 				SourceHash: source.Hash, TargetHash: target.Hash,
 			}

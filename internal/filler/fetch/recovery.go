@@ -194,7 +194,7 @@ func recoverConsumedArtifact(clipDir string, artifact filler.AcquisitionArtifact
 		// The durable manifest has just revalidated the exact catalog bytes. Only a
 		// missing sidecar is repairable: malformed, symlinked, or substituted files
 		// remain held rather than being overwritten.
-		if err := filler.WriteSidecarTags(media, filler.SidecarTags{
+		if err := asset.WriteSidecarTags(media, asset.SidecarTags{
 			SourceID: artifact.SourceID, AcquisitionID: artifact.AcquisitionID,
 		}, true); err != nil {
 			return artifact, err
@@ -263,9 +263,9 @@ func acceptExistingSidecar(stagePath, targetPath string, artifact filler.Acquisi
 	if provenanceErr == nil {
 		return nil
 	}
-	tags, state := filler.ReadSidecarTagsState(strings.TrimSuffix(targetPath, ".info.json") + filepath.Ext(artifact.MediaPath))
+	tags, state := asset.ReadSidecarTagsState(strings.TrimSuffix(targetPath, ".info.json") + filepath.Ext(artifact.MediaPath))
 	existing := "no valid Loomarr provenance"
-	if state == filler.SidecarValid {
+	if state == asset.SidecarValid {
 		existing = fmt.Sprintf("source %q, acquisition %q", tags.SourceID, tags.AcquisitionID)
 	}
 	return fmt.Errorf("sidecar %s is occupied by another item (%s), not this artifact (source %q, acquisition %q): %w",
@@ -310,12 +310,12 @@ func verifyPortableProvenance(path string, artifact filler.AcquisitionArtifact) 
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return errors.New("sidecar is symlinked or not a regular file")
 	}
-	tags, state := filler.ReadSidecarTagsState(strings.TrimSuffix(path, ".info.json") + filepath.Ext(artifact.MediaPath))
-	if state != filler.SidecarValid || tags.AcquisitionID != artifact.AcquisitionID || tags.SourceID != artifact.SourceID {
+	tags, state := asset.ReadSidecarTagsState(strings.TrimSuffix(path, ".info.json") + filepath.Ext(artifact.MediaPath))
+	if state != asset.SidecarValid || tags.AcquisitionID != artifact.AcquisitionID || tags.SourceID != artifact.SourceID {
 		return fmt.Errorf("sidecar does not carry exact acquisition provenance")
 	}
 	mediaPath := strings.TrimSuffix(path, ".info.json") + filepath.Ext(artifact.MediaPath)
-	if !filler.SidecarFetchedByUs(mediaPath) {
+	if !asset.SidecarFetchedByUs(mediaPath) {
 		return errors.New("sidecar does not mark Loomarr ownership")
 	}
 	return nil

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -224,7 +225,7 @@ type FillerPipelineStore interface {
 	// CommitConditioningPublication checks the transcode rung's owner-bound publication record,
 	// then has the core adopt the conditioned target (store.AdoptConditionedClip). Any mismatch
 	// is filler.ErrConditioningOwnershipMismatch.
-	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target clipstore.Clip) error
+	CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target clipstore.Clip) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
