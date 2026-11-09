@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -51,14 +51,14 @@ func (m *capacityMeter) ManagedBytes(context.Context, string, storagegovernor.Do
 	return m.managed, nil
 }
 
-type artifactWriterFunc func(context.Context, []filler.AcquisitionArtifact) error
+type artifactWriterFunc func(context.Context, []acquisition.Artifact) error
 
 type downloadRequest struct {
 	source fetch.Source
 	dir    string
 }
 
-func (f artifactWriterFunc) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
+func (f artifactWriterFunc) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error {
 	return f(ctx, artifacts)
 }
 
@@ -91,7 +91,7 @@ func TestRun_DispatchesByKind(t *testing.T) {
 		return yt.Call(src)
 	}), fetch.Archive: downloaderFunc(func(_ context.Context, src fetch.Source, _ string) (fetch.DownloadResult, error) {
 		return arch.Call(src)
-	})}, "/drop", discardLog())
+	})}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog())
 
 	res := ing.Run(context.Background(), []fetch.Source{
 		{Kind: fetch.YouTube, URL: "https://youtube.com/playlist?list=a"},
@@ -117,7 +117,7 @@ func TestRun_DispatchesByProviderIDWithoutKnowingTheProvider(t *testing.T) {
 	}
 	ing := fetch.New(fetch.Downloaders{"vimeo": downloaderFunc(func(_ context.Context, src fetch.Source, _ string) (fetch.DownloadResult, error) {
 		return vimeo.Call(src)
-	})}, "/drop", discardLog())
+	})}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog())
 
 	res := ing.Run(context.Background(), []fetch.Source{
 		{Kind: "vimeo", URL: "https://vimeo.com/channels/ads"},
@@ -144,7 +144,7 @@ func TestPrepareReservesBeforeDownloadAndRevalidatesBeforeExecution(t *testing.T
 			return fetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{{Kind: fetch.YouTube, URL: "https://example.invalid/one"}}, storagegovernor.Automatic)
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestPrepareRollsBackEarlierReservationsWhenBatchCannotFit(t *testing.T) {
 			return fetch.DownloadResult{}, nil
 		},
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	_, err := ingestor.Prepare(t.Context(), []fetch.Source{
 		{Kind: fetch.YouTube, URL: "https://example.invalid/one"},
 		{Kind: fetch.YouTube, URL: "https://example.invalid/two"},
@@ -218,8 +218,7 @@ sleep 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
-		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
+	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, &testkit.ArtifactWriter{}, discardLog()).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{{
 		ID: "youtube:test", AcquisitionID: "overrun", Kind: fetch.YouTube,
@@ -251,7 +250,7 @@ func TestRun_ResilientToSourceFailure(t *testing.T) {
 		return yt.Call(src)
 	}), fetch.Archive: downloaderFunc(func(_ context.Context, src fetch.Source, _ string) (fetch.DownloadResult, error) {
 		return arch.Call(src)
-	})}, "/drop", discardLog())
+	})}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog())
 
 	res := ing.Run(context.Background(), []fetch.Source{
 		{Kind: fetch.YouTube, URL: "https://youtube.com/bad"},
@@ -279,7 +278,7 @@ func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 		return empty.Call(src)
 	}), fetch.Archive: downloaderFunc(func(_ context.Context, src fetch.Source, _ string) (fetch.DownloadResult, error) {
 		return good.Call(src)
-	})}, "/drop", discardLog())
+	})}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog())
 
 	res := ing.Run(context.Background(), []fetch.Source{
 		{Kind: fetch.YouTube, URL: "https://youtube.com/nonexistent"},
@@ -298,9 +297,9 @@ func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 
 func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 	dir := t.TempDir()
-	var writer recordfixture.Recorder[[]filler.AcquisitionArtifact, struct{}]
+	var writer recordfixture.Recorder[[]acquisition.Artifact, struct{}]
 	targetSeen := false
-	writer.Respond = func(artifacts []filler.AcquisitionArtifact) (struct{}, error) {
+	writer.Respond = func(artifacts []acquisition.Artifact) (struct{}, error) {
 		if writer.Calls() == 1 {
 			if _, err := os.Stat(filepath.Join(dir, "download.mp4")); err == nil {
 				targetSeen = true
@@ -323,10 +322,10 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 	}
 	ing := fetch.New(fetch.Downloaders{fetch.Archive: downloaderFunc(func(_ context.Context, src fetch.Source, attemptDir string) (fetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
-		_, err := writer.Call(append([]filler.AcquisitionArtifact(nil), artifacts...))
+	})}, dir, artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.Artifact) error {
+		_, err := writer.Call(append([]acquisition.Artifact(nil), artifacts...))
 		return err
-	}))
+	}), discardLog())
 
 	res := ing.Run(t.Context(), []fetch.Source{{
 		ID: "archive:classic", AcquisitionID: "acq-1", Kind: fetch.Archive,
@@ -343,7 +342,7 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 		t.Fatal("download became intake-visible before its manifest was durable")
 	}
 	snapshots := writer.Inputs()
-	if len(snapshots) != 2 || snapshots[0][0].State != filler.ArtifactStaged || snapshots[1][0].State != filler.ArtifactPublished {
+	if len(snapshots) != 2 || snapshots[0][0].State != acquisition.ArtifactStaged || snapshots[1][0].State != acquisition.ArtifactPublished {
 		t.Fatalf("manifest snapshots = %+v, want staged then published", snapshots)
 	}
 	if res.Artifacts[0].RemoteID != "one" {
@@ -356,8 +355,8 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 
 func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 	dir := t.TempDir()
-	var writer recordfixture.Recorder[[]filler.AcquisitionArtifact, struct{}]
-	writer.Respond = func([]filler.AcquisitionArtifact) (struct{}, error) { return struct{}{}, nil }
+	var writer recordfixture.Recorder[[]acquisition.Artifact, struct{}]
+	writer.Respond = func([]acquisition.Artifact) (struct{}, error) { return struct{}{}, nil }
 	var downloader recordfixture.Recorder[downloadRequest, fetch.DownloadResult]
 	downloader.Respond = func(req downloadRequest) (fetch.DownloadResult, error) {
 		media := filepath.Join(req.dir, "download.mp4")
@@ -368,16 +367,16 @@ func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 	}
 	ing := fetch.New(fetch.Downloaders{fetch.YouTube: downloaderFunc(func(_ context.Context, src fetch.Source, attemptDir string) (fetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
-		_, err := writer.Call(append([]filler.AcquisitionArtifact(nil), artifacts...))
+	})}, dir, artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.Artifact) error {
+		_, err := writer.Call(append([]acquisition.Artifact(nil), artifacts...))
 		return err
-	}))
+	}), discardLog())
 
 	res := ing.Run(t.Context(), []fetch.Source{{
 		ID: "youtube:classic", AcquisitionID: "acq-1", Kind: fetch.YouTube,
 		URL: "https://youtube.com/watch?v=one",
 	}})
-	if res.Failed != 1 || len(res.Artifacts) != 1 || res.Artifacts[0].State != filler.ArtifactRepair {
+	if res.Failed != 1 || len(res.Artifacts) != 1 || res.Artifacts[0].State != acquisition.ArtifactRepair {
 		t.Fatalf("result = %+v, want one repair artifact", res)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "download.mp4")); !errors.Is(err, os.ErrNotExist) {
@@ -408,13 +407,13 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := closed.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{ID: source.AcquisitionID, SourceID: source.ID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionRunning, Requested: 1}); err != nil {
+	if err := closed.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull, Status: acquisition.RunRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := closed.Close(); err != nil {
 		t.Fatal(err)
 	}
-	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(closed).Run(t.Context(), []fetch.Source{source})
+	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, closed, discardLog()).Run(t.Context(), []fetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first = %+v, want manifest failure", first)
 	}
@@ -431,8 +430,8 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	retry := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []fetch.Source{source})
-	if retry.Fetched != 1 || len(retry.Artifacts) != 1 || retry.Artifacts[0].State != filler.ArtifactPublished {
+	retry := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, reopened, discardLog()).Run(t.Context(), []fetch.Source{source})
+	if retry.Fetched != 1 || len(retry.Artifacts) != 1 || retry.Artifacts[0].State != acquisition.ArtifactPublished {
 		t.Fatalf("retry = %+v, want one published artifact", retry)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "download.mp4")); err != nil {
@@ -445,10 +444,10 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 
 	second := source
 	second.AcquisitionID = "acq-second"
-	if err := reopened.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{ID: second.AcquisitionID, SourceID: second.ID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionRunning, Requested: 1}); err != nil {
+	if err := reopened.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: second.AcquisitionID, SourceID: second.ID, Trigger: acquisition.TriggerPull, Status: acquisition.RunRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}
-	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []fetch.Source{second})
+	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, reopened, discardLog()).Run(t.Context(), []fetch.Source{second})
 	if deduped.Empty != 1 || deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("deduped retry = %+v, want shared archive skip", deduped)
 	}
@@ -515,7 +514,7 @@ func TestPrepareQueuesTheRestOfABatchWhenOneItemHasNoEstimate(t *testing.T) {
 			return fetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{
 		{Kind: fetch.Archive, URL: "https://archive.example/one"},
 		{Kind: fetch.Archive, URL: "https://archive.example/two"},
@@ -558,8 +557,7 @@ sleep 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
-		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
+	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, &testkit.ArtifactWriter{}, discardLog()).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{{
 		ID: "youtube:test", AcquisitionID: "unknown-size", Kind: fetch.YouTube,
@@ -600,7 +598,7 @@ func TestPlanReleasesEachReservationWhenItsItemFinishes(t *testing.T) {
 			return fetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{
 		{Kind: fetch.Archive, URL: "https://archive.example/one"},
 		{Kind: fetch.Archive, URL: "https://archive.example/two"},
@@ -646,7 +644,7 @@ func TestPrepareDropsAnItemWithNothingToFetchWithoutReservingIt(t *testing.T) {
 			return fetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{
 		{Kind: fetch.Archive, URL: "https://archive.example/one"},
 		{Kind: fetch.Archive, URL: "https://archive.example/two"},
@@ -674,7 +672,7 @@ func TestPrepareFailsWhenEveryEstimateFailsForAnotherReason(t *testing.T) {
 	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy { return storagegovernor.Policy{} })
 	outage := errors.New("archive.org unreachable")
 	downloader := perSourceDownloader{estimate: map[string]error{"https://archive.example/one": outage}}
-	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := fetch.New(fetch.Downloaders{fetch.Archive: downloader}, t.TempDir(), &testkit.ArtifactWriter{}, discardLog()).WithStorageGovernor(governor)
 	_, err := ingestor.Prepare(t.Context(), []fetch.Source{{Kind: fetch.Archive, URL: "https://archive.example/one"}}, storagegovernor.Automatic)
 	var capacityErr *fetch.CapacityError
 	if !errors.Is(err, outage) || errors.As(err, &capacityErr) {

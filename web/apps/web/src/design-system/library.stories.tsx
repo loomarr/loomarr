@@ -4,6 +4,7 @@ import {
   type LibraryNeed,
   LibraryNeedsCards,
   LibraryNeedsStrip,
+  type LibraryOrderNeed,
   type LibraryProblem,
   LibraryShelf,
   type LibraryShelfProps,
@@ -113,7 +114,7 @@ const NEEDS: LibraryNeed[] = [
     kind: "movie",
     files: ["/media/movies/Paper.Kites.1997.1080p/Paper.Kites.1997.1080p.mkv"],
     best: {
-      tmdbId: "90000901",
+      externalId: { namespace: "tmdb", value: "90000901" },
       kind: "movie",
       name: "Paper Kites",
       year: 1996,
@@ -126,7 +127,7 @@ const NEEDS: LibraryNeed[] = [
     },
     others: [
       {
-        tmdbId: "90000902",
+        externalId: { namespace: "tmdb", value: "90000902" },
         kind: "movie",
         name: "Paper Kites",
         year: 2014,
@@ -158,6 +159,65 @@ const PROBLEMS: LibraryProblem[] = [
   },
 ];
 
+// Shows whose episode order to say (#2151 decision 53): one TMDB lists in several orders, the DVD
+// one fitting the disk, and one whose second season on disk runs a file longer than TMDB's.
+const tideFile = (episode: number) => ({
+  path: `/media/tv/Tidewater/Season 02/Tidewater.S02E${String(episode).padStart(2, "0")}.mkv`,
+  season: 2,
+  episode,
+});
+const ORDERS: LibraryOrderNeed[] = [
+  {
+    id: "90000821",
+    name: "Tidewater",
+    poster: art("#3b4a63"),
+    disk: [
+      { season: 1, episodes: 12 },
+      { season: 2, episodes: 14 },
+    ],
+    files: [tideFile(6), tideFile(7), tideFile(8), tideFile(9), tideFile(10)],
+    choices: [
+      {
+        choice: "catalog",
+        seasons: [
+          { season: 1, episodes: 13 },
+          { season: 2, episodes: 13 },
+        ],
+        episodes: 26,
+        fits: false,
+      },
+      {
+        choice: "order",
+        orderId: "90000799a",
+        kind: "dvd",
+        name: "DVD Order",
+        seasons: [
+          { season: 1, episodes: 12 },
+          { season: 2, episodes: 14 },
+        ],
+        episodes: 26,
+        fits: true,
+      },
+      {
+        choice: "order",
+        orderId: "90000799b",
+        kind: "absolute",
+        name: "Absolute Order",
+        seasons: [{ season: 1, episodes: 26 }],
+        episodes: 26,
+        fits: false,
+      },
+    ],
+  },
+  {
+    id: "90000822",
+    name: "Kestrel Bay",
+    disk: [{ season: 1, episodes: 14 }],
+    files: [{ path: "/media/tv/Kestrel Bay/Kestrel.Bay.S01E14.mkv", season: 1, episode: 14 }],
+    choices: [{ choice: "catalog", seasons: [{ season: 1, episodes: 13 }], episodes: 13, fits: false }],
+  },
+];
+
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
@@ -173,6 +233,7 @@ const NeedsStrip: Story = {
         onLink={answered}
         onOpenNeeds={() => {}}
         onOpenTitle={() => {}}
+        orders={ORDERS}
         problems={PROBLEMS}
       />
     ),
@@ -186,10 +247,12 @@ const NeedsCards: Story = {
     needs: (
       <LibraryNeedsCards
         needs={NEEDS}
+        onChooseOrder={answered}
         onIgnore={answered}
         onLink={answered}
         onOpenTitle={() => {}}
         onSearch={search}
+        orders={ORDERS}
         problems={PROBLEMS}
       />
     ),
@@ -202,10 +265,12 @@ const NothingNeedsYou: Story = {
     needs: (
       <LibraryNeedsCards
         needs={[]}
+        onChooseOrder={answered}
         onIgnore={answered}
         onLink={answered}
         onOpenTitle={() => {}}
         onSearch={search}
+        orders={[]}
         problems={[]}
       />
     ),
@@ -262,6 +327,7 @@ const Movie: Story = {
         seasons: [],
         match: { by: "app", app: "Radarr" },
         detailsFrom: { description: "TMDB", rating: "TMDB" },
+        channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
       }}
     />
   ),
@@ -292,9 +358,49 @@ const Series: Story = {
         })),
         match: { by: "you" },
         detailsFrom: { description: "TMDB", rating: "TMDB", episodeNames: "Sonarr" },
+        channels: [
+          { id: "90000972", name: "Late Show", number: 7 },
+          { id: "90000973", name: "Sunday Stories", number: 12 },
+        ],
       }}
     />
   ),
+};
+
+// A show whose files don't say which of TMDB's orders they follow (#2151 decision 53): a hint
+// that opens Needs you, and the waiting episodes named from their files. Season 2 starts open.
+const SeriesOrderWaiting: Story = {
+  render: () => (
+    <LibraryTitle
+      {...titleActions}
+      onChooseOrder={() => {}}
+      title={{
+        kind: "series",
+        name: "Tidewater",
+        year: 2011,
+        poster: art("#3b4a63"),
+        genres: ["Drama"],
+        files: [],
+        unplayable: 0,
+        seasons: [1, 2].map((number) => ({
+          number,
+          episodes: Array.from({ length: number === 1 ? 12 : 8 }, (_, i) => ({
+            id: `9000${number}${String(i + 1).padStart(3, "0")}`,
+            name: number === 2 && i >= 5 ? `Tidewater S02E0${i + 1}` : `Episode ${i + 1}`,
+            number: i + 1,
+            ready: true,
+            fromFile: number === 2 && i >= 5,
+          })),
+        })),
+        match: { by: "file" },
+        detailsFrom: { description: "TMDB", episodeNames: "TMDB" },
+        channels: [],
+      }}
+    />
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: /Season 2/ }));
+  },
 };
 
 // Collections: the household's own, one brought over and on a channel, and the ready-made sets.
@@ -432,6 +538,7 @@ const WizardStepAdding: Story = {
     <LibraryWizardStep
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
+      readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
       scan={{ enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: false }}
     />
   ),
@@ -455,6 +562,7 @@ export {
   NothingNeedsYou,
   Paused,
   Series,
+  SeriesOrderWaiting,
   WizardStep,
   WizardStepAdding,
 };

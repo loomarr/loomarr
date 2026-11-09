@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -23,7 +23,7 @@ func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 
 	// A channel with a weekend rule (higher priority) over the always-on base.
 	weekend := schedule.SchedulingRule{ID: "w", Label: "Weekend Movies", Priority: 10, When: schedule.WhenPredicate{Weekend: true}}
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
 		{Key: provision.Key("movie:tmdb:90000002"), Title: "B", DurationMs: 3600000},
 	}}
@@ -147,7 +147,7 @@ func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	e := newEngine(st, tun, avail, nil)
 
 	// One admissible title and one the ceiling must refuse.
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("movie:tmdb:90000001"), Title: "Kids Film", OfficialRating: "TV-Y7", DurationMs: 3600000},
 		{Key: provision.Key("movie:tmdb:90000002"), Title: "Adult Film", OfficialRating: "TV-MA", DurationMs: 3600000},
 	}}

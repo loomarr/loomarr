@@ -15,11 +15,11 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`people/access`** · 7 importers · → `people/contact`
   Owns how a person gets into Loomarr and back in (§11): an administrator's invitation and its bearer grants, and local-password recovery and its grants (recovery.go).
-- **`people/auth`** · 2 importers · → `library`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
+- **`people/auth`** · 3 importers · → `library`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
   Issues and validates Loomarr sessions (design §11).
 - **`people/contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
-- **`people/notifications`** · 6 importers · → `people/secretprotection`, `platform/httpx`
+- **`people/notifications`** · 7 importers · → `people/secretprotection`, `platform/httpx`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`people/secretprotection`** · 3 importers · → `platform/config`
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.

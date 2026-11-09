@@ -1,7 +1,7 @@
 // Package provision is the provisioner domain (design §3–§4): the Title/Key
 // identity model and the acquisition state machine. It is pure — no I/O, no
 // clock, no store. Transitions take an explicit `now` so they stay deterministic
-// and exhaustively testable; the store, reconciler, and adapters (Phases 3, 6, 7)
+// and exhaustively testable; the store, reconciler, and adapters
 // supply the outside world.
 package provision
 
@@ -89,7 +89,7 @@ func ParseKey(k Key) (mt MediaType, provider string, id int, ok bool) {
 // KeyFromWebhook builds the same Key from the identity a Sonarr/Radarr webhook
 // carries (design §3 parity requirement; §6 fixtures). Radarr sends
 // remoteMovie.tmdbId; Sonarr sends remoteSeries.tvdbId. Passing the ids the
-// handler (Phase 6) extracts here guarantees a webhook resolves to the record a
+// handler extracts here guarantees a webhook resolves to the record a
 // Title-based request created.
 func KeyFromWebhook(mt MediaType, tmdbID, tvdbID int) (Key, error) {
 	return Title{MediaType: mt, TMDBID: tmdbID, TVDBID: tvdbID}.Key()

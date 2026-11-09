@@ -3,7 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useGuideWindow } from "@loomarr/core/guide";
-import { Action } from "@loomarr/design-system";
+import { Action, Disclosure } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
@@ -17,7 +17,6 @@ import { ChannelProgrammingChanges } from "@/components/loomarr/channels/channel
 import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-editor";
 import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { cn } from "@/lib/utils";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
@@ -72,9 +71,9 @@ const Block = ({
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) => (
-  <CollapsibleSection title={title} description={hint} defaultOpen={defaultOpen} size="compact">
+  <Disclosure defaultExpanded={defaultOpen} description={hint} label={title}>
     <div className="flex flex-col gap-4">{children}</div>
-  </CollapsibleSection>
+  </Disclosure>
 );
 
 const ChannelProgramming = ({
@@ -238,10 +237,9 @@ const ChannelProgramming = ({
       {/* One shared preview. The banner says which schedule is on screen; the change list
           (#1877 decision 3) answers "what will applying change, and when"; the cycle preview
           time-travels to see exactly what airs, and which rule wins, at any moment. */}
-      <CollapsibleSection
-        size="compact"
-        title="Preview schedule"
+      <Disclosure
         description="Check what airs at a specific time and which rule wins."
+        label="Preview schedule"
       >
         <div className="flex flex-col gap-4">
           <p
@@ -266,7 +264,7 @@ const ChannelProgramming = ({
             draftPolicy={rules.isDirty ? rules.draft : undefined}
           />
         </div>
-      </CollapsibleSection>
+      </Disclosure>
     </div>
   );
 };

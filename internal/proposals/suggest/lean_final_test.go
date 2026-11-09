@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -15,11 +15,11 @@ import (
 // carries only what the server cannot re-derive. After a tool call the server already holds the
 // accepted dateMeaning and every surfaced candidate's name and media type.
 func TestSuggest_LeanFinalAfterToolCallOmitsDateMeaningNameAndMediaType(t *testing.T) {
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(`{"channelName":"Marigold Nights","rationale":"r","picks":[{"key":"movie:tmdb:90000603","rationale":"fits","confidence":0.9}]}`),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990s action films"})
 	if err != nil {
 		t.Fatal(err)
@@ -35,11 +35,11 @@ func TestSuggest_LeanFinalAfterToolCallOmitsDateMeaningNameAndMediaType(t *testi
 // max_tokens is sized to the turn: a search call is a few hundred tokens and a final lineup about
 // 300-600, so neither needs the old 2048. On a slow model the cap is what bounds a runaway turn.
 func TestSuggest_MaxTokensAreSizedPerTurn(t *testing.T) {
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +53,8 @@ func TestSuggest_MaxTokensAreSizedPerTurn(t *testing.T) {
 // before the user turn, or a second channel request re-prefills ~5k tokens (#1403, #1487).
 func TestSuggest_PrefixIsByteIdenticalAcrossIntents(t *testing.T) {
 	prefix := func(description string) (string, string) {
-		model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(""), testkit.FinalResponse(""))
-		corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+		model := testkit.NewLLM(t, testkit.FinalResponse(""), testkit.FinalResponse(""), testkit.FinalResponse(""))
+		corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 		_, _ = dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: description, Era: "1990s"})
 		tools, err := json.Marshal(model.AllOpts[0].Tools)
 		if err != nil {
@@ -72,21 +72,21 @@ func TestSuggest_PrefixIsByteIdenticalAcrossIntents(t *testing.T) {
 // The omission is only a convenience for an ACCEPTED meaning: a final that states a different one
 // is still rejected, and a final with no tool call still has to state it.
 func TestSuggest_FinalStillMustNotContradictAcceptedDateMeaning(t *testing.T) {
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990s action films"}); err == nil {
 		t.Fatal("a final contradicting the accepted dateMeaning was accepted")
 	}
 }
 
 func TestSuggest_DirectFinalWithoutToolCallStillRequiresDateMeaning(t *testing.T) {
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "action films"}); err == nil {
 		t.Fatal("a final with no dateMeaning and no accepted tool meaning was accepted")
 	}

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -120,7 +120,7 @@ type FeedbackSource interface {
 // (TMDB exists-check).
 type Suggester struct {
 	llm        llm.Provider
-	catalog    *catalog.Catalog
+	catalog    *titlesearch.Catalog
 	validator  Validator
 	ratings    RatingSource // optional acquisition-rating enrichment (§389)
 	feedback   FeedbackSource
@@ -186,7 +186,7 @@ func (s *Suggester) WithReferences(resolver webreference.Resolver) *Suggester {
 }
 
 // New builds a Suggester. maxAcq is the default acquisition cap (§8 quota).
-func New(provider llm.Provider, cat *catalog.Catalog, v Validator, maxAcq int) *Suggester {
+func New(provider llm.Provider, cat *titlesearch.Catalog, v Validator, maxAcq int) *Suggester {
 	if maxAcq <= 0 {
 		maxAcq = 10
 	}
@@ -254,7 +254,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	defer s.interactive.Begin()()
 	intent := Intent{Intent: request}
 	if conflictingConstraints(intent) {
-		trace := proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}
+		trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalConstraintsConflict}
 		return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errors.New("suggestion constraints conflict"))
 	}
 	// A tool call receives Intent by value, but this map deliberately shares the
@@ -285,8 +285,8 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	// A pick is grounded IFF it matches one of these — the model cannot smuggle in
 	// an id the tool never returned. Threaded across the tool loop AND repair
 	// re-asks, so grounding holds even when the final JSON is retried.
-	surfaced := map[provision.Key]catalog.Candidate{}
-	trace := proposals.DecisionTrace{Version: DecisionTraceVersion}
+	surfaced := map[provision.Key]titlesearch.Candidate{}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion}
 	temp := groundedTemp
 
 	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
@@ -297,15 +297,15 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	// nothing ever checked, which is precisely what grounding prevents.
 	//
 	// The model still chooses. An offered title it ignores is simply not picked.
-	adjacentCandidates := make([]catalog.Candidate, 0, len(allAdjacent))
+	adjacentCandidates := make([]titlesearch.Candidate, 0, len(allAdjacent))
 	for _, a := range allAdjacent {
 		k := provision.Key(a.Key)
 		mt, provider, id, ok := provision.ParseKey(k)
 		if !ok {
 			continue // an unparseable key could never be acquired; drop rather than offer
 		}
-		cand := catalog.Candidate{
-			MediaType: mt, Name: a.Name, Year: a.Year, Source: catalog.ScopeAdjacent,
+		cand := titlesearch.Candidate{
+			MediaType: mt, Name: a.Name, Year: a.Year, Source: titlesearch.ScopeAdjacent,
 		}
 		// Rebuild the external id from the key so the candidate's own Key() round-trips —
 		// a candidate whose identity doesn't reproduce would be dropped by the grounding
@@ -355,11 +355,11 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, &intent, feedback, &finalizationOnly, &emptyRetrievals, &acceptedMeaning, &sources, ledger, continuation)
 		if err != nil {
 			if errors.Is(err, errDateSemanticsUnclear) {
-				trace.Terminal = TerminalDateSemanticsUnclear
+				trace.Terminal = proposals.TerminalDateSemanticsUnclear
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
 			}
 			if errors.Is(err, errDateConstraintsConflict) {
-				trace.Terminal = TerminalConstraintsConflict
+				trace.Terminal = proposals.TerminalConstraintsConflict
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
 			}
 			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
@@ -372,14 +372,14 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			meaning, meaningErr := validateIntentDateMeaning(intent, out.DateMeaning)
 			if meaningErr != nil {
 				if acceptedMeaning == nil && isDateMeaningConflict(meaningErr) {
-					trace.Terminal = TerminalConstraintsConflict
+					trace.Terminal = proposals.TerminalConstraintsConflict
 					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateConstraintsConflict)
 				}
 				perr = meaningErr
 			} else if acceptedMeaning != nil && !acceptedMeaning.Equal(meaning) {
 				perr = errors.New("dateMeaning does not match accepted tool interpretation")
 			} else if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
-				trace.Terminal = TerminalDateSemanticsUnclear
+				trace.Terminal = proposals.TerminalDateSemanticsUnclear
 				return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateSemanticsUnclear)
 			} else {
 				acceptedMeaning = &meaning
@@ -388,7 +388,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 		if perr == nil {
 			if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) && !sources.hasReference && !intent.networkDiscoveryComplete {
 				if groundingRetried {
-					trace.Terminal = TerminalInvalidToolCalls
+					trace.Terminal = proposals.TerminalInvalidToolCalls
 					return proposals.Proposal{}, NewFailure(FailureProvider, trace, errors.New("network programming-identity request requires a usable network discovery"))
 				}
 				groundingRetried = true
@@ -403,22 +403,22 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			}
 			sourceResult, sourceErr := s.initializeSources(ctx, &intent, *acceptedMeaning, &sources)
 			if sourceErr != nil {
-				terminal := TerminalRetrievalFailure
+				terminal := proposals.TerminalRetrievalFailure
 				code := FailureProvider
 				if errors.Is(sourceErr, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 					sourceErr = errors.Join(sourceErr, ctx.Err())
 				} else {
 					var readErr *referenceReadError
 					if errors.As(sourceErr, &readErr) {
-						terminal, code = TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
-					} else if errors.Is(sourceErr, ErrNoGroundedTitles) {
-						terminal, code = ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
+						terminal, code = proposals.TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
+					} else if errors.Is(sourceErr, proposals.ErrNoGroundedTitles) {
+						terminal, code = proposals.ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
 					}
 				}
 				trace.Terminal = terminal
-				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", ErrNoGroundedTitles, sourceErr))
+				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", proposals.ErrNoGroundedTitles, sourceErr))
 			}
-			for _, candidates := range [][]catalog.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
+			for _, candidates := range [][]titlesearch.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
 				for _, candidate := range candidates {
 					if key, keyErr := candidate.Key(); keyErr == nil {
 						surfaced[key] = candidate
@@ -442,26 +442,26 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
-					trace.Terminal = TerminalRetrievalFailure
+					trace.Terminal = proposals.TerminalRetrievalFailure
 					return proposals.Proposal{}, NewFailure(FailureProvider, trace, err)
 				}
 				if len(out.Picks) == 0 {
 					trace.Terminal = FailureSelectionEmpty
-					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, ErrNoGroundedTitles)
+					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, proposals.ErrNoGroundedTitles)
 				}
 			}
 			reportProgress(ctx, PhaseScoring, 0)
 			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace, *acceptedMeaning)
-			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
+			if errors.Is(buildErr, proposals.ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
 				groundingRetried = true
 				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
 				temp = temp / 2
 				continue
 			}
 			if buildErr != nil {
-				if errors.Is(buildErr, ErrNoGroundedTitles) {
+				if errors.Is(buildErr, proposals.ErrNoGroundedTitles) {
 					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
-						trace.Terminal = TerminalNamedSetUnproven
+						trace.Terminal = proposals.TerminalNamedSetUnproven
 					} else if trace.Terminal == "" {
 						trace.Terminal = FailureSelectionEmpty
 					}
@@ -475,7 +475,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
 				return prop, fallbackErr
 			}
-			trace.Terminal = TerminalMalformedExhausted
+			trace.Terminal = proposals.TerminalMalformedExhausted
 			return proposals.Proposal{}, NewFailure(FailureProvider, trace, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr))
 		}
 		// Nudge the model to fix its output, and turn the temperature down further
@@ -494,7 +494,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 func (s *Suggester) buildRequiredNamedFallback(
 	ctx context.Context,
 	intent Intent,
-	surfaced map[provision.Key]catalog.Candidate,
+	surfaced map[provision.Key]titlesearch.Candidate,
 	trace *proposals.DecisionTrace,
 	meaning *ValidatedDateMeaning,
 ) (proposals.Proposal, bool, error) {
@@ -531,7 +531,7 @@ func (s *Suggester) buildRequiredNamedFallback(
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *proposals.DecisionTrace, temp float64, intent *Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int, acceptedMeaning **ValidatedDateMeaning, sources *sourceGroundingState, ledger *workLedger, continuation bool) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]titlesearch.Candidate, trace *proposals.DecisionTrace, temp float64, intent *Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int, acceptedMeaning **ValidatedDateMeaning, sources *sourceGroundingState, ledger *workLedger, continuation bool) (string, error) {
 	if !continuation {
 		ledger.beginGeneration()
 	}
@@ -571,10 +571,10 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", cause))
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
-				trace.Terminal = TerminalProviderTimeout
+				trace.Terminal = proposals.TerminalProviderTimeout
 				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 			}
-			trace.Terminal = TerminalProviderFailure
+			trace.Terminal = proposals.TerminalProviderFailure
 			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
 		// Some OpenAI-compatible models can repeat a tool call from conversation
@@ -601,7 +601,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				if valid {
 					trackerFrom(ctx).addTerms(searchTerms(prepared.arguments))
 				}
-				var cands []catalog.Candidate
+				var cands []titlesearch.Candidate
 				meaning := (*ValidatedDateMeaning)(nil)
 				if valid {
 					meaning = &prepared.meaning
@@ -612,7 +612,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 						extra = len(prepared.queries) - 1
 					}
 					if !ledger.reserve(extra) {
-						rankedTrace = proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}
+						rankedTrace = proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: FailureBudgetExhausted}
 						result = `{"error":"suggestion budget exhausted"}`
 					} else {
 						if *acceptedMeaning == nil {
@@ -626,10 +626,10 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 						}
 						sourceResult, sourceErr := s.initializeSources(ctx, intent, *meaning, sources)
 						if sourceErr != nil {
-							trace.Terminal = TerminalRetrievalFailure
+							trace.Terminal = proposals.TerminalRetrievalFailure
 							return "", NewFailure(FailureProvider, *trace, sourceErr)
 						}
-						for _, candidates := range [][]catalog.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
+						for _, candidates := range [][]titlesearch.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
 							for _, candidate := range candidates {
 								if key, keyErr := candidate.Key(); keyErr == nil {
 									surfaced[key] = candidate
@@ -643,7 +643,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					trace.Terminal = FailureBudgetExhausted
 					return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion budget exhausted"))
 				}
-				if rankedTrace.Terminal == TerminalConstraintsConflict {
+				if rankedTrace.Terminal == proposals.TerminalConstraintsConflict {
 					return "", errDateConstraintsConflict
 				}
 				if meaning != nil && meaning.DateMeaning().Kind == DateMeaningAmbiguous {
@@ -691,11 +691,11 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				if len(cands) > 0 || referenceGrounded {
 					*finalizationOnly = true
 					finalizing = true
-				} else if rankedTrace.Terminal == ReasonRetrievalEmpty {
+				} else if rankedTrace.Terminal == proposals.ReasonRetrievalEmpty {
 					*emptyRetrievals++
 					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {
-						trace.Terminal = ReasonRetrievalEmpty
-						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, ErrNoGroundedTitles)
+						trace.Terminal = proposals.ReasonRetrievalEmpty
+						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, proposals.ErrNoGroundedTitles)
 					}
 				}
 			}
@@ -710,7 +710,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 	}
 	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
 	if invalidRounds == maxToolRounds {
-		trace.Terminal = TerminalInvalidToolCalls
+		trace.Terminal = proposals.TerminalInvalidToolCalls
 	} else {
 		trace.Terminal = FailureBudgetExhausted
 	}
@@ -738,11 +738,6 @@ func conflictingConstraints(intent Intent) bool {
 func normalizeConstraint(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
-
-// ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
-// the intent surfaced no themed, real content. The worker fails the job with this
-// (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
-var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
 
 var errDateSemanticsUnclear = errors.New("clarify_dates")
 var errDateConstraintsConflict = errors.New("constraints_conflict")

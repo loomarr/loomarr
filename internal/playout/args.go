@@ -51,9 +51,8 @@ func DefaultProfile() Profile {
 
 // FillerGain is the static loudness gain an airing gets (#1512 G6): FILLER ONLY, from the loudness
 // and true peak measured at ingest against the live `filler.target_lufs`, by the one correction
-// rule in `loudness` (#2032). Files are never levelled on disk, so this is the whole correction;
-// the old ±6 dB symmetric clamp assumed ingest had already normalised and left a -12 LUFS clip
-// airing 5 dB hot. A library title is never adjusted
+// rule in `loudness` (#2032). Files are never levelled on disk, so this is the whole correction.
+// A library title is never adjusted
 // (advert loudness would flatten a film's dynamic range) and gets 0 dB with no note. A filler clip
 // that cannot be corrected airs at 0 dB, and note says why, for the caller to log.
 //

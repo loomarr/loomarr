@@ -8,12 +8,13 @@ import (
 	"slices"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/rating"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // ScheduleMaterializer carries a grounded Proposal through Loomarr's real pure
@@ -82,15 +83,25 @@ func episodeEvidencePrograms(e []ScheduleEpisodeEvidence) []schedule.ResolvedPro
 	return out
 }
 
-func libraryEpisodePrograms(e []library.Episode) []schedule.ResolvedProgram {
-	out := make([]schedule.ResolvedProgram, 0, len(e))
-	for _, x := range e {
-		out = append(out, (ScheduleEpisodeEvidence{
-			LibraryItemID: x.LibraryItemID, Title: x.Name, DurationMs: x.DurationMs,
-			Season: x.Season, Episode: x.Episode, EpisodeEnd: x.EpisodeEnd,
-			Year: x.ProductionYear, OfficialRating: x.OfficialRating,
-			CommunityRating: x.CommunityRating, Overview: x.Overview, Tags: x.Tags,
-		}).resolvedProgram())
+// LibraryReader is the Library the live eval reads: Loomarr's own record of what the household
+// owns, through the same store reads production uses (#2151 step 16).
+type LibraryReader interface {
+	store.LibraryTitleSearcher
+	store.LibraryTitleReader
+	store.LibraryItemFactsReader
+	store.LibraryEpisodeReader
+}
+
+// libraryEpisodes is a Library series' episodes as production expands them.
+func libraryEpisodes(ctx context.Context, lib LibraryReader, seriesID string) ([]schedule.ResolvedProgram, error) {
+	return channels.LibraryEpisodeResolver(lib)(ctx, seriesID)
+}
+
+// withoutAirDates drops the one fact snapshot evidence predates, so live episodes compare with it.
+func withoutAirDates(programs []schedule.ResolvedProgram) []schedule.ResolvedProgram {
+	out := slices.Clone(programs)
+	for i := range out {
+		out[i].AirDate = time.Time{}
 	}
 	return out
 }
@@ -131,14 +142,14 @@ func (m fixtureScheduleMaterializer) Materialize(
 }
 
 type liveScheduleMaterializer struct {
-	library *library.Client
+	library LibraryReader
 	tmdb    *tmdb.Client
 }
 
 // NewLiveScheduleMaterializer hydrates already-owned proposal entries through
-// the production Library and TMDB client seams before using the same pure
+// the production Library and TMDB seams before using the same pure
 // projection as fixture evaluation.
-func NewLiveScheduleMaterializer(lib *library.Client, tm *tmdb.Client) ScheduleMaterializer {
+func NewLiveScheduleMaterializer(lib LibraryReader, tm *tmdb.Client) ScheduleMaterializer {
 	return liveScheduleMaterializer{library: lib, tmdb: tm}
 }
 
@@ -155,7 +166,7 @@ func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, propo
 			movieIDs = append(movieIDs, item.LibraryItemID)
 		}
 	}
-	metadata, err := m.library.ItemMetadataByID(ctx, movieIDs)
+	metadata, err := m.library.LibraryItemFacts(ctx, movieIDs)
 	if err != nil {
 		return nil, fmt.Errorf("load schedule movie metadata: %w", err)
 	}
@@ -166,11 +177,11 @@ func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, propo
 			return nil, fmt.Errorf("schedule proposal item %q: %w", item.Name, keyErr)
 		}
 		if item.MediaType == provision.Series {
-			episodes, episodeErr := m.library.ListEpisodes(ctx, item.LibraryItemID)
+			episodes, episodeErr := libraryEpisodes(ctx, m.library, item.LibraryItemID)
 			if episodeErr != nil {
 				return nil, fmt.Errorf("load schedule episodes for %s: %w", key, episodeErr)
 			}
-			titles[key] = FixtureTitle{LibraryItemID: item.LibraryItemID, Episodes: libraryEpisodePrograms(episodes)}
+			titles[key] = FixtureTitle{LibraryItemID: item.LibraryItemID, Episodes: episodes}
 			continue
 		}
 		meta, ok := metadata[item.LibraryItemID]

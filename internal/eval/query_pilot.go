@@ -14,8 +14,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/platform/rating"
@@ -465,7 +465,7 @@ func newQueryDevelopmentGenerator(corpus QueryPilotCorpus, provider llm.Provider
 	decoded.SchemaVersion, decoded.FixtureID = 1, corpus.Version
 	fixture := newEmbeddedCatalogFixture(decoded)
 	observed := &observedProvider{inner: provider}
-	cat := catalog.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
+	cat := titlesearch.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
 	sourceBlob, err := readQueryPilotFacts(corpus.SourcesFixture.Path)
 	if err != nil {
 		return nil, nil, err

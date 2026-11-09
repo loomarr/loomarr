@@ -153,7 +153,8 @@ describe("AdvancedSettingsTable", () => {
     const { container } = render(
       <Harness entries={[entry({ key: "job.workers", value: "2", provenance: "env" })]} />,
     );
-    expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
+    // Read-only, not disabled: the pinned value stays at full strength (#2759).
+    expect(container.querySelector("#setting-job\\.workers")).toHaveAttribute("readonly");
   });
 
   it("links each owner to the workflow that owns it", () => {

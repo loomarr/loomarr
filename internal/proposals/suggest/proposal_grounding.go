@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -26,7 +26,7 @@ var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership 
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *proposals.DecisionTrace, meaning ValidatedDateMeaning) (proposals.Proposal, error) {
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]titlesearch.Candidate, trace *proposals.DecisionTrace, meaning ValidatedDateMeaning) (proposals.Proposal, error) {
 	name := strings.TrimSpace(intent.ChannelName)
 	if name == "" {
 		name = strings.TrimSpace(out.ChannelName)
@@ -46,19 +46,19 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		cand, rejection := resolvePick(intent, p, surfaced)
 		switch rejection {
 		case pickMalformed:
-			traceDecision(trace, proposals.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+			traceDecision(trace, proposals.DecisionCandidate{Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID})
 			otherRejection = true
 			continue // no usable id → not grounded, drop
 		case pickNotSurfaced:
-			traceDecision(trace, proposals.DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
+			traceDecision(trace, proposals.DecisionCandidate{Key: key, Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonNotSurfaced})
 			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		case pickIrrelevant:
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonNoRelevanceEvidence)
 			otherRejection = true
 			continue
 		case pickMembershipUnproven:
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonNoRelevanceEvidence)
 			membershipRejected = true
 			continue // identity is real, but it was not explicitly enumerated as a member
 		}
@@ -85,13 +85,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 		if cand.InLibrary {
 			prop.Lineup = append(prop.Lineup, item)
-			traceGroundedDecision(trace, cand, DispositionSelected, "selected")
+			traceGroundedDecision(trace, cand, proposals.DispositionSelected, "selected")
 			continue
 		}
 		// Acquisition: re-validate it exists on TMDB (§8) and respect the cap.
 		if acqCount >= maxAcq {
 			prop.Alternates = append(prop.Alternates, item) // over-cap picks become alternates
-			traceGroundedDecision(trace, cand, DispositionAlternate, ReasonAcquisitionCap)
+			traceGroundedDecision(trace, cand, proposals.DispositionAlternate, proposals.ReasonAcquisitionCap)
 			continue
 		}
 		exists, err := s.validator.Exists(ctx, cand.MediaType, cand.TMDBID)
@@ -99,7 +99,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			return proposals.Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
 		}
 		if !exists {
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonValidationDropped)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonValidationDropped)
 			otherRejection = true
 			continue // fabricated/withdrawn id → drop
 		}
@@ -113,7 +113,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			}
 		}
 		prop.Acquisitions = append(prop.Acquisitions, item)
-		traceGroundedDecision(trace, cand, DispositionSelected, "selected")
+		traceGroundedDecision(trace, cand, proposals.DispositionSelected, "selected")
 		acqCount++
 	}
 
@@ -125,9 +125,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// what a legitimately-empty result does.
 	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates) == 0 {
 		if membershipRejected && !otherRejection {
-			return proposals.Proposal{}, fmt.Errorf("%w: %w", ErrNoGroundedTitles, errNamedSetMembershipUnproven)
+			return proposals.Proposal{}, fmt.Errorf("%w: %w", proposals.ErrNoGroundedTitles, errNamedSetMembershipUnproven)
 		}
-		return proposals.Proposal{}, ErrNoGroundedTitles
+		return proposals.Proposal{}, proposals.ErrNoGroundedTitles
 	}
 
 	// Ground the extracted policy (programming-design §8): the model proposed rule
@@ -153,12 +153,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	)
 	for _, refused := range prop.Refused {
 		if key, err := refused.Item.Key(); err == nil {
-			traceDecision(trace, proposals.DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
+			traceDecision(trace, proposals.DecisionCandidate{Key: string(key), Disposition: proposals.DispositionRefused, Reason: refused.Reason})
 		}
 	}
-	stampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
-	stampEpisodeSelection(prop.Acquisitions, intent.Intent, holidays)
-	stampEpisodeSelection(prop.Alternates, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Acquisitions, intent.Intent, holidays)
+	StampEpisodeSelection(prop.Alternates, intent.Intent, holidays)
 	if requiresMembershipEvidence(intent) {
 		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
 	}
@@ -224,16 +224,16 @@ func traceDecision(trace *proposals.DecisionTrace, update proposals.DecisionCand
 			return
 		}
 	}
-	if len(trace.Candidates) >= DecisionTraceMaxCandidates {
+	if len(trace.Candidates) >= proposals.DecisionTraceMaxCandidates {
 		trace.Truncated = true
-		trace.RecordedTotal = min(trace.RecordedTotal+1, DecisionTraceMaxTotal)
+		trace.RecordedTotal = min(trace.RecordedTotal+1, proposals.DecisionTraceMaxTotal)
 		return
 	}
 	trace.Candidates = append(trace.Candidates, update)
 	trace.RecordedTotal++
 }
 
-func traceGroundedDecision(trace *proposals.DecisionTrace, candidate catalog.Candidate, disposition, reason string) {
+func traceGroundedDecision(trace *proposals.DecisionTrace, candidate titlesearch.Candidate, disposition, reason string) {
 	key, err := candidate.Key()
 	if err != nil {
 		traceDecision(trace, proposals.DecisionCandidate{Disposition: disposition, Reason: reason})
@@ -565,7 +565,7 @@ func intersectSeries(want, grounded []provision.Key) []provision.Key {
 
 // editorialRole is called only after identity and membership grounding. These
 // categories describe explicit choices and provenance, not inferred preferences.
-func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes int) proposals.EditorialRole {
+func editorialRole(intent Intent, key provision.Key, source titlesearch.Scope, votes int) proposals.EditorialRole {
 	if intent.membershipKeys[key] || intent.referenceKeys[key] || (intent.curatedTitleSet && intent.curatedTitleKey == key) {
 		return proposals.EditorialCore
 	}
@@ -574,7 +574,7 @@ func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes
 			return proposals.EditorialCore
 		}
 	}
-	if source == catalog.ScopeAdjacent && votes > 0 {
+	if source == titlesearch.ScopeAdjacent && votes > 0 {
 		return proposals.EditorialAdjacent
 	}
 	return proposals.EditorialDiscovery
@@ -597,14 +597,14 @@ const (
 // constraints leave it standing. buildProposal applies it to every final pick, and the live
 // progress stream applies the SAME function to each pick as it streams in, so a title can
 // never be shown as chosen that final validation would drop for identity reasons.
-func resolvePick(intent Intent, p pick, surfaced map[provision.Key]catalog.Candidate) (catalog.Candidate, pickRejection) {
+func resolvePick(intent Intent, p pick, surfaced map[provision.Key]titlesearch.Candidate) (titlesearch.Candidate, pickRejection) {
 	key := p.key()
 	if key == "" {
-		return catalog.Candidate{}, pickMalformed
+		return titlesearch.Candidate{}, pickMalformed
 	}
 	cand, ok := surfaced[provision.Key(key)]
 	if !ok {
-		return catalog.Candidate{}, pickNotSurfaced
+		return titlesearch.Candidate{}, pickNotSurfaced
 	}
 	if requiredIdentityConflicts(intent, cand) || titleExplicitlyExcluded(intent, cand.Name) || candidateContradictsExplicitQualifiers(intent, cand) {
 		return cand, pickIrrelevant

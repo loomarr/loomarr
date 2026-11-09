@@ -4,14 +4,24 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/catalog"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	"github.com/loomarr/loomarr/internal/api/people"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 )
 
@@ -26,21 +36,21 @@ type httpBuild struct {
 	suggestions suggestionBuild
 	fillers     fillerBuild
 	auth        authBuild
-	backups     api.BackupsService
+	backups     system.BackupsService
 	// watermarks draws the channel page's On-screen logo preview (#1659).
 	watermarks               *channelWatermarks
-	restart                  api.RestartService
+	restart                  system.RestartService
 	bootConfig               *config.Config
-	guide                    api.GuideReader
-	settings                 api.SettingsService
-	notificationDestinations api.NotificationDestinationService
+	guide                    guideapi.GuideReader
+	settings                 setupapi.SettingsService
+	notificationDestinations setupapi.NotificationDestinationService
 	webPushPublicKey         string
-	invitationDelivery       api.InvitationDeliveryService
-	passwordRecovery         api.PasswordRecoveryService
+	invitationDelivery       people.InvitationDeliveryService
+	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
-	jobs                     api.JobService
-	database                 api.DatabaseService
+	jobs                     system.JobService
+	database                 system.DatabaseService
 	residentLLM              residentLLMBuild
 	// library is Settings → Library, the scanner over its folders, and the arrs' webhooks.
 	library libraryServices
@@ -62,13 +72,13 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
 	playoutGuideSvc := deps.channels.playoutGuide
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
-	var proposalOutlook api.ProposalOutlook
+	var proposalOutlook proposalsapi.ProposalOutlook
 	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
-		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return libraryPresence{titles: st}
+		additionResolver := approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence {
+			return titlesearch.LibraryOwnership{Titles: st}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: itemMetadata{facts: st}, Episodes: episodeResolver(st),
+			Titles: st, Library: playoutresolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}
@@ -111,7 +121,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		DevLogin:             ov.DevLogin,
 		Pprof:                ov.Pprof,
 		MetricsToken:         ov.MetricsToken,
-		Demo:                 api.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
+		Demo:                 people.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
 		Channels:             channelSvc,
 		LiveTV:               liveTVSvc,
 		TunerRescanner:       tunerRescanner,
@@ -171,9 +181,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 		FillerLayout:      fillerLayout,
 		LiveSettings:      liveSettings,
 		LibraryConfigured: libraryConfigured,
-		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
+		BackendCheckpoint: func(ctx context.Context) (httpcore.BackendCheckpoint, error) {
 			snapshot, err := checkpointSnapshot(ctx)
-			return api.BackendCheckpoint{
+			return httpcore.BackendCheckpoint{
 				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
 				PublishedInternal: snapshot.PublishedInternal,
 			}, err
@@ -181,6 +191,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
+		Viewing:           startWatchHistory(rootCtx, st, guideSvc, log),
 		PlayoutCapability: playoutCapability,
 		WatermarkPreview:  deps.watermarks,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
@@ -191,28 +202,40 @@ func buildHTTP(deps httpBuild) http.Handler {
 		TimelineThumbs:       timelineThumbs,
 		PlayoutSecret:        playoutSecret,
 		PlayoutSecretCurrent: playoutSecretCurrent,
-		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
-		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
-		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont:       playout.CardFontFor(settings.PlayoutFFmpegPath.Get(set)),
-		PlayoutTonemap:    playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)),
-		PlayoutGPUTonemap: playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set)),
-		// Measured, not a build property: the boot class probe publishes it (probeCapacity).
-		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
-		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
-		// always targets whatever model is currently resident. Only the local ollama provider holds
-		// VRAM on this box — a hosted provider has nothing local to reclaim, so it is a no-op there
-		// (the ladder then goes straight to the software fallback).
-		ReclaimVRAM: residentLLM.reclaim,
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
 	})
 }
 
+// startWatchHistory makes the household-viewing tracker the API's playlist polls feed and starts
+// the recorder that writes it to the watch history (#3010) until ctx ends. Each row's programme is
+// the title the guide says is airing; a gap between programmes has none.
+func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
+	tracker := viewing.New()
+	var programmes viewing.Programmes
+	if guide != nil {
+		programmes = func(ctx context.Context, at time.Time) (map[string]string, error) {
+			byChannel, err := guide.NowNext(ctx, at)
+			if err != nil {
+				return nil, err
+			}
+			titles := make(map[string]string, len(byChannel))
+			for id, nn := range byChannel {
+				if nn.Now != nil && !nn.Now.Gap {
+					titles[id] = nn.Now.Title
+				}
+			}
+			return titles, nil
+		}
+	}
+	go viewing.NewRecorder(tracker, st, programmes, log).Run(ctx)
+	return tracker
+}
+
 // clientCrashService keeps a store-less build's nil module from becoming a non-nil interface,
 // which would mount the crash routes over nothing.
-func clientCrashService(c *diagnostics.ClientCrashes) api.ClientCrashService {
+func clientCrashService(c *diagnostics.ClientCrashes) opsapi.ClientCrashService {
 	if c == nil {
 		return nil
 	}

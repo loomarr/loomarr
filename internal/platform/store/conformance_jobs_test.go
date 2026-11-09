@@ -18,8 +18,8 @@ import (
 // Jobs and proposals (§8): the suggester job lifecycle, the scheduled-job table behind
 // the cron runner, and the proposal queues the approval gate reads.
 //
-// ⚠ The three scheduled-job tests sit TOGETHER here. `ScheduledJobPaused` used to live ~900
-// lines from its two siblings, in a file ordered by when each test was written.
+// ⚠ The three scheduled-job tests sit TOGETHER here, so the pause flag is read beside the upsert
+// it must survive.
 
 func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 	return Job{
@@ -999,6 +999,10 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	// The proposer is a person: their requests are recorded against users (#2793).
+	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1021,6 +1025,15 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	wanted := provision.Record{
 		Key: "movie:tmdb:90000003", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000003, Name: "Wanted"},
 		State: provision.Wanted, Deadline: now,
+	}
+	// A hand-made channel already names the wanted title, so it has a pending row (#2793). The
+	// approval must still write it as wanted and count it as enqueued: pending is no record.
+	handMade := sampleChannel("ch-hand", 102, time.Time{})
+	handMade.IntentRef = ""
+	handMade.Lineup = []schedule.LineupEntry{{Key: wanted.Key, Title: "Wanted"}}
+	mustSaveChannel(t, s, handMade)
+	if _, err := s.GetTitle(ctx, wanted.Key); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a title only a lineup names read as %v, want ErrNotFound", err)
 	}
 	proposal.Status = "approved"
 	proposal.ApprovedBy = "admin"

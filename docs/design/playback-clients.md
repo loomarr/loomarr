@@ -106,6 +106,19 @@ device is watching a Channel while its polls continue (`internal/channels/viewin
 - The tracker is in memory: one replica is the supported topology, and a restart loses nothing
   a poll interval doesn't rebuild.
 
+### Watch history
+
+The server keeps a watch history (#3010): one `viewings` row per person, device, Channel and
+programme, from the viewing's first poll to its last. Every 15 s a recorder writes the tracker's
+live viewings: it opens a row when a viewing starts and moves its end forward while the polls
+continue, so a restart loses at most one interval of an end. The programme is the guide's title
+airing at the time. When the next programme begins, the row ends and a new one starts; a gap
+between programmes, or a guide that can't be read, keeps the current row going.
+
+- **Who sees it.** Admins only. Members are not shown a notice or their own history.
+- **Retention.** None: rows stay until an admin clears them, for one person or for everyone. A
+  person's rows go with them; a deleted Channel's rows stay, under the name it had.
+
 ## Pause
 
 Pause is shared time-shift, not a private playback stack (decision

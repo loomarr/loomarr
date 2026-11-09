@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -164,9 +165,6 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		if err := seedAttemptArchive(src.PublicationDir, archiveFile); err != nil {
 			return DownloadResult{}, err
 		}
-	} else if src.PublicationDir != "" {
-		// Direct downloader users retain their historic shared-archive contract.
-		archiveFile = filepath.Join(src.PublicationDir, ".yt-dlp-archive.txt")
 	}
 	resultFile, err := os.CreateTemp(absDropDir, ".loomarr-ytdlp-results-*")
 	if err != nil {
@@ -413,7 +411,7 @@ func commitProviderArchive(publicationDir string, entries []string) error {
 	}
 	var additions []string
 	for _, line := range entries {
-		if err := filler.ValidateProviderArchiveEntry(line); err != nil {
+		if err := acquisition.ValidateProviderArchiveEntry(line); err != nil {
 			return fmt.Errorf("validate yt-dlp archive entry: %w", err)
 		}
 		if _, already := known[line]; already {
@@ -475,7 +473,7 @@ func exactArchiveEntry(lines []string, archiveID string) (string, error) {
 	}
 	var match string
 	for _, line := range lines {
-		if filler.ValidateProviderArchiveEntry(line) != nil {
+		if acquisition.ValidateProviderArchiveEntry(line) != nil {
 			continue
 		}
 		fields := strings.Fields(line)
@@ -579,10 +577,10 @@ func stampFetched(root *os.Root, sidecar fetchedSidecar, sourceID, acquisitionID
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return fmt.Errorf("yt-dlp sidecar is not readable JSON: %w", err)
 	}
-	if _, done := doc[filler.SidecarLoomarrKey()]; done {
+	if _, done := doc[asset.SidecarLoomarrKey()]; done {
 		return nil
 	}
-	doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
+	doc[asset.SidecarLoomarrKey()] = asset.SidecarFetchedMarkForAcquisition(sourceID, acquisitionID)
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode yt-dlp provenance: %w", err)
@@ -607,11 +605,11 @@ func inspectOutput(path string) (digest string, size int64, clipHash string, err
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return "", 0, "", fmt.Errorf("downloaded output %s is not a regular file", path)
 	}
-	digest, size, err = filler.FileSHA256(path)
+	digest, size, err = asset.FileSHA256(path)
 	if err != nil {
 		return "", 0, "", err
 	}
-	clipHash, err = filler.ClipID(path)
+	clipHash, err = asset.ClipID(path)
 	if err != nil {
 		return "", 0, "", err
 	}

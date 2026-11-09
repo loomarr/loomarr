@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // ErrNotAnswerable is a title the maintainer cannot answer for: one the scanner did not write, so
@@ -50,29 +51,43 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	return out, nil
 }
 
-// NeedCount is everything Needs you holds, the titles to answer and the titles that need a look:
-// the Needs you heading and the nav badge are one number.
+// NeedCount is everything Needs you holds, the titles to answer, the shows whose episode order to
+// say and the titles that need a look: the Needs you heading and the nav badge are one number.
 func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	needs, err := l.NeedStore.LibraryNeeds(ctx)
 	if err != nil {
 		return 0, err
 	}
-	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
-	return len(needs) + problems.Total, err
-}
-
-// Link answers a title: it is the TMDB title tmdbID. Its files are written again with the link.
-func (l *Library) Link(ctx context.Context, itemID, tmdbID string) error {
-	tmdbID = strings.TrimSpace(tmdbID)
-	if tmdbID == "" {
-		return errors.New("a TMDB id is required")
+	orders := 0
+	if l.Orders != nil {
+		if orders, err = l.Orders.LibraryOrderNeedCount(ctx); err != nil {
+			return 0, err
+		}
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID})
+	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
+	return len(needs) + orders + problems.Total, err
 }
 
-// MatchBySearch answers a title for the Matcher: a search agreed it is the TMDB title tmdbID
+// ErrNotCatalogID is a link to an id the catalog does not fetch for the title's kind: the title
+// would be answered with no details to show.
+var ErrNotCatalogID = errors.New("scan: the catalog does not fetch that id")
+
+// Link answers a title: it is the catalog title id. Its files are written again with the link.
+func (l *Library) Link(ctx context.Context, itemID string, id store.LibraryID) error {
+	id.Namespace, id.Value = strings.TrimSpace(id.Namespace), strings.TrimSpace(id.Value)
+	kind, _, err := l.origin(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if l.Keys.For(mp.Kind(kind), []mp.ExternalID{externalID(id)}).String() == "" {
+		return ErrNotCatalogID
+	}
+	return l.answer(ctx, itemID, store.LibraryAnswer{ID: id})
+}
+
+// MatchBySearch answers a title for the Matcher: a search agreed it is the catalog title id
 // (decisions 56 and 57). A title the maintainer answered meanwhile keeps their answer.
-func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) error {
+func (l *Library) MatchBySearch(ctx context.Context, itemID string, id mp.ExternalID) error {
 	_, origin, err := l.origin(ctx, itemID)
 	if err != nil {
 		return err
@@ -80,7 +95,7 @@ func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) erro
 	if _, answered, err := l.NeedStore.LibraryAnswerFor(ctx, origin); err != nil || answered {
 		return err
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID, By: store.AnsweredBySearch})
+	return l.answer(ctx, itemID, store.LibraryAnswer{ID: libraryID(id), By: store.AnsweredBySearch})
 }
 
 // Ignore answers a title: it is not one. It leaves the Library and Needs you.

@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -44,7 +47,7 @@ type VisionClipStore interface {
 
 // VisionStage reads a clip's frames.
 type VisionStage struct {
-	tools    MediaTools
+	tools    tools.MediaTools
 	provider llm.VisionProvider
 	store    VisionClipStore
 	clipDir  string
@@ -54,15 +57,15 @@ type VisionStage struct {
 
 // NewVisionStage builds the stage. A nil provider is the un-opted-in default — an install with no
 // vision model (the common case) pays nothing, and its ladder says so on every clip.
-func NewVisionStage(tools MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
+func NewVisionStage(tools tools.MediaTools, provider llm.VisionProvider, store VisionClipStore, clipDir string, enabled func() bool, now func() time.Time) *VisionStage {
 	if now == nil {
 		now = time.Now
 	}
 	return &VisionStage{tools: tools, provider: provider, store: store, clipDir: clipDir, enabled: enabled, now: now}
 }
 
-func (s *VisionStage) ID() StageID     { return StageVision }
-func (s *VisionStage) Cost() StageCost { return CostVision }
+func (s *VisionStage) ID() pipelinestate.StageID { return pipelinestate.StageVision }
+func (s *VisionStage) Cost() StageCost           { return CostVision }
 
 // Applies when vision is configured, on, and this clip still has a gap the frames might close.
 //
@@ -70,7 +73,7 @@ func (s *VisionStage) Cost() StageCost { return CostVision }
 // resolved has nothing for vision to add and a real cost to avoid. Nothing here asks whether vision
 // already read it — the ladder does. A done rung is never re-run, and a Rewind that resets it is a
 // deliberate request to look again.
-func (s *VisionStage) Applies(_ context.Context, c StoreClip) (bool, string) {
+func (s *VisionStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
 	if s.tools == nil || s.provider == nil {
 		return false, "no vision model is configured"
 	}
@@ -92,7 +95,7 @@ type VisionObservation struct {
 
 // Observe extracts keyframes and grounds the answer without persisting it. Progressive catch-up
 // uses this half so its raw signal, accepted axes, and completion identity commit atomically.
-func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, VisionObservation, error) {
+func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (StageResult, VisionObservation, error) {
 	// ⚠ Loaded per clip rather than cached on the stage, and the vision BUDGET is what makes that
 	// affordable: at most `MaxVision` clips reach this rung in a pass. The alternative — a forest
 	// cached for the process — goes stale the moment an operator edits the taxonomy, and a
@@ -104,14 +107,14 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	forest := taxonomy.New(taxa)
 
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
-	frames, err := s.tools.VisionKeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
+	frames, err := s.tools.VisionKeyframesIn(ctx, file, 0, c.DurationMs, split.VisionKeyframes)
 	if err != nil {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
 	}
 	if len(frames) == 0 {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
 	}
-	reportProgress(ctx, StageVision, NoMeasurement)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, pipelinestate.NoMeasurement)
 
 	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
@@ -136,7 +139,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
 	}
 
-	reportProgress(ctx, StageVision, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, 100)
 
 	updated := c
 	updated.VisibleText = v.VisibleText
@@ -158,17 +161,17 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "nothing on the frames could be grounded"},
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue, Note: "nothing on the frames could be grounded"},
 			VisionObservation{VisibleText: v.VisibleText, SuggestedEra: suggestedEra}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, VisionObservation{
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, VisionObservation{
 		Brand: v.Brand, VisibleText: v.VisibleText, Era: v.Era, SuggestedEra: suggestedEra,
 		Tags: append([]string(nil), v.Tags...),
 	}, nil
 }
 
 // Run is the readiness-stage adapter around Observe.
-func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *VisionStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	result, observation, err := s.Observe(ctx, c)
 	if err != nil {
 		return StageResult{}, err
@@ -191,12 +194,6 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	}
 	return result, nil
 }
-
-// VisionKeyframes is how many stills one pass samples per clip (§10 V44). A commercial's brand
-// card, its B&W transfer, and its end slate can each fall in a different part of the runtime, so
-// one frame is not enough signal. These are bounded near-full-resolution semantic frames, not the
-// 320px UI preview: early, middle, late, and closing-card windows remain a small fixed request.
-const VisionKeyframes = 4
 
 const visionPromptVersion = "filler-vision-grounding-v2"
 const splitVisionPromptVersion = "filler-split-vision-grounding-v3"
@@ -292,8 +289,9 @@ func decodeVisionInt(raw json.RawMessage) int {
 	return value
 }
 
-// groundVisionTags is the grounding pass for the vision tier — validateTags, but the signal a tag
-// must appear in is the model's OWN visibleText rather than the clip's text signals (§10 V44).
+// groundVisionTags is the grounding pass for the vision tier: the same rule the text tagger applies
+// (a brand or year must appear in the signals it was read from), but the signal a tag must appear
+// in is the model's OWN visibleText rather than the clip's text signals (§10 V44).
 //
 // ⚠ **This is the era rule generalised to pixels, and it must not be weakened.** A vision model
 // that reports {brand:"Coca-Cola"} with a visibleText that never spells "Coca-Cola" has INFERRED
@@ -325,19 +323,18 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	}
 	// TAGS — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
 	//
-	// ⚠ **It used to require the word on the frame, and V54b removed that.** The condition was
-	// `strings.Contains(haystack, strings.ToLower(raw))`, applying the brand/era rule to a field
-	// that makes a different kind of claim. A brand or a year is a specific FACT, and asserting one
-	// the frame does not show is fabrication that is wrong in a checkable way. A category is a
-	// JUDGEMENT ABOUT IMAGERY — calling a toy advert `toys` because it shows toys is the reason a
-	// vision tier exists, and demanding the genre be printed on screen does not make the judgement
-	// honest, only rare.
+	// ⚠ **It does not have to appear on the frame (V54b).** The brand/era rule — the claim must be
+	// visible in `visibleText` — does not fit a field that makes a different kind of claim. A brand
+	// or a year is a specific FACT, and asserting one the frame does not show is fabrication that is
+	// wrong in a checkable way. A category is a JUDGEMENT ABOUT IMAGERY — calling a toy advert
+	// `toys` because it shows toys is the reason a vision tier exists, and demanding the genre be
+	// printed on screen does not make the judgement honest, only rare.
 	//
-	// ⚠ Measured 2026-08-13: on a 37-segment reel with a model answering correctly every time, the
-	// old condition admitted ZERO categories — `psa` was dropped against visibleText
-	// "WAGA-5/Fox Commercial Breaks (2/5/1995)", while `era` grounded from the same string because
-	// "1995" is in it. `segmentVerdict` refuses an untagged segment BEFORE it consults boundary
-	// confidence, so this one condition made split auto-confirm structurally impossible.
+	// ⚠ This matters for split auto-confirm: `segmentVerdict` refuses an untagged segment BEFORE it
+	// consults boundary confidence, so requiring the word on the frame would drop a correct `psa`
+	// against visibleText "WAGA-5/Fox Commercial Breaks (2/5/1995)" and make auto-confirm
+	// structurally impossible, while `era` still grounds from the same string because "1995" is in
+	// it.
 	//
 	// ⚠ The TAXONOMY is what keeps this grounded rather than open: an unresolvable category is
 	// still dropped, so the vocabulary is the constraint. Resolution still maps `burgers`→`fast_food`.

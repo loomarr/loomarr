@@ -44,6 +44,9 @@ const (
 	PresentationPath     Presentation = "path"
 	PresentationLanguage Presentation = "language"
 	PresentationSwitch   Presentation = "switch"
+	// PresentationTimezone picks an IANA zone name from the setting's presets: the zones Go's own
+	// tz data knows, so the list is the server's and the browser keeps none of its own.
+	PresentationTimezone Presentation = "timezone"
 	// PresentationFillerDownloadSchedule keeps the stored value a duration while offering the
 	// common household choices first and revealing the numeric duration only for Custom.
 	PresentationFillerDownloadSchedule Presentation = "filler_download_schedule"
@@ -52,7 +55,7 @@ const (
 // Presentations is the closed set of non-default editors, in declaration order, for the wire
 // schema. The default is absent on the wire, so it is not a member.
 func Presentations() []Presentation {
-	return []Presentation{PresentationBytes, PresentationPath, PresentationLanguage, PresentationSwitch, PresentationFillerDownloadSchedule}
+	return []Presentation{PresentationBytes, PresentationPath, PresentationLanguage, PresentationSwitch, PresentationTimezone, PresentationFillerDownloadSchedule}
 }
 
 // Unit names what a plain number setting counts, shown beside its input. The key's suffix says it
@@ -64,7 +67,16 @@ const (
 	UnitGiB     Unit = "GiB"
 	UnitMiB     Unit = "MiB"
 	UnitPercent Unit = "%"
+	// The time units name what a stored whole number of time counts. The editor offers this unit
+	// and the larger ones, so 14400 seconds reads as 4 hours and still saves as 14400.
+	UnitSeconds Unit = "seconds"
+	UnitHours   Unit = "hours"
 )
+
+// Units is the closed set of non-empty units, in declaration order, for the wire schema.
+func Units() []Unit {
+	return []Unit{UnitGiB, UnitMiB, UnitPercent, UnitSeconds, UnitHours}
+}
 
 // ApplyTiming says when a persisted setting becomes the running value. The zero
 // value is deliberately live: declarations have always hot-applied unless they

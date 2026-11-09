@@ -1,11 +1,10 @@
+import { Icon, icons } from "@loomarr/design-system";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
   SETTINGS_DESTINATIONS,
   type SettingsDestination,
   type SettingsDestinationPath,
-  type SettingsTaskGroup,
 } from "@/settings/settings-destinations";
 
 type SystemDestinationPath = Extract<SettingsDestinationPath, `/settings/system/${string}`>;
@@ -14,16 +13,19 @@ type SystemDestination = SettingsDestination & { path: SystemDestinationPath; se
 const isSystemDestination = (item: SettingsDestination): item is SystemDestination =>
   item.path.startsWith("/settings/system/");
 
-const GROUPS: readonly { id: SettingsTaskGroup; label: string; description: string }[] = [
+// The Server card's pages, split for this landing into running the server and looking into it.
+const GROUPS: readonly { id: string; label: string; description: string; pages: readonly string[] }[] = [
   {
     id: "server",
     label: "Run this server",
     description: "Playback, artwork storage, and backups.",
+    pages: ["playback", "storage", "backup"],
   },
   {
     id: "troubleshoot",
     label: "Troubleshoot",
     description: "Background work, diagnostics, database tools, and version details.",
+    pages: ["tasks", "diagnostics", "database", "about"],
   },
 ];
 
@@ -37,7 +39,7 @@ const SystemHome = () => (
       <div className="mx-auto max-w-5xl space-y-8 p-6">
         {GROUPS.map((group) => {
           const destinations = SETTINGS_DESTINATIONS.filter(
-            (item): item is SystemDestination => item.group === group.id && isSystemDestination(item),
+            (item): item is SystemDestination => group.pages.includes(item.id) && isSystemDestination(item),
           );
           return (
             <section key={group.id} aria-labelledby={`system-group-${group.id}`}>
@@ -60,10 +62,9 @@ const SystemHome = () => (
                         {item.description}
                       </span>
                     </span>
-                    <ArrowRight
-                      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                      aria-hidden
-                    />
+                    <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                      <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
+                    </span>
                   </Link>
                 ))}
               </div>

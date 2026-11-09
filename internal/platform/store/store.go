@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/people/access"
@@ -53,55 +53,9 @@ var ErrConditionedClipMismatch = clipstore.ErrConditionedClipMismatch
 // It is clipstore.ErrTaxonConflict, the same value under a second name.
 var ErrTaxonConflict = clipstore.ErrTaxonConflict
 
-// ErrProposalNotSubmitted reports a terminal proposal decision that lost the
-// submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
-// the proposal exists, but another decision already won.
-var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
-
-// ErrProposalSuperseded reports an approval candidate whose job already has an
-// approved proposal created at the same time or later. Same-second ties fail closed:
-// proposal timestamps are stored at second resolution, so guessing an order could
-// roll a channel back to content the operator reviewed earlier.
-var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
-
-// ErrProposalNotRevisable reports a request to revise anything except the newest
-// submitted proposal on a terminal suggestion job. A revision is a compare-and-swap
-// over the review the operator actually saw; stale, decided, and active copies fail.
-var ErrProposalNotRevisable = errors.New("store: proposal is not revisable")
-
-// ErrProposalRevisionActive keeps the approval gate closed while a replacement is
-// generating. A failed replacement returns the job to a terminal state and the
-// prior submitted proposal becomes approvable again.
-var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
-
-// ErrJobNotRunning reports a generation completion that lost the running -> done
-// compare-and-swap. The proposal insert shares that transaction, so this error
-// guarantees that no orphan proposal was persisted.
-var ErrJobNotRunning = errors.New("store: suggestion job is not running")
-
-// ErrJobChannelGone reports a refine or re-curation job whose channel was removed
-// before the job's proposal could be approved. It is not ErrNotFound: that answer
-// means "no channel yet" and makes approval create one.
-var ErrJobChannelGone = errors.New("store: the job's channel no longer exists")
-
 // ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
 // with different facts.
 var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
-
-// ErrJobOwnershipMismatch reports a result whose proposal requester differs
-// from the requester persisted on its job. It prevents a worker/store wiring
-// mistake from moving generated content across user audit lifecycles.
-var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
-
-// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
-// number or non-empty intent binding). Approval transactions have rolled back
-// completely when returning it, so their caller may safely reload and replan.
-var ErrChannelConflict = errors.New("store: channel conflict")
-
-// ErrChannelStale reports that a channel mutation was planned from an older
-// revision than the row now holds. The row still exists; callers may reload and
-// either reapply their domain merge or surface a conflict to the operator.
-var ErrChannelStale = errors.New("store: stale channel revision")
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.
@@ -172,9 +126,8 @@ type ChannelStore interface {
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
 	// discovery feedback in one transaction. A detached Channel is retained through SaveChannel.
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
-	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
-	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
-	// content, not by channel id — see ImageStore.
+	// ⚠ There are no channel-icon byte accessors. A channel's icon is an image-service image
+	// (§22) and its bytes are addressed by content, not by channel id — see ImageStore.
 	// ClaimDueChannels atomically claims up to limit channels whose
 	// reconcile_deadline is at/before now, for the periodic reconcile sweep
 	// (§9). Like ClaimDueTitles it *leases* each claimed channel (deadline →
@@ -543,7 +496,7 @@ type AiringStore interface {
 	// error because the airing history intentionally survives catalog pruning and re-admission.
 	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (recorded bool, err error)
 	// FillerAirings returns the household's stored clip airings across every channel. A break's
-	// snapshot is cut from them by filler.ExposuresBefore, so one read serves every break in a
+	// snapshot is cut from them by pod.ExposuresBefore, so one read serves every break in a
 	// window (#1420).
 	FillerAirings(ctx context.Context) ([]clips.Airing, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
@@ -570,13 +523,6 @@ type AiringStore interface {
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
-// ScheduledAiring is one programme a channel's schedule put on air (#1677).
-type ScheduledAiring struct {
-	Key           provision.Key
-	LibraryItemID string
-	AiredAt       time.Time
-}
-
 // ActivityStore is the Dashboard feed (§5, §12, V32).
 type ActivityStore interface {
 	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log
@@ -598,7 +544,6 @@ type NotificationStore interface {
 	ListNotificationDestinationHealth(context.Context) (map[string]notifications.DestinationHealth, error)
 	DeleteNotificationDestination(context.Context, string) error
 	ListNotificationReferenceRecipients(context.Context, notifications.ReferenceKind, string) ([]string, error)
-	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
 	ListNotificationIntentsByReference(context.Context, notifications.ReferenceKind, string) ([]notifications.Intent, error)
@@ -679,7 +624,7 @@ type SettingStore interface {
 	// generation or the complete new one (config-design §8).
 	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
 	// RewriteSettingValues atomically replaces values without changing their
-	// audit metadata or authority. Startup uses it to encrypt legacy plaintext.
+	// audit metadata or authority. Data-key rotation uses it to reseal protected values.
 	RewriteSettingValues(ctx context.Context, rows []SettingMutation) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
@@ -767,6 +712,7 @@ type Store interface {
 	NotificationStore
 	DiagnosticStore
 	ClientCrashStore
+	TableRowStore
 	SettingStore
 	SecretProtectionStore
 	CountStore
@@ -774,6 +720,7 @@ type Store interface {
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
+	ViewingStore
 	DiscoveryQualityStore
 	InventoryStore
 	LibraryRootStore
@@ -782,6 +729,7 @@ type Store interface {
 	LibraryProjection
 	LibraryCatalogStore
 	LibraryNeedsStore
+	LibraryEpisodeOrderStore
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryIDMapStore

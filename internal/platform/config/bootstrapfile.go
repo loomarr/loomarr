@@ -172,7 +172,7 @@ const ConventionalDataDir = "/data"
 // to expressing it. So the READ side searches both — the database's own directory first,
 // because an operator who pinned a SQLite path meant that one — and the WRITE side
 // (`DataDirFor`) is unchanged. An install whose file sits beside a non-default SQLite
-// path keeps working exactly as before; nothing has to move.
+// path keeps working; nothing has to move.
 func BootstrapDirsFor(databaseURL string) []string {
 	dir := DataDirFor(databaseURL)
 	if dir == ConventionalDataDir {

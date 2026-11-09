@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -49,7 +50,7 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+		approver := accept.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 		ids := map[int]string{}
 		for _, c := range lib.Channels {
 			id, err := ensureChannel(ctx, st, approver, lib, items, admin.ID, c)
@@ -83,7 +84,7 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	}
 	// #1534: GET /v1/proposal-jobs lists through the proposal flow, which rejects a done job
 	// with no succeeded attempt. A raw seeded job made every demo-seeded Requests page error.
-	flow := workflow.New(st, func() string { return "unused" }, time.Now)
+	flow := workflow.New(st, func() string { return "unused" }, time.Now, suggest.IntentHash)
 	journeys, err := flow.List(ctx, workflow.Viewer{UserID: "demo-admin", Admin: true}, workflow.ListOptions{})
 	if err != nil {
 		t.Fatalf("list demo-seeded proposal jobs through the workflow: %v", err)

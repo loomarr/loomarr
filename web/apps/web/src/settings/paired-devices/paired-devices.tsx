@@ -112,10 +112,7 @@ const ApproveDevice = () => {
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
           {(userCode) => (
-            <Action
-              // A real submit button under Action's look, so Enter in a field still submits.
-              render={<button disabled={!userCode.trim() || approve.isPending} type="submit" />}
-            >
+            <Action disabled={!userCode.trim() || approve.isPending} submit>
               {approve.isPending ? "Checking…" : "Approve device"}
             </Action>
           )}

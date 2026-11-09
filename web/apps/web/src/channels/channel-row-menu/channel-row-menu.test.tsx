@@ -1,6 +1,7 @@
 import {
   getDeleteChannelMockHandler,
   getGetChannelMockHandler,
+  getMeMockHandler,
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { channel } from "@/test/fixtures/channels";
+import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { ChannelRowMenu } from "./channel-row-menu";
@@ -30,10 +32,11 @@ const makeWrapper = () => {
 // would have matched a PATCH to any endpoint at all. These handlers are bound to
 // `*/v1/channels/:id`, so being in the resolver already proves the route, and only the payload
 // still needs recording.
-const stubChannel = () => {
+const stubChannel = (role: "admin" | "member" = "admin") => {
   const patches: unknown[] = [];
   const deletes: string[] = [];
   server.use(
+    getMeMockHandler(me({ role })),
     getGetChannelMockHandler(channel({ revision: 7 })),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
@@ -118,5 +121,20 @@ describe("ChannelRowMenu", () => {
     // Purge — a list delete fully removes the channel (the maintainer's choice), so the URL
     // carries purge=true.
     expect(deletes[0]).toContain("purge=true");
+  });
+
+  // #2732: a member can't edit, pause or delete a channel (the API refuses all three), so the menu
+  // must not offer them. What a member can open is the channel's read-only page, named for what it is.
+  it("a member sees Watch and Channel details, and no Edit, Pause or Delete", async () => {
+    const user = userEvent.setup();
+    stubChannel("member");
+    render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
+
+    await user.click(screen.getByRole("button", { name: /actions for/i }));
+    expect(await screen.findByRole("menuitem", { name: "Channel details" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Watch" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /edit channel/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /pause|resume/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /delete/i })).not.toBeInTheDocument();
   });
 });

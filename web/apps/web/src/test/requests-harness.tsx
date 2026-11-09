@@ -107,7 +107,12 @@ const stub = ({ me, journeys = [], proposals = [], pulls = [], titles = {} }: Fi
       const status = new URL(request.url).searchParams.get("status");
       return HttpResponse.json({ proposals: status === "submitted" ? proposals : [] } as never);
     }),
-    http.get("*/v1/filler/pulls", () => HttpResponse.json({ pulls } as never)),
+    // Like the server: `status` filters, and without it every pull comes back, decided ones too.
+    http.get("*/v1/filler/pulls", ({ request }) => {
+      const status = new URL(request.url).searchParams.get("status");
+      const answered = status ? (pulls as { status?: string }[]).filter((p) => p.status === status) : pulls;
+      return HttpResponse.json({ pulls: answered } as never);
+    }),
     http.get("*/v1/titles", ({ request }) => {
       const state = new URL(request.url).searchParams.get("state") ?? "";
       return HttpResponse.json({ titles: titles[state] ?? [] } as never);

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -28,7 +28,7 @@ const (
 )
 
 type rankedCandidate struct {
-	candidate   catalog.Candidate
+	candidate   titlesearch.Candidate
 	key         provision.Key
 	relevance   int
 	preference  int
@@ -41,76 +41,38 @@ type rankedCandidates struct {
 	excluded []rankedCandidate
 }
 
-const DecisionTraceVersion = 1
-const DecisionTraceMaxCandidates = 64
-const rankNoveltyMax = 2
-
-// DecisionTraceMaxTotal bounds all surfaced and recorded facts. Production can
-// surface 576 candidates; the remainder is reserved for adjacent decisions.
-const DecisionTraceMaxTotal = 1024
-
-const (
-	DispositionSelected          = "selected"
-	DispositionAlternate         = "alternate"
-	DispositionNotSelected       = "not_selected"
-	DispositionRefused           = "refused"
-	DispositionValidationDropped = "validation_dropped"
-	DispositionTerminal          = "terminal"
-	ReasonRetrievalEmpty         = "retrieval_empty"
-	ReasonSelectionEmpty         = "selection_empty"
-	ReasonNever                  = "never"
-	ReasonMalformedID            = "malformed_id"
-	ReasonNotSurfaced            = "not_surfaced"
-	ReasonNoRelevanceEvidence    = "no_relevance_evidence"
-	ReasonValidationDropped      = "validation_dropped"
-	ReasonAcquisitionCap         = "acquisition_cap"
-	ReasonOverCeiling            = "over_ceiling"
-	ReasonBudgetExhausted        = "budget_exhausted"
-	ReasonNotSelected            = "not_selected"
-	TerminalProviderFailure      = "provider_failure"
-	TerminalRetrievalFailure     = "retrieval_failure"
-	TerminalReferenceUnreadable  = "reference_unreadable"
-	TerminalGenerationFailure    = "generation_failure"
-	TerminalMalformedExhausted   = "malformed_exhausted"
-	TerminalNamedSetUnproven     = "named_set_unproven"
-	TerminalConstraintsConflict  = "constraints_conflict"
-	TerminalDateSemanticsUnclear = "date_semantics_unclear"
-	TerminalInvalidToolCalls     = "invalid_tool_calls"
-	TerminalProviderTimeout      = "provider_timeout"
-)
-
 type RankedCandidates struct {
-	Candidates []catalog.Candidate
+	Candidates []titlesearch.Candidate
 	Trace      proposals.DecisionTrace
 }
 
-func RankGroundedCandidatesWithTrace(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
+func RankGroundedCandidatesWithTrace(intent string, candidates []titlesearch.Candidate, signals []FeedbackSignal) RankedCandidates {
 	return rankGroundedCandidatesWithTrace(rankQuery{request: intentWordSet(intent)}, candidates, signals)
 }
 
-func rankGroundedCandidatesWithTrace(query rankQuery, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
+func rankGroundedCandidatesWithTrace(query rankQuery, candidates []titlesearch.Candidate, signals []FeedbackSignal) RankedCandidates {
 	ranked := rankDetailed(query, candidates, signals)
-	result := make([]catalog.Candidate, 0, len(ranked.included))
+	result := make([]titlesearch.Candidate, 0, len(ranked.included))
 	for _, item := range ranked.included {
 		result = append(result, item.candidate)
 	}
 	recorded := len(ranked.included) + len(ranked.excluded)
-	trace := proposals.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: recorded, Candidates: make([]proposals.DecisionCandidate, 0, min(recorded, DecisionTraceMaxCandidates))}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: recorded, Candidates: make([]proposals.DecisionCandidate, 0, min(recorded, proposals.DecisionTraceMaxCandidates))}
 	appendDecision := func(item rankedCandidate, disposition, reason string) {
-		if len(trace.Candidates) >= DecisionTraceMaxCandidates {
+		if len(trace.Candidates) >= proposals.DecisionTraceMaxCandidates {
 			trace.Truncated = true
 			return
 		}
 		trace.Candidates = append(trace.Candidates, proposals.DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: proposals.RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Constraints: item.constraints, Disposition: disposition, Reason: reason})
 	}
 	for _, item := range ranked.included {
-		appendDecision(item, DispositionNotSelected, ReasonNotSelected)
+		appendDecision(item, proposals.DispositionNotSelected, proposals.ReasonNotSelected)
 	}
 	for _, item := range ranked.excluded {
-		appendDecision(item, DispositionNotSelected, ReasonNever)
+		appendDecision(item, proposals.DispositionNotSelected, proposals.ReasonNever)
 	}
 	if len(candidates) == 0 {
-		trace.Terminal = ReasonRetrievalEmpty
+		trace.Terminal = proposals.ReasonRetrievalEmpty
 	}
 	return RankedCandidates{Candidates: result, Trace: trace}
 }
@@ -126,7 +88,7 @@ func ownership(inLibrary bool) string {
 // #493. Relevance is the primary sort key, so a taste signal cannot promote an
 // unrelated title above a relevant one. Feedback and novelty only order
 // candidates within the same relevance band; identity is the final tie-break.
-func RankGroundedCandidates(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) []catalog.Candidate {
+func RankGroundedCandidates(intent string, candidates []titlesearch.Candidate, signals []FeedbackSignal) []titlesearch.Candidate {
 	return RankGroundedCandidatesWithTrace(intent, candidates, signals).Candidates
 }
 
@@ -157,11 +119,11 @@ func (q rankQuery) match(candidate map[string]bool) proposals.ConstraintMatches 
 	}
 }
 
-func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []FeedbackSignal) rankedCandidates {
+func rankDetailed(query rankQuery, candidates []titlesearch.Candidate, signals []FeedbackSignal) rankedCandidates {
 	effective := make(map[provision.Key]FeedbackAction, len(signals))
 	lessGenres := map[string]bool{}
 	surpriseTargets := map[provision.Key]bool{}
-	byKey := make(map[provision.Key]catalog.Candidate, len(candidates))
+	byKey := make(map[provision.Key]titlesearch.Candidate, len(candidates))
 	for _, candidate := range candidates {
 		if key, err := candidate.Key(); err == nil {
 			byKey[key] = candidate
@@ -221,7 +183,7 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 	return result
 }
 
-func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, proposals.ConstraintMatches) {
+func relevanceForCandidate(query rankQuery, candidate titlesearch.Candidate) (int, proposals.ConstraintMatches) {
 	candidateTerms := candidateWordSet(candidate, query)
 	return overlap(query.all(), candidateTerms), query.match(candidateTerms)
 }
@@ -232,7 +194,7 @@ func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, p
 // World as if they were ghost stories. Title words matching a must-include,
 // tone, era or refinement term still count, and explicit title requests
 // resolve elsewhere (reference.go, name_grounding.go) without this overlap.
-func candidateWordSet(candidate catalog.Candidate, query rankQuery) map[string]bool {
+func candidateWordSet(candidate titlesearch.Candidate, query rankQuery) map[string]bool {
 	terms := wordSet(strings.Join([]string{
 		candidate.Overview,
 		strings.Join(candidate.Genres, " "),

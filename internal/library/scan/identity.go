@@ -276,16 +276,19 @@ func embeddedRecord(file File) (mp.Record, string) {
 var seasonFolder = regexp.MustCompile(`(?i)^(season[ ._-]*\d+|s\d+|specials)$`)
 
 // seriesFolder is an episode's series folder relative to the root: the folder above its season
-// folder, else the nearest folder whose name carries an id, else its own folder. "" is the root.
+// folder, else the nearest folder whose name carries an id, else its own folder. An episode with
+// no series folder, loose at the root's top or in a season folder there, takes the folder its show
+// would have: its name before the episode mark. "" is the root, for one with no such name.
 func seriesFolder(rel string) string {
 	dir := path.Dir(rel)
 	if dir == "." {
-		return ""
+		return looseSeries(path.Base(rel))
 	}
 	if seasonFolder.MatchString(path.Base(dir)) {
 		if parent := path.Dir(dir); parent != "." {
 			return parent
 		}
+		return looseSeries(path.Base(rel))
 	}
 	for d := dir; d != "."; d = path.Dir(d) {
 		if len(idsIn(path.Base(d))) > 0 {
@@ -293,4 +296,16 @@ func seriesFolder(rel string) string {
 		}
 	}
 	return dir
+}
+
+// looseSeries is the show an episode with no series folder names before its episode mark:
+// "Example.Show.S01E02.mkv" is "Example Show", so loose episodes of two shows are two shows.
+// With nothing before the mark it is the root, "": a season folder never names a show.
+func looseSeries(name string) string {
+	mark := episodeMark.FindStringIndex(name)
+	if mark == nil {
+		return ""
+	}
+	show := strings.NewReplacer(".", " ", "_", " ").Replace(name[:mark[0]])
+	return strings.Trim(strings.Join(strings.Fields(show), " "), " -")
 }

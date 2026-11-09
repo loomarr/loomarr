@@ -58,4 +58,20 @@ describe("CompactSelect (web)", () => {
     renderSelect(<Controlled disabled />);
     expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Time range" }).disabled).toBe(true);
   });
+
+  // A pinned value is real: locked like a disabled one, but never dimmed into a placeholder (#2759).
+  it("locks a read-only value at full strength", () => {
+    renderSelect(
+      <>
+        <Controlled readOnly />
+        <CompactSelect disabled label="Off" onValueChange={() => {}} options={ranges} value="1h" />
+      </>,
+    );
+    const locked = screen.getByRole<HTMLSelectElement>("combobox", { name: "Time range" });
+    const off = screen.getByRole<HTMLSelectElement>("combobox", { name: "Off" });
+
+    expect(locked.disabled).toBe(true);
+    expect(locked.style.opacity).toBe("1");
+    expect(off.style.opacity).not.toBe("1");
+  });
 });

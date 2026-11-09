@@ -3,9 +3,8 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, Card } from "@loomarr/design-system";
+import { Action, Card, Icon, icons } from "@loomarr/design-system";
 import { seasonalModeLabel } from "@loomarr/ui";
-import { Check, Minus } from "lucide-react";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { eraOf } from "@/lib/era-dates";
 import { playOrderLabel } from "@/lib/play-order-copy";
@@ -186,9 +185,9 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
   <li className="flex flex-col gap-0.5 text-sm">
     <div className="flex items-baseline gap-2">
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-        {tone === "kept" && <Check className="text-static-400 size-3.5" />}
-        {tone === "added" && <Check className="text-lock size-3.5" />}
-        {tone === "removed" && <Minus className="text-onair-300 size-3.5" />}
+        {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
+        {tone === "added" && <Icon decorative glyph={icons.selected} size="compact" tone="success" />}
+        {tone === "removed" && <Icon decorative glyph={icons.remove} size="compact" tone="danger" />}
       </span>
       <span
         className={cn(

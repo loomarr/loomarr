@@ -1,5 +1,4 @@
-import { Badge, Text } from "@loomarr/design-system";
-import { Search } from "lucide-react";
+import { Action, Badge, Icon, icons, PressableRow, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
@@ -69,6 +68,8 @@ const SearchCommand = ({
   loading = false,
   placeholder = "Search titles, channels, help…",
   onEscape,
+  fill = false,
+  onClose,
   className,
 }: SearchCommandProps) => {
   const listboxId = useId();
@@ -156,12 +157,13 @@ const SearchCommand = ({
   return (
     <div
       className={cn(
-        "border-border bg-popover flex w-full flex-col overflow-hidden rounded-lg border shadow-lg",
+        "bg-popover flex w-full flex-col overflow-hidden",
+        fill ? "h-full" : "border-border rounded-lg border shadow-lg",
         className,
       )}
     >
       <div className="border-border flex items-center gap-2 border-b px-3">
-        <Search className="text-static-400 size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.search} size="compact" tone="muted" />
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
@@ -177,9 +179,15 @@ const SearchCommand = ({
           aria-activedescendant={flat.length > 0 ? optionId(active) : undefined}
           className="placeholder:text-muted-foreground h-11 w-full bg-transparent text-sm outline-none"
         />
-        <kbd className="border-border bg-static-800 text-2xs text-static-400 shrink-0 rounded border px-1.5 py-0.5 font-mono">
-          ESC
-        </kbd>
+        {onClose ? (
+          <Action density="touch" icon="close" layout="icon" onPress={onClose} variant="ghost">
+            Close search
+          </Action>
+        ) : (
+          <kbd className="border-border bg-static-800 text-2xs text-static-400 shrink-0 rounded border px-1.5 py-0.5 font-mono">
+            ESC
+          </kbd>
+        )}
       </div>
 
       {/* The `listbox` role exists ONLY while there are options to put in it. An empty listbox
@@ -190,7 +198,7 @@ const SearchCommand = ({
       <div
         ref={listRef}
         {...(empty ? {} : { id: listboxId, role: "listbox", "aria-label": "Search results" })}
-        className="max-h-80 overflow-y-auto p-1.5"
+        className={cn("overflow-y-auto p-1.5", fill ? "flex-1" : "max-h-80")}
       >
         {empty && (
           <p className="text-muted-foreground px-3 py-6 text-center text-sm">
@@ -220,25 +228,20 @@ const SearchCommand = ({
               const index = flat.findIndex((r) => r.id === item.id);
               const isActive = index === active;
               return (
-                <button
+                <PressableRow
                   key={item.id}
+                  accessibilityRole="option"
                   id={optionId(index)}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
+                  onPress={() => onSelect?.(item)}
+                  // Hovering moves the active option too, so the pointer and the keyboard
+                  // cannot disagree about which row Enter would pick.
+                  onHoverIn={() => setActive(index)}
+                  selected={isActive}
                   // -1: the input keeps DOM focus (aria-activedescendant pattern), so options
                   // must not enter the tab sequence. They stay clickable.
                   tabIndex={-1}
-                  onClick={() => onSelect?.(item)}
-                  // Hovering moves the active option too, so the pointer and the keyboard
-                  // cannot disagree about which row Enter would pick.
-                  onMouseMove={() => setActive(index)}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
-                    isActive && "bg-static-800",
-                  )}
                 >
-                  <span className="min-w-0 truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-left text-sm">{item.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
                     {item.meta && <span className="text-static-400 font-mono text-xs">{item.meta}</span>}
                     {item.inLibrary && (
@@ -247,7 +250,7 @@ const SearchCommand = ({
                       </Badge>
                     )}
                   </span>
-                </button>
+                </PressableRow>
               );
             })}
           </div>

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -128,10 +128,8 @@ func parsePicks(content string) (finalOutput, error) {
 	return out, nil
 }
 
-// extractJSONObject unwraps a code fence / strips prose around the model's JSON. It now delegates
-// to llm.ExtractJSONObject — the same logic the V44 filler tagger and vision tier need, promoted to
-// the `llm` package so one implementation serves every caller (this used to be a package-private
-// copy here). Kept as a thin local alias so the call sites in this file read unchanged.
+// extractJSONObject unwraps a code fence / strips prose around the model's JSON. It delegates
+// to llm.ExtractJSONObject, the one implementation shared with the filler tagger and vision tier.
 func extractJSONObject(s string) string {
 	return llm.ExtractJSONObject(s)
 }
@@ -166,7 +164,7 @@ type toolCandidate struct {
 // convey theme, short enough that 24 candidates fit a small model's context.
 const overviewMax = 240
 
-func toolResult(cands []catalog.Candidate) []toolCandidate {
+func toolResult(cands []titlesearch.Candidate) []toolCandidate {
 	out := make([]toolCandidate, 0, len(cands))
 	for _, c := range cands {
 		key, err := c.Key()

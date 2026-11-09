@@ -4,15 +4,24 @@ import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEve
 import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  Chip,
+  CompactSelect,
+  Field,
+  Icon,
+  icons,
+  PressableRow,
+  StatusDot,
+  type StatusTone,
+  Surface,
+  Tooltip,
+} from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Check, Clipboard, Radio } from "lucide-react";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   type ApplicationFilters,
   type EventOrder,
@@ -21,6 +30,7 @@ import {
   eventSources,
   sourceNames,
 } from "../application-filters";
+import { CopyValue } from "../copy-value";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
@@ -102,27 +112,6 @@ const eventParams = (
   };
 };
 
-const CopyValue = ({ label, value }: { label: string; value: string }) => {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="relative h-auto justify-start px-2 py-1 font-mono text-xs"
-      onClick={() => {
-        void navigator.clipboard.writeText(value).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1_500);
-        });
-      }}
-    >
-      {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-      {/* The name is the content, so it holds the visible value (WCAG 2.5.3). */}
-      <span className="sr-only">Copy {label}:</span> <span className="truncate">{value}</span>
-    </Button>
-  );
-};
-
 const EventDetail = ({
   event,
   onOpenProcess,
@@ -163,15 +152,15 @@ const EventDetail = ({
           </p>
         </div>
         <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
-          <Button
+          <Action
+            icon={copied ? "success" : "copy"}
+            layout="icon"
+            onPress={copyLog}
+            style={{ flexShrink: 0 }}
             variant="ghost"
-            size="icon"
-            className="shrink-0"
-            aria-label={copied ? "Copied log details" : "Copy log details"}
-            onClick={copyLog}
           >
-            {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-          </Button>
+            {copied ? "Copied log details" : "Copy log details"}
+          </Action>
         </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -258,7 +247,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
         {capture?.active ? (
           <>
             <span className="inline-flex items-center gap-2 text-sm">
-              <Radio aria-hidden className="text-caution size-4" />
+              <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
               Active until {formatTime(capture.endsAt ?? Date.now())}
             </span>
             <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
@@ -267,17 +256,18 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
           </>
         ) : (
           <>
-            <Select value={duration} onValueChange={setDuration}>
-              <SelectTrigger className="w-32" aria-label="Verbose capture duration">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 minute</SelectItem>
-                <SelectItem value="5">5 minutes</SelectItem>
-                <SelectItem value="10">10 minutes</SelectItem>
-                <SelectItem value="15">15 minutes</SelectItem>
-              </SelectContent>
-            </Select>
+            <CompactSelect
+              label="Verbose capture duration"
+              onValueChange={setDuration}
+              options={[
+                { value: "1", label: "1 minute" },
+                { value: "5", label: "5 minutes" },
+                { value: "10", label: "10 minutes" },
+                { value: "15", label: "15 minutes" },
+              ]}
+              value={duration}
+              width={128}
+            />
             <Action
               disabled={busy || query.isError}
               icon="capture"
@@ -410,32 +400,28 @@ const ApplicationDiagnostics = ({
             value={filters.text}
           />
         </Surface>
-        <Select
+        <CompactSelect<EventRange>
+          label="Time range"
+          onValueChange={(range) => updateFilters({ ...filters, range })}
+          options={[
+            { value: "all", label: "All retained" },
+            { value: "1h", label: "Last hour" },
+            { value: "6h", label: "Last 6 hours" },
+            { value: "24h", label: "Last 24 hours" },
+          ]}
           value={filters.range}
-          onValueChange={(range) => updateFilters({ ...filters, range: range as EventRange })}
-        >
-          <SelectTrigger className="w-36" aria-label="Time range">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All retained</SelectItem>
-            <SelectItem value="1h">Last hour</SelectItem>
-            <SelectItem value="6h">Last 6 hours</SelectItem>
-            <SelectItem value="24h">Last 24 hours</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
+          width={144}
+        />
+        <CompactSelect<EventOrder>
+          label="Log order"
+          onValueChange={(order) => updateFilters({ ...filters, order })}
+          options={[
+            { value: "newest", label: "Newest first" },
+            { value: "oldest", label: "Oldest first" },
+          ]}
           value={filters.order}
-          onValueChange={(order) => updateFilters({ ...filters, order: order as EventOrder })}
-        >
-          <SelectTrigger className="w-36" aria-label="Log order">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="newest">Newest first</SelectItem>
-            <SelectItem value="oldest">Oldest first</SelectItem>
-          </SelectContent>
-        </Select>
+          width={144}
+        />
         <Action aria-expanded={advanced} icon="filter" onPress={() => setAdvanced(!advanced)} variant="ghost">
           More filters
         </Action>
@@ -453,22 +439,15 @@ const ApplicationDiagnostics = ({
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Select
+            <CompactSelect<EventSource>
+              label="Source"
+              onValueChange={(source) => updateFilters({ ...filters, source })}
+              options={[
+                { value: "all", label: "All sources" },
+                ...eventSources.map((source) => ({ value: source, label: sourceNames[source] })),
+              ]}
               value={filters.source}
-              onValueChange={(source) => updateFilters({ ...filters, source: source as EventSource })}
-            >
-              <SelectTrigger aria-label="Source">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sources</SelectItem>
-                {eventSources.map((source) => (
-                  <SelectItem key={source} value={source}>
-                    {sourceNames[source]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <Field
               accessibilityLabel="Subsystem"
               autoCapitalize="none"
@@ -509,43 +488,43 @@ const ApplicationDiagnostics = ({
         <legend className="sr-only">Severity filters</legend>
         {(
           [
-            ["all", events.length, "text-foreground", "bg-muted", "All", "Show every severity"],
-            ["error", counts.error, "text-onair", "bg-onair-tint-15", "error", "Show only errors"],
-            ["warn", counts.warn, "text-caution", "bg-caution-tint-15", "warning", "Show only warnings"],
-            ["info", counts.info, "text-lock", "bg-lock-tint-15", "info", "Show informational logs"],
+            ["all", events.length, "muted", "All", "Show every severity"],
+            ["error", counts.error, "danger", "error", "Show only errors"],
+            ["warn", counts.warn, "warning", "warning", "Show only warnings"],
+            ["info", counts.info, "success", "info", "Show informational logs"],
           ] as const
-        ).map(([level, count, color, fill, label, hint]) => (
+        ).map(([level, count, tone, label, hint]) => (
           <Tooltip key={level} content={hint}>
-            <button
-              type="button"
-              className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:bg-muted/30 hover:border-current"}`}
-              aria-pressed={filters.level === level}
-              onClick={() => updateFilters({ ...filters, level })}
+            <Chip
+              onPress={() => updateFilters({ ...filters, level })}
+              selected={filters.level === level}
+              shape="pill"
+              tone={tone}
             >
               {label === "All"
                 ? `${label} ${count}`
                 : `${count} ${label}${label === "info" || count === 1 ? "" : "s"}`}
-            </button>
+            </Chip>
           </Tooltip>
         ))}
         {counts.debug > 0 && (
-          <button
-            type="button"
-            className={`text-muted-foreground cursor-pointer rounded-full border px-2.5 py-1 font-medium ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
-            aria-pressed={filters.level === "debug"}
-            onClick={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+          <Chip
+            onPress={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+            selected={filters.level === "debug"}
+            shape="pill"
           >
-            {counts.debug} debug
-          </button>
+            {`${counts.debug} debug`}
+          </Chip>
         )}
         {downloadState === "failed" && (
           <span className="text-onair inline-flex items-center gap-1">
-            <AlertTriangle aria-hidden className="size-3" /> Download failed
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
           </span>
         )}
         {dropped > 0 && (
           <span className="text-caution inline-flex items-center gap-1">
-            <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
+            since startup
           </span>
         )}
       </fieldset>
@@ -601,34 +580,35 @@ const ApplicationDiagnostics = ({
                       className="border-border absolute top-0 left-0 w-full border-b"
                       style={{ transform: `translateY(${virtualRow.start}px)` }}
                     >
-                      <button
-                        type="button"
-                        className={`hover:bg-muted/20 grid w-full cursor-pointer gap-2 px-4 py-3 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
+                      <PressableRow
                         aria-expanded={open}
-                        onClick={() => setExpanded(open ? undefined : event.id)}
+                        onPress={() => setExpanded(open ? undefined : event.id)}
+                        selected={open}
                       >
-                        <span className="inline-flex items-center gap-2 text-xs">
-                          <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                          {levelLabel(event.level)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium">
-                            {event.message || fallbackMessage(event)}
+                        <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
+                          <span className="inline-flex items-center gap-2 text-xs">
+                            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                            {levelLabel(event.level)}
                           </span>
-                          <span className="text-muted-foreground mt-1 block text-xs">
-                            {sourceLabel(event.source)}
-                            {event.subsystem ? ` · ${event.subsystem}` : ""}
-                            {event.channelId ? " · Channel involved" : ""}
-                            {event.processRunId ? " · Process output available" : ""}
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">
+                              {event.message || fallbackMessage(event)}
+                            </span>
+                            <span className="text-muted-foreground mt-1 block text-xs">
+                              {sourceLabel(event.source)}
+                              {event.subsystem ? ` · ${event.subsystem}` : ""}
+                              {event.channelId ? " · Channel involved" : ""}
+                              {event.processRunId ? " · Process output available" : ""}
+                            </span>
                           </span>
-                        </span>
-                        <time
-                          className="text-muted-foreground font-mono text-xs sm:text-right"
-                          dateTime={new Date(event.occurredAt).toISOString()}
-                        >
-                          {formatTime(event.occurredAt)}
-                        </time>
-                      </button>
+                          <time
+                            className="text-muted-foreground font-mono text-xs sm:text-right"
+                            dateTime={new Date(event.occurredAt).toISOString()}
+                          >
+                            {formatTime(event.occurredAt)}
+                          </time>
+                        </div>
+                      </PressableRow>
                       {open && (
                         <div className="border-border border-t lg:hidden">
                           <EventDetail

@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 interface ConnectionVerdict {
   ok: boolean;
   hint?: string;
-  // The service was never pointed at anything (its check probed no target). Reads "Not set up"
-  // rather than "Needs attention" — nothing is broken, it just is not wired.
+  // The checklist's `notSetUp`: not OK only because nobody has set this service up yet (#2781).
+  // On an optional block it reads as a neutral "Not set up", never red.
   notSetUp?: boolean;
 }
 

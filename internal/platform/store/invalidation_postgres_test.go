@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
@@ -50,7 +51,7 @@ func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	committed, err := pg.saveChannel(ctx, tx, lifecycleTestChannel("committed", 1))
+	committed, err := channelstore.SaveChannelIn(ctx, pg.channelCluster, tx, lifecycleTestChannel("committed", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pg.saveChannel(ctx, tx, lifecycleTestChannel("rolled-back", 2)); err != nil {
+	if _, err := channelstore.SaveChannelIn(ctx, pg.channelCluster, tx, lifecycleTestChannel("rolled-back", 2)); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {

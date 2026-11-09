@@ -6,11 +6,10 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
-import { Action, Surface } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
@@ -234,7 +233,7 @@ const ChannelDetailLayout = () => {
           aria-label="Back to channels"
           className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
         >
-          <ArrowLeft className="size-4" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         </Link>
         {ch.logo ? (
           <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">

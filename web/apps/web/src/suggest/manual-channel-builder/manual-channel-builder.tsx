@@ -8,10 +8,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Badge, Field } from "@loomarr/design-system";
+import { Action, Badge, ChoiceCard, Field, Icon, icons } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
-import { Sparkles } from "lucide-react";
+import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
@@ -56,10 +57,24 @@ const ManualChannelBuilder = ({
   className,
 }: ManualChannelBuilderProps) => {
   const fromIdea = initialIdea !== undefined;
-  const [name, setName] = useState(initialIdea?.name ?? "");
-  const [description, setDescription] = useState(initialIdea?.pitch ?? "");
+  const submit = discoveryApi.useSubmitManualChannel();
+  // The name, the description a template or idea fills in, and the one lineup the picks build.
+  const form = useAppForm({
+    defaultValues: {
+      name: initialIdea?.name ?? "",
+      description: initialIdea?.pitch ?? "",
+      lineup: initialIdea?.titles ?? ([] as ProposalItem[]),
+    },
+    onSubmit: ({ value }) => {
+      if (value.lineup.length > 0 && value.name.trim() !== "") {
+        submitLineup(onSubmitted);
+      }
+    },
+  });
+  const { name, description, lineup } = useStore(form.store, (state) => state.values);
+  const setLineup = (next: ProposalItem[] | ((prev: ProposalItem[]) => ProposalItem[])) =>
+    form.setFieldValue("lineup", next);
   const [templateId, setTemplateId] = useState<string>();
-  const [lineup, setLineup] = useState<ProposalItem[]>(initialIdea?.titles ?? []);
   const [activeFacetId, setActiveFacetId] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -74,7 +89,6 @@ const ManualChannelBuilder = ({
   );
   const candidates = unwrap(search.data, (body) => body.candidates) ?? [];
 
-  const submit = discoveryApi.useSubmitManualChannel();
   // "Keep building manually" hides the banner for the rest of this builder session, and with it
   // the polling.
   const [keepManual, setKeepManual] = useState(false);
@@ -91,8 +105,8 @@ const ManualChannelBuilder = ({
       return;
     }
     setTemplateId(id);
-    setName(template.label);
-    setDescription(template.description);
+    form.setFieldValue("name", template.label);
+    form.setFieldValue("description", template.description);
   };
 
   const addItem = (item: ProposalItem) => {
@@ -113,10 +127,6 @@ const ManualChannelBuilder = ({
         },
       },
     );
-  const continueToReview = () => {
-    if (!canContinue) return;
-    submitLineup(onSubmitted);
-  };
   // The picks go through the same grounded submit as "Continue to review", so AI starts from
   // the recorded lineup rather than from a copy of it. AI is asked about the description the
   // person wrote; the name stands in when there is none. The typed name rides along so the
@@ -143,16 +153,13 @@ const ManualChannelBuilder = ({
 
   return (
     <div className={cn("flex flex-col gap-5", className)}>
-      <div>
-        <h2 className="text-lg font-semibold">
-          {fromIdea ? "Edit before you request" : isAdmin ? "Add a channel" : "Request a channel"}
-        </h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {fromIdea
-            ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
-            : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
-        </p>
-      </div>
+      {/* The page's one heading names this ("Add a channel", or "Edit before you request" from an
+          idea); this sentence is its description, so the builder nests no heading of its own. */}
+      <p className="text-muted-foreground text-sm">
+        {fromIdea
+          ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
+          : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
+      </p>
 
       {aiReconnected && !keepManual && (
         <AiReconnectBanner
@@ -164,14 +171,18 @@ const ManualChannelBuilder = ({
         />
       )}
 
-      <Field
-        autoCapitalize="words"
-        id="manual-channel-name"
-        label="Channel name"
-        onChangeText={setName}
-        placeholder="Name this channel"
-        value={name}
-      />
+      <form.Field name="name">
+        {(field) => (
+          <Field
+            autoCapitalize="words"
+            id="manual-channel-name"
+            label="Channel name"
+            onChangeText={field.handleChange}
+            placeholder="Name this channel"
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
 
       {!fromIdea && (
         <div>
@@ -179,20 +190,13 @@ const ManualChannelBuilder = ({
           <ul className="mt-2 flex flex-col gap-2">
             {CHANNEL_TEMPLATES.map((template) => (
               <li key={template.id}>
-                <button
-                  type="button"
-                  onClick={() => applyTemplate(template.id)}
-                  className={cn(
-                    "border-border bg-card hover:border-suggest flex w-full items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
-                    templateId === template.id && "border-suggest bg-suggest-tint-15",
-                  )}
-                >
-                  <Sparkles className="text-suggest mt-0.5 size-4 shrink-0" aria-hidden />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{template.label}</span>
-                    <span className="text-muted-foreground block text-sm">{template.description}</span>
-                  </span>
-                </button>
+                <ChoiceCard
+                  description={template.description}
+                  leading={<Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />}
+                  onPress={() => applyTemplate(template.id)}
+                  selected={templateId === template.id}
+                  title={template.label}
+                />
               </li>
             ))}
           </ul>
@@ -207,18 +211,15 @@ const ManualChannelBuilder = ({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {facets.map((idea: ChannelIdeaDTO) => (
-              <button
-                key={idea.id}
-                type="button"
-                onClick={() => setActiveFacetId((current) => (current === idea.id ? undefined : idea.id))}
-                className={cn(
-                  "border-border bg-card hover:border-tune flex min-w-[150px] flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
-                  activeFacetId === idea.id && "border-tune bg-tune-tint-15",
-                )}
-              >
-                <span className="text-sm font-medium">{idea.name}</span>
-                <span className="text-muted-foreground text-xs">{ideaReason(idea, false, Date.now())}</span>
-              </button>
+              <div key={idea.id} className="min-w-[150px]">
+                <ChoiceCard
+                  accent="info"
+                  description={ideaReason(idea, false, Date.now())}
+                  onPress={() => setActiveFacetId((current) => (current === idea.id ? undefined : idea.id))}
+                  selected={activeFacetId === idea.id}
+                  title={idea.name}
+                />
+              </div>
             ))}
           </div>
           {activeFacet && (
@@ -356,7 +357,7 @@ const ManualChannelBuilder = ({
           <Action onPress={onCancel} variant="ghost">
             Cancel
           </Action>
-          <Action disabled={!canContinue || submit.isPending} onPress={continueToReview}>
+          <Action disabled={!canContinue || submit.isPending} onPress={() => void form.handleSubmit()}>
             Continue to review
           </Action>
         </div>

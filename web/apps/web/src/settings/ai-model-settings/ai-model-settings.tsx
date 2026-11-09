@@ -4,14 +4,13 @@ import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView"
 import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, RadioGroup, RadioItem, Surface, Text } from "@loomarr/design-system";
+import { Action, Disclosure, RadioGroup, RadioItem, Surface, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useModelPull } from "@/settings/use-model-pull";
 import {
@@ -251,14 +250,12 @@ const VisionSection = ({
   ];
 
   return (
-    <CollapsibleSection
-      title="Advanced vision model"
+    <Disclosure
       description="Choose a separate model only when the lineup model cannot read clip frames."
+      label="Advanced vision model"
     >
-      <div className="flex flex-col gap-4">
-        <VisionPicker options={options} active={active} onSelect={onChange} />
-      </div>
-    </CollapsibleSection>
+      <VisionPicker options={options} active={active} onSelect={onChange} />
+    </Disclosure>
   );
 };
 

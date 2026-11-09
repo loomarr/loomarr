@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Episode order — design review</title>
+<!--
+  #2151 step 14b-5, decision 53: an episode Loomarr can't number from TMDB is shown by the name and
+  number in its file, and its show is asked about in Needs you. A design-review mock in the Library's
+  mock of record (design/library, variant D: plain words, artwork first, amber = the one primary
+  action). Tokens are @loomarr/design-system's dark theme. Shows and files are invented.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --canvas: #0B0C0E; --raised: #131519; --elevated: #1B1E24; --deco: #2A2E37; --control: #666970;
+    --text: #E7EAF0; --muted: #8B93A3; --signal: #FFB020; --ok: #3DD68C; --warn: #F5D90A;
+    --warn-surface: #353217; --ok-surface: #19322A; --placeholder: #1B1E24;
+    font-family: Geist, ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5;
+    color: var(--text); background: #08090B;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #08090B; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  p { margin: 0; }
+  h1, h2, h3 { margin: 0; }
+
+  /* review bar (not part of the design) */
+  .review { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 14px 24px; background: var(--raised); border-bottom: 1px solid var(--deco); }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .review select { background: var(--elevated); border: 1px solid var(--control); border-radius: 6px; color: var(--text); padding: 6px 10px; font: inherit; }
+  .note { max-width: 980px; margin: 14px auto 0; padding: 0 24px; color: var(--muted); font-size: 13px; }
+  .note b { color: var(--text); font-weight: 500; }
+
+  #frame { margin: 20px auto 40px; width: calc(100% - 32px); max-width: 1180px; min-height: 720px; display: flex; background: var(--canvas); border: 1px solid var(--deco); border-radius: 8px; overflow: hidden; }
+  #frame.phone { max-width: 390px; min-height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--raised); flex-direction: column; }
+
+  /* app chrome, as the Library sheets draw it */
+  .rail { width: 200px; flex-shrink: 0; border-right: 1px solid var(--deco); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+  .rail .brand { font-size: 11px; letter-spacing: .12em; font-weight: 600; color: var(--text); padding: 4px 8px 14px; display: flex; gap: 8px; align-items: center; }
+  .rail .brand i { width: 22px; height: 3px; border-radius: 2px; background: linear-gradient(90deg,#E5484D,#FFB020,#3DD68C,#4CC9E8,#D6409F); }
+  .rail a { padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; }
+  .rail a.on { background: var(--elevated); color: var(--text); }
+  .rail .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); align-self: center; }
+  .topbar { display: none; }
+  #frame.phone .rail { display: none; }
+  #frame.phone .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--deco); font-size: 11px; letter-spacing: .12em; font-weight: 600; }
+
+  main { flex: 1; min-width: 0; padding: 22px 28px 40px; display: flex; flex-direction: column; gap: 16px; }
+  #frame.phone main { padding: 16px; }
+  h1 { font-size: 24px; line-height: 30px; font-weight: 650; }
+  .headline { font-size: 20px; line-height: 30px; font-weight: 400; }
+  .status { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .back { font-size: 13px; color: var(--muted); }
+
+  .surface { background: var(--raised); border: 1px solid var(--deco); border-radius: 8px; }
+  .strip { border-color: #8C7E1A; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .strip-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--deco); }
+  .strip-row:first-of-type { border-top: 0; }
+  .strip-row .what { flex: 1 1 240px; display: flex; gap: 12px; align-items: center; min-width: 0; }
+
+  .btn { min-height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--control); background: var(--elevated); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; }
+  .btn.primary { background: var(--signal); border-color: var(--signal); color: #0B0C0E; font-weight: 600; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* stand-in artwork: dark, barely tinted, title set small (the mock's rule) */
+  .poster { aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, var(--tint, #1E2129), var(--placeholder)); border: 1px solid #22252C; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; font-size: 11px; color: #6E7584; flex-shrink: 0; }
+  .poster.sm { width: 36px; font-size: 0; padding: 0; }
+
+  .card { padding: 20px; display: flex; gap: 20px; align-items: flex-start; }
+  #frame.phone .card { flex-wrap: wrap; padding: 16px; gap: 14px; }
+  .card > .poster { width: 144px; }
+  #frame.phone .card > .poster { width: 112px; }
+  .card .body { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .title { font-size: 24px; line-height: 30px; font-weight: 650; }
+  #frame.phone .title { font-size: 20px; line-height: 26px; }
+  .reason { color: #B8BECA; }
+  .small { font-size: 13px; color: var(--muted); }
+
+  /* ChoiceGroup: one row per order TMDB knows */
+  .choices { border: 1px solid var(--deco); border-radius: 8px; overflow: hidden; }
+  .choice { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-top: 1px solid var(--deco); cursor: pointer; }
+  .choice:first-child { border-top: 0; }
+  .choice.on { background: #17191E; }
+  .choice .ring { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--control); margin-top: 1px; flex-shrink: 0; display: grid; place-items: center; }
+  .choice.on .ring { border-color: var(--signal); }
+  .choice.on .ring::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); }
+  .choice .name { font-weight: 500; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .choice .sub { font-size: 13px; color: var(--muted); }
+  .badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 500; }
+  .badge.fits { background: var(--ok-surface); color: var(--ok); }
+  .badge.fits::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+  .disclosure { border-top: 1px solid var(--deco); padding-top: 10px; }
+  .disclosure summary { cursor: pointer; font-size: 13px; color: var(--muted); list-style: none; display: flex; justify-content: space-between; }
+  .disclosure summary::after { content: "Show"; }
+  .disclosure[open] summary::after { content: "Hide"; }
+  .files { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #B8BECA; }
+  .files span { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+
+  .done { display: flex; gap: 10px; align-items: center; padding: 22px 0; }
+  .done i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .lockin { animation: lock 200ms ease-out both; }
+  @keyframes lock { from { opacity: .6; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .lockin { animation: none; } }
+
+  /* the show's page, a season open */
+  .title-head { display: flex; gap: 20px; align-items: flex-start; }
+  .title-head .poster { width: 120px; }
+  #frame.phone .title-head .poster { width: 96px; }
+  .season { padding: 0; }
+  .season-head { display: flex; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--deco); }
+  .ep { display: grid; grid-template-columns: 56px 1fr auto; gap: 4px 12px; padding: 10px 16px; border-top: 1px solid var(--deco); align-items: baseline; }
+  .ep:first-of-type { border-top: 0; }
+  .ep .n { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  .ep .from { grid-column: 2 / 4; font-size: 12px; color: var(--muted); }
+  .ep .len { font-size: 12px; color: var(--muted); }
+  .hint { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-radius: 8px; background: var(--warn-surface); color: var(--text); font-size: 13px; }
+  .hint i { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+  .hint .btn { margin-left: auto; min-height: 32px; }
+  #frame.phone .hint .btn { margin-left: 0; }
+</style>
+
+<div class="review">
+  <strong>Episode order · Needs you (#2151 14b-5)</strong>
+  <label>Screen
+    <select id="screen">
+      <option value="strip">Library: the strip</option>
+      <option value="orders" selected>Needs you: several orders</option>
+      <option value="done">Needs you: answered</option>
+      <option value="counts">Needs you: one order, counts differ</option>
+      <option value="show">The show's page</option>
+    </select>
+  </label>
+  <label>Device
+    <select id="device">
+      <option value="desktop">Desktop 1440</option>
+      <option value="phone">Phone 390</option>
+    </select>
+  </label>
+</div>
+<p class="note" id="note"></p>
+
+<div id="frame">
+  <nav class="rail" aria-label="Main">
+    <div class="brand"><i></i>LOOMARR</div>
+    <a>Home</a><a>Guide</a><a class="on">Library <span class="dot"></span></a><a>Requests</a><a>Filler</a><a>People</a><a>Settings</a>
+  </nav>
+  <div class="topbar"><span>LOOMARR</span><span class="small">☰</span></div>
+  <main id="main"></main>
+</div>
+
+<script>
+// The decision 53 cases, with invented shows. An order's season sizes come from TMDB's episode
+// group; "Fits your files" is the one whose sizes match the last episode on disk in every season.
+const show = { name: "Harbor Lights", year: 2011, tint: "#1F2328", waiting: 14 };
+const orders = [
+  { id: "aired", name: "As first aired", sub: "4 seasons · 52 episodes", fits: false },
+  { id: "dvd", name: "DVD order", sub: "4 seasons · 50 episodes", fits: true },
+  { id: "absolute", name: "One long run", sub: "52 episodes, no seasons", fits: false },
+  { id: "files", name: "Keep the file names", sub: "Each episode keeps the name and number in its file. We won't ask again.", fits: false },
+];
+const files = [
+  ["S02E06", "Harbor.Lights.S02E06.Low.Tide.mkv"],
+  ["S02E07", "Harbor.Lights.S02E07.Undertow.mkv"],
+  ["S02E08", "Harbor.Lights.S02E08.Fog.Bank.mkv"],
+];
+const other = { name: "Kestrel Bay", year: 2019, tint: "#20232A" };
+let picked = "dvd";
+
+const poster = (s, cls = "") => `<div class="poster ${cls}" style="--tint:${s.tint}">${cls ? "" : s.name}</div>`;
+const fileList = (n) => `
+  <details class="disclosure"><summary>${n} episodes</summary>
+    <div class="files">${files.map(([e, f]) => `<div>${e} — <span>${f}</span></div>`).join("")}
+    <div class="small">and ${n - files.length} more</div></div>
+  </details>`;
+
+const header = (count) => `
+  <div><h1>Library</h1></div>
+  <div class="status"><i></i>All caught up — every title's ready to air</div>
+  <h2 class="headline">Needs you (${count})</h2>`;
+
+const screens = {
+  strip: {
+    note: "The strip on the Library page asks about the show in one line. <b>Choose</b> opens Needs you; there is no one-tap answer, because the question has more than two answers.",
+    html: () => `
+      <div><h1>Library</h1></div>
+      <div class="status"><i></i>All caught up — every title's ready to air</div>
+      <section class="surface strip" aria-label="Needs you">
+        <h2 class="headline">Needs you (3)</h2>
+        <div class="strip-row"><div class="what">${poster(show, "sm")}<span>${show.name} — which order are the episodes in?</span></div>
+          <div class="actions"><button class="btn">Choose</button></div></div>
+        <div class="strip-row"><div class="what">${poster(other, "sm")}<span>${other.name} — 14 episodes keep their file names</span></div>
+          <div class="actions"><button class="btn">See why</button></div></div>
+        <div class="strip-row"><div class="what">${poster({ tint: "#1E2026" }, "sm")}<span>Evening Tides — is this the 2004 movie?</span></div>
+          <div class="actions"><button class="btn">Yes, that's it</button><button class="btn ghost">Pick a different title</button></div></div>
+      </section>`,
+  },
+  orders: {
+    note: "TMDB lists the show in more than one order and the files don't say which. One card per <b>show</b>, not per episode. The orders are TMDB's episode groups, in plain names; the one whose season sizes fit the disk is marked and chosen first. <b>Use this order</b> is the primary action (first card only, as today). There is no <i>Ignore this</i>: on a title card it means \"not a title\", which a show with an order question isn't; <b>Keep the file names</b> is how to say no.",
+    html: () => `
+      ${header(2)}
+      <article class="surface card">
+        ${poster(show)}
+        <div class="body">
+          <h3 class="title">Which order are your ${show.name} episodes in?</h3>
+          <p class="reason">TMDB lists this show in more than one order, and your files don't say which they follow. Until you choose, ${show.waiting} episodes use the name and number in their file.</p>
+          <div class="choices" role="radiogroup" aria-label="Episode order">
+            ${orders.map((o) => `
+              <div class="choice ${picked === o.id ? "on" : ""}" role="radio" aria-checked="${picked === o.id}" tabindex="0" data-id="${o.id}">
+                <span class="ring"></span>
+                <div><div class="name">${o.name}${o.fits ? '<span class="badge fits">Fits your files</span>' : ""}</div>
+                <div class="sub">${o.sub}</div></div>
+              </div>`).join("")}
+          </div>
+          <div class="actions"><button class="btn primary">${picked === "files" ? "Keep the file names" : "Use this order"}</button></div>
+          ${fileList(show.waiting)}
+        </div>
+      </article>
+      <article class="surface card">
+        ${poster({ name: "Evening Tides", tint: "#1E2026" })}
+        <div class="body"><h3 class="title">Is this Evening Tides (2004)?</h3>
+        <p class="reason">The name and year match.</p>
+        <div class="actions"><button class="btn">Yes, that's it</button><button class="btn">Pick a different title</button><button class="btn ghost">Ignore this</button></div></div>
+      </article>`,
+  },
+  done: {
+    note: "Answered: the card locks in (static → clear, 200 ms) and leaves, as the title cards do. The words say what changed.",
+    html: () => `
+      ${header(1)}
+      <article class="surface card lockin">
+        ${poster(show)}
+        <div class="body"><div class="done"><i></i><h3 class="title">Done — ${show.name} uses DVD order.</h3></div>
+        <p class="small">${show.waiting} episodes now have their names and details from TMDB.</p></div>
+      </article>`,
+  },
+  counts: {
+    note: "TMDB knows one order, but a season on disk doesn't end where TMDB's does (a double episode split in two, say). Nothing to choose: the card says what Loomarr does, and <b>That's fine</b> stops asking. A rescan that fits clears it on its own.",
+    html: () => `
+      ${header(1)}
+      <article class="surface card">
+        ${poster(other)}
+        <div class="body">
+          <h3 class="title">Some ${other.name} episodes don't line up with TMDB</h3>
+          <p class="reason">Season 2 on your disk has 14 episodes; TMDB lists 13. Those 14 still play, named as they are in their files.</p>
+          <div class="actions"><button class="btn primary">That's fine</button><button class="btn">See the show</button></div>
+          ${fileList(14)}
+        </div>
+      </article>`,
+  },
+  show: {
+    note: "Where it shows: the show's page. A season that waits on an answer says so in one line with <b>Choose</b>; each such episode reads \"Name from the file\". Nothing technical (no ids, no orderings) leaves the Needs you card.",
+    html: () => `
+      <div class="back">‹ Library</div>
+      <div class="title-head">${poster(show)}<div style="display:flex;flex-direction:column;gap:8px">
+        <h1>${show.name}</h1><p class="small">${show.year} · 4 seasons</p>
+        <div class="actions"><button class="btn">Update details</button><button class="btn">Check files again</button><button class="btn ghost">Wrong title?</button></div></div></div>
+      <div class="hint"><i></i>We're not sure which order these episodes are in.<button class="btn">Choose</button></div>
+      <section class="surface season">
+        <div class="season-head"><strong>Season 2</strong><span class="small">13 episodes · Hide</span></div>
+        <div class="ep"><span class="n">5</span><span>The Breakwater</span><span class="len">44 min</span></div>
+        <div class="ep"><span class="n">6</span><span>Low Tide</span><span class="len">43 min</span><span class="from">Name from the file</span></div>
+        <div class="ep"><span class="n">7</span><span>Undertow</span><span class="len">44 min</span><span class="from">Name from the file</span></div>
+        <div class="ep"><span class="n">8</span><span>Fog Bank</span><span class="len">42 min</span><span class="from">Name from the file</span></div>
+      </section>`,
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+if (params.get("screen")) $("screen").value = params.get("screen");
+if (params.get("device")) $("device").value = params.get("device");
+const render = () => {
+  const s = screens[$("screen").value];
+  $("frame").className = $("device").value === "phone" ? "phone" : "";
+  $("note").innerHTML = s.note;
+  $("main").innerHTML = s.html();
+};
+$("screen").onchange = $("device").onchange = render;
+$("main").addEventListener("click", (e) => {
+  const c = e.target.closest(".choice");
+  if (c) { picked = c.dataset.id; render(); }
+});
+$("main").addEventListener("keydown", (e) => {
+  const c = e.target.closest(".choice");
+  if (c && (e.key === " " || e.key === "Enter")) { e.preventDefault(); picked = c.dataset.id; render(); }
+});
+render();
+</script>
+</html>

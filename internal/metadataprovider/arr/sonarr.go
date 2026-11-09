@@ -36,7 +36,6 @@ func (*Sonarr) Capabilities() mp.Capabilities {
 		Kinds:    []mp.Kind{mp.KindSeries, mp.KindEpisode},
 		Resolves: []mp.Resolvable{{Kind: mp.KindSeries, Namespace: mp.NamespaceTVDB}},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyTechnical, mp.FamilyArtwork},
-		Rate:     mp.RateHint{MaxConcurrent: 1, PreferList: true},
 	}
 }
 

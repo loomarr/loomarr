@@ -2,11 +2,13 @@ package recurate
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -20,15 +22,15 @@ type Refiner interface {
 }
 
 // Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
-// nil ⇒ re-curation runs the LLM corpus alone, exactly as it did before adjacency existed.
+// nil ⇒ re-curation runs the LLM corpus alone.
 // Narrowed to the one method, like every other dependency here.
 type Adjacencer interface {
-	Adjacent(ctx context.Context, seeds []catalog.Candidate, exclude map[provision.Key]bool, limit int) ([]catalog.Adjacency, error)
+	Adjacent(ctx context.Context, seeds []titlesearch.Candidate, exclude map[provision.Key]bool, limit int) ([]titlesearch.Adjacency, error)
 }
 
 // RunnerStore is the slice of the store the runner needs.
 type RunnerStore interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 }
 
@@ -46,7 +48,7 @@ type Runner struct {
 }
 
 // WithAdjacency wires the §8.3 adjacency corpus. Returns the runner for chaining, keeping
-// NewRunner's signature stable — the same pattern suggest.WithRatings uses.
+// NewRunner's signature stable — the same pattern Suggester.WithRatings uses.
 func (r *Runner) WithAdjacency(a Adjacencer) *Runner {
 	r.adj = a
 	return r
@@ -62,12 +64,15 @@ func NewRunner(st RunnerStore, r Refiner, log *slog.Logger) *Runner {
 
 // Run triggers a refresh refine for every eligible channel. Returns the number of channels
 // re-curation was kicked for (for the job's log/metrics). A single channel's failure is logged
-// and skipped — one bad channel must not stop the sweep (the §18.1 job-resilience contract).
+// and skipped — one bad channel must not stop the sweep (the §18.1 job-resilience contract). A
+// sweep that kicked nothing because every attempted channel failed returns those failures joined,
+// so the job reports a failed run rather than a clean zero.
 func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 	channels, err := r.store.ListChannels(ctx)
 	if err != nil {
 		return 0, err
 	}
+	var failures []error
 	for _, ch := range channels {
 		if !eligible(ch) {
 			continue
@@ -76,6 +81,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if berr != nil {
 			r.log.Warn("re-curation: could not check the channel's unfinished jobs; skipping",
 				"channel", ch.ID, "err", berr)
+			failures = append(failures, fmt.Errorf("channel %s: unfinished-job check: %w", ch.ID, berr))
 			continue
 		}
 		if busy {
@@ -90,14 +96,16 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if _, rerr := r.refiner.Recurate(ctx, ch.ID, intent); rerr != nil {
 			r.log.Warn("re-curation refine failed for a channel; skipping",
 				"channel", ch.ID, "err", rerr)
+			failures = append(failures, fmt.Errorf("channel %s: %w", ch.ID, rerr))
 			continue
 		}
 		kicked++
 	}
 	if kicked > 0 {
 		r.log.Info("re-curation kicked", "channels", kicked)
+		return kicked, nil
 	}
-	return kicked, nil
+	return 0, errors.Join(failures...)
 }
 
 // eligible reports whether a channel participates in scheduled re-curation (§8.2): it must be
@@ -107,7 +115,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 // qualifies: live, building, AND drifted. drifted is a TRANSIENT reconcile state ("the guide is
 // catching up to the desired lineup"), not a reason to stop curating; excluding it would freeze
 // re-curation on any channel whose Tunarr push is momentarily behind.
-func eligible(ch store.Channel) bool {
+func eligible(ch channelstore.Channel) bool {
 	if ch.IntentRef == "" || ch.Policy.AutoCurate == nil {
 		return false
 	}
@@ -118,7 +126,7 @@ func eligible(ch store.Channel) bool {
 // (description + era/tone/constraints) plus the current lineup as context, and NO RefineText —
 // the "change" is simply "re-evaluate against the library as it is now". Returns ok=false when
 // the channel has no readable original request (nothing to re-run).
-func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (proposals.Intent, bool) {
+func (r *Runner) refreshIntent(ctx context.Context, ch channelstore.Channel) (proposals.Intent, bool) {
 	intent, err := suggest.IntentOfChannel(ch)
 	if err != nil {
 		r.log.Warn("re-curation: the channel's original request is unavailable; skipping channel",
@@ -146,11 +154,11 @@ const adjacentLimit = 12
 // BEST-EFFORT and non-fatal in every direction: no corpus wired, a walk that errors, or a
 // channel whose lineup yields no TMDB seeds all return nil, and re-curation proceeds with
 // the LLM corpus alone. Adjacency widens a run; it must never fail one.
-func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposals.AdjacentContext {
+func (r *Runner) adjacentFor(ctx context.Context, ch channelstore.Channel) []proposals.AdjacentContext {
 	if r.adj == nil || len(ch.Lineup) == 0 {
 		return nil
 	}
-	seeds := make([]catalog.Candidate, 0, len(ch.Lineup))
+	seeds := make([]titlesearch.Candidate, 0, len(ch.Lineup))
 	exclude := make(map[provision.Key]bool, len(ch.Lineup))
 	for _, e := range ch.Lineup {
 		exclude[e.Key] = true
@@ -158,7 +166,7 @@ func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposals.
 		if !ok || provider != "tmdb" {
 			continue // only TMDB ids have a graph to walk
 		}
-		seeds = append(seeds, catalog.Candidate{
+		seeds = append(seeds, titlesearch.Candidate{
 			MediaType: mt, TMDBID: id, Name: e.Title, Year: e.Year,
 		})
 	}

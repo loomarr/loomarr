@@ -58,28 +58,3 @@ func TestClassCosts_RoundTripKeyedToFingerprintAndEncoder(t *testing.T) {
 		}
 	}
 }
-
-func TestMigrateCapabilityEvidence_MovesOnceFromThePreparedDir(t *testing.T) {
-	prepared, state := t.TempDir(), filepath.Join(t.TempDir(), "playout-state")
-	old := capabilityEvidence{Version: 1, Fingerprint: "fp", Encoder: encode.EncoderNVENC, MaxChannels: 12, ObservedAt: time.Now().UTC()}
-	if err := storeCapabilityEvidence(prepared, old); err != nil {
-		t.Fatal(err)
-	}
-	moved, err := MigrateCapabilityEvidence(prepared, state)
-	if err != nil || !moved {
-		t.Fatalf("migrate = %v, %v", moved, err)
-	}
-	if _, err := os.Stat(filepath.Join(prepared, capabilityEvidenceName)); !os.IsNotExist(err) {
-		t.Fatal("old evidence left in the prepared dir")
-	}
-	if got, ok := loadCapabilityEvidence(state, "fp", time.Now()); !ok || got.MaxChannels != 12 {
-		t.Fatalf("migrated evidence = %+v, %v", got, ok)
-	}
-	// A second run, or a newer file already in the state dir, is left alone.
-	if err := storeCapabilityEvidence(prepared, old); err != nil {
-		t.Fatal(err)
-	}
-	if moved, err := MigrateCapabilityEvidence(prepared, state); moved || err != nil {
-		t.Fatalf("second migrate = %v, %v; want a no-op", moved, err)
-	}
-}

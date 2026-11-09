@@ -11,18 +11,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/capability"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/identity"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
+	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -40,11 +49,11 @@ import (
 )
 
 type fillerBuild struct {
-	service  api.FillerService
+	service  fillerapi.Service
 	defects  *defectfloor.DefectReports
-	preview  api.PodPreviewer
-	taxonomy api.TaxonomyEditor
-	research api.FillerResearchService
+	preview  guideapi.PodPreviewer
+	taxonomy fillerapi.TaxonomyEditor
+	research fillerapi.ResearchService
 	// providers is every provider a filler source can name; the API publishes it and the fetcher
 	// and the service adapter dispatch through it.
 	providers *source.Registry
@@ -54,8 +63,8 @@ type fillerBuild struct {
 
 // compilationGate reads `filler.acquisition.compilations` against the same single-clip ceiling
 // probe marks compilations by, both live on every call (#1773).
-func compilationGate(set resolved) filler.CompilationGate {
-	return filler.CompilationGate{
+func compilationGate(set resolved) acquisition.CompilationGate {
+	return acquisition.CompilationGate{
 		Take: func() bool { return settings.FillerAcquisitionCompilations.Get(set) },
 		Over: func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 	}
@@ -64,14 +73,14 @@ func compilationGate(set resolved) filler.CompilationGate {
 func buildFillerSubsystem(
 	st records.Store,
 	set resolved,
-	layout filler.Layout,
+	layout cliplibrary.Layout,
 	log *slog.Logger,
 	libraryClient *library.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
-	playoutResolver *playoutResolver,
-	channelService api.ChannelService,
+	playoutResolver *playoutresolve.Resolver,
+	channelService guideapi.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder,
@@ -86,9 +95,9 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
-	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
+	result.research = capability.NewWebSettings(st, set, metricRecorder)
 	result.intakeLanguages = intakeLanguages(st, set)
-	result.defects = defectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
+	result.defects = defectfloor.NewDefectReports(storeadapter.NewDefects(st), time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.
@@ -151,7 +160,7 @@ func buildFillerSubsystem(
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		home:     set.homeGeography,
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		splitter: splitter, splitClips: storeadapter.NewSplit(st, wake),
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return settings.FillerStorageLibraryBudgetGb.Get(set) == 0 },
 		storageCleanup:   fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
@@ -161,7 +170,7 @@ func buildFillerSubsystem(
 	result.preview = podPreviewAdapter{store: st, pods: pods}
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {
-		playoutResolver.pods = result.preview
+		playoutResolver.SetPods(result.preview)
 	}
 	if engine, ok := channelService.(*channels.Engine); ok {
 		engine.WithPods(pods)
@@ -172,12 +181,12 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", settings.FillerSyncEvery.Get(set))
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
+	judgeVision := capability.NewHotVision(set, mainSelection(set), log, metricRecorder)
 	defectTools := buildFillerMediaTools(set, metricRecorder)
 	defectJudge := defectfloor.NewVisionDefectJudge(judgeVision, defectTools,
-		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
+		capability.NewJudgeLedger(st, set, newID), judgeVision.DefectJudgeEndpoint, time.Now, log)
 	defectFloor := defectfloor.NewDefectFloor(
-		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
+		storeadapter.NewDefects(st), cliplibrary.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return tools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
 		},
@@ -188,31 +197,31 @@ func buildFillerSubsystem(
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
 		defectFloor.CheckReplacement, interactiveLLM)
-	stations := &stationDirectory{list: st.ListBroadcastStations}
-	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
+	stations := station.NewLazy(st.ListBroadcastStations)
+	enrichmentSignals := capability.NewEnrichmentSignals(st, layout.FS(), stations)
 	enrichmentRunner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
+		storeadapter.NewEnrichment(st),
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	)
 	enrichmentCoordinator := enrichment.NewCoordinator(
-		enrichmentRunner, fillerEnrichmentRepository{st: st},
+		enrichmentRunner, storeadapter.NewEnrichment(st),
 		func() enrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	).WithCapabilities(
 		enrichment.NewCapabilityRunner(
-			enrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
+			enrichment.CapabilityTranscript, storeadapter.NewEnrichment(st),
 			func() enrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
-			fillerMediaExecutor{store: st, transcript: transcribeStage,
-				kind: enrichment.CapabilityTranscript}.Run,
+			capability.NewTranscriptExecutor(st, transcribeStage).
+				Run,
 			func() int { return settings.FillerPipelineMaxWhisper.Get(set) }, time.Now,
 		),
 		enrichment.NewCapabilityRunner(
-			enrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
+			enrichment.CapabilityVision, storeadapter.NewEnrichment(st),
 			func() enrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
-			fillerMediaExecutor{store: st, vision: visionStage,
-				kind: enrichment.CapabilityVision}.Run,
+			capability.NewVisionExecutor(st, visionStage).
+				Run,
 			func() int { return settings.FillerPipelineMaxVision.Get(set) }, time.Now,
 		),
 	)
@@ -260,9 +269,9 @@ func buildFillerSubsystem(
 				Now:    time.Now,
 			})
 			researcher := research.New(retriever, selection.Provider, selection.ProviderName,
-				selection.Model, time.Now).WithFallback(web).WithStations(stations.resolveDuring(log))
-			researchRunner = research.NewRunner(fillerResearchRepository{st: st}, researcher,
-				fillerResearchSignals{files: layout.FS()}.Load,
+				selection.Model, time.Now).WithFallback(web).WithStations(stations.ResolveDuring(log))
+			researchRunner = research.NewRunner(storeadapter.NewResearch(st), researcher,
+				capability.NewResearchSignals(layout.FS()).Load,
 				func() int {
 					structuredEnabled := settings.FillerResearchWikidataEnabled.Get(set) ||
 						settings.FillerResearchWikipediaEnabled.Get(set) ||
@@ -273,12 +282,12 @@ func buildFillerSubsystem(
 				})
 		}
 	}
-	local := &localStations{stations: stations,
-		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
+	local := &station.LocalResolver{Stations: stations,
+		RadiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, Log: log}
 	// The places' policy: the household's geography, region fallback included, so a fallback
 	// country's national clips stay usable.
-	placePolicy := func() filler.Policy {
-		return filler.Policy{LocalStations: local.resolve, Geography: set.homeGeography()}
+	placePolicy := func() pod.Policy {
+		return pod.Policy{LocalStations: local.Resolve, Geography: set.homeGeography()}
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
@@ -294,11 +303,11 @@ func buildFillerSubsystem(
 		return err
 	}
 	registry.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-		fillerSweepStoreAdapter{st}, layout.ClipDir(),
+		storeadapter.NewSweep(st), layout.ClipDir(),
 		func() time.Duration { return settings.FillerSplitReviewWindow.Get(set) }, time.Now, log,
 	)))
-	registry.Add(fillerIdentityJob(filler.NewCreativeIdentity(
-		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
+	registry.Add(fillerIdentityJob(identity.NewJob(
+		storeadapter.NewIdentity(st), buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no
 			// target, NaN makes the loudness rung a tie for every pair rather than ranking toward 0.
@@ -310,14 +319,14 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
-	autoFetch := filler.NewFetcher(
-		fetchStoreAdapter{
-			st:         st,
-			fetchEvery: func() time.Duration { return settings.FillerFetchEvery.Get(set) },
-			home:       set.homeGeography,
-		},
+	autoFetch := acquisition.NewFetcher(
+		storeadapter.NewFetch(
+			st,
+			func() time.Duration { return settings.FillerFetchEvery.Get(set) },
+			set.homeGeography),
+
 		providers, adapter,
-		filler.FetchLimits{
+		acquisition.FetchLimits{
 			MaxPerRun:         func() int { return settings.FillerFetchMaxPerRun.Get(set) },
 			MaxProviderPerRun: func() int { return 50 },
 			MaxCatalogClips:   func() int { return settings.FillerFetchMaxCatalogClips.Get(set) },
@@ -325,31 +334,31 @@ func buildFillerSubsystem(
 			MaxDuration:       func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 			Compilations:      compilationGate(set),
 		}, log,
-	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
+	).WithCoverageGaps(func(ctx context.Context) (acquisition.CoverageGaps, error) {
 		// The same per-channel coverage readiness and the pool strip report (#749), against a
 		// target sized from the household's watched evenings (#2035).
 		pool, err := result.preview.Pool(ctx)
 		if err != nil {
-			return filler.CoverageGaps{}, err
+			return acquisition.CoverageGaps{}, err
 		}
 		airings, err := st.FillerAirings(ctx)
 		if err != nil {
-			return filler.CoverageGaps{}, err
+			return acquisition.CoverageGaps{}, err
 		}
-		windows := make(map[string][]filler.EraRange, len(pool.Channels))
+		windows := make(map[string][]pod.EraRange, len(pool.Channels))
 		for _, ch := range pool.Channels {
 			windows[ch.ChannelID] = ch.Report.EraWindows
 		}
 		now := time.Now()
 		spacing := time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second
-		gaps := filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year())
+		gaps := acquisition.CoverageGapsFrom(pool, pod.SizePool(airings, windows, spacing, now), now.Year())
 		if !gaps.Met() {
 			// A short pass also looks for the stations near each place, in the eras it is short of
 			// (#2059 decision 9). Without them it still fetches; it just doesn't look for local.
 			if near, err := nearbyPlaceStations(ctx, st, placePolicy()); err != nil {
 				log.Warn("filler auto-fetch: nearby stations unavailable; not searching for them", "err", err)
 			} else if len(near) > 0 {
-				if directory, err := stations.get(ctx); err != nil {
+				if directory, err := stations.Get(ctx); err != nil {
 					log.Warn("filler auto-fetch: broadcast stations unavailable; not searching for them", "err", err)
 				} else {
 					gaps.Stations = nearbyCallSigns(near, gaps.Eras, directory)

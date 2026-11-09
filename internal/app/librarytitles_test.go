@@ -7,7 +7,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 type libraryTitlesFake []store.LibraryTitle
@@ -18,11 +17,7 @@ func (f libraryTitlesFake) LibraryTitles(_ context.Context, since time.Time) ([]
 
 func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
 	for _, t := range f {
-		id := t.TMDBID
-		if namespace == "tvdb" {
-			id = t.TVDBID
-		}
-		if t.Kind == kind && id == value {
+		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}
@@ -30,8 +25,10 @@ func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, nam
 }
 
 var testLibraryTitles = libraryTitlesFake{
-	{ID: "lib-film", Kind: "movie", Name: "Film", TMDBID: "90000001", Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
-	{ID: "lib-show", Kind: "series", Name: "Show", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
+	{ID: "lib-film", Kind: "movie", Name: "Film", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000001"}},
+		Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
+	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []store.LibraryID{
+		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y"},
 }
 
 // The availability scan reads the Library's titles, so a title confirms with its library item id
@@ -67,21 +64,8 @@ func TestLibraryLookupReadsTheLibrary(t *testing.T) {
 	}
 }
 
-// Presence and ratings answer an owned title from the Library, by its library item id.
-func TestPresenceAndRatingsReadTheLibrary(t *testing.T) {
-	presence := libraryPresence{titles: testLibraryTitles}
-	got, ok, err := presence.Present(context.Background(), provision.Movie, 90000001, 0)
-	if err != nil || !ok || got.LibraryItemID != "lib-film" || got.OfficialRating != "PG" || got.SizeBytes != 4_000 ||
-		len(got.Genres) != 1 {
-		t.Errorf("film presence = %+v, %v, %v", got, ok, err)
-	}
-	if got, ok, err := presence.Present(context.Background(), provision.Series, 0, 90000002); err != nil || !ok || got.LibraryItemID != "lib-show" {
-		t.Errorf("show by tvdb = %+v, %v, %v", got, ok, err)
-	}
-	if _, ok, err := presence.Present(context.Background(), provision.Movie, 90000009, 0); err != nil || ok {
-		t.Errorf("a title the Library lacks: ok = %v, %v; want absent", ok, err)
-	}
-
+// Ratings answer an owned title from the Library, by its library item id.
+func TestRatingsReadTheLibrary(t *testing.T) {
 	ratings := libraryRatings{titles: testLibraryTitles}
 	if r, ok, err := ratings.Rating(context.Background(), "series:tvdb:90000002"); err != nil || !ok || r != "TV-Y" {
 		t.Errorf("show rating = %q, %v, %v", r, ok, err)

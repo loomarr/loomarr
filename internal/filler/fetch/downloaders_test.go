@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/proctree"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -237,7 +237,7 @@ func writeTestSidecar(t *testing.T, dir string) string {
 }
 
 func sidecarStamped(t *testing.T, path string) bool {
-	_, stamped := readSidecar(t, path)[filler.SidecarLoomarrKey()]
+	_, stamped := readSidecar(t, path)[asset.SidecarLoomarrKey()]
 	return stamped
 }
 
@@ -320,27 +320,6 @@ printf '%%s\n' "$@" > %q
 	}
 }
 
-func TestYtDlpDownloader_DirectUseKeepsPublicationArchive(t *testing.T) {
-	drop := t.TempDir()
-	publication := t.TempDir()
-	argsFile := filepath.Join(t.TempDir(), "args")
-	ytdlp := testkit.Executable(t, "yt-dlp", fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$@" > %q
-`, argsFile))
-	if _, err := NewYtDlpDownloader(ytdlp, "ffmpeg").Download(context.Background(), Source{
-		Kind: YouTube, URL: "https://youtube.com/watch?v=current-id", PublicationDir: publication,
-	}, drop); err != nil {
-		t.Fatal(err)
-	}
-	args, err := os.ReadFile(argsFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(args), filepath.Join(publication, ".yt-dlp-archive.txt")) {
-		t.Fatalf("yt-dlp args = %q, want direct publication archive", args)
-	}
-}
-
 func TestYtDlpDownloader_StampsOnlyCurrentInvocationSidecars(t *testing.T) {
 	drop := t.TempDir()
 	unrelated := filepath.Join(drop, "operator-drop.info.json")
@@ -377,11 +356,11 @@ printf 'download warning: %%s\n' %q >&2
 	if _, err := d.Download(context.Background(), src, drop); err != nil {
 		t.Fatal(err)
 	}
-	if _, stamped := readSidecar(t, unrelated)[filler.SidecarLoomarrKey()]; stamped {
+	if _, stamped := readSidecar(t, unrelated)[asset.SidecarLoomarrKey()]; stamped {
 		t.Fatal("stderr diagnostic stamped an unrelated pre-existing sidecar")
 	}
 	for _, current := range []string{sidecar, playlistSidecar} {
-		mark, ok := readSidecar(t, current)[filler.SidecarLoomarrKey()].(map[string]any)
+		mark, ok := readSidecar(t, current)[asset.SidecarLoomarrKey()].(map[string]any)
 		if !ok || mark["sourceId"] != "youtube:current" || mark["acquisitionId"] != "acq-current" {
 			t.Fatalf("current sidecar %q mark = %#v, want exact source and acquisition attribution", current, mark)
 		}
@@ -401,7 +380,7 @@ printf 'download warning: %%s\n' %q >&2
 	if string(after) != string(before) {
 		t.Fatal("all-skipped retry changed a prior sidecar")
 	}
-	if _, stamped := readSidecar(t, unrelated)[filler.SidecarLoomarrKey()]; stamped {
+	if _, stamped := readSidecar(t, unrelated)[asset.SidecarLoomarrKey()]; stamped {
 		t.Fatal("all-skipped retry stamped an unrelated sidecar")
 	}
 }
@@ -437,10 +416,10 @@ printf 'parent-id\t%%s\n' %q >> "$result"
 	if _, err := d.Download(context.Background(), src, drop); err != nil {
 		t.Fatal(err)
 	}
-	if _, stamped := readSidecar(t, outsideSidecar)[filler.SidecarLoomarrKey()]; stamped {
+	if _, stamped := readSidecar(t, outsideSidecar)[asset.SidecarLoomarrKey()]; stamped {
 		t.Fatal("escaping or symlinked result stamped a sidecar outside the drop directory")
 	}
-	if _, stamped := readSidecar(t, sidecar)[filler.SidecarLoomarrKey()]; !stamped {
+	if _, stamped := readSidecar(t, sidecar)[asset.SidecarLoomarrKey()]; !stamped {
 		t.Fatal("in-directory sidecar was not stamped")
 	}
 }
@@ -497,7 +476,7 @@ func TestStampFetchedRejectsFinalSymlinkAndOpenedFilePathMismatch(t *testing.T) 
 	if err := stampFetched(root, fetchedSidecar{path: "normal.info.json", file: normalFile}, "youtube:current", "acq-current"); err != nil {
 		t.Fatal(err)
 	}
-	if _, stamped := readSidecar(t, normal)[filler.SidecarLoomarrKey()]; !stamped {
+	if _, stamped := readSidecar(t, normal)[asset.SidecarLoomarrKey()]; !stamped {
 		t.Fatal("regular sidecar was not stamped")
 	}
 
@@ -516,7 +495,7 @@ func TestStampFetchedRejectsFinalSymlinkAndOpenedFilePathMismatch(t *testing.T) 
 	if err := stampFetched(root, fetchedSidecar{path: "linked.info.json", file: linkedFile}, "youtube:current", "acq-current"); err == nil {
 		t.Fatal("symlinked sidecar passed provenance validation")
 	}
-	if _, stamped := readSidecar(t, unrelated)[filler.SidecarLoomarrKey()]; stamped {
+	if _, stamped := readSidecar(t, unrelated)[asset.SidecarLoomarrKey()]; stamped {
 		t.Fatal("final symlink stamped its unrelated target")
 	}
 
@@ -539,7 +518,7 @@ func TestStampFetchedRejectsFinalSymlinkAndOpenedFilePathMismatch(t *testing.T) 
 		t.Fatal("replaced sidecar passed provenance validation")
 	}
 	for _, path := range []string{original, claimed} {
-		if _, stamped := readSidecar(t, path)[filler.SidecarLoomarrKey()]; stamped {
+		if _, stamped := readSidecar(t, path)[asset.SidecarLoomarrKey()]; stamped {
 			t.Fatalf("path replacement stamped %q", path)
 		}
 	}

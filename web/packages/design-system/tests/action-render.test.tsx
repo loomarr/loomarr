@@ -487,6 +487,23 @@ describe("Action render composition", () => {
     expect(link?.hasAttribute("accessibilitylabel")).toBe(false);
   });
 
+  // The web forms' submit pattern: the real button holds `disabled` so Enter cannot submit
+  // through it, and the Action must not draw an enabled look over a button that will not fire.
+  it("greys a composed submit button that its own `disabled` turns off", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action render={<button disabled type="submit" />}>Suggest changes</Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const button = host.querySelector("button");
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+    expect(button?.style.opacity).toBe("0.55");
+  });
+
   it("pads a composed link as CSS, the same inset a Pressable gets", () => {
     act(() => {
       root.render(
@@ -533,6 +550,66 @@ describe("Action render composition", () => {
     });
     expect(ownClick).toHaveBeenCalledOnce();
     expect(actionPress).toHaveBeenCalledOnce();
+  });
+
+  it("renders a native submit button that carries its own disabled", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action disabled submit>
+          Save
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toMatch(/<button[^>]*type="submit"/);
+    expect(markup).toMatch(/<button[^>]*disabled/);
+    expect(markup).toContain("Save");
+  });
+
+  it("keeps a plain style object on the submit button", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action style={{ width: "100%" }} submit>
+          Save
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("width:100%");
+  });
+
+  it("submits its form when pressed", () => {
+    const onSubmit = vi.fn((event: Event) => event.preventDefault());
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <form onSubmit={onSubmit as unknown as React.FormEventHandler}>
+            <Action submit>Save</Action>
+          </form>
+        </LoomarrProvider>,
+      );
+    });
+    const button = container.querySelector("button");
+    act(() => {
+      button?.click();
+    });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("draws a compact icon action as a 24 px square", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action compact icon="close" layout="icon" variant="ghost">
+          Remove
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("width:24px");
+    expect(markup).toContain("height:24px");
+    expect(markup).toContain('aria-label="Remove"');
   });
 
   it("is ignored on children that are not a valid element", () => {

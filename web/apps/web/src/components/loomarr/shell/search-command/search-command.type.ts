@@ -23,6 +23,12 @@ interface SearchCommandProps {
   // channel-collections-scope, channel-series-scope, channel-lineup-editor and filler-clip-list.
   // The comment was written when there were four and nothing counted them again.
   onEscape?: () => void;
+  // Full-screen phone search (#2751): the panel fills its container (no card edge) and the results
+  // take the remaining height instead of stopping at 20rem.
+  fill?: boolean;
+  // When given, a Close button replaces the ESC hint: a full-screen phone search has no backdrop to
+  // tap and usually no Escape key. The palette passes it only at phone width.
+  onClose?: () => void;
   className?: string;
 }
 

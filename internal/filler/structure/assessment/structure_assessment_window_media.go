@@ -3,7 +3,7 @@ package assessment
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
@@ -17,14 +17,14 @@ type StructureAssessmentWindowMedia struct {
 
 // StructureAssessmentWindowMediaSet is the complete prepared input for one long-reel plan.
 type StructureAssessmentWindowMediaSet struct {
-	Source    filler.SplitSourceAsset
+	Source    split.SourceAsset
 	Authority window.MediaSet
 	Windows   []StructureAssessmentWindowMedia
 }
 
 // StructureAssessmentWindowMediaPreparer returns either every verified window or no usable set.
 type StructureAssessmentWindowMediaPreparer interface {
-	PrepareWindows(context.Context, filler.StructureAssessmentSource, window.Plan) (StructureAssessmentWindowMediaSet, error)
+	PrepareWindows(context.Context, split.AssessmentSource, window.Plan) (StructureAssessmentWindowMediaSet, error)
 }
 
 var _ StructureAssessmentWindowMediaPreparer = (*FFmpegStructureAssessmentMediaPreparer)(nil)

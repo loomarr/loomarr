@@ -9,8 +9,10 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -23,7 +25,7 @@ func newStore(t *testing.T) store.Store {
 func newCurator(t *testing.T, st store.Store, th fixedThresholds) *recurate.Curator {
 	t.Helper()
 	log := testkit.Logger()
-	approver := suggest.NewApprover(st, approval.New(st, nil, nil, log), time.Now)
+	approver := accept.NewApprover(st, approval.New(st, nil, nil, log), time.Now)
 	return recurate.NewCurator(st, approver, th, log)
 }
 
@@ -36,7 +38,7 @@ func (f fixedThresholds) MaxTitles(context.Context) int   { return f.maxTitles }
 // seedAutoCurateChannel writes a live, intent-backed, auto-curate channel bound to jobID.
 func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, ac *schedule.AutoCurate) {
 	t.Helper()
-	ch := store.Channel{Lineup: lineup}
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.Name = "Ch " + id
@@ -63,11 +65,11 @@ func inLibItem(n int, name, libID string) proposals.ProposalItem {
 }
 
 // seedProposal writes a submitted proposal for jobID with the given picks.
-func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) store.Proposal {
+func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) proposalstore.Proposal {
 	t.Helper()
 	body := proposals.Proposal{Lineup: lineup, Acquisitions: acquisitions}
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // The report pairs the media server's files with the scanner's by path, through the path map.

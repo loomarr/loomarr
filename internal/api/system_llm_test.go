@@ -9,26 +9,27 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
 type fakeSystemLLM struct {
-	status      api.SystemLLMStatus
+	status      system.SystemLLMStatus
 	selectErr   error
 	testErr     error
-	selected    api.SelectRequest
+	selected    system.SelectRequest
 	tested      string
 	pulled      string
 	discoverHit bool
-	discoverOut []api.DiscoverModelView
+	discoverOut []system.DiscoverModelView
 	discoverErr error
 }
 
-func (f *fakeSystemLLM) Status(context.Context) (api.SystemLLMStatus, error) {
+func (f *fakeSystemLLM) Status(context.Context) (system.SystemLLMStatus, error) {
 	return f.status, nil
 }
-func (f *fakeSystemLLM) Select(_ context.Context, req api.SelectRequest) error {
+func (f *fakeSystemLLM) Select(_ context.Context, req system.SelectRequest) error {
 	if f.selectErr != nil {
 		return f.selectErr
 	}
@@ -47,14 +48,14 @@ func (f *fakeSystemLLM) Pull(_ context.Context, m string) (string, error) {
 	f.pulled = m
 	return "job-1", nil
 }
-func (f *fakeSystemLLM) Discover(_ context.Context) ([]api.DiscoverModelView, error) {
+func (f *fakeSystemLLM) Discover(_ context.Context) ([]system.DiscoverModelView, error) {
 	f.discoverHit = true
 	return f.discoverOut, f.discoverErr
 }
 
 // newSystemLLMHarness hides the fixed model-management route assembly behind
 // the common API lifecycle. Tests vary only system-LLM behavior.
-func newSystemLLMHarness(t *testing.T, svc api.SystemLLMService) *apiHarness {
+func newSystemLLMHarness(t *testing.T, svc system.SystemLLMService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
@@ -97,17 +98,17 @@ func TestSystemLLM_NotConfigured501(t *testing.T) {
 
 // Status returns the probe + catalog + recommendation as admin.
 func TestSystemLLM_Status(t *testing.T) {
-	svc := &fakeSystemLLM{status: api.SystemLLMStatus{
+	svc := &fakeSystemLLM{status: system.SystemLLMStatus{
 		Provider: "ollama", Model: "qwen3:8b", Local: true, Reachable: true,
 		VRAMGiB: 12, Recommended: "qwen3:8b",
-		Catalog: []api.LLMModelView{{Tag: "qwen3:8b", Fit: "fits", Pulled: true, Recommended: true}},
+		Catalog: []system.LLMModelView{{Tag: "qwen3:8b", Fit: "fits", Pulled: true, Recommended: true}},
 	}}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/llm", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status → %d", resp.StatusCode)
 	}
-	var body api.SystemLLMStatus
+	var body system.SystemLLMStatus
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Recommended != "qwen3:8b" || len(body.Catalog) != 1 || !body.Local {
 		t.Errorf("unexpected status body: %+v", body)
@@ -116,7 +117,7 @@ func TestSystemLLM_Status(t *testing.T) {
 
 // Select maps the not-pulled sentinel to 409 (not a 500).
 func TestSystemLLM_SelectNotPulled409(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: api.ErrModelNotPulled}
+	svc := &fakeSystemLLM{selectErr: system.ErrModelNotPulled}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken, `{"model":"qwen3.5:9b"}`)
 	if resp.StatusCode != http.StatusConflict {
@@ -126,7 +127,7 @@ func TestSystemLLM_SelectNotPulled409(t *testing.T) {
 
 // Select happy path applies the model and echoes the fresh status.
 func TestSystemLLM_SelectOK(t *testing.T) {
-	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama", Local: true}}
+	svc := &fakeSystemLLM{status: system.SystemLLMStatus{Provider: "ollama", Local: true}}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken, `{"model":"llama3.1:8b"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -135,7 +136,7 @@ func TestSystemLLM_SelectOK(t *testing.T) {
 	if svc.selected.Model != "llama3.1:8b" {
 		t.Errorf("service saw model %q, want llama3.1:8b", svc.selected.Model)
 	}
-	var body api.SystemLLMStatus
+	var body system.SystemLLMStatus
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Model != "llama3.1:8b" {
 		t.Errorf("select response model = %q, want llama3.1:8b", body.Model)
@@ -144,7 +145,7 @@ func TestSystemLLM_SelectOK(t *testing.T) {
 
 // Hosted select passes provider + key through and maps a bad key to 401.
 func TestSystemLLM_SelectHosted(t *testing.T) {
-	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	svc := &fakeSystemLLM{status: system.SystemLLMStatus{Provider: "ollama"}}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"openrouter","model":"openai/gpt-4o-mini","apiKey":"sk-or-x"}`)
@@ -157,7 +158,7 @@ func TestSystemLLM_SelectHosted(t *testing.T) {
 }
 
 func TestSystemLLM_SelectBadKey401(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: api.ErrKeyInvalid}
+	svc := &fakeSystemLLM{selectErr: system.ErrKeyInvalid}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"openrouter","model":"x","apiKey":"bad"}`)
@@ -167,7 +168,7 @@ func TestSystemLLM_SelectBadKey401(t *testing.T) {
 }
 
 func TestSystemLLM_SelectInvalidHostedModel422(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: api.ErrInvalidHostedModel}
+	svc := &fakeSystemLLM{selectErr: system.ErrInvalidHostedModel}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"openrouter","model":"qwen3:8b"}`)
@@ -178,7 +179,7 @@ func TestSystemLLM_SelectInvalidHostedModel422(t *testing.T) {
 
 // A custom endpoint threads its baseUrl through to the service.
 func TestSystemLLM_SelectCustomPassesBaseURL(t *testing.T) {
-	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	svc := &fakeSystemLLM{status: system.SystemLLMStatus{Provider: "ollama"}}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"custom","model":"my-model","apiKey":"k","baseUrl":"http://localhost:8000/v1"}`)
@@ -192,7 +193,7 @@ func TestSystemLLM_SelectCustomPassesBaseURL(t *testing.T) {
 
 // A custom select with no baseUrl is rejected at the boundary (422) before the service.
 func TestSystemLLM_SelectCustomWithoutBaseURL422(t *testing.T) {
-	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	svc := &fakeSystemLLM{status: system.SystemLLMStatus{Provider: "ollama"}}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"custom","model":"my-model","apiKey":"k"}`)
@@ -205,7 +206,7 @@ func TestSystemLLM_SelectCustomWithoutBaseURL422(t *testing.T) {
 }
 
 func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
-	svc := &fakeSystemLLM{selectErr: api.ErrUnknownProvider}
+	svc := &fakeSystemLLM{selectErr: system.ErrUnknownProvider}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
 		`{"provider":"nope","model":"x"}`)
@@ -216,7 +217,7 @@ func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
 
 // Test endpoint: a bad key is ok=false (200), NOT a 5xx — the UI shows it inline.
 func TestSystemLLM_TestReportsInline(t *testing.T) {
-	svc := &fakeSystemLLM{testErr: api.ErrKeyInvalid}
+	svc := &fakeSystemLLM{testErr: system.ErrKeyInvalid}
 	srv := newSystemLLMHarness(t, svc).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken,
 		`{"provider":"openrouter","apiKey":"bad"}`)
@@ -309,7 +310,7 @@ func TestSystemLLM_PullOperationRecoversProgressWithoutEvents(t *testing.T) {
 
 // Discover returns the machine-compatible candidates with quant-targeted pull refs.
 func TestSystemLLM_Discover(t *testing.T) {
-	svc := &fakeSystemLLM{discoverOut: []api.DiscoverModelView{
+	svc := &fakeSystemLLM{discoverOut: []system.DiscoverModelView{
 		{ID: "unsloth/Qwen3.5-4B-GGUF", Quant: "Q4_K_M", PullRef: "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M", SizeGiB: 2.7, Fit: "fits", Downloads: 1089613},
 	}}
 	srv := newSystemLLMHarness(t, svc).Server
@@ -321,7 +322,7 @@ func TestSystemLLM_Discover(t *testing.T) {
 		t.Error("service Discover was not called")
 	}
 	var body struct {
-		Models []api.DiscoverModelView `json:"models"`
+		Models []system.DiscoverModelView `json:"models"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if len(body.Models) != 1 || body.Models[0].PullRef != "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M" {
@@ -339,7 +340,7 @@ func TestSystemLLM_DiscoverDegradesOnError(t *testing.T) {
 		t.Fatalf("discover on source error → %d, want 200 (degrade, not 5xx)", resp.StatusCode)
 	}
 	var body struct {
-		Models []api.DiscoverModelView `json:"models"`
+		Models []system.DiscoverModelView `json:"models"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if len(body.Models) != 0 {

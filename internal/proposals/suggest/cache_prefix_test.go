@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -17,13 +17,13 @@ import (
 // repair — must carry the same tools bytes; finalization is enforced by tool_choice none.
 func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *testing.T) {
 	meaning := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(""),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
 	model.PrefixCache = true // a self-hosted llama.cpp slot
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
@@ -63,11 +63,11 @@ func canCallTools(opts llm.ChatOptions) bool {
 // drops the tools, so the reserved input budget of a hosted run does not grow by the tool schema.
 func TestSuggest_HostedProviderFinalizationStillDropsTools(t *testing.T) {
 	meaning := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}

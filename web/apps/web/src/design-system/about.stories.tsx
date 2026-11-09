@@ -1,8 +1,9 @@
 import { AboutPage } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-// Settings → System → About: Loomarr's lockup and version, TMDB's credit, and the bug-report facts
-// behind a disclosure. The TMDB mark is the vendored public/ file, not a remote image.
+// Settings → System → About: Loomarr's lockup and version, the Data sources section with TMDB's
+// logo and notice (#2853), and the bug-report facts behind a disclosure. The TMDB mark is the
+// vendored public/ file, not a remote image.
 
 const meta = {
   title: "Loomarr Components/About",

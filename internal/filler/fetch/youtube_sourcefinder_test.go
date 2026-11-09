@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -116,7 +116,7 @@ func TestYouTubeSourceFinderRejectsInvalidInputBeforeStartingYtDlp(t *testing.T)
 		"https://youtu.be/video123",
 		"https://www.youtube.com/watch?v=video123",
 	} {
-		if _, err := finder.Resolve(context.Background(), input); !strings.Contains(err.Error(), filler.ErrInvalidSourceReference.Error()) {
+		if _, err := finder.Resolve(context.Background(), input); !strings.Contains(err.Error(), acquisition.ErrInvalidSourceReference.Error()) {
 			t.Errorf("Resolve(%q) = %v, want invalid source reference", input, err)
 		}
 	}
@@ -217,7 +217,7 @@ func TestYouTubeSourceFinderRejectsMalformedOrIdentitylessResults(t *testing.T) 
 		t.Run(name, func(t *testing.T) {
 			ytdlp := testkit.Executable(t, "yt-dlp", "#!/bin/sh\nprintf '%s\\n' '"+output+"'\n")
 			_, err := fetch.NewYouTubeSourceFinder(ytdlp).Suggest(context.Background(), "retro commercials", 6)
-			if err == nil || !strings.Contains(err.Error(), filler.ErrSourceProvider.Error()) {
+			if err == nil || !strings.Contains(err.Error(), acquisition.ErrSourceProvider.Error()) {
 				t.Fatalf("result = %v, want provider error", err)
 			}
 		})

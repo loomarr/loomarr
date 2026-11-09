@@ -9,7 +9,7 @@ research-verify: ## compile the archived filler research module against its pinn
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./internal/channels/recommend/ ./cmd/eval/
 
-eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
+eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LOOMARR_LIBRARY_DB/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
 
 eval-cert: ## certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard

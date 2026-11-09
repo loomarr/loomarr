@@ -179,7 +179,7 @@ describe("SearchCommand", () => {
     render(<SearchCommand query="a" onQueryChange={() => {}} results={results} onSelect={onSelect} />);
 
     const options = screen.getAllByRole("option");
-    fireEvent.mouseMove(options[2] as HTMLElement);
+    await userEvent.hover(options[2] as HTMLElement);
     expect(options[2]).toHaveAttribute("aria-selected", "true");
 
     screen.getByRole("combobox").focus();

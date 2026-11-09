@@ -127,7 +127,11 @@ const SettingsPage = ({
   useEffect(() => {
     if (!checksReady || openBlocks !== undefined) return;
     const connectionBlocks = blocks.filter((b) => b.check);
-    const broken = connectionBlocks.filter((b) => !standingFor(b.check)?.ok);
+    // An optional service nobody has set up is not broken (#2781), so it never takes the triage focus.
+    const broken = connectionBlocks.filter((b) => {
+      const standing = standingFor(b.check);
+      return !standing?.ok && !(b.optional && standing?.notSetUp);
+    });
     const initial: Record<string, boolean> = {};
     for (const b of connectionBlocks) initial[b.group] = false;
     const focused = connectionBlocks.find((block) => block.group === initialOpenGroup);
@@ -205,12 +209,9 @@ const SettingsPage = ({
             // verdict, so a block reports its health without a click (like the wizard).
             const live = testResult[block.check];
             const standing = standingFor(block.check);
-            // A check that probed nothing was never pointed at a service: "Not set up", not broken.
             const verdict =
               live ??
-              (standing
-                ? { ok: standing.ok, hint: standing.hint, notSetUp: !standing.ok && !standing.target }
-                : undefined);
+              (standing ? { ok: standing.ok, hint: standing.hint, notSetUp: standing.notSetUp } : undefined);
             const blockFooter =
               typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer;
             const checkLabel =

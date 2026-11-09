@@ -7,7 +7,7 @@ import { Icon, type IconSize, type IconTone, icons } from "../icon";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import { Text } from "../primitives";
-import { type Density, semanticMotion } from "../tokens";
+import { brandChroma, type Density, semanticMotion } from "../tokens";
 
 type AccessibleLoading = { accessibilityLabel: string; decorative?: false };
 type DecorativeLoading = { accessibilityLabel?: never; decorative: true };
@@ -253,10 +253,104 @@ const Skeleton = ({ height, reducedMotion, shape = "line", width }: SkeletonProp
   );
 };
 
-export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape };
+type LoadingStripProps = (AccessibleLoading | DecorativeLoading) & {
+  density?: Density;
+  reducedMotion?: boolean;
+  /** Pixels, or a percentage of the container. A page load spans its column; a line of text takes a short one. */
+  width?: number | `${number}%`;
+};
+
+const loadingStripMotion = {
+  duration: 1400,
+  // Each segment's lit window, as a fraction of the cycle; the windows overlap so the light travels.
+  window: 0.3,
+  opacity: { lit: 1, rest: 0.35 },
+} as const;
+
+const loadingStripHeight: Record<Density, number> = { pointer: 3, touch: 4, tv: 6 };
+
+// The brand mark's seven bars, in its order: signal · caution · lock · tune · suggest · onair · grey.
+const stripSegments = brandChroma.map((color, index) => ({ color, key: `bar-${index}` }));
+
+// LoadingStrip is the wait for a page or a section (#2789): the brand's colour bars as a thin strip,
+// lit one after another. Opacity only, no transform: the only movement the product makes outside
+// the tune and sheets is a fade. With reduced motion it is the still bars. Buttons keep
+// ActivityIndicator, the small spinner beside "Saving…".
+const LoadingStrip = ({
+  accessibilityLabel,
+  decorative,
+  density = "pointer",
+  reducedMotion,
+  width = 120,
+}: LoadingStripProps) => {
+  const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
+  const phase = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (prefersReducedMotion !== false) {
+      phase.stopAnimation();
+      phase.setValue(0);
+      return undefined;
+    }
+
+    const animation = Animated.loop(
+      Animated.timing(phase, {
+        duration: loadingStripMotion.duration,
+        easing: Easing.linear,
+        toValue: 1,
+        useNativeDriver: useNativeAnimationDriver,
+      }),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [phase, prefersReducedMotion]);
+
+  const opacities = useMemo(() => {
+    const { lit, rest } = loadingStripMotion.opacity;
+    const span = 1 - loadingStripMotion.window;
+    return stripSegments.map((_, index) => {
+      const start = (index / (stripSegments.length - 1)) * span;
+      return phase.interpolate({
+        extrapolate: "clamp",
+        inputRange: [start, start + loadingStripMotion.window / 2, start + loadingStripMotion.window],
+        outputRange: [rest, lit, rest],
+      });
+    });
+  }, [phase]);
+
+  const height = loadingStripHeight[density];
+  return (
+    <View
+      aria-hidden={decorative || undefined}
+      aria-label={decorative ? undefined : accessibilityLabel}
+      borderRadius={height / 2}
+      flexDirection="row"
+      height={height}
+      overflow="hidden"
+      role={decorative ? undefined : "progressbar"}
+      width={width}
+    >
+      {stripSegments.map(({ color, key }, index) => (
+        <Animated.View
+          aria-hidden
+          key={key}
+          style={{
+            backgroundColor: color,
+            flex: 1,
+            opacity: prefersReducedMotion === false ? opacities[index] : loadingStripMotion.opacity.lit,
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
+export type { ActivityIndicatorProps, LoadingStripProps, SignalLoaderProps, SkeletonProps, SkeletonShape };
 export {
   ActivityIndicator,
   activityIndicatorMotion,
+  LoadingStrip,
+  loadingStripMotion,
   SignalLoader,
   Skeleton,
   signalLoaderMotion,

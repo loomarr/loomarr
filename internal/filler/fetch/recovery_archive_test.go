@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -45,7 +45,7 @@ fi
 		t.Fatal(err)
 	}
 	seedArchiveRecoveryRun(t, firstStore, source)
-	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []fetch.Source{source})
+	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, firstStore, discardLog()).Run(t.Context(), []fetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first acquisition = %+v, want transient archive commit failure", first)
 	}
@@ -91,7 +91,7 @@ fi
 	retry := source
 	retry.AcquisitionID = "acq-after-restart"
 	seedArchiveRecoveryRun(t, reopened, retry)
-	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []fetch.Source{retry})
+	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, reopened, discardLog()).Run(t.Context(), []fetch.Source{retry})
 	if deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("post-restart acquisition = %+v, want provider archive deduplication", deduped)
 	}
@@ -127,7 +127,7 @@ fi
 		t.Fatal(err)
 	}
 	seedArchiveRecoveryRun(t, firstStore, source)
-	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []fetch.Source{source})
+	first := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, firstStore, discardLog()).Run(t.Context(), []fetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first acquisition = %+v, want retained missing-sidecar repair", first)
 	}
@@ -145,7 +145,7 @@ fi
 		t.Fatalf("blocked recovery = %+v, want provider archive replay failure", blocked)
 	}
 	artifact, found, lookupErr := reopened.AcquisitionArtifactForClip(t.Context(), "download.mp4", "")
-	if lookupErr != nil || !found || artifact.ProviderArchiveCommitted || artifact.ProviderArchiveEntry != "youtube owned-id" || artifact.State != filler.ArtifactRepair {
+	if lookupErr != nil || !found || artifact.ProviderArchiveCommitted || artifact.ProviderArchiveEntry != "youtube owned-id" || artifact.State != acquisition.ArtifactRepair {
 		t.Fatalf("blocked artifact = %+v, found=%v, err=%v", artifact, found, lookupErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(watch, filepath.FromSlash(artifact.StagingPath))); statErr != nil {
@@ -176,7 +176,7 @@ fi
 	retry := source
 	retry.AcquisitionID = "acq-after-missing-sidecar"
 	seedArchiveRecoveryRun(t, reopened, retry)
-	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []fetch.Source{retry})
+	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, reopened, discardLog()).Run(t.Context(), []fetch.Source{retry})
 	if deduped.Empty != 1 || deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("post-restart acquisition = %+v, want provider archive deduplication", deduped)
 	}
@@ -184,9 +184,9 @@ fi
 
 func seedArchiveRecoveryRun(t *testing.T, db records.Store, source fetch.Source) {
 	t.Helper()
-	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: source.AcquisitionID, SourceID: source.ID, Trigger: filler.AcquisitionPull,
-		Status: filler.AcquisitionRunning, Requested: 1,
+	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull,
+		Status: acquisition.RunRunning, Requested: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

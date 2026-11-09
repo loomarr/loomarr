@@ -9,7 +9,8 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -31,7 +32,7 @@ type SegmentScreeningReleaseAuthority struct {
 
 type SegmentScreeningCertificationEvidenceReader interface {
 	SegmentScreeningAxisEvidenceReplay
-	GetSegmentScreeningSubject(context.Context, string) (filler.SegmentScreeningSubject, error)
+	GetSegmentScreeningSubject(context.Context, string) (asset.SegmentScreeningSubject, error)
 	GetSegmentScreeningEvidence(context.Context, string) (SegmentScreeningEvidence, error)
 	GetSegmentScreeningAxisEvidence(context.Context, string) (RecordedSegmentScreeningAxisEvidence, error)
 }
@@ -80,7 +81,7 @@ func (c *SegmentScreeningCertification) Replay(ctx context.Context, aggregate Se
 	if err != nil {
 		return fmt.Errorf("replay segment screening subject: %w", err)
 	}
-	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil || subject.SHA256 != aggregate.SubjectSHA256 {
+	if err := asset.ValidateSegmentScreeningSubject(subject); err != nil || subject.SHA256 != aggregate.SubjectSHA256 {
 		return fmt.Errorf("segment screening subject does not reproduce aggregate identity")
 	}
 	persisted, err := c.evidence.GetSegmentScreeningEvidence(ctx, aggregate.SHA256)
@@ -130,8 +131,8 @@ func (c *SegmentScreeningCertification) AuthoritySHA256() string {
 
 func ValidateSegmentScreeningReleaseAuthority(authority SegmentScreeningReleaseAuthority) error {
 	if authority.SchemaVersion != SegmentScreeningReleaseSchemaVersion || authority.ContractVersion != SegmentScreeningReleaseContractVersion ||
-		!filler.IsContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != SegmentScreeningContractVersion ||
-		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !filler.IsContentHash(authority.AirworthinessAuthoritySHA256) ||
+		!split.IsContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != SegmentScreeningContractVersion ||
+		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !split.IsContentHash(authority.AirworthinessAuthoritySHA256) ||
 		authority.SHA256 != SegmentScreeningReleaseAuthoritySHA256(authority) {
 		return fmt.Errorf("segment screening release authority identity is invalid")
 	}

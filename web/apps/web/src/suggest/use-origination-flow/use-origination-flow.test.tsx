@@ -2,7 +2,7 @@ import type { ProposalJourneyDTO } from "@loomarr/api";
 import { getGetProposalJobMockHandler, getSubmitProposalMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLocation, useSearch } from "@tanstack/react-router";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -27,7 +27,7 @@ const renderFlow = (initialPath: string) => {
   const Probe = () => {
     latest.flow = useOriginationFlow(parseOriginationSearch(useSearch({ strict: false })));
     latest.href = useLocation({ select: (location) => location.href });
-    return <p>{latest.flow.open ? "open" : "closed"}</p>;
+    return <p>{latest.flow.stage}</p>;
   };
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -52,68 +52,75 @@ describe("useOriginationFlow", () => {
   });
 
   it("moves the URL onto the Job a submit creates, and remembers it for the tab", async () => {
-    const latest = renderFlow("/guide?new=1&intent=cartoons");
+    const latest = renderFlow("/requests/new?intent=cartoons");
 
     await step((flow) => flow.run.start({ description: "90s action movies" }), latest);
 
-    await waitFor(() => expect(latest.href).toBe("/guide?job=job-1"));
+    await waitFor(() => expect(latest.href).toBe("/requests/new?job=job-1"));
     expect(readActiveSuggestionJob()).toBe("job-1");
   });
 
-  // Close means "come back later": the Job survives it, so reopening lands on the same run.
-  it("closes without forgetting the Job, and reopens onto it", async () => {
-    const latest = renderFlow("/guide?job=job-1");
+  // Close means "come back later": the Job survives it, and the request route resumes it.
+  it("closes to Requests without forgetting the Job", async () => {
+    const latest = renderFlow("/requests/new?job=job-1");
     await waitFor(() => expect(readActiveSuggestionJob()).toBe("job-1"));
 
     await step((flow) => flow.close(), latest);
-    await waitFor(() => expect(screen.getByText("closed")).toBeInTheDocument());
-    expect(latest.href).toBe("/guide");
 
-    await step((flow) => flow.openPanel(), latest);
-    await waitFor(() => expect(latest.href).toBe("/guide?job=job-1"));
+    await waitFor(() => expect(latest.href).toBe("/requests"));
+    expect(readActiveSuggestionJob()).toBe("job-1");
   });
 
   it("drops an unsubmitted draft on close", async () => {
     writeSuggestionDraft({ description: "cartoons" });
-    const latest = renderFlow("/guide?new=1");
+    const latest = renderFlow("/requests/new");
 
     await step((flow) => flow.close(), latest);
 
-    await waitFor(() => expect(latest.href).toBe("/guide"));
+    await waitFor(() => expect(latest.href).toBe("/requests"));
     expect(readSuggestionDraft()).toBeUndefined();
   });
 
   it("forgets the Job on a fresh start", async () => {
-    const latest = renderFlow("/guide?job=job-1&intent=stale");
+    const latest = renderFlow("/requests/new?job=job-1&intent=stale");
     await waitFor(() => expect(readActiveSuggestionJob()).toBe("job-1"));
 
     await step((flow) => flow.startFresh(), latest);
 
-    await waitFor(() => expect(latest.flow?.search).toEqual({ new: "1" }));
+    await waitFor(() => expect(latest.href).toBe("/requests/new"));
     expect(readActiveSuggestionJob()).toBeUndefined();
   });
 
   it("returns from the manual builder to the failed Job it was entered from", async () => {
-    const latest = renderFlow("/guide?job=job-1&manual=1");
+    const latest = renderFlow("/requests/new?job=job-1&manual=1");
 
     await step((flow) => flow.leaveManual(), latest);
 
-    await waitFor(() => expect(latest.href).toBe("/guide?job=job-1"));
+    await waitFor(() => expect(latest.href).toBe("/requests/new?job=job-1"));
   });
 
   it("returns from a manual-only entry to the describe form", async () => {
-    const latest = renderFlow("/guide?manual=1&ideaId=genre%3Acomedy");
+    const latest = renderFlow("/requests/new?manual=1&ideaId=genre%3Acomedy");
 
     await step((flow) => flow.leaveManual(), latest);
 
-    await waitFor(() => expect(latest.flow?.search).toEqual({ new: "1" }));
+    await waitFor(() => expect(latest.href).toBe("/requests/new"));
   });
 
   it("hands the builder's description to the describe form", async () => {
-    const latest = renderFlow("/guide?manual=1");
+    const latest = renderFlow("/requests/new?manual=1");
 
     await step((flow) => flow.describeWithAi("Rainy night mysteries"), latest);
 
-    await waitFor(() => expect(latest.flow?.search).toEqual({ new: "1", intent: "Rainy night mysteries" }));
+    await waitFor(() => expect(latest.flow?.search).toEqual({ intent: "Rainy night mysteries" }));
+  });
+
+  // #2746: the manual flag is a number, so the URL reads `?manual=1`, not `?manual=%221%22`.
+  it("writes the manual flag as a plain 1", async () => {
+    const latest = renderFlow("/requests/new");
+
+    await step((flow) => flow.buildManually(), latest);
+
+    await waitFor(() => expect(latest.href).toBe("/requests/new?manual=1"));
   });
 });

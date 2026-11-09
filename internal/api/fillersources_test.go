@@ -11,7 +11,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
@@ -31,13 +35,13 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []clipstore.Clip
 			t.Fatalf("seed clip %s: %v", c.Path, err)
 		}
 	}
-	layout, err := filler.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
+	layout, err := cliplibrary.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
 	if err != nil {
-		t.Fatalf("filler.NewLayout: %v", err)
+		t.Fatalf("cliplibrary.NewLayout: %v", err)
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
@@ -56,7 +60,7 @@ func clip(path, source string) clipstore.Clip {
 	c.Hash = path
 	c.Path = path
 	c.Name = path
-	c.Role = filler.Commercial
+	c.Role = clips.Commercial
 	c.Source = source
 	c.DurationMs = 30000
 	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()
@@ -64,12 +68,12 @@ func clip(path, source string) clipstore.Clip {
 }
 
 type sourcesBody struct {
-	Sources []api.FillerSourceDTO `json:"sources"`
-	Total   int                   `json:"total"`
+	Sources []fillerapi.FillerSourceDTO `json:"sources"`
+	Total   int                         `json:"total"`
 }
 
 type sourceSuggestionsBody struct {
-	Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+	Suggestions []fillerapi.FillerSourceSuggestionDTO `json:"suggestions"`
 }
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
@@ -122,7 +126,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST resolve → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
-	var got api.FillerSourceSuggestionDTO
+	var got fillerapi.FillerSourceSuggestionDTO
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +164,7 @@ func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 
 func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.sourceResolutionErr = filler.ErrInvalidSourceReference
+	ff.sourceResolutionErr = acquisition.ErrInvalidSourceReference
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources", adminToken,
 		`{"kind":"archive","uri":"one_video"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -218,7 +222,7 @@ func TestFillerSourceSuggestionsStopAtDisabledProvider(t *testing.T) {
 
 func TestYouTubeSourceSearchFailureKeepsManualInputActionable(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.sourceSuggestionErr = filler.ErrSourceProvider
+	ff.sourceSuggestionErr = acquisition.ErrSourceProvider
 	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=retro+ads", adminToken, "")
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("GET YouTube suggestions → %d, want 502", resp.StatusCode)
@@ -254,7 +258,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 		t.Fatal(err)
 	}
 
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, source := range getSources(t, srv).Sources {
 		if source.ID == src.ID {
 			projected = source
@@ -264,7 +268,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 	if projected.ID == "" {
 		t.Fatal("registered source was not projected")
 	}
-	if projected.Readiness != api.FillerSourceNeedsLocation {
+	if projected.Readiness != fillerapi.FillerSourceNeedsLocation {
 		t.Fatalf("readiness = %q, want needs_location", projected.Readiness)
 	}
 	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.NextCheckAt != "" {
@@ -290,7 +294,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	if err != nil || !claimed {
 		t.Fatalf("claim = %v, %v", claimed, err)
 	}
-	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
+	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, acquisition.SourceCheckCompletion{
 		CheckedAt: checkedAt,
 		Checkpoint: source.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
@@ -304,7 +308,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 		t.Fatal(err)
 	}
 
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, source := range getSources(t, srv).Sources {
 		if source.ID == src.ID {
 			projected = source
@@ -326,7 +330,7 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 	})
 	body := getSources(t, srv)
 
-	byKind := map[string]api.FillerSourceDTO{}
+	byKind := map[string]fillerapi.FillerSourceDTO{}
 	for _, s := range body.Sources {
 		byKind[s.Kind] = s
 	}
@@ -381,7 +385,7 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 	}
 
 	body := getSources(t, srv)
-	byID := make(map[string]api.FillerSourceDTO, len(body.Sources))
+	byID := make(map[string]fillerapi.FillerSourceDTO, len(body.Sources))
 	for _, source := range body.Sources {
 		byID[source.ID] = source
 	}
@@ -420,7 +424,7 @@ func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
 	srv := serverWithClips(t, map[string]string{}, nil) // no filler.dir
 	body := getSources(t, srv)
 
-	var folder *api.FillerSourceDTO
+	var folder *fillerapi.FillerSourceDTO
 	for i := range body.Sources {
 		if body.Sources[i].Kind == "folder" {
 			folder = &body.Sources[i]
@@ -447,13 +451,13 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	cfg := map[string]string{"filler.dir": "/data/filler"}
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
-	layout, err := filler.NewLayout(cfg["filler.dir"], "")
+	layout, err := cliplibrary.NewLayout(cfg["filler.dir"], "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
@@ -514,12 +518,12 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  httpcore.NewTokenAuthorizer(adminToken),
 		Log:   slog.New(slog.DiscardHandler),
-		FillerLayout: func() filler.Layout {
-			layout, layoutErr := filler.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
+		FillerLayout: func() cliplibrary.Layout {
+			layout, layoutErr := cliplibrary.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
 			if layoutErr != nil {
-				t.Fatalf("filler.NewLayout: %v", layoutErr)
+				t.Fatalf("cliplibrary.NewLayout: %v", layoutErr)
 			}
 			return layout
 		}(),
@@ -544,7 +548,7 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 	}
 }
 
-func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceDTO {
+func sourceOfKind(t *testing.T, body sourcesBody, kind string) fillerapi.FillerSourceDTO {
 	t.Helper()
 	for _, s := range body.Sources {
 		if s.Kind == kind {
@@ -552,7 +556,7 @@ func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceD
 		}
 	}
 	t.Fatalf("no %q source in %+v", kind, body.Sources)
-	return api.FillerSourceDTO{}
+	return fillerapi.FillerSourceDTO{}
 }
 
 // Admin-only: the rows name filesystem paths and library targets, which is infrastructure
@@ -609,11 +613,11 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 		t.Fatalf("fetched source ids = %v, want only the selected row", ff.fetchedSourceIDs)
 	}
 	var body struct {
-		SourceID      string                           `json:"sourceId"`
-		SourcesPolled int                              `json:"sourcesPolled"`
-		Queued        int                              `json:"queued"`
-		MaxPerCheck   int                              `json:"maxPerCheck"`
-		Outcomes      *api.FillerSourceCheckSummaryDTO `json:"outcomes"`
+		SourceID      string                                 `json:"sourceId"`
+		SourcesPolled int                                    `json:"sourcesPolled"`
+		Queued        int                                    `json:"queued"`
+		MaxPerCheck   int                                    `json:"maxPerCheck"`
+		Outcomes      *fillerapi.FillerSourceCheckSummaryDTO `json:"outcomes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -626,7 +630,7 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrSourceCheckInProgress
+	ff.fetchErr = acquisition.ErrSourceCheckInProgress
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -639,7 +643,7 @@ func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
+	ff.fetchResult = acquisition.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -659,7 +663,7 @@ func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T
 
 func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrSourceDisabled
+	ff.fetchErr = cliplibrary.ErrSourceDisabled
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -672,7 +676,7 @@ func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
 
 func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = filler.ErrFetchSourceNotFound
+	ff.fetchErr = acquisition.ErrFetchSourceNotFound
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=removed", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
@@ -685,7 +689,7 @@ func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = api.ErrIngestUnavailable
+	ff.fetchErr = fillerapi.ErrIngestUnavailable
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -721,13 +725,13 @@ func TestListFillerProviders_PublishesTheRegistry(t *testing.T) {
 		t.Fatalf("GET providers → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
 	var got struct {
-		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+		Providers []fillerapi.FillerProviderDescriptionDTO `json:"providers"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	ids := make([]string, len(got.Providers))
-	byID := map[string]api.FillerProviderDescriptionDTO{}
+	byID := map[string]fillerapi.FillerProviderDescriptionDTO{}
 	for i, p := range got.Providers {
 		ids[i] = p.ID
 		byID[p.ID] = p
@@ -760,12 +764,12 @@ func TestListFillerProviders_CarriesTheWordsTheSourcePageShows(t *testing.T) {
 	srv, _, _ := newFillerServer(t)
 	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
 	var got struct {
-		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+		Providers []fillerapi.FillerProviderDescriptionDTO `json:"providers"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	byID := map[string]api.FillerProviderDescriptionDTO{}
+	byID := map[string]fillerapi.FillerProviderDescriptionDTO{}
 	for _, p := range got.Providers {
 		byID[p.ID] = p
 	}
@@ -792,8 +796,8 @@ func TestFillerSourceSuggestions_CheckAnAddressInsteadOfSearchingForIt(t *testin
 		t.Fatalf("GET suggestions → %d: %s", resp.StatusCode, readBody(t, resp))
 	}
 	var body struct {
-		Exact       bool                            `json:"exact"`
-		Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+		Exact       bool                                  `json:"exact"`
+		Suggestions []fillerapi.FillerSourceSuggestionDTO `json:"suggestions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

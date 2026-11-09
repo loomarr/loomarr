@@ -1,24 +1,22 @@
 # Library and inventory
 
 Formerly `design.md` §5 (media inventory, cached series episodes), §6 (Emby and Jellyfin) and §7.2
-(search). How Loomarr reads the household media server and what it keeps of it.
+(search). How Loomarr builds the household's Library from its own media folders (#2151): the
+scanner, the metadata providers and the inventory it keeps, and what it still asks the media
+server for.
 
 ## The media server contract
 
 Emby and Jellyfin share one adapter; `library.flavor` selects the auth header, never the logic.
+Since #2151 step 16 the adapter reads no catalog: presence, search, bulk scans, episodes and item
+metadata come from the Library's own tables.
 
-- **Lookup:** `GET /Items?Recursive=true&AnyProviderIdEquals=<tmdb.<id>|tvdb.<id>>&IncludeItemTypes=<Movie|Series>&Limit=1`.
-  Present means `Items` is non-empty. A series counts as in-library when the show exists. Provider
-  name casing differs across server versions: check it first when a known title comes back empty.
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Bulk scans** drive availability ([acquisition](acquisition.md#state-machine)): `RecentlyAdded(since)`
-  sorts by `DateCreated` with `MinDateLastSaved`, and `AllItems()` is the same query without it. Both
-  return provider ids, so a scan item produces the same `provision.Key` as a Title.
-- **Collections** (BoxSets) back `scope.collections`: `Collections()` lists them, and
-  `CollectionMembers(id)` returns members with full provider ids through `ParentId`. `ChildCount` is not
-  returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
-  tool-generated one-per-franchise groupings, so any picker must rank hand-made ones first.
+- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
+  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
+  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
+  ready-made sets.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
@@ -130,7 +128,7 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   not read. Its details rank below every service. The default `uniqueid` names its catalog. Reads are
   capped at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop
   malformed ids.
-- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
+- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/library/tmdb` client. A movie or
   series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
   content ratings, keywords, images), so the record carries guide text, genres, keywords, the
   community rating, series status, the US certification (the strictest of a movie's releases),
@@ -169,10 +167,12 @@ that no grounded source rates inherits its series' strictest rating. One that a 
 that rating, whether it is stricter or not.
 
 People (decision 49) are a title's main cast in billing order (TMDB's top 20), then its key crew:
-a series' creators, then directors and writers. Each is a `library_people` row keyed by TMDB person
-id wherever they are credited. A person an NFO or the media server names without an id is kept by
-name, unlinked. An episode's cast is its show's. `scan.Filmographer` keeps a filmography
-(`library_filmography`, decision 50) for each linked person who directed or created a title, is
+a series' creators, then directors and writers. Each is a `library_people` row keyed by the
+catalog id a source gave (`namespace`, `external_id`; row id `tmdb:<id>` for TMDB) wherever they
+are credited. A person an NFO or the media server names without an id is kept by name, unlinked.
+An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
+decision 50) from the catalog provider for each person linked in its namespace who directed or
+created a title, is
 among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
 they first qualify and monthly after, and people no title credits any more are removed each hour.
 The household's metadata language
@@ -218,7 +218,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
-  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
+  top, or in a season folder there, is the show its name gives before `S01E02`
+  (`Example.Show.S01E02.mkv` is "Example Show"); a season folder never names a show. A file nothing grounds is
   still written, with no ids. Only movies and episodes are titles (0047): extras (trailers,
   `-trailer` files, `extras/` folders and the like) and theme videos (`backdrops/`) are not
   imported, and a skipped extra does not take a movie's folder art from it. An origin whose ids later name another item of its kind
@@ -239,6 +241,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
   and wait while any playout session is live. A file whose header does not parse is marked failed
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
+  The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
+  the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
+  later pass wrote meanwhile is dropped.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
@@ -344,7 +349,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   files, or a series' episodes by season.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
-  through an `image_refs` row (owner `library_item`, role `poster`, `backdrop` or `logo`); that
+  through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that
   ref is the one record of which image it is, and a kind replaces only its own role's ref. Banner,
   landscape, clearart and discart stay references: nothing shows them. A clear logo's alpha is its
   shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
@@ -372,8 +377,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
   (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
   records lack, that kind's version goes up, and its older records are fetched again with the
-  titles never fetched, not at the refresh. Series are at version 1, which counts their episode
-  orderings (decision 53). A record that changed forgets the identity digest of
+  titles never fetched, not at the refresh. Series are at version 5, which lists their other
+  episode orders by name, kind and size (decision 53). A record that changed forgets the identity digest of
   its titles' present files (a series' episodes too) and passes over their folders, so they are
   written again with it. A title TMDB does not know is cached empty until the refresh. A failed
   fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
@@ -390,8 +395,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
   count for that season. A pass identifies every file before writing any, so each series knows
   its seasons on disk, and each series is resolved once and shared by its episodes. A series
-  record cached before it carried its orderings fails the check until its refresh. Episodes that
-  fail it keep their files' details; Needs you for them is 14b-5c. The identity digest carries a write
+  record that doesn't say which orders it has is not checked. Episodes that fail the check keep
+  their files' details and are marked `unnumbered`, which puts their show in Needs you
+  (`LibraryOrderNeeds`), and TMDB's other orders are asked for (`tmdb:episode_order:<group id>`:
+  the order's episodes numbered as it numbers them, and its season sizes, so Needs you can say
+  which order fits the disk). The household's answer, kept by the show's catalog row in
+  `library_episode_orders`, then decides: TMDB's own seasons (`catalog`), one of its other orders
+  (`order`, each episode taking that order's entry for its season and number), or the files
+  (`files`, which stops asking). The mock is `project/prototypes/library-episode-order.html`.
+  The identity digest carries a write
   version; raising it
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
@@ -402,7 +414,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
-  details, and keeps three in `library_candidates`, best first: the name counts most, then the
+  details, and keeps three in `library_candidates`, best first, each by its catalog's own id
+  (`namespace`, `external_id`); an answer keeps the id it was given the same way, so another
+  catalog's search needs no schema change. The name counts most, then the
   year (a year apart at most), then the length (movies only: within five minutes or 8% of the
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
   when its name or year changes, or once a movie's length is known. With no TMDB key nothing is
@@ -642,11 +656,23 @@ step 5). Nothing reads the scanner's origins until the cutover.
   inventory from an item's media information, with its 24-hour re-import, is deleted: an id that
   is no library item is unknown, which is SDR and the first audio track. A local file the Library
   has not read is probed once and the measurement kept under its stat revision, as before.
+- **The semantic eval reads the Library** (step 16). `make eval` and `make eval-cert` ground
+  titles and certify schedule evidence against a Loomarr database (`LOOMARR_LIBRARY_DB`,
+  `sqlite://<path>`, opened without migrating and only read) through the same reads production
+  uses: `catalog.LibrarySearch`, `catalog.LibraryOwnership`, `LibraryItemFacts` and
+  `channels.LibraryEpisodeResolver`. A schedule evidence snapshot therefore names library item
+  ids, so one frozen against the media server's ids drifts and must be frozen again.
+- **The media-server client keeps no catalog reads** (step 16). `library.Client` lost its search,
+  presence lookup, bulk scan, episode and metadata reads; what it still asks the media server is
+  sign-in and users, folder discovery, filler, the live tuner, and — until prod has run them —
+  the cutover's id map (`ServerFiles`) and the collection import. The demo stand-in serves a
+  series' episodes to that id map. Tests drive the catalog through `catalogfixture.ScriptedLibrary`
+  or the Library's own tables, and the media-server double no longer scripts titles.
 
 ## Search
 
 Loomarr builds no search index (decision [0003](decisions/0003-federated-search.md)). `GET
-/v1/search?q=&scope=library|tmdb|all` fans out to the media server's `SearchTerm` and TMDB's
+/v1/search?q=&scope=library|tmdb|all` fans out to the Library's titles (by name) and TMDB's
 `/search/multi` and returns unified `Candidate` results with an `in_library` flag. Clips use `LIKE`.
 
 - **Scopes follow live configuration.** `all` searches whichever corpora are configured now and

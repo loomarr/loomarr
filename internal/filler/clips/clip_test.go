@@ -1,0 +1,78 @@
+package clips_test
+
+import (
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+)
+
+// FILLER-NEVER-A-PROGRAM (§10/§19). This is a structural guarantee, and this test
+// pins it: a Pod's entries carry a filler Kind and the scheduler places them only
+// as SlotFiller/SlotFlex — there is no path from a Clip to a SlotProgram. If a
+// future change adds one, this test (and the type surface it asserts) must be the
+// thing that has to change, loudly.
+func TestFillerNeverBecomesAProgram(t *testing.T) {
+	// A pod.Entry has no TunarrProgramID→program bridge: its Kind is always a filler
+	// Kind, never a program. Assert the domain offers no way to make a program slot
+	// from a clip — the only slot constructor filler feeds is SlotFiller.
+	clip := clips.Clip{Path: "c1", Role: clips.Commercial, DurationMs: 30000}
+
+	slot := schedule.Slot{Kind: schedule.SlotFiller, LibraryItemID: clip.Path, DurationMs: clip.DurationMs}
+	if slot.IsProgram() {
+		t.Fatal("a filler clip must never map to a program slot")
+	}
+	// And a clip's Kind is always in the filler kind set — never "program".
+	switch clip.Role {
+	case clips.Commercial, clips.Bumper, clips.StationID, clips.PSA, clips.Trailer, clips.Interstitial:
+		// ok — all filler kinds
+	default:
+		t.Fatalf("clip has a non-filler kind %q", clip.Role)
+	}
+}
+
+func TestClip_Tagged(t *testing.T) {
+	full := clips.Clip{Era: 1992, Audience: clips.Kids, Category: "toys"}
+	if !full.Tagged() {
+		t.Error("fully-tagged clip should report Tagged()")
+	}
+	for _, c := range []clips.Clip{
+		{Audience: clips.Kids, Category: "toys"}, // no era
+		{Era: 1992, Category: "toys"},            // no audience
+		{Era: 1992, Audience: clips.Kids},
+	} {
+		if c.Tagged() {
+			t.Errorf("partially-tagged clip should not report Tagged(): %+v", c)
+		}
+	}
+}
+
+// KindFromName records explicit filename conventions without inventing a playable role.
+func TestKindFromName(t *testing.T) {
+	cases := map[string]clips.Role{
+		"2002 Pellham Drugs Commercial": clips.Commercial,
+		"Saturday Morning Bumper":       clips.Bumper,
+		"WLMR Station Ident":            clips.StationID,
+		"Bramble Badger PSA":            clips.PSA,
+		"Emberfall Canyon Trailer":      clips.Trailer,
+		"Local break interstitial":      clips.Interstitial,
+		"Beer ad":                       clips.Commercial,
+		"random clip":                   clips.Unclassified,
+		"Commercialization report":      clips.Unclassified,
+		"Station tour":                  clips.Unclassified,
+	}
+	for name, want := range cases {
+		if got := clips.RoleFromName(name); got != want {
+			t.Errorf("KindFromName(%q) = %s, want %s", name, got, want)
+		}
+	}
+}
+
+func TestEraFromName(t *testing.T) {
+	if got := clips.EraFromName("Sunmeal-Cereal 1985.mp4"); got != 1985 {
+		t.Errorf("EraFromName = %d, want 1985", got)
+	}
+	if got := clips.EraFromName("no year here"); got != 0 {
+		t.Errorf("EraFromName(no year) = %d, want 0", got)
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -97,7 +99,7 @@ type FillerSource struct {
 	FetchMaxPerRun *int
 	// Geography is asserted source coverage: the country it serves (a source has no place).
 	// Empty means unknown.
-	Geography filler.Geography
+	Geography pod.Geography
 }
 
 // EffectiveEnabled is the one source-policy projection acquisition callers use. Local sources
@@ -139,18 +141,18 @@ func (f FillerSource) MaxPerRun(global int) int {
 // An empty source value means "follow this installation", not "ask the operator to repeat the
 // same location on every row". Candidate geography is still checked independently by the pull
 // planner, so this inheritance cannot make missing or conflicting item evidence pass.
-func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
-	return filler.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
+func (f FillerSource) GeographicallyEligible(target pod.Geography) bool {
+	return pod.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
 }
 
 // EffectiveGeography resolves where a source may FETCH for: its own assertion, or the
 // installation's home geography when it asserts no country. It answers "may we pull from it",
 // never "where did its clips air": clip enrichment reads only the declared Geography, because
 // copying this inheritance into clips labelled British archive ads as US (#1670).
-func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography {
-	coverage := filler.Geography{Country: f.Geography.Normalize().Country}
+func (f FillerSource) EffectiveGeography(home pod.Geography) pod.Geography {
+	coverage := pod.Geography{Country: f.Geography.Normalize().Country}
 	if coverage.Country == "" {
-		return filler.Geography{Country: home.Normalize().Country} // a source covers a country, never a place
+		return pod.Geography{Country: home.Normalize().Country} // a source covers a country, never a place
 	}
 	return coverage
 }
@@ -158,7 +160,7 @@ func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography
 // ServesHome reports whether this source may fetch for the installation as configured: the
 // installation names a country and the source serves it. Unlike GeographicallyEligible, which
 // admits everything for an installation with no country, nothing is served before a location is set.
-func (f FillerSource) ServesHome(home filler.Geography) bool {
+func (f FillerSource) ServesHome(home pod.Geography) bool {
 	home = home.Normalize()
 	return home.Country != "" && f.GeographicallyEligible(home)
 }
@@ -171,12 +173,12 @@ func (f FillerSource) ServesHome(home filler.Geography) bool {
 // decided (§10 V38c). Re-deriving nil-vs-0-vs-N in the fetcher is how the two would drift, and the
 // way they would drift is toward treating "never" as "inherit" — fetching from a source the
 // operator opted out of.
-func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Duration) filler.FetchSource {
+func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Duration) acquisition.FetchSource {
 	every, pollable := f.FetchEvery(globalEvery)
 	if !pollable {
 		every = 0
 	}
-	return filler.FetchSource{
+	return acquisition.FetchSource{
 		ID: f.ID, Kind: f.Kind, URI: f.URI, Enabled: f.EffectiveEnabled() && eligible, Region: region,
 		NeverFetch:        !pollable,
 		Every:             every,
@@ -192,16 +194,15 @@ func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Dura
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
 // pull plan and be handed to the ingest job.
 //
-// ⚠ **This invariant used to be implicit and became false when the table flattened (V37).**
-// Before, `filler_sources` held only operator-registered remotes, so "every row here is
-// fetchable" was true by construction and both pull paths filtered on `Enabled` alone. Migration
-// 00029 seeds the config-backed singletons (`folder`, `library`) into the same table, and those
-// are SCANNED, not fetched — the folder has no URL to download from and its `uri` is empty.
+// ⚠ **Not every row in `filler_sources` is fetchable (V37).** Migration 00029 seeds the
+// config-backed singletons (`folder`, `library`) into the same table as the operator-registered
+// remotes, and those are SCANNED, not fetched — the folder has no URL to download from and its
+// `uri` is empty.
 //
-// Without this, a pull plan included a folder row and approval handed `Ingest` an empty string:
-// a fetch of nothing, enqueued as real work. Caught by the existing pull tests, which is why the
-// check lives on the domain type rather than being re-derived at each call site — there are two
-// (propose and the approve-time re-check) and they must not disagree about what is fetchable.
+// Filtering on `Enabled` alone would put a folder row in a pull plan and hand `Ingest` an empty
+// string on approval: a fetch of nothing, enqueued as real work. The check lives on the domain
+// type rather than being re-derived at each call site because there are two (propose and the
+// approve-time re-check) and they must not disagree about what is fetchable.
 func (f FillerSource) Fetchable() bool {
 	switch f.Kind {
 	case "folder", "library":
@@ -464,7 +465,7 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		if n == 0 {
 			continue
 		}
-		geography := filler.Geography{Country: c.Country}.Normalize()
+		geography := pod.Geography{Country: c.Country}.Normalize()
 		res, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_sources (id, kind, uri, label, license,
 			  last_fetched_at, created_at, enabled, country)
 			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?) ON CONFLICT DO NOTHING`),
@@ -555,7 +556,7 @@ func (s *sqlStore) SwitchLocalCuratedSources(ctx context.Context, near map[strin
 }
 
 // SetFillerSourceGeography is the sole writer for an existing source's asserted coverage.
-func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
+func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
 	geography = geography.Normalize()
 	res, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE filler_sources SET country = ? WHERE id = ?`),
@@ -602,6 +603,50 @@ func (s *sqlStore) SetFillerSourceFetchPolicy(ctx context.Context, id string, ev
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("set filler source fetch policy %s: %w", id, err)
+	}
+	if n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+// FillerSourceChange is one operator edit of a registered source: the switch always, and the
+// asserted coverage and the automatic-download tuning when the edit names them.
+type FillerSourceChange struct {
+	Enabled bool
+	// Geography replaces the source's asserted coverage; nil leaves it alone.
+	Geography *pod.Geography
+	// FetchPolicy replaces both fetch overrides; nil leaves them alone.
+	FetchPolicy *FillerFetchPolicy
+}
+
+// FillerFetchPolicy is a source's two fetch overrides. A nil field is "inherit the global", which
+// is a real operator choice and so is written as NULL, never as zero (0 means never fetch).
+type FillerFetchPolicy struct {
+	EverySeconds *int
+	MaxPerRun    *int
+}
+
+// ChangeFillerSource applies one edit of a registered source as a single statement, so the switch,
+// the coverage and the tuning land together or not at all. It returns store.ErrNotFound for an
+// unknown id. The three narrower setters remain for callers that change one thing.
+func (s *sqlStore) ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error {
+	set, args := []string{"enabled = ?"}, []any{change.Enabled}
+	if change.Geography != nil {
+		set, args = append(set, "country = ?"), append(args, change.Geography.Normalize().Country)
+	}
+	if change.FetchPolicy != nil {
+		set = append(set, "fetch_every_seconds = ?", "fetch_max_per_run = ?")
+		args = append(args, nullableInt(change.FetchPolicy.EverySeconds), nullableInt(change.FetchPolicy.MaxPerRun))
+	}
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE filler_sources SET `+strings.Join(set, ", ")+` WHERE id = ?`), append(args, id)...)
+	if err != nil {
+		return fmt.Errorf("change filler source %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("change filler source %s: %w", id, err)
 	}
 	if n == 0 {
 		return store.ErrNotFound
@@ -668,7 +713,7 @@ func (s *sqlStore) ClaimFillerSourceCheck(
 // CompleteFillerSourceCheck commits a successful check only for the lease that performed it.
 // The guarded completion prevents a timed-out stale worker from clearing a newer worker's claim.
 func (s *sqlStore) CompleteFillerSourceCheck(
-	ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion,
+	ctx context.Context, id string, leaseUntil time.Time, completion acquisition.SourceCheckCompletion,
 ) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -689,7 +734,7 @@ func (s *sqlStore) CompleteFillerSourceCheck(
 		return fmt.Errorf("complete filler source check rows %s: %w", id, err)
 	}
 	if n != 1 {
-		return filler.ErrSourceCheckClaimLost
+		return acquisition.ErrSourceCheckClaimLost
 	}
 	if completion.ReplaceOutcomes {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_source_check_outcomes WHERE source_id = ?`), id); err != nil {
@@ -729,7 +774,7 @@ func (s *sqlStore) FailFillerSourceCheck(
 		return fmt.Errorf("fail filler source check rows %s: %w", id, err)
 	}
 	if n != 1 {
-		return filler.ErrSourceCheckClaimLost
+		return acquisition.ErrSourceCheckClaimLost
 	}
 	return nil
 }

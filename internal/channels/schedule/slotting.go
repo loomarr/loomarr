@@ -25,13 +25,8 @@ import (
 
 // ExclusionReport summarizes what the audience + scope filters dropped (§4).
 //
-// ⚠ This comment used to claim it was "surfaced at proposal review and reconcile". It was
-// surfaced NOWHERE: `ComputeDesiredAt` filled it on every reconcile and every caller discarded
-// it, so "why isn't X on my channel" had no answer anywhere in the product for as long as the
-// type existed. Diagnosing a single over-ceiling episode meant querying the media server by
-// hand (#263).
-//
-// It now reaches exactly one reader: both channel-preview endpoints, via
+// ⚠ It answers "why isn't X on my channel", but reaches exactly one reader: both
+// channel-preview endpoints, via
 // `channels.CycleResult.Excluded`. **Reconcile still throws its copy away** — it has nowhere to
 // put one (no column, no event), and the preview recomputes the identical report from the same
 // pure builder, so the operator-facing answer is the same one reconcile made.

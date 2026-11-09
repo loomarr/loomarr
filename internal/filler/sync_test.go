@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -21,7 +24,7 @@ import (
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
 // ensures counts EnsureLocalSource calls so the idempotent-setup path is covered.
 type fakeSource struct {
-	clips []filler.RawClip
+	clips []cliplibrary.RawClip
 	// unread are the subtrees the listing could not read, as a real DirSource reports them.
 	unread    []string
 	ensures   int
@@ -34,11 +37,11 @@ func (f *fakeSource) EnsureLocalSource(_ context.Context, dir string) error {
 	f.ensureDir = dir
 	return nil
 }
-func (f *fakeSource) ListLocalClips(_ context.Context) ([]filler.RawClip, error) {
+func (f *fakeSource) ListLocalClips(_ context.Context) ([]cliplibrary.RawClip, error) {
 	return f.clips, f.listErr
 }
-func (f *fakeSource) ScanLocalClips(_ context.Context) (filler.LocalScan, error) {
-	return filler.LocalScan{Clips: f.clips, Unread: f.unread}, f.listErr
+func (f *fakeSource) ScanLocalClips(_ context.Context) (cliplibrary.LocalScan, error) {
+	return cliplibrary.LocalScan{Clips: f.clips, Unread: f.unread}, f.listErr
 }
 
 // memStore is an in-memory filler.Store for sync tests.
@@ -47,32 +50,34 @@ func (f *fakeSource) ScanLocalClips(_ context.Context) (filler.LocalScan, error)
 // to key on `c.Path`, which quietly made every sync test agree with a Syncer that also keyed on
 // the path — so the re-key left `Sync` reading the wrong field and nothing went red. A double
 // that models identity differently from the real thing tests the double.
-type memStore struct{ clips map[string]filler.StoreClip }
+type memStore struct {
+	clips map[string]cliplibrary.StoreClip
+}
 
-func newMemStore() *memStore { return &memStore{clips: map[string]filler.StoreClip{}} }
+func newMemStore() *memStore { return &memStore{clips: map[string]cliplibrary.StoreClip{}} }
 
-func (m *memStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
+func (m *memStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error {
 	m.clips[c.ID()] = c
 	return nil
 }
 
 type manifestAuthority struct {
-	artifact filler.AcquisitionArtifact
+	artifact acquisition.Artifact
 	found    bool
 }
 
-func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (filler.AcquisitionArtifact, bool, error) {
+func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.Artifact, bool, error) {
 	return m.artifact, m.found && clipHash == m.artifact.ClipHash, nil
 }
 
-func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []filler.AcquisitionArtifact) error {
+func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []acquisition.Artifact) error {
 	if len(artifacts) == 1 {
 		m.artifact = artifacts[0]
 		m.found = true
 	}
 	return nil
 }
-func (m *memStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
+func (m *memStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
@@ -100,12 +105,12 @@ func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, erro
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-func testLayout(root string, watch ...string) filler.Layout {
+func testLayout(root string, watch ...string) cliplibrary.Layout {
 	configuredWatch := ""
 	if len(watch) > 0 {
 		configuredWatch = watch[0]
 	}
-	layout, err := filler.NewLayout(root, configuredWatch)
+	layout, err := cliplibrary.NewLayout(root, configuredWatch)
 	if err != nil {
 		panic(err)
 	}
@@ -132,8 +137,8 @@ func TestSync_RegistersTheConfiguredSharedVolumePath(t *testing.T) {
 // raw builds a scanned clip. ⚠ ID and Path are set SEPARATELY — id is the content hash, path is
 // where the file sits. The fixtures below pass the same string for both where the distinction
 // does not matter; the tests that turn on it (see the two-folder case) pass different ones.
-func raw(id, name string, kind filler.Role, dur int64, era int) filler.RawClip {
-	return filler.RawClip{ID: id, Path: id, Name: name, Role: kind, DurationMs: dur, Era: era}
+func raw(id, name string, kind clips.Role, dur int64, era int) cliplibrary.RawClip {
+	return cliplibrary.RawClip{ID: id, Path: id, Name: name, Role: kind, DurationMs: dur, Era: era}
 }
 
 func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
@@ -142,9 +147,9 @@ func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
 }
 
 func TestSync_AddsClips_DurationFromServer(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("c1", "Crunchlings 1992", filler.Commercial, 30000, 1992),
-		raw("b1", "Bumper", filler.Bumper, 5000, 0),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("c1", "Crunchlings 1992", clips.Commercial, 30000, 1992),
+		raw("b1", "Bumper", clips.Bumper, 5000, 0),
 	}}
 	st := newMemStore()
 	res, err := newSyncer(source, st).Sync(context.Background())
@@ -168,7 +173,7 @@ func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 // the server only owns id/name/duration. Category is derived from the taxonomy
 // tags, which the upsert never touches (#2323).
 func TestSync_PreservesTagsOnResync(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", clips.Commercial, 30000, 0)}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 
@@ -178,11 +183,11 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 	// A human/AI tags it.
 	tagged := st.clips["c1"]
 	tagged.Era = 1994
-	tagged.Audience = filler.Kids
+	tagged.Audience = clips.Kids
 	st.clips["c1"] = tagged
 
 	// The media server re-lists the same clip (maybe with a corrected name).
-	source.clips = []filler.RawClip{raw("c1", "clip (renamed)", filler.Commercial, 30000, 0)}
+	source.clips = []cliplibrary.RawClip{raw("c1", "clip (renamed)", clips.Commercial, 30000, 0)}
 	res, err := s.Sync(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +195,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 	after := st.clips["c1"]
 	// Tags survive.
-	if after.Era != 1994 || after.Audience != filler.Kids {
+	if after.Era != 1994 || after.Audience != clips.Kids {
 		t.Fatalf("re-sync clobbered loomarr-owned tags: %+v", after.Clip)
 	}
 	// Server-owned name updated.
@@ -204,7 +209,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 // Idempotent: a no-change re-sync makes no updates.
 func TestSync_IdempotentNoChange(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 1992)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("c1", "clip", clips.Commercial, 30000, 1992)}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
@@ -227,8 +232,8 @@ func TestSync_IdempotentNoChange(t *testing.T) {
 // been exercised, because a still was always generated on the pass that first inserted the clip.
 func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 	// First pass: a clip whose artwork has not been rendered yet (the pre-V39 catalog).
-	bare := raw("c1", "clip", filler.Commercial, 30000, 1992)
-	source := &fakeSource{clips: []filler.RawClip{bare}}
+	bare := raw("c1", "clip", clips.Commercial, 30000, 1992)
+	source := &fakeSource{clips: []cliplibrary.RawClip{bare}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	if _, err := s.Sync(context.Background()); err != nil {
@@ -239,7 +244,7 @@ func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 	withArt := bare
 	withArt.Thumbnail = "c1.jpg"
 	withArt.Preview = "c1.webp"
-	source.clips = []filler.RawClip{withArt}
+	source.clips = []cliplibrary.RawClip{withArt}
 
 	res, err := s.Sync(context.Background())
 	if err != nil {
@@ -265,16 +270,16 @@ func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("c1", "keep", filler.Commercial, 30000, 1992),
-		raw("c2", "goes away", filler.Commercial, 30000, 1993),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("c1", "keep", clips.Commercial, 30000, 1992),
+		raw("c2", "goes away", clips.Commercial, 30000, 1993),
 	}}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 
 	// c2 disappears from the media server.
-	source.clips = []filler.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
+	source.clips = []cliplibrary.RawClip{raw("c1", "keep", clips.Commercial, 30000, 1992)}
 	res, _ := s.Sync(context.Background())
 	if res.Pruned != 1 {
 		t.Errorf("pruned = %d, want 1", res.Pruned)
@@ -288,11 +293,11 @@ func TestSync_PrunesRemovedClips(t *testing.T) {
 }
 
 // guardCatalog is n clips with invented ids and distinct paths.
-func guardCatalog(n int) []filler.RawClip {
-	out := make([]filler.RawClip, n)
+func guardCatalog(n int) []cliplibrary.RawClip {
+	out := make([]cliplibrary.RawClip, n)
 	for i := range out {
 		id := fmt.Sprintf("9000%04d", i)
-		out[i] = filler.RawClip{ID: id, Path: "ads/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000}
+		out[i] = cliplibrary.RawClip{ID: id, Path: "ads/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000}
 	}
 	return out
 }
@@ -335,16 +340,16 @@ func TestSync_EmptyListingKeepsTheCatalog(t *testing.T) {
 // #2673: a subtree the scan could not read is "don't prune under it". What the scan did read still
 // prunes, and a sibling whose name merely starts with the unread one is not under it.
 func TestSync_UnreadSubtreeKeepsItsClipsAndTheRestStillPrunes(t *testing.T) {
-	var catalog []filler.RawClip
+	var catalog []cliplibrary.RawClip
 	for i := range 10 {
 		id := fmt.Sprintf("9000%04d", i)
-		catalog = append(catalog, filler.RawClip{ID: id, Path: "a/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "a/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000})
 	}
 	for i := 10; i < 20; i++ {
 		id := fmt.Sprintf("9000%04d", i)
-		catalog = append(catalog, filler.RawClip{ID: id, Path: "b/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+		catalog = append(catalog, cliplibrary.RawClip{ID: id, Path: "b/" + id + ".mp4", Name: id, Role: clips.Commercial, DurationMs: 30_000})
 	}
-	sibling := filler.RawClip{ID: "90000020", Path: "bb/90000020.mp4", Name: "sibling", Role: filler.Commercial, DurationMs: 30_000}
+	sibling := cliplibrary.RawClip{ID: "90000020", Path: "bb/90000020.mp4", Name: "sibling", Role: clips.Commercial, DurationMs: 30_000}
 	catalog = append(catalog, sibling)
 
 	source := &fakeSource{clips: catalog}
@@ -397,8 +402,8 @@ func TestSync_ListingThatDropsMostOfTheCatalogStillPrunes(t *testing.T) {
 }
 
 func TestSync_FailedListingPreservesLastKnownCatalog(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("c1", "known clip", filler.Commercial, 30000, 1992),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("c1", "known clip", clips.Commercial, 30000, 1992),
 	}}
 	st := newMemStore()
 	syncer := newSyncer(source, st)
@@ -431,9 +436,9 @@ func TestSync_HoldsDownloadedAndHandCopiedClips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
-		raw("copied.mp4", "Copied ad", filler.Commercial, 30000, 0),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("fetched.mp4", "Fetched ad", clips.Commercial, 30000, 0),
+		raw("copied.mp4", "Copied ad", clips.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir),
@@ -459,11 +464,11 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if err := os.WriteFile(temporary, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(temporary)
+	clipHash, err := asset.ClipID(temporary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	media, err := filler.ClipPath(dir, clipHash, ".mp4")
+	media, err := cliplibrary.ClipPath(dir, clipHash, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +478,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if err := os.Rename(temporary, media); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(media)
+	digest, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,15 +487,15 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",
 		SidecarPath: "download.info.json", MediaSHA256: digest, MediaBytes: size,
-		ClipHash: clipHash, State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		ClipHash: clipHash, State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
-	source := &fakeSource{clips: []filler.RawClip{
-		raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw(clipHash, "Downloaded ad", clips.Commercial, 30_000, 0),
 	}}
 	source.clips[0].Path = filepath.ToSlash(relative)
 	st := newMemStore()
@@ -504,11 +509,11 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if !ok || !clip.Held || clip.Source != "youtube:classic" {
 		t.Fatalf("manifested clip = %+v, %v; want held and source-attributed", clip, ok)
 	}
-	tags, ok := filler.ReadSidecarTags(media)
-	if !ok || tags.AcquisitionID != "acq-1" || tags.SourceID != "youtube:classic" || !filler.SidecarFetchedByUs(media) {
+	tags, ok := asset.ReadSidecarTags(media)
+	if !ok || tags.AcquisitionID != "acq-1" || tags.SourceID != "youtube:classic" || !asset.SidecarFetchedByUs(media) {
 		t.Fatalf("repaired portable provenance = %+v, %v", tags, ok)
 	}
-	if authority.artifact.State != filler.ArtifactConsumed || authority.artifact.MediaPath != filepath.ToSlash(relative) {
+	if authority.artifact.State != acquisition.ArtifactConsumed || authority.artifact.MediaPath != filepath.ToSlash(relative) {
 		t.Fatalf("consumed manifest = %+v", authority.artifact)
 	}
 }
@@ -519,22 +524,22 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 	if err := os.WriteFile(media, []byte("substituted bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(media)
+	clipHash, err := asset.ClipID(media)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, size, err := filler.FileSHA256(media)
+	_, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", Provider: "youtube",
 		SourceURL: "https://youtube.com/watch?v=one", MediaPath: filepath.Base(media),
 		MediaSHA256: strings.Repeat("f", 64), MediaBytes: size, ClipHash: clipHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
-	source := &fakeSource{clips: []filler.RawClip{raw(clipHash, "Substituted", filler.Commercial, 30_000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Substituted", clips.Commercial, 30_000, 0)}}
 	source.clips[0].Path = filepath.Base(media)
 	st := newMemStore()
 	syncer := filler.NewSyncer(source, st, testLayout(dir), func() time.Time { return now }, discardLog()).
@@ -546,7 +551,7 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 	if _, ok := st.clips[clipHash]; ok {
 		t.Fatal("digest-substituted acquisition became catalog content")
 	}
-	if authority.artifact.State != filler.ArtifactRepair || authority.artifact.RepairReason == "" {
+	if authority.artifact.State != acquisition.ArtifactRepair || authority.artifact.RepairReason == "" {
 		t.Fatalf("artifact = %+v, want durable repair reason", authority.artifact)
 	}
 }
@@ -560,8 +565,8 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 		[]byte(`{"title":"x","loomarr":{"fetchedBy":"loomarr"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("fetched.mp4", "Fetched ad", clips.Commercial, 30000, 0),
 	}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir),
@@ -596,21 +601,21 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 }
 
 func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{raw("clip", "Mystery", filler.Unclassified, 31_000, 0)}}
+	source := &fakeSource{clips: []cliplibrary.RawClip{raw("clip", "Mystery", clips.Unclassified, 31_000, 0)}}
 	for _, tc := range []struct {
 		name     string
-		kind     filler.Role
+		kind     clips.Role
 		held     bool
-		wantKind filler.Role
+		wantKind clips.Role
 		wantHeld bool
 	}{
-		{name: "ready role survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
-		{name: "held legacy default is retired", kind: filler.Commercial, held: true, wantKind: filler.Unclassified, wantHeld: true},
-		{name: "unknown role does not invent a hold", wantKind: filler.Unclassified, wantHeld: false},
+		{name: "ready role survives rescan", kind: clips.Commercial, wantKind: clips.Commercial},
+		{name: "held legacy default is retired", kind: clips.Commercial, held: true, wantKind: clips.Unclassified, wantHeld: true},
+		{name: "unknown role does not invent a hold", wantKind: clips.Unclassified, wantHeld: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newMemStore()
-			st.clips["clip"] = filler.StoreClip{Clip: filler.Clip{
+			st.clips["clip"] = cliplibrary.StoreClip{Clip: clips.Clip{
 				Hash: "clip", Path: "clip", Name: "Old name", Role: tc.kind,
 				DurationMs: 30_000, Held: tc.held,
 			}}
@@ -634,11 +639,11 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 // overwrites the first, `keep` carries one entry where two are live, and the prune then deletes a
 // clip that is sitting right there on disk.
 func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{
+	source := &fakeSource{clips: []cliplibrary.RawClip{
 		{ID: "hash-sparkra-1985", Path: "ads/sparkra.mp4", Name: "Sparkra 1985",
-			Role: filler.Commercial, DurationMs: 30000},
+			Role: clips.Commercial, DurationMs: 30000},
 		{ID: "hash-sparkra-1992", Path: "ads/sparkra.mp4", Name: "Sparkra 1992",
-			Role: filler.Commercial, DurationMs: 15000},
+			Role: clips.Commercial, DurationMs: 15000},
 	}}
 	st := newMemStore()
 
@@ -674,9 +679,9 @@ func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
 type realScanSource struct{ dir string }
 
 func (r realScanSource) EnsureLocalSource(context.Context, string) error { return nil }
-func (r realScanSource) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
-	clips, _, err := filler.ScanDir(ctx, r.dir, func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000}, nil
+func (r realScanSource) ListLocalClips(ctx context.Context) ([]cliplibrary.RawClip, error) {
+	clips, _, err := filler.ScanDir(ctx, r.dir, func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000}, nil
 	})
 	return clips, err
 }
@@ -687,14 +692,14 @@ func TestSync_CatalogRebuildRestoresConditioningParentFromSidecar(t *testing.T) 
 	if err := os.WriteFile(media, []byte("reviewed child bytes that survive a catalog rebuild"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(media)
+	childHash, err := asset.ClipID(media)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const parentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{
 		OriginalName: "Reviewed child",
-		ConditioningLineage: &filler.ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 12_000, IntendedEndMs: 42_000,
 		},
 	}, false); err != nil {
@@ -734,15 +739,15 @@ func TestSync_EmptyCatalogRebuildMarksConditioningParentCompositeInEitherScanOrd
 			if err := os.WriteFile(childFull, []byte("reviewed child bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			childHash, err := filler.ClipID(childFull)
+			childHash, err := asset.ClipID(childFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}}, false); err != nil {
 				t.Fatal(err)
@@ -786,7 +791,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -799,7 +804,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			if err := os.WriteFile(childFull, []byte("conditioned child bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			childHash, err := filler.ClipID(childFull)
+			childHash, err := asset.ClipID(childFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -810,7 +815,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 				}
 			}
 			if tc.parentMode == "conditioned" {
-				if err := filler.WriteSidecarTags(parentFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+				if err := asset.WriteSidecarTags(parentFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 					ChildHash: parentHash, ParentHash: strings.Repeat("b", 64), IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 				}}, false); err != nil {
 					t.Fatal(err)
@@ -823,12 +828,12 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			const reviewedHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			before := syncConditioningMeasurement(true)
 			after := syncConditioningMeasurement(false)
-			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{
 				Mezzanine: tools.DefaultMezzanine().ID(),
-				ConditioningLineage: &filler.ConditioningLineage{
+				ConditioningLineage: &asset.ConditioningLineage{
 					ChildHash: reviewedHash, ParentHash: lineageParentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 				},
-				Conditioning: &filler.ConditioningEvidence{
+				Conditioning: &asset.ConditioningEvidence{
 					BeforeRewriteHash: reviewedHash, AfterRewriteHash: childHash,
 					BeforeRewrite: before, AfterRewrite: after,
 					DerivedParentEdgesAfterRewrite: before.Cuts[0],
@@ -896,11 +901,11 @@ func TestSync_MalformedConditioningLineageCannotBecomeAnAirableTopLevelClip(t *t
 	if err := os.WriteFile(childFull, []byte("damaged lineage child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ParentHash: "retained-parent", IntendedStartMs: 12_000, IntendedEndMs: 12_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -921,11 +926,11 @@ func TestSync_BlankConditioningLineageCannotBecomeAnAirableTopLevelClip(t *testi
 	if err := os.WriteFile(childFull, []byte("blank lineage child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -946,18 +951,18 @@ func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *te
 	if err := os.WriteFile(childFull, []byte("transformed child without conditioning facts"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(childFull)
+	childHash, err := asset.ClipID(childFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{
 		Mezzanine: tools.DefaultMezzanine().ID(),
-		MediaQuality: &filler.MediaQuality{
+		MediaQuality: &tools.MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		ConditioningLineage: &filler.ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: "reviewed-source-hash", ParentHash: "retained-parent",
 			IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 		},
@@ -989,21 +994,21 @@ func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t
 			if err := os.WriteFile(media, []byte("clip bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			tags := filler.SidecarTags{Mezzanine: tools.DefaultMezzanine().ID()}
+			tags := asset.SidecarTags{Mezzanine: tools.DefaultMezzanine().ID()}
 			if tc.conditioned {
-				tags.Conditioning = &filler.ConditioningEvidence{}
+				tags.Conditioning = &asset.ConditioningEvidence{}
 			}
-			if err := filler.WriteSidecarTags(media, tags, false); err != nil {
+			if err := asset.WriteSidecarTags(media, tags, false); err != nil {
 				t.Fatal(err)
 			}
-			_, sidecarState := filler.ReadSidecarTagsState(media)
-			if tc.conditioned && sidecarState != filler.SidecarInvalid {
+			_, sidecarState := asset.ReadSidecarTagsState(media)
+			if tc.conditioned && sidecarState != asset.SidecarInvalid {
 				t.Fatalf("conditioning without lineage state = %v, want invalid", sidecarState)
 			}
-			if !tc.conditioned && sidecarState != filler.SidecarValid {
+			if !tc.conditioned && sidecarState != asset.SidecarValid {
 				t.Fatalf("ordinary top-level mezzanine state = %v, want valid", sidecarState)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1024,17 +1029,17 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 		name      string
 		sidecar   string
 		wantHeld  bool
-		wantState filler.SidecarReadState
+		wantState asset.SidecarReadState
 	}{
-		{name: "corrupt JSON", sidecar: `{"loomarr":`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine omitted lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine null lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":null,"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine blank lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":{},"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: true, wantState: filler.SidecarValid},
+		{name: "corrupt JSON", sidecar: `{"loomarr":`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine omitted lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine null lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":null,"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine blank lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":{},"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: true, wantState: asset.SidecarValid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -1046,10 +1051,10 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 			if err := os.WriteFile(sidecar, []byte(tc.sidecar), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != tc.wantState {
+			if _, state := asset.ReadSidecarTagsState(media); state != tc.wantState {
 				t.Fatalf("sidecar state = %v, want %v", state, tc.wantState)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1089,10 +1094,10 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 			if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+			if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 				t.Fatalf("sidecar state = %v, want invalid when %s is omitted", state, omitted)
 			}
-			id, err := filler.ClipID(media)
+			id, err := asset.ClipID(media)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1113,12 +1118,12 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 		if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := filler.WriteSidecarTags(media, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+		if err := asset.WriteSidecarTags(media, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: "reviewed-child", ParentHash: "retained-parent", IntendedStartMs: 0, IntendedEndMs: 30_000,
 		}}, false); err != nil {
 			t.Fatal(err)
 		}
-		if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+		if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarValid {
 			t.Fatalf("sidecar state = %v, want valid for explicit zero start", state)
 		}
 	})
@@ -1154,7 +1159,7 @@ func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *
 				if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+				if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
 				}
 			})
@@ -1180,7 +1185,7 @@ func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *
 			if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+			if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarValid {
 				t.Fatalf("sidecar state = %v, want structurally valid explicit zero", state)
 			}
 		})
@@ -1205,7 +1210,7 @@ func TestReadSidecarTagsState_ConditioningDecisionIdentityRequiresAString(t *tes
 	if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+	if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 		t.Fatalf("sidecar state = %v, want invalid", state)
 	}
 }
@@ -1244,7 +1249,7 @@ func TestReadSidecarTagsState_ConditioningEvidenceHashesRequireExactStrings(t *t
 				if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+				if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
 				}
 			})
@@ -1258,7 +1263,7 @@ func TestReadSidecarTagsState_ConditioningEvidenceHashesRequireExactStrings(t *t
 // a file in and nothing happened".
 func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	clipDir := t.TempDir()
-	watchDir := filepath.Join(clipDir, filler.WatchDirName)
+	watchDir := filepath.Join(clipDir, cliplibrary.WatchDirName)
 	if err := os.MkdirAll(watchDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -1284,12 +1289,12 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 		t.Fatalf("Added = %d, want 1 — the arrival was not catalogued by the pass that filed it", res.Added)
 	}
 
-	var got filler.StoreClip
+	var got cliplibrary.StoreClip
 	for _, c := range st.clips {
 		got = c
 	}
 	// Filed under its hash, in the sharded layout, NOT at its arrival path.
-	if !strings.HasSuffix(got.Path, ".mp4") || strings.Contains(got.Path, filler.WatchDirName) {
+	if !strings.HasSuffix(got.Path, ".mp4") || strings.Contains(got.Path, cliplibrary.WatchDirName) {
 		t.Errorf("Path = %q, want a sharded hash path outside the watch folder", got.Path)
 	}
 	if got.ID() != got.Hash || got.Hash == "" {
@@ -1322,7 +1327,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := filler.ClipID(probeFile)
+	actual, err := asset.ClipID(probeFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1332,7 +1337,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	// The title reported in the live catalog was the former 40-character digest shape, not the
 	// current 64-character content id. Both are machine names and both must migrate.
 	stale := strings.Repeat("a", 40)
-	oldRel := filepath.ToSlash(filler.ClipRelPath(stale, ".mp4"))
+	oldRel := filepath.ToSlash(cliplibrary.ClipRelPath(stale, ".mp4"))
 	oldFull := filepath.Join(dir, filepath.FromSlash(oldRel))
 	if err := os.MkdirAll(filepath.Dir(oldFull), 0o750); err != nil {
 		t.Fatal(err)
@@ -1341,13 +1346,13 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source := &fakeSource{clips: []filler.RawClip{{
-		ID: actual, Path: oldRel, Name: stale, Role: filler.Commercial, DurationMs: 30_000,
+	source := &fakeSource{clips: []cliplibrary.RawClip{{
+		ID: actual, Path: oldRel, Name: stale, Role: clips.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
-	st.clips[actual] = filler.StoreClip{Clip: filler.Clip{
-		Hash: actual, Path: oldRel, Name: stale, Role: filler.Commercial,
-		Brand: "Sparkra-Cola", Era: 1992, Audience: filler.Family,
+	st.clips[actual] = cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: actual, Path: oldRel, Name: stale, Role: clips.Commercial,
+		Brand: "Sparkra-Cola", Era: 1992, Audience: clips.Family,
 	}}
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
 	res, err := sync.Sync(context.Background())
@@ -1357,7 +1362,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if res.Repaired != 1 || res.Updated != 1 {
 		t.Fatalf("sync = %+v, want one repaired catalog path", res)
 	}
-	wantRel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	wantRel := filepath.ToSlash(cliplibrary.ClipRelPath(actual, ".mp4"))
 	got := st.clips[actual]
 	if got.Path != wantRel || got.Name != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired row = path %q name %q, want %q and preserved title", got.Path, got.Name, wantRel)
@@ -1366,10 +1371,10 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Errorf("stale media still exists: %v", err)
 	}
 	newFull := filepath.Join(dir, filepath.FromSlash(wantRel))
-	if id, err := filler.ClipID(newFull); err != nil || id != actual {
+	if id, err := asset.ClipID(newFull); err != nil || id != actual {
 		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
 	}
-	tags, ok := filler.ReadSidecarTags(newFull)
+	tags, ok := asset.ReadSidecarTags(newFull)
 	if !ok || tags.OriginalName != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
 	}
@@ -1380,8 +1385,8 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Errorf("repaired provenance = row %q, sidecar %q/%q; want grounded on both", got.NameSource,
 			tags.DisplayName, tags.NameProvenance)
 	}
-	rescanned, _, err := filler.ScanDir(context.Background(), dir, func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000}, nil
+	rescanned, _, err := filler.ScanDir(context.Background(), dir, func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1398,14 +1403,14 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	if err := os.WriteFile(probeFile, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := filler.ClipID(probeFile)
+	actual, err := asset.ClipID(probeFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(probeFile); err != nil {
 		t.Fatal(err)
 	}
-	rel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
+	rel := filepath.ToSlash(cliplibrary.ClipRelPath(actual, ".mp4"))
 	full := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 		t.Fatal(err)
@@ -1414,8 +1419,8 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 		t.Fatal(err)
 	}
 	legacyTitle := "299bceca4e5635c05ea454255105152f0b999119"
-	source := &fakeSource{clips: []filler.RawClip{{
-		ID: actual, Path: rel, Name: legacyTitle, Role: filler.Commercial, DurationMs: 30_000,
+	source := &fakeSource{clips: []cliplibrary.RawClip{{
+		ID: actual, Path: rel, Name: legacyTitle, Role: clips.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
@@ -1429,7 +1434,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	if got := st.clips[actual].Name; got != "Untitled commercial" {
 		t.Errorf("name = %q, want neutral display name", got)
 	}
-	tags, ok := filler.ReadSidecarTags(full)
+	tags, ok := asset.ReadSidecarTags(full)
 	if !ok || tags.OriginalName != "Untitled commercial" {
 		t.Errorf("sidecar = %+v ok=%v, want durable neutral display name", tags, ok)
 	}
@@ -1440,18 +1445,18 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 // produced the name. A name a person or the source gave is never replaced.
 func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string, tags filler.SidecarTags) (string, string) {
+	write := func(name, body string, tags asset.SidecarTags) (string, string) {
 		t.Helper()
 		probe := filepath.Join(dir, name+".probe")
 		if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		id, err := filler.ClipID(probe)
+		id, err := asset.ClipID(probe)
 		if err != nil {
 			t.Fatal(err)
 		}
 		_ = os.Remove(probe)
-		rel := filepath.ToSlash(filler.ClipRelPath(id, ".mp4"))
+		rel := filepath.ToSlash(cliplibrary.ClipRelPath(id, ".mp4"))
 		full := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			t.Fatal(err)
@@ -1459,34 +1464,34 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := filler.WriteSidecarTags(full, tags, false); err != nil {
+		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 			t.Fatal(err)
 		}
 		return id, rel
 	}
 	const transcript = "true tales of the canyon patrol. troopers close in on a desperate gunman"
-	untitled, untitledRel := write("untitled", "untitled spot", filler.SidecarTags{OriginalName: "Untitled commercial"})
-	named, namedRel := write("named", "operator named spot", filler.SidecarTags{OriginalName: "Summer Sale Spot"})
+	untitled, untitledRel := write("untitled", "untitled spot", asset.SidecarTags{OriginalName: "Untitled commercial"})
+	named, namedRel := write("named", "operator named spot", asset.SidecarTags{OriginalName: "Summer Sale Spot"})
 	// #1988: an operator named this segment in split review. Its name reads like the placeholder,
 	// but its recorded provenance says a person chose it, so it is not Loomarr's to improve.
-	segment, segmentRel := write("segment", "operator named segment", filler.SidecarTags{
+	segment, segmentRel := write("segment", "operator named segment", asset.SidecarTags{
 		OriginalName: "Untitled commercial.mp4", DisplayName: "Untitled commercial",
 		NameProvenance: string(clips.NameFromCurated), SplitPublicationToken: "tok",
 	})
-	source := &fakeSource{clips: []filler.RawClip{
+	source := &fakeSource{clips: []cliplibrary.RawClip{
 		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clips.NameFromFilename,
-			Role: filler.Commercial, DurationMs: 30_000},
-		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000},
+			Role: clips.Commercial, DurationMs: 30_000},
+		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Role: clips.Commercial, DurationMs: 30_000},
 		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clips.NameFromCurated,
-			Role: filler.Commercial, DurationMs: 30_000},
+			Role: clips.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
-	st.clips[untitled] = filler.StoreClip{Clip: filler.Clip{Hash: untitled, Path: untitledRel,
-		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[named] = filler.StoreClip{Clip: filler.Clip{Hash: named, Path: namedRel,
-		Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[segment] = filler.StoreClip{Clip: filler.Clip{Hash: segment, Path: segmentRel,
-		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[untitled] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: untitled, Path: untitledRel,
+		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[named] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: named, Path: namedRel,
+		Name: "Summer Sale Spot", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[segment] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: segment, Path: segmentRel,
+		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
 
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1498,8 +1503,8 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	if got := st.clips[segment]; got.Name != "Untitled commercial" || got.NameSource != clips.NameFromCurated {
 		t.Fatalf("operator-named segment = %q (%s), want its name kept as curated", got.Name, got.NameSource)
 	}
-	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
-	if !ok || tags.DisplayName != want || tags.NameSource != string(filler.NameFromTranscript) {
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
+	if !ok || tags.DisplayName != want || tags.NameSource != string(cliplibrary.NameFromTranscript) {
 		t.Fatalf("sidecar = %+v, want the derived name and its evidence recorded", tags)
 	}
 	if tags.OriginalName != "Untitled commercial" {
@@ -1513,7 +1518,7 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 // A hand-dropped clip is an acquisition request, not an admission decision.
 func TestSync_AWatchFolderDropStartsHeld(t *testing.T) {
 	clipDir := t.TempDir()
-	watchDir := filepath.Join(clipDir, filler.WatchDirName)
+	watchDir := filepath.Join(clipDir, cliplibrary.WatchDirName)
 	if err := os.MkdirAll(watchDir, 0o750); err != nil {
 		t.Fatal(err)
 	}

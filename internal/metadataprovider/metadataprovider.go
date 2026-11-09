@@ -58,6 +58,10 @@ const (
 	// KindSeason is one season of a series in a catalog's numbering. Its record's Children are the
 	// season's episodes, numbered; it is fetched by "<series id>/<season>".
 	KindSeason Kind = "season"
+	// KindEpisodeOrder is one of a series' other episode orders (an EpisodeOrder), fetched by its
+	// id. Its record's Children are the order's episodes numbered as the order numbers them, and
+	// its Descriptive.Seasons are the order's seasons and their sizes.
+	KindEpisodeOrder Kind = "episode_order"
 )
 
 // Family is a group of fields that share one precedence rule.
@@ -124,6 +128,18 @@ const (
 	NamespaceSonarr Namespace = "sonarr"
 )
 
+// Grounds reports whether an id in n says which title an item is, in a namespace catalogs share
+// (TMDB, TVDB, IMDb): what grounds a title and what two catalogs can agree on. A collection's id,
+// a file path or an arr's own episode id does not. A namespace Loomarr bridges titles by is added
+// here, not where ids are read.
+func (n Namespace) Grounds() bool {
+	switch n {
+	case NamespaceTMDB, NamespaceTVDB, NamespaceIMDB:
+		return true
+	}
+	return false
+}
+
 // ExternalID is one grounded identity of an item in a namespace.
 type ExternalID struct {
 	Namespace Namespace
@@ -144,12 +160,8 @@ type Resolvable struct {
 
 // RateHint is how a caller should pace a provider. A zero field declares no limit.
 type RateHint struct {
-	// MaxConcurrent is the most fetches to have in flight at once.
-	MaxConcurrent int
 	// MinInterval is the least time between two requests.
 	MinInterval time.Duration
-	// PreferList is true when listing everything costs less than fetching items one by one.
-	PreferList bool
 }
 
 // Capabilities is what a provider declares about itself. Every record it returns stays inside

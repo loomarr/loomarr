@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx"
+
+	"github.com/loomarr/loomarr/internal/platform/langcode"
 )
 
 // cronParser validates KindCron values (§18.1). gronx is stateless + goroutine-safe for
@@ -53,6 +55,11 @@ const minSecretLen = 4
 func (s Setting) parseKind(raw string) (any, error) {
 	switch s.Kind {
 	case KindString, KindEnum:
+		if s.Presentation == PresentationLanguage {
+			// One spelling per language, so a stored or pinned `eng` is the picker's `en` and the
+			// select shows it as chosen. Every reader compares through langcode already.
+			return langcode.Normalize(raw), nil
+		}
 		return raw, nil
 	case KindSecret:
 		return parseSecret(s.Key, raw)

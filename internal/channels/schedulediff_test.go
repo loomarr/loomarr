@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -43,7 +44,7 @@ func diffEngine(t testing.TB, entries ...schedule.LineupEntry) (*channels.Engine
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
 	}, func() time.Time { return sundayNoon }, testkit.Logger())
 
-	ch := store.Channel{Lineup: entries}
+	ch := channelstore.Channel{Lineup: entries}
 	ch.ID, ch.Name, ch.Number = "c1", "Movies", 5
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusLive
@@ -54,7 +55,7 @@ func diffEngine(t testing.TB, entries ...schedule.LineupEntry) (*channels.Engine
 	return e, st, tun
 }
 
-func savedChannel(t testing.TB, st store.Store) store.Channel {
+func savedChannel(t testing.TB, st store.Store) channelstore.Channel {
 	t.Helper()
 	ch, err := st.GetChannel(context.Background(), "c1")
 	if err != nil {
@@ -257,7 +258,7 @@ func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
 		ResolveDefaultWindow:         func() time.Duration { return 24 * time.Hour },
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
 	}, func() time.Time { return clock }, testkit.Logger())
-	ch := store.Channel{Lineup: entries}
+	ch := channelstore.Channel{Lineup: entries}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "c1", "Movies", 5, schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)

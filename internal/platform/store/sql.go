@@ -55,6 +55,20 @@ type sqlStore struct {
 	// construction.
 	*identityCluster
 	*catalogCluster
+	// The crash-report cluster (crashstore), embedded the same way; see clientcrashes.go.
+	*crashCluster
+	// The diagnostics cluster (diagnosticsstore), embedded the same way; see diagnostics.go.
+	*diagnosticsCluster
+	// The scheduler-state cluster (jobstore), embedded the same way; see scheduled_jobs.go.
+	*jobsCluster
+	// The activity-feed cluster (activitystore), embedded the same way; see activity.go.
+	*activityCluster
+	// The channel-data cluster (channeldatastore), embedded the same way; see channeldata.go.
+	*channelDataCluster
+	// The channel cluster (channelstore), embedded the same way; see channels.go.
+	*channelCluster
+	// The proposal cluster (proposalstore), embedded the same way; see proposals.go.
+	*proposalCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path            string
@@ -66,15 +80,18 @@ type sqlStore struct {
 // bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a
 // store never exists with a nil cluster.
 func bindClusters(s *sqlStore) *sqlStore {
-	return bindCatalog(bindIdentity(s))
+	return bindProposals(bindChannels(bindChannelData(bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s)))))))))
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's
 // style (storedb.Placeholder).
 type placeholder = storedb.Placeholder
 
+// GetTitle reads a title's record. A pending row (storedb.PendingTitle) is no record: nothing has
+// asked for that title yet, so it answers ErrNotFound.
 func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key))
+	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ? AND state <> ?`),
+		string(key), storedb.PendingTitle)
 	return scanTitle(row)
 }
 
@@ -136,8 +153,8 @@ type TitleProgress struct {
 func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, p TitleProgress) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE titles SET progress = ?, eta_text = ?, download_status = ?, episodes_have = ?, episodes_wanted = ?
-		 WHERE key = ?`),
-		p.Progress, p.ETAText, p.Status, p.EpisodesHave, p.EpisodesWanted, string(key))
+		 WHERE key = ? AND state <> ?`),
+		p.Progress, p.ETAText, p.Status, p.EpisodesHave, p.EpisodesWanted, string(key), storedb.PendingTitle)
 	if err != nil {
 		return fmt.Errorf("update title progress %s: %w", key, err)
 	}

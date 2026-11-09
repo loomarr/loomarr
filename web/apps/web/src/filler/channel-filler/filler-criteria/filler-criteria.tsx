@@ -4,20 +4,20 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Toggle } from "@loomarr/design-system";
-import { CommitField, YearField } from "@loomarr/ui";
-import { useEffect, useState } from "react";
+import { Action, Chip, CompactSelect, Text, Toggle } from "@loomarr/design-system";
+import { CommitField, normalizeYearRanges, YEAR_MAX, YEAR_MIN, YearRangeListField } from "@loomarr/ui";
+import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
 // control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.
 const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
   <div className="flex items-center gap-1.5">
-    <Label htmlFor={htmlFor}>{children}</Label>
+    <Text as="label" htmlFor={htmlFor} textRole="label">
+      {children}
+    </Text>
     <FieldHelp label={children}>{help}</FieldHelp>
   </div>
 );
@@ -77,6 +77,11 @@ const AUDIENCE_LABEL: Record<(typeof AUDIENCES)[number], string> = {
   late_night: "Late night",
 };
 
+const AUDIENCE_OPTIONS = [
+  { label: "Any audience", value: "" },
+  ...AUDIENCES.map((audience) => ({ label: AUDIENCE_LABEL[audience], value: audience })),
+];
+
 // toggle — add/remove a value from a selection list, returning undefined for an empty
 // result so the wire carries "any" (omitted) rather than an empty array. Keeps
 // canonicalize's empty-means-any invariant honest at the source.
@@ -97,161 +102,19 @@ const toggleRole = (shown: string[], value: string, defaults: string[]): string[
   return isDefault ? undefined : next;
 };
 
-const YEAR_MIN = 1900;
-const YEAR_MAX = 2099;
 const MAX_ERA_WINDOWS = 8;
 
-const isValidWindow = (range: Range): range is Range & { from: number; to: number } =>
-  Number.isInteger(range.from) &&
-  Number.isInteger(range.to) &&
-  range.from !== undefined &&
-  range.to !== undefined &&
-  range.from >= YEAR_MIN &&
-  range.from <= YEAR_MAX &&
-  range.to >= YEAR_MIN &&
-  range.to <= YEAR_MAX &&
-  range.from <= range.to;
-
-const normalizeWindows = (windows: Range[] | undefined): Range[] => {
-  const valid = (windows ?? []).filter(isValidWindow).sort((a, b) => a.from - b.from || a.to - b.to);
-  return valid.reduce<Range[]>((merged, range) => {
-    const previous = merged.at(-1);
-    if (previous?.to !== undefined && range.from <= previous.to + 1)
-      previous.to = Math.max(previous.to, range.to);
-    else merged.push({ from: range.from, to: range.to });
-    return merged;
-  }, []);
-};
-
 const rangesLabel = (ranges: Range[] | undefined): string | undefined => {
-  const normalized = normalizeWindows(ranges);
+  const normalized = normalizeYearRanges(ranges);
   return normalized.length ? normalized.map((range) => `${range.from}–${range.to}`).join(", ") : undefined;
 };
 
 // A legacy scalar scope can be open-ended. It is a display fallback only: multi-window
-// data remains subject to the strict complete-window validation above.
+// data remains subject to normalizeYearRanges's strict complete-range validation.
 const scalarScopeLabel = (scopeEra: { from?: number; to?: number } | undefined): string | undefined => {
   if (scopeEra?.from !== undefined && scopeEra.to !== undefined) return `${scopeEra.from}–${scopeEra.to}`;
   const year = scopeEra?.from ?? scopeEra?.to;
   return year === undefined ? undefined : String(year);
-};
-
-const WindowRow = ({
-  window,
-  index,
-  disabled,
-  onCommit,
-  onRemove,
-}: {
-  window: Range;
-  index: number;
-  disabled?: boolean;
-  onCommit: (index: number, next: Range) => void;
-  onRemove: (index: number) => void;
-}) => {
-  const [draft, setDraft] = useState({ from: String(window.from), to: String(window.to) });
-
-  useEffect(() => {
-    setDraft({ from: String(window.from), to: String(window.to) });
-  }, [window.from, window.to]);
-
-  return (
-    <div className="flex flex-wrap items-end gap-2">
-      <YearField
-        disabled={disabled}
-        id={`filler-window-${index}-from`}
-        label="From year"
-        onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        onChangeText={(from) => setDraft({ ...draft, from })}
-        value={draft.from}
-      />
-      <YearField
-        disabled={disabled}
-        id={`filler-window-${index}-to`}
-        label="To year"
-        onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        onChangeText={(to) => setDraft({ ...draft, to })}
-        value={draft.to}
-      />
-      <Action disabled={disabled} onPress={() => onRemove(index)} variant="ghost">
-        Remove
-      </Action>
-    </div>
-  );
-};
-
-const WindowEditor = ({
-  windows,
-  onChange,
-  disabled,
-}: {
-  windows: Range[];
-  onChange: (next: Range[]) => void;
-  disabled?: boolean;
-}) => {
-  const [draft, setDraft] = useState({ from: "", to: "" });
-  const [error, setError] = useState<string>();
-  const valid = isValidWindow;
-  const commit = (index: number, next: Range) => {
-    if (!valid(next)) {
-      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
-      return;
-    }
-    setError(undefined);
-    const changed = [...windows];
-    changed[index] = next;
-    onChange(normalizeWindows(changed));
-  };
-  const add = () => {
-    const next = { from: Number(draft.from), to: Number(draft.to) };
-    if (!draft.from || !draft.to || !valid(next)) {
-      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
-      return;
-    }
-    setError(undefined);
-    setDraft({ from: "", to: "" });
-    onChange(normalizeWindows([...windows, next]));
-  };
-  return (
-    <div className="flex flex-col gap-2">
-      {windows.map((window, index) => (
-        <WindowRow
-          key={`${window.from}-${window.to}`}
-          window={window}
-          index={index}
-          disabled={disabled}
-          onCommit={commit}
-          onRemove={(row) => onChange(windows.filter((_, current) => current !== row))}
-        />
-      ))}
-      {windows.length < MAX_ERA_WINDOWS && (
-        <div className="flex flex-wrap items-end gap-2">
-          <YearField
-            accessibilityLabel="New date range from"
-            disabled={disabled}
-            onChangeText={(from) => setDraft({ ...draft, from })}
-            placeholder="From"
-            value={draft.from}
-          />
-          <YearField
-            accessibilityLabel="New date range to"
-            disabled={disabled}
-            onChangeText={(to) => setDraft({ ...draft, to })}
-            placeholder="To"
-            value={draft.to}
-          />
-          <Action disabled={disabled} onPress={add} style={{ alignSelf: "flex-start" }} variant="outline">
-            Add range
-          </Action>
-        </div>
-      )}
-      {error && (
-        <p className="text-onair-300 text-xs" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
 };
 
 // FillerCriteria — the THEME half of the sandbox: era range, audience, categories, roles.
@@ -292,7 +155,7 @@ const FillerCriteria = ({
   const inheriting = era === undefined && eraWindows === undefined;
   const explicitlyAny = era !== undefined && !era.from && !era.to;
   const inheritedWindows = programmingDates
-    ? normalizeWindows([
+    ? normalizeYearRanges([
         ...(programmingDates.movieRelease ?? []),
         ...((programmingDates.seriesAiring?.length ?? 0) > 0
           ? (programmingDates.seriesAiring ?? [])
@@ -443,9 +306,11 @@ const FillerCriteria = ({
             <p className="text-muted-foreground text-xs" data-testid="era-windows">
               Matching these date ranges only. Gaps remain excluded.
             </p>
-            <WindowEditor
-              windows={normalizeWindows(eraWindows)}
+            <YearRangeListField
               disabled={disabled}
+              label="Era"
+              maxRanges={MAX_ERA_WINDOWS}
+              ranges={normalizeYearRanges(eraWindows)}
               onChange={(next) => {
                 if (next.length === 0) {
                   const { eraWindows: _windows, ...rest } = selection;
@@ -536,7 +401,7 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Audience — "any" is the sentinel (Radix forbids an empty item value). */}
+      {/* Audience — the empty value is "any audience". */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <FieldLabel
           htmlFor="filler-audience"
@@ -544,23 +409,14 @@ const FillerCriteria = ({
         >
           Audience
         </FieldLabel>
-        <Select
-          value={selection.audience || "any"}
+        <CompactSelect
           disabled={disabled}
-          onValueChange={(v) => onChange({ ...selection, audience: v === "any" ? "" : v })}
-        >
-          <SelectTrigger id="filler-audience">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any audience</SelectItem>
-            {AUDIENCES.map((a) => (
-              <SelectItem key={a} value={a}>
-                {AUDIENCE_LABEL[a]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          id="filler-audience"
+          label="Audience"
+          onValueChange={(audience) => onChange({ ...selection, audience })}
+          options={AUDIENCE_OPTIONS}
+          value={selection.audience ?? ""}
+        />
       </div>
 
       {/* Product/topic tags — a multi-select over the live product-axis hierarchy. No selection
@@ -591,22 +447,15 @@ const FillerCriteria = ({
               .map((c) => {
                 const on = categories.includes(c.slug);
                 return (
-                  <button
-                    key={c.slug}
-                    type="button"
+                  <Chip
                     disabled={disabled}
-                    aria-pressed={on}
-                    onClick={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
-                    className={cn(
-                      "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                      // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                      on
-                        ? "border-foreground bg-static-800 text-foreground font-semibold"
-                        : "border-border text-muted-foreground hover:border-input hover:text-foreground",
-                    )}
+                    key={c.slug}
+                    onPress={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
+                    selected={on}
+                    shape="pill"
                   >
                     {c.label}
-                  </button>
+                  </Chip>
                 );
               })}
           </div>

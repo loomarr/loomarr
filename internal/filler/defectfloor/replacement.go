@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -18,7 +18,7 @@ import (
 // Unlike a pass over the catalog, a file that cannot be measured is an error rather than an
 // undecided verdict, and so is a judge that cannot rule: the clip already airs, so a replacement
 // waits for a clear answer instead of being admitted without one.
-func (d *DefectFloor) CheckReplacement(ctx context.Context, c filler.StoreClip, staged string) (defects.Record, error) {
+func (d *DefectFloor) CheckReplacement(ctx context.Context, c cliplibrary.StoreClip, staged string) (defects.Record, error) {
 	p, err := d.probe(ctx, staged)
 	if err != nil {
 		return defects.Record{}, fmt.Errorf("probe the replacement: %w", err)

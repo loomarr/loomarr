@@ -26,8 +26,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -64,7 +65,7 @@ type SeedChannel struct {
 // channels are keyed by deterministic proposal ids, settings are whole-value writes, and icon and
 // watermark uploads are content-addressed by the image service.
 //
-// Channels go through the same approval gate as `make seed` (suggest.Approver), because that
+// Channels go through the same approval gate as `make seed` (accept.Approver), because that
 // gate is the only way a title becomes `available`; a hand-made lineup over the HTTP API would
 // leave every entry pending. Everything the running backend owns (settings, names, numbers,
 // icons, watermarks, reconcile) goes over its HTTP API so it hot-applies.
@@ -120,7 +121,7 @@ func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *sl
 	if created || admin.Name == demoAdminUser {
 		out.AdminPassword = demoAdminPassword
 	}
-	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := accept.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	for _, c := range lib.Channels {
 		id, err := ensureChannel(ctx, st, approver, lib, items, admin.ID, c)
 		if err != nil {
@@ -183,7 +184,7 @@ func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool,
 // ensureChannel approves the channel's proposal once, keyed by deterministic job and proposal
 // ids, and returns the channel the approval bound. items is each title's library item id by its
 // stand-in id (scanLibrary).
-func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approver, lib *demolibrary.Library, items map[string]string, adminID string, c demolibrary.Channel) (string, error) {
+func ensureChannel(ctx context.Context, st store.Store, approver *accept.Approver, lib *demolibrary.Library, items map[string]string, adminID string, c demolibrary.Channel) (string, error) {
 	// The open pack keys its channels apart from the invented library's, so a store seeded with one
 	// never mistakes the other's channel for its own: switching content on a kept store fails on the
 	// taken channel number instead of renaming an invented channel over the pack's name.
@@ -245,9 +246,9 @@ func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Librar
 	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
 	// CreateJob+CreateProposal pair leaves no attempt, so the workflow rejects the job as
 	// inconsistent and GET /v1/proposal-jobs 500s on every demo-seeded backend (#1534, #1827).
-	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
+	if err := st.CreateSuggestionResult(ctx, proposalstore.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
-	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
+	}, proposalstore.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
 		Body: proposals.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}

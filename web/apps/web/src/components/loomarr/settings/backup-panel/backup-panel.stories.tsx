@@ -62,5 +62,20 @@ const KeepsEverything: Story = {
   args: { list: { ...base, retain: 0 } },
 };
 
+// Two nights are absent from the series: the warning names the count and points at Tasks.
+const NightsMissing: Story = {
+  args: {
+    onOpenTasks: noop,
+    list: {
+      ...base,
+      backups: [0, 2, 4, 5].map((n) => ({
+        name: `loomarr-${n}.db`,
+        bytes: 4_194_304,
+        writtenAt: NOW - n * DAY,
+      })),
+    },
+  },
+};
+
 export default meta;
-export { Default, Empty, Failed, KeepsEverything, Postgres, Working };
+export { Default, Empty, Failed, KeepsEverything, NightsMissing, Postgres, Working };

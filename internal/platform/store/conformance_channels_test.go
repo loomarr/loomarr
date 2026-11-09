@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,6 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
 	ch.IntentJSON = `{"description":"intent of ` + id + `"}`
-	ch.RequestedBy = "requester-" + id
 	ch.Name = "Channel " + id
 	ch.Number = number
 	ch.Group = "Loomarr"
@@ -250,7 +250,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}} {
+	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}, {ID: "u-gone", Name: "Gone", Role: RoleMember}} {
 		if err := s.UpsertUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}
@@ -267,6 +267,35 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	ghost := sampleChannel("ch-ghost", 3, time.Time{})
 	ghost.IntentRef, ghost.RequestedBy = "job-ghost", "u-gone"
 	mustSaveChannel(t, s, ghost)
+	// The person is deleted: the channel stays, with no requester (requested_by is SET NULL).
+	sqlSt, ok := s.(*sqlStore)
+	if !ok {
+		t.Skip("needs the SQL store")
+	}
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`DELETE FROM users WHERE id = ?`), "u-gone"); err != nil {
+		t.Fatal(err)
+	}
+	if g, err := s.GetChannel(ctx, "ch-ghost"); err != nil || g.RequestedBy != "" {
+		t.Errorf("channel whose requester was deleted = %q, %v; want kept with no requester", g.RequestedBy, err)
+	}
+	// A request outlives its author, and a channel read before they went may be saved after: either
+	// save records no requester rather than failing.
+	stray := sampleChannel("ch-stray", 4, time.Time{})
+	stray.IntentRef, stray.RequestedBy = "job-stray", "u-gone"
+	mustSaveChannel(t, s, stray)
+	ghost.Revision = 1
+	ghost.Name = "Ghost, renamed"
+	mustSaveChannel(t, s, ghost)
+	for _, id := range []string{"ch-stray", "ch-ghost"} {
+		if g, err := s.GetChannel(ctx, id); err != nil || g.RequestedBy != "" {
+			t.Errorf("%s saved naming a deleted requester = %q, %v; want no requester", id, g.RequestedBy, err)
+		}
+	}
+	// Underneath, a requester must be a person: the column is a foreign key.
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`UPDATE channels SET requested_by = ? WHERE id = ?`),
+		"u-never", "ch-stray"); err == nil {
+		t.Error("wrote a requester who is no person; the foreign key is missing")
+	}
 
 	got, err := s.GetChannel(ctx, "ch-req")
 	if err != nil {
@@ -292,14 +321,90 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-// Deleting a channel must drop its IMAGE REFS — the cascade that replaced the `channel_icons` retired-ok
-// cleanup when the table went (V52 phase 8).
+// Deleting a channel must drop its IMAGE REFS (channel_images cascades, #2793).
 //
-// ⚠ **This is a regression test for a real leak, not a rename of the old icon round-trip.** Phase 5
-// moved icon bytes into the image service but left DeleteChannel deleting the old blob table, so a
-// deleted channel's `image_refs` row survived it. A ref is precisely what tells the GC an image is
-// still in use (§22), so the icon was never orphaned and never collected — bytes on disk owned by a
-// channel that no longer exists, forever. `DeleteImageRefs` had no caller at all until phase 8.
+// ⚠ **This is a regression test for a real leak.** A deleted channel's ref once survived it, and a
+// ref is precisely what tells the GC an image is still in use (§22), so the icon was never orphaned
+// and never collected — bytes on disk owned by a channel that no longer exists, forever.
+// A lineup is rows in channel_lineup (#2793): it reads back in order, every field intact; a
+// shorter lineup leaves no stale rows behind; and the rows go with their channel.
+func testChannelLineupRows(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	ch := sampleChannel("ch-lineup", 41, time.Time{})
+	ch.Lineup = []schedule.LineupEntry{
+		{Key: "series:tmdb:90000013", Title: "C", SeasonMin: 1, SeasonMax: 4, Genres: []string{"Comedy"}, Year: 1991,
+			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}, BoxSetIDs: []string{"bs-1"}, BoxSetsResolved: true},
+		{Key: "movie:tmdb:90000011", Title: "A", DurationMs: 3600000, CollectionID: -1, Fit: 0.75},
+		{Key: "movie:tmdb:90000012", Title: "B", AddedAt: time.Unix(1_700_000_000, 0).UTC()},
+	}
+	saved := mustSaveChannel(t, s, ch)
+	got, err := s.GetChannel(ctx, saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Lineup, ch.Lineup) {
+		t.Fatalf("lineup read back as\n%+v\nwant\n%+v", got.Lineup, ch.Lineup)
+	}
+
+	got.Lineup = got.Lineup[1:2]
+	saved = mustSaveChannel(t, s, got)
+	if again, err := s.GetChannel(ctx, saved.ID); err != nil || len(again.Lineup) != 1 || again.Lineup[0].Key != "movie:tmdb:90000011" {
+		t.Fatalf("after shortening, lineup = %+v (err %v); want just movie:tmdb:90000011", again.Lineup, err)
+	}
+
+	saved.Lineup = nil
+	saved = mustSaveChannel(t, s, saved)
+	if again, err := s.GetChannel(ctx, saved.ID); err != nil || again.Lineup == nil || len(again.Lineup) != 0 {
+		t.Fatalf("an emptied lineup read back as %#v (err %v); want an empty, non-nil list", again.Lineup, err)
+	}
+
+	saved.Lineup = ch.Lineup
+	saved = mustSaveChannel(t, s, saved)
+
+	// Every lineup title has a titles row (title_key is a foreign key); one nothing has asked for
+	// is pending, which reads as no record and counts in no state.
+	if _, err := s.GetTitle(ctx, ch.Lineup[0].Key); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a pending lineup title read as %v, want ErrNotFound", err)
+	}
+	if counts, err := s.CountTitlesByState(ctx); err != nil || len(counts) != 0 {
+		t.Errorf("titles by state = %v (err %v); pending titles must not count", counts, err)
+	}
+	// A real write of the title replaces its pending row.
+	asked := provision.Record{Key: ch.Lineup[1].Key, State: provision.Wanted,
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000011, Name: "A"}}
+	if err := s.UpsertTitle(ctx, asked); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetTitle(ctx, asked.Key); err != nil || got.State != provision.Wanted {
+		t.Errorf("after a request the title reads (%+v, %v), want wanted", got, err)
+	}
+
+	if err := s.DeleteChannel(ctx, saved.ID, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	sqlSt, ok := s.(*sqlStore)
+	if !ok {
+		return
+	}
+	var left int
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT count(*) FROM channel_lineup`).Scan(&left); err != nil || left != 0 {
+		t.Errorf("%d lineup rows outlived their channel (err %v)", left, err)
+	}
+	// Once no lineup names them, the purge takes the pending rows, and only those.
+	if _, err := s.PurgeUnusedTitles(ctx, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var pending, kept int
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT
+		COALESCE(SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END), 0), COUNT(*) FROM titles`).Scan(&pending, &kept); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 0 || kept != 1 {
+		t.Errorf("after the purge %d pending of %d titles remain; want 0 of 1 (the requested one)", pending, kept)
+	}
+}
+
 func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

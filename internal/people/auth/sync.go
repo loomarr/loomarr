@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
-// UserLister lists media-server users (the Phase-5 library adapter).
+// UserLister lists media-server users (the library adapter).
 type UserLister interface {
 	ListUsers(ctx context.Context) ([]library.User, error)
 }

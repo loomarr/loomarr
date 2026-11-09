@@ -8,7 +8,7 @@ import (
 )
 
 // LibraryEpisode is one playable episode of a library series, as a lineup expands it (#2151 step
-// 15): the facts the media server's episode listing answered until the cutover.
+// 15): the facts a media server's episode listing would give, read from the Library's own rows.
 type LibraryEpisode struct {
 	ItemID     string
 	Name       string

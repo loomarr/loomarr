@@ -29,6 +29,9 @@ type Handle interface {
 	AdvisoryLocker
 	// Begin starts a transaction on the pool.
 	Begin(ctx context.Context) (Tx, error)
+	// BeginReadOnly starts a read-only transaction on the pool: one consistent snapshot to read
+	// several tables through.
+	BeginReadOnly(ctx context.Context) (Tx, error)
 	// Rebind rewrites a query written with ? markers into the backend's placeholder style.
 	Rebind(query string) string
 }
@@ -65,6 +68,11 @@ func (d DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql
 
 // Begin starts a transaction with the driver's default options.
 func (d DB) Begin(ctx context.Context) (Tx, error) { return d.db.BeginTx(ctx, nil) }
+
+// BeginReadOnly starts a transaction with the ReadOnly option.
+func (d DB) BeginReadOnly(ctx context.Context) (Tx, error) {
+	return d.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+}
 
 // Dialect names the backend.
 func (d DB) Dialect() Dialect { return d.dialect }

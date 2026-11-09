@@ -8,7 +8,7 @@ import (
 
 // staleCap is the age a title is credited when nothing says how long it has waited: it never
 // aired and its AddedAt is unknown (a manual add, or an entry that predates AddedAt). It is the
-// airing history's retention window (store airingRetention, 8 days): history older than that is
+// airing history's retention window (channeldatastore airingRetention, 8 days): history older than that is
 // pruned down to one row, so "never aired inside the window" is the longest the store can
 // actually vouch for. Such a title reads as long without airing, so it is among the first to go.
 const staleCap = 8 * 24 * time.Hour

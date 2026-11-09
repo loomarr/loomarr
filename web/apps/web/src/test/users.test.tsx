@@ -478,8 +478,11 @@ describe("Users page", () => {
       getListUsersMockHandler(() => ({ users: [ADA, { ...GRACE, lastSeenAt: Date.now() - 2 * 3_600_000 }] })),
     );
     renderAt("/people");
-    expect(await screen.findByRole("button", { name: /^Manage Grace/ })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: /^Manage Ada/ })).toHaveTextContent("Never");
+    const row = (manage: RegExp) =>
+      screen.getByRole("button", { name: manage }).closest('[role="listitem"]') as HTMLElement;
+    await screen.findByRole("button", { name: /^Manage Grace/ });
+    expect(row(/^Manage Grace/)).toHaveTextContent("seen 2h ago");
+    expect(row(/^Manage Ada/)).toHaveTextContent("Never seen");
   });
 });
 

@@ -1,6 +1,8 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
 import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
+import { LibraryStatusOutputBodyHealth } from "@loomarr/api/models/libraryStatusOutputBodyHealth";
+import { ListLibraryItemsKind } from "@loomarr/api/models/listLibraryItemsKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import {
   LibraryCollections,
@@ -9,6 +11,7 @@ import {
   LibraryNeedsStrip,
   LibraryShelf,
   type LibraryShelfTitle,
+  StatePanel,
 } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -72,7 +75,8 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const needs = useLibraryNeeds();
   const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
-  const kind = filter === "movie" || filter === "series" ? filter : undefined;
+  const kind =
+    filter === ListLibraryItemsKind.movie || filter === ListLibraryItemsKind.series ? filter : undefined;
 
   const status = libraryApi.useLibraryStatus({
     query: { refetchInterval: (query) => (isBusy(unwrap(query.state.data)) ? BUSY_REFETCH_MS : false) },
@@ -80,7 +84,9 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const current = unwrap(status.data);
   const busy = isBusy(current);
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
-  const roots = libraryApi.useListLibraryRoots({ query: { enabled: current?.health === "folder_offline" } });
+  const roots = libraryApi.useListLibraryRoots({
+    query: { enabled: current?.health === LibraryStatusOutputBodyHealth.folder_offline },
+  });
   const refresh = () => queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() });
   const rescan = libraryApi.useRescanLibrary({ mutation: { onSettled: refresh } });
   const discover = libraryApi.useDiscoverLibraryRoots({ mutation: { onSettled: refresh } });
@@ -141,7 +147,7 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
 
   const error = status.error ?? items.error;
   if (error && !current) return <ErrorState error={error} onRetry={() => void status.refetch()} />;
-  if (!current) return null;
+  if (!current) return <StatePanel kind="loading" title="Loading your library" />;
 
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
@@ -154,15 +160,18 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
         onLink={needs.answers.onLink}
         onOpenNeeds={openNeeds}
         onOpenTitle={openTitle}
+        orders={needs.orders}
         problems={needs.problems}
       />
     ) : needs.loaded ? (
       <LibraryNeedsCards
         needs={needs.needs}
+        onChooseOrder={needs.answers.onChooseOrder}
         onIgnore={needs.answers.onIgnore}
         onLink={needs.answers.onLink}
         onOpenTitle={openTitle}
         onSearch={needs.onSearch}
+        orders={needs.orders}
         problems={needs.problems}
       />
     ) : null;

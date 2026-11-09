@@ -8,21 +8,22 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 )
 
 // fakeCollections is a CollectionService returning a fixed list, or an error.
 type fakeCollections struct {
-	colls []api.LibraryCollection
+	colls []libraryapi.LibraryCollection
 	err   error
 }
 
-func (f fakeCollections) Collections(context.Context) ([]api.LibraryCollection, error) {
+func (f fakeCollections) Collections(context.Context) ([]libraryapi.LibraryCollection, error) {
 	return f.colls, f.err
 }
 
 // newCollectionsHarness wires a collections service with NO media server connected: the
 // household's collections are the Library's own (#2151 step 15e), so listing them needs none.
-func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness {
+func newCollectionsHarness(t *testing.T, svc libraryapi.CollectionService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
@@ -37,7 +38,7 @@ func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness 
 }
 
 func TestCollections_ListsForMember(t *testing.T) {
-	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{
+	harness := newCollectionsHarness(t, fakeCollections{colls: []libraryapi.LibraryCollection{
 		{ID: "bs-1", Name: "Halloween", ChildCount: 12},
 	}})
 
@@ -49,7 +50,7 @@ func TestCollections_ListsForMember(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Collections []api.LibraryCollection `json:"collections"`
+		Collections []libraryapi.LibraryCollection `json:"collections"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func TestCollections_EmptyIsArrayNotNull(t *testing.T) {
 // property matters (this must never be an unauthenticated window onto the library), but the
 // marker itself is pinned by the member test below, which is the one that can fail.
 func TestCollections_AnonymousRefused(t *testing.T) {
-	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
+	harness := newCollectionsHarness(t, fakeCollections{colls: []libraryapi.LibraryCollection{{ID: "bs-1"}}})
 
 	resp := harness.Do(http.MethodGet, "/v1/library/collections", "", "")
 	defer func() { _ = resp.Body.Close() }()
@@ -105,7 +106,7 @@ func TestCollections_AnonymousRefused(t *testing.T) {
 // Member-readable is the §7.2 posture: read-only, showing no more than the media server
 // already shows that user, and picking a collection still routes through submit→approve.
 func TestCollections_MemberIsNotForbidden(t *testing.T) {
-	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
+	harness := newCollectionsHarness(t, fakeCollections{colls: []libraryapi.LibraryCollection{{ID: "bs-1"}}})
 
 	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
@@ -115,15 +116,15 @@ func TestCollections_MemberIsNotForbidden(t *testing.T) {
 	}
 }
 
-// A media server that errors is a 502 with an explanation, never a 500 and never an empty list
-// — an empty list would read as "you have no collections", which is a different and false claim.
-func TestCollections_UpstreamErrorIs502(t *testing.T) {
-	harness := newCollectionsHarness(t, fakeCollections{err: errors.New("dial tcp: connection refused")})
+// The collections are Loomarr's own, so a read that fails is Loomarr's 500, never an empty list —
+// an empty list would read as "you have no collections", which is a different and false claim.
+func TestCollections_ReadErrorIs500(t *testing.T) {
+	harness := newCollectionsHarness(t, fakeCollections{err: errors.New("database is locked")})
 
 	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", resp.StatusCode)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -58,18 +59,10 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 // Every read of a title starts from a lineup or a pick, so a title neither names is read only if
 // it is picked again, and then a missing row means "request it": approval writes it afresh and a
 // title once given up on is tried again, which after the window is the right answer. A title
-// still wanted, requested or downloading is in flight and stays at any age.
+// still wanted, requested or downloading is in flight and stays at any age. A pending row no
+// lineup names any more goes too, whatever its age.
 func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error) {
 	named := map[provision.Key]bool{}
-	channels, err := s.ListChannels(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("purge unused titles: %w", err)
-	}
-	for _, ch := range channels {
-		for _, entry := range ch.Lineup {
-			named[entry.Key] = true
-		}
-	}
 	open, err := s.ListProposalsByStatus(ctx, openProposalStatus)
 	if err != nil {
 		return 0, fmt.Errorf("purge unused titles: %w", err)
@@ -83,7 +76,8 @@ func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int
 			}
 		}
 	}
-	candidates, err := s.distinctStrings(ctx, s.db, `SELECT key FROM titles WHERE state IN (?, ?) AND updated_at < ?`,
+	candidates, err := s.distinctStrings(ctx, s.db, `SELECT key FROM titles WHERE state IN (?, ?) AND updated_at < ?
+		AND NOT EXISTS (SELECT 1 FROM channel_lineup l WHERE l.title_key = titles.key)`,
 		string(provision.Available), string(provision.Unavailable), epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge unused titles: %w", err)
@@ -102,7 +96,15 @@ func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int
 		n, _ := res.RowsAffected()
 		total += int(n)
 	}
-	return total, nil
+	// A pending row exists only because a lineup named the title (storedb.PendingTitle); once none
+	// does, it records nothing.
+	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM titles WHERE state = ?
+		AND NOT EXISTS (SELECT 1 FROM channel_lineup l WHERE l.title_key = titles.key)`), storedb.PendingTitle)
+	if err != nil {
+		return total, fmt.Errorf("purge unnamed pending titles: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return total + int(n), nil
 }
 
 // PurgeDiscardedProposals removes `denied` and `superseded` proposals older than `before` and

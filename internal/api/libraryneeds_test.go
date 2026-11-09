@@ -10,8 +10,15 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
+
+// externalID is a title's catalog id on the wire.
+type externalID struct {
+	Namespace string `json:"namespace"`
+	Value     string `json:"value"`
+}
 
 // Needs you lists the titles nothing grounds with their candidates and files, counts them in the
 // status, takes a link, an ignore and a take-back, searches TMDB when it is set up, and is for
@@ -50,8 +57,9 @@ func TestLibraryNeedsYou(t *testing.T) {
 	}
 	posterURL := "https://image.example.org/90000101.jpg"
 	if err := h.Store.SaveLibraryCandidates(ctx, "90000001", "Mystery Film|0", []store.LibraryCandidate{
-		{Kind: "movie", TMDBID: "90000101", Name: "Mystery Film", Year: 2002, Poster: posterURL, NameMatch: true, LengthMatch: true},
-		{Kind: "movie", TMDBID: "90000102", Name: "Mystery Films", Year: 2003, Poster: "https://image.example.org/pending.jpg"},
+		{Kind: "movie", ID: store.LibraryID{Namespace: "tmdb", Value: "90000101"}, Name: "Mystery Film", Year: 2002,
+			Poster: posterURL, NameMatch: true, LengthMatch: true},
+		{Kind: "movie", ID: store.LibraryID{Namespace: "tmdb", Value: "90000102"}, Name: "Mystery Films", Year: 2003, Poster: "https://image.example.org/pending.jpg"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +73,10 @@ func TestLibraryNeedsYou(t *testing.T) {
 			} `json:"item"`
 			Searched   bool `json:"searched"`
 			Candidates []struct {
-				TMDBID        string `json:"tmdbId"`
-				NameMatches   bool   `json:"nameMatches"`
-				YearMatches   bool   `json:"yearMatches"`
-				LengthMatches bool   `json:"lengthMatches"`
+				ExternalID    externalID `json:"externalId"`
+				NameMatches   bool       `json:"nameMatches"`
+				YearMatches   bool       `json:"yearMatches"`
+				LengthMatches bool       `json:"lengthMatches"`
 				Poster        *struct {
 					Hash string `json:"hash"`
 				} `json:"poster"`
@@ -93,7 +101,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 		t.Fatalf("needs = %+v", got)
 	}
 	best, other := got.Needs[0].Candidates[0], got.Needs[0].Candidates[1]
-	if best.TMDBID != "90000101" || !best.NameMatches || best.YearMatches || !best.LengthMatches ||
+	if best.ExternalID != (externalID{"tmdb", "90000101"}) || !best.NameMatches || best.YearMatches || !best.LengthMatches ||
 		best.Poster == nil || other.Poster != nil {
 		t.Fatalf("candidates = %+v, want the fetched poster only", got.Needs[0].Candidates)
 	}
@@ -113,10 +121,10 @@ func TestLibraryNeedsYou(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{http.MethodPost, "/v1/library/items/90000001/link", `{"tmdbId":"abc"}`, http.StatusUnprocessableEntity},
-		{http.MethodPost, "/v1/library/items/90000099/link", `{"tmdbId":"90000101"}`, http.StatusNotFound},
+		{http.MethodPost, "/v1/library/items/90000001/link", `{"externalId":{"value":"90000101"}}`, http.StatusUnprocessableEntity},
+		{http.MethodPost, "/v1/library/items/90000099/link", `{"externalId":{"namespace":"tmdb","value":"90000101"}}`, http.StatusNotFound},
 		{http.MethodPost, "/v1/library/items/90000003/ignore", ``, http.StatusConflict},
-		{http.MethodPost, "/v1/library/items/90000001/link", `{"tmdbId":"90000101"}`, http.StatusNoContent},
+		{http.MethodPost, "/v1/library/items/90000001/link", `{"externalId":{"namespace":"tmdb","value":"90000101"}}`, http.StatusNoContent},
 	} {
 		resp := h.Do(tc.method, tc.path, adminToken, tc.body)
 		_ = resp.Body.Close()
@@ -125,7 +133,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 		}
 	}
 	answer, ok, err := h.Store.LibraryAnswerFor(ctx, origin("file:a"))
-	if err != nil || !ok || answer.TMDBID != "90000101" || answer.Kind != "movie" {
+	if err != nil || !ok || answer.ID != (store.LibraryID{Namespace: "tmdb", Value: "90000101"}) || answer.Kind != "movie" {
 		t.Fatalf("answer = %+v, %v, %v", answer, ok, err)
 	}
 	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
@@ -154,17 +162,18 @@ func TestLibraryNeedsYou(t *testing.T) {
 	lib.Search = func(_ context.Context, term string, _ int) ([]scan.SearchHit, error) {
 		searched = append(searched, term)
 		return []scan.SearchHit{
-			{Kind: "series", TMDBID: "90000201", Name: "Mystery"},
-			{Kind: "movie", TMDBID: "90000202", Name: "Mystery", Year: 2002},
+			{Kind: "series", ID: mp.ExternalID{Namespace: "tmdb", Value: "90000201"}, Name: "Mystery"},
+			{Kind: "movie", ID: mp.ExternalID{Namespace: "imdb", Value: "tt90000202"}, Name: "Mystery", Year: 2002},
 		}, nil
 	}
 	var results struct {
 		Results []struct {
-			TMDBID string `json:"tmdbId"`
+			ExternalID externalID `json:"externalId"`
 		} `json:"results"`
 	}
 	decode(t, h.Do(http.MethodGet, "/v1/library/search?q=mystery&kind=movie", adminToken, ""), &results)
-	if len(searched) != 1 || searched[0] != "mystery" || len(results.Results) != 1 || results.Results[0].TMDBID != "90000202" {
+	if len(searched) != 1 || searched[0] != "mystery" || len(results.Results) != 1 ||
+		results.Results[0].ExternalID != (externalID{"imdb", "tt90000202"}) {
 		t.Fatalf("search = %v, %+v", searched, results)
 	}
 

@@ -94,8 +94,8 @@ const AuthedLayout = () => {
           onOpenCommand={() => setCommandOpen(true)}
           onLogout={() => logout.mutate()}
           watchChannelId={watchId}
+          banner={<DemoTour tour={demoTour} channelId={watchId} />}
         >
-          <DemoTour tour={demoTour} channelId={watchId} />
           <Outlet />
         </AppShell>
       )}

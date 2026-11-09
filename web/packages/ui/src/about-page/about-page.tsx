@@ -3,14 +3,13 @@ import { type ComponentProps, useState } from "react";
 
 import type { AboutDetail, AboutPageProps } from "./about-page.type";
 
-// ABOUT (Settings → System → About): Loomarr's own lockup and version first, then the credits TMDB's
-// licence requires, then the bug-report facts behind one disclosure, the way a title's technical
-// details are.
+// ABOUT (Settings → System → About): Loomarr's own lockup and version first, then the data sources
+// with the attribution TMDB's terms require (#2853), then the bug-report facts behind one
+// disclosure, the way a title's technical details are.
 
-// TMDB_NOTICE is fixed wording from TMDB's terms. ⚠ Do not paraphrase, shorten or re-flow it: it is
-// quoted text, and "not endorsed, certified, or otherwise approved" is the operative phrase.
-const TMDB_NOTICE =
-  "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.";
+// TMDB_NOTICE is TMDB's attribution sentence, word for word (#2853). ⚠ Do not paraphrase, shorten
+// or re-flow it: it is quoted text.
+const TMDB_NOTICE = "This product uses the TMDB API but is not endorsed or certified by TMDB.";
 
 const Stack = (props: ComponentProps<typeof Surface>) => (
   <Surface backgroundColor="transparent" borderWidth={0} {...props} />
@@ -48,8 +47,8 @@ const AboutPage = ({ version, details, tmdbLogo }: AboutPageProps) => {
         </Text>
       </Surface>
 
-      <Stack aria-label="Credits" gap="control" role="region">
-        <Text textRole="section">Credits</Text>
+      <Stack aria-label="Data sources" gap="control" role="region">
+        <Text textRole="section">Data sources</Text>
         <Surface borderRadius="card" gap="control" padding="section">
           {tmdbLogo ? <Stack alignItems="flex-start">{tmdbLogo}</Stack> : null}
           <Text textRole="body">Film and TV details, posters and artwork come from TMDB.</Text>

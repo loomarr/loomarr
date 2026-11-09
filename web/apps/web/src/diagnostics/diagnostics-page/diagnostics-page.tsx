@@ -1,4 +1,4 @@
-import { Activity, HeartPulse, RadioTower } from "lucide-react";
+import { Icon, icons } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics } from "../application-diagnostics";
@@ -33,9 +33,9 @@ const DiagnosticsPage = ({
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const tabs = [
-    { id: "logs" as const, label: "Logs", icon: Activity },
-    { id: "health" as const, label: "Current Health", icon: HeartPulse },
-    { id: "process" as const, label: "Media processes", icon: RadioTower },
+    { id: "logs" as const, label: "Logs", icon: icons.activity },
+    { id: "health" as const, label: "Current Health", icon: icons.health },
+    { id: "process" as const, label: "Media processes", icon: icons.process },
   ];
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -60,7 +60,7 @@ const DiagnosticsPage = ({
         className="border-border flex gap-1 overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
         aria-label="Diagnostics views"
       >
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {tabs.map(({ id, label, icon }) => (
           <button
             key={id}
             type="button"
@@ -75,7 +75,9 @@ const DiagnosticsPage = ({
               onSearchChange({ ...search, view: id, ...(id === "process" ? {} : { processId: undefined }) })
             }
           >
-            <Icon aria-hidden className="hidden size-4 sm:block" />
+            <span className="hidden sm:flex">
+              <Icon decorative glyph={icon} size="compact" tone="inherit" />
+            </span>
             {label}
           </button>
         ))}

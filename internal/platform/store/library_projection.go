@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // LibraryProjector says how an inventory item is listed in the Library (#2151 decision 43): its
@@ -26,25 +26,24 @@ type LibraryProjection interface {
 
 func (s *sqlStore) ProjectLibraryWith(p LibraryProjector) { s.libraryProjector.Store(&p) }
 
-// projectLibrary rewrites the library rows of each item in tx. An item the inventory no longer
-// has, or one the projector does not list, keeps whatever row it had: presence comes from
-// library_files, and a title that comes back finds its row, its collections and its answer.
-func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, ids ...inventory.ItemID) error {
+// projecting reports whether a projector is installed, so an inventory write can skip reading the
+// items it would hand over.
+func (s *sqlStore) projecting() bool {
+	p := s.libraryProjector.Load()
+	return p != nil && *p != nil
+}
+
+// projectLibrary rewrites the library rows of each item in tx. The items come from the inventory
+// write that changed them, so this side never reads the inventory. An item the inventory no longer
+// has is not passed in, and one the projector does not list keeps whatever row it had: presence
+// comes from library_files, and a title that comes back finds its row, its collections and its
+// answer.
+func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, items []inventory.Item) error {
 	p := s.libraryProjector.Load()
 	if p == nil || *p == nil {
 		return nil
 	}
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		item, ok, err := s.readInventoryItem(ctx, tx, id)
-		if err != nil {
-			return fmt.Errorf("project library item %s: %w", id, err)
-		}
-		if !ok {
-			continue
-		}
+	for _, item := range items {
 		row, ok := (*p)(item)
 		if !ok {
 			continue
@@ -77,8 +76,8 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		original_title, overview, premiere_date, rating, score, runtime_ms, season, episode, episode_end,
 		series_authority, series_key, series_id,
 		name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from,
-		tagline, trailer)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		tagline, trailer, unnumbered)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
@@ -92,13 +91,14 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		name_from = excluded.name_from, year_from = excluded.year_from,
 		overview_from = excluded.overview_from, premiere_from = excluded.premiere_from,
 		rating_from = excluded.rating_from, score_from = excluded.score_from,
-		runtime_from = excluded.runtime_from, tagline = excluded.tagline, trailer = excluded.trailer`),
+		runtime_from = excluded.runtime_from, tagline = excluded.tagline, trailer = excluded.trailer,
+		unnumbered = excluded.unnumbered`),
 		it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), it.Origin.Authority, it.Origin.Key,
 		it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page, it.Set.String(), at.UnixMilli(),
 		it.OriginalTitle, it.Overview, it.PremiereDate, it.Rating, it.Score, it.RuntimeMs,
-		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, it.SeriesID,
+		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, libraryLink(it.SeriesID),
 		it.From.Name, it.From.Year, it.From.Overview, it.From.Premiere, it.From.Rating, it.From.Score,
-		it.From.Runtime, it.Tagline, it.Trailer); err != nil {
+		it.From.Runtime, it.Tagline, it.Trailer, it.Unnumbered); err != nil {
 		return fmt.Errorf("save library item: %w", err)
 	}
 	if err := s.saveLibraryItemRows(ctx, tx, it); err != nil {
@@ -164,10 +164,12 @@ func (s *sqlStore) saveLibraryCredits(ctx context.Context, tx *sql.Tx, it Librar
 			continue
 		}
 		seen[key] = true
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, tmdb_id, photo) VALUES (?, ?, ?, ?)
+		linked := c.Linked()
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, namespace, external_id, photo)
+			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT (id) DO UPDATE SET name = excluded.name,
 			photo = CASE WHEN excluded.photo <> '' THEN excluded.photo ELSE library_people.photo END`),
-			id, c.Name, c.TMDB, c.Photo); err != nil {
+			id, c.Name, linked.Namespace, linked.Value, c.Photo); err != nil {
 			return fmt.Errorf("save library person: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_credits (item_id, position, person_id, role,

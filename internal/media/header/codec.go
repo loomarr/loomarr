@@ -3,7 +3,7 @@ package header
 import (
 	"strconv"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // colourInfo is ISO/IEC 23091-2 colour description (H.273 code points). 0 means not signalled

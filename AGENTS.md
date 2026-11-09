@@ -227,8 +227,9 @@ Air run at pinned versions from the harness.
 - `internal/filler/structure` is the provider-neutral complete-timeline reducer shared by filler
   certification and production; challenge truth and provider clients do not belong there.
 - `internal/testkit` is the shared mock and pinned-fixture module.
-- `web/` is a pnpm workspace: `apps/web` plus `packages/{api,core,tokens,fixtures}`. Frontend request
-  types come from orval and are never handwritten.
+- `web/` is a pnpm workspace: `apps/{web,mobile,tv}` plus the packages under `web/packages/` (shared
+  `api`, `core`, `design-system`, `ui`, `ui-tv`, `player`, `fixtures`, `paired-client`, and the native
+  modules). Frontend request types come from orval and are never handwritten.
 
 ## Local runtime and worktrees
 

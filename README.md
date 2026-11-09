@@ -113,3 +113,6 @@ Loomarr source is [MIT](LICENSE). The distributed image also contains GPL and pe
 components; their terms, the pinned ffmpeg/yt-dlp source locations, and the release-evidence record
 for the shipped binaries are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The image
 carries both files under `/usr/share/doc/loomarr/`.
+
+Film and TV details come from [TMDB](https://www.themoviedb.org/). This product uses the TMDB API
+but is not endorsed or certified by TMDB.

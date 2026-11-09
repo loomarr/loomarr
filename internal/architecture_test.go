@@ -21,8 +21,10 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 	safe := modulePath + "/internal/safe"
 	testOnly := modulePath + "/internal/testonly"
 	wire := modulePath + "/internal/wire"
+	apiCore := modulePath + "/internal/api/httpcore"
 	pkgs := map[string]*build.Package{
 		api:      {GoFiles: []string{"api.go"}},
+		apiCore:  {GoFiles: []string{"problem.go"}, Imports: []string{"github.com/danielgtaylor/huma/v2"}},
 		app:      {GoFiles: []string{"app.go"}, Imports: []string{api}},
 		nested:   {GoFiles: []string{"domain.go"}, Imports: []string{api}},
 		safe:     {GoFiles: []string{"safe.go"}},
@@ -63,7 +65,7 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 // They now read the tree from SOURCE (importgraph_test.go), which the cache DOES track. The
 // difference is directly observable, and worth repeating if you touch this:
 //
-//	git mv internal/platform/store/conformance_titles_test.go internal/platform/store/conformance_titles.go
+//	git mv internal/platform/store/conformance_approval_quota_test.go internal/platform/store/conformance_approval_quota.go
 //	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
 //
 // Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
@@ -252,6 +254,56 @@ func TestClipStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/clipstore")
 }
 
+// internal/platform/store/crashstore is the crash-report cluster (the client_crash_reports table). It
+// builds on the storedb kernel in the same direction as the two clusters above, and store embeds it.
+func TestCrashStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/crashstore")
+}
+
+// internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
+// retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
+// above, and store embeds it.
+func TestDiagnosticsStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/diagnosticsstore")
+}
+
+// internal/platform/store/jobstore is the scheduler-state cluster (the scheduled_jobs table). It builds
+// on the storedb kernel, in the same direction as the clusters above, and store embeds it and
+// re-exports ScheduledJob.
+func TestJobStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/jobstore")
+}
+
+// internal/platform/store/activitystore is the Recent activity feed cluster (the activity table). It
+// builds on the storedb kernel, in the same direction as the clusters above, and store embeds it and
+// re-exports Activity and its value sets.
+func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
+}
+
+// internal/platform/store/channeldatastore is the cluster of data that hangs off channels (favourites and
+// recents, hidden ideas, airing history, discovery feedback). It builds on the storedb kernel, in the
+// same direction as the clusters above, and store embeds it and re-exports its types.
+func TestChannelDataStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channeldatastore")
+}
+
+// internal/platform/store/channelstore is the channel cluster (the channels table). It builds on the
+// storedb kernel, in the same direction as the clusters above; store embeds it and re-exports Channel
+// and its errors. The approval transaction reaches it through exported call-ins, so there is no import
+// edge back.
+func TestChannelStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channelstore")
+}
+
+// internal/platform/store/proposalstore is the suggester-work cluster (generation jobs, attempts and
+// proposals). It builds on the storedb kernel and the channelstore cluster, in the same direction as
+// the clusters above; store embeds it and re-exports its row types and errors. The approval
+// transaction reaches it through exported call-ins, so there is no import edge back.
+func TestProposalStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/proposalstore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the
@@ -325,22 +377,12 @@ func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 
 // NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
-// ⚠ **There used to be one, for `internal/platform/store`, and the reason it lasted was a mis-estimate
-// rather than a constraint.** The conformance suite (7 files, ~4,450 lines — 42% of the non-test
-// package) sat in ordinary .go files because BOTH backend drivers must reach `RunConformance` —
-// SQLite in-package, Postgres behind the `integration` tag — so the assertions "had to be
-// importable package code". The exit was written down as a ~4,450-line mechanical rename into a
-// sibling package, and sequenced for later on that basis.
-//
-// The estimate assumed the wrong move. A sibling package would indeed have meant qualifying
-// every `Store`, `Channel`, `ErrNotFound` … reference across 4,450 lines. But both drivers are
-// ALREADY `_test.go` files in `package store`, and a test file is visible to every other test
-// file in its package — so renaming `conformance*.go` to `conformance*_test.go` keeps them
-// exactly where they are, keeps both drivers working, and takes them out of the production build
-// with **zero content changes**. Done 2026-08-10; the diff is seven renames.
-//
-// The lesson is worth more than the fix: the blocker was never the code, it was a cost estimate
-// nobody re-checked. It had been quoted twice, in this comment and in the plan that scheduled it.
+// ⚠ **`internal/platform/store`'s conformance suite lives in `conformance*_test.go` files for this
+// reason.** BOTH backend drivers must reach `RunConformance` — SQLite in-package, Postgres behind
+// the `integration` tag — and both drivers are `_test.go` files in `package store`, and a test
+// file is visible to every other test file in its package. Keeping the suite in `_test.go` files
+// needs no sibling package (which would mean qualifying every `Store`, `Channel`, `ErrNotFound`
+// reference) and keeps it out of the production build.
 //
 // ⚠ `go list -deps ./cmd/loomarr` STILL reports `testing` and `flag`, and that is not ours —
 // `riverqueue/river/rivershared/testsignal` imports `riversharedtest`, in the job-queue
@@ -374,13 +416,42 @@ func TestEveryPackageHasAPackageDoc(t *testing.T) {
 	}
 }
 
+// inboundAdapterPackage reports whether path is part of the inbound HTTP adapter: a package named
+// in inboundDependencyExceptions, or any package under internal/api/, the adapter's area packages
+// (httpcore and the per-area handler packages), which share its Huma wire definitions.
+func inboundAdapterPackage(path string) bool {
+	if _, excepted := inboundDependencyExceptions[path]; excepted {
+		return true
+	}
+	return strings.HasPrefix(path, modulePath+"/internal/api/")
+}
+
+// Only the inbound adapter and the composition root build on internal/api's sub-packages. A domain
+// package that wanted a problem constructor or a role would be reaching into the HTTP layer, the
+// same one-way direction TestProductionPackagesDoNotImportAPI holds for internal/api itself.
+func TestOnlyTheInboundAdapterImportsAPISubpackages(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	for path, pkg := range pkgs {
+		if inboundAdapterPackage(path) {
+			continue
+		}
+		for _, imported := range pkg.Imports {
+			if strings.HasPrefix(imported, modulePath+"/internal/api/") {
+				t.Errorf("%s imports %s — internal/api's sub-packages are for the inbound adapter and the "+
+					"composition root; a domain package needing one of its types belongs in its owning module",
+					path, imported)
+			}
+		}
+	}
+}
+
 func inboundDependencyRulePackages(pkgs map[string]*build.Package) []string {
 	var roots []string
 	for path, pkg := range pkgs {
 		if !strings.HasPrefix(path, modulePath+"/internal/") || len(pkg.GoFiles)+len(pkg.CgoFiles) == 0 {
 			continue
 		}
-		if _, excepted := inboundDependencyExceptions[path]; excepted {
+		if inboundAdapterPackage(path) {
 			continue
 		}
 		roots = append(roots, path)

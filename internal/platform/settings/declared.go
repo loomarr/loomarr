@@ -88,6 +88,17 @@ func fillerLanguageOptions() []EnumOption {
 	}
 }
 
+// audioLanguagePresets is playout.audio_language's choices: the file's own first track, then the
+// same languages every other picker offers. Presets rather than an enum, so a pinned or stored code
+// outside the catalog still saves and still matches its track.
+func audioLanguagePresets() []Preset {
+	out := []Preset{preset("", "First track in the file")}
+	for _, o := range fillerLanguageOptions() {
+		out = append(out, preset(o.Value, o.Label))
+	}
+	return out
+}
+
 // autoSplitConfidenceRange bounds `filler.autosplit.min_confidence` to 50–95 (§10 V43).
 // The lower bound is load-bearing: an ungrounded era is capped below 50, so no reachable
 // threshold can accept a cut on the strength of an invented era.
@@ -593,9 +604,9 @@ func declared() []Setting {
 		},
 		{
 			Key: "playout.audio_language", Label: "Preferred audio language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationLanguage, Default: "eng",
+			Kind: KindString, Presentation: PresentationLanguage, Presets: audioLanguagePresets(), Default: "en",
 			Doc:    "Which audio language channels play when a film has more than one.",
-			Detail: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
+			Detail: "Preferred audio language for internal playout. Any ISO 639 code saves (en, eng and fra all work). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
 		},
 		{
 			Key: "playout.quality_tier", Label: "Maximum playback quality", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -660,14 +671,9 @@ func declared() []Setting {
 			Detail:  "Coloured styles use each channel's colour (by default, colours from the channel's decade). A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
 		},
 		{
-			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
-			// used to give ("the filler sidecar bundles its own ffmpeg in a different image").
-			// There is one image now (§16), so that rationale died with the sidecar and the
-			// two-tag split.
-			//
-			// The live reason: these two callers fail differently. Playout's ffmpeg is a
-			// runtime dependency of a channel that is ON AIR, while ingest's is a build
-			// dependency of a download nobody is watching — so an operator pointing ingest at
+			// ⚠ Separate from ingest.ffmpeg_path because these two callers fail differently.
+			// Playout's ffmpeg is a runtime dependency of a channel that is ON AIR, while
+			// ingest's is a build dependency of a download nobody is watching — so an operator pointing ingest at
 			// a newer yt-dlp-compatible ffmpeg must not be able to break playout by doing it.
 			Key: "playout.ffmpeg_path", Label: "FFmpeg path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, Default: "ffmpeg", Advanced: true,
@@ -743,7 +749,7 @@ func declared() []Setting {
 			// It is also the wall clock the rolling-window grid is laid on (#1675), so a daily
 			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
-			Kind: KindString, Default: "",
+			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "",
 			Doc:    "The timezone the TV guide shows times in and each channel's day starts in.",
 			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
 		},
@@ -754,10 +760,10 @@ func declared() []Setting {
 			// CURRENT lineup, so a distant "as aired" view would be fiction — the lineup has
 			// been reconciled since. A day is honest; a month would be invention presented as
 			// history.
-			Key: "guide.retention_hours", Label: "Past listings (hours)", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
-			Kind: KindInt, Default: "24",
+			Key: "guide.retention_hours", Label: "Past listings", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
+			Kind: KindInt, Unit: UnitHours, Default: "24",
 			Doc:    "How far back the TV guide lets you scroll.",
-			Detail: "In hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
+			Detail: "Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
 		},
 
 		// --- Backup (§16, §15 — added by V4) ---
@@ -1070,7 +1076,7 @@ func declared() []Setting {
 			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
 			// could not be classified". The model name is useless without the host that serves it.
 			//
-			// Empty ⇒ inherit the main provider exactly as before, so no existing install changes.
+			// Empty ⇒ inherit the main provider.
 			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires
 			// every enum option to carry a value and a label, and an explicit word reads better in
 			// the picker than a blank row. The resolver treats "" the same way, so an env var set
@@ -1130,15 +1136,12 @@ func declared() []Setting {
 		// system whose claim is that it maintains itself. Cut acceptance still creates held
 		// children; it does not grant any child permission to air.
 		{
-			// (`filler.split.every` was retired here in V51b. Splitting is no longer a sweep with
-			// its own cadence — it is a rung every long recording reaches as it is ingested, so
-			// "how often do we go looking" stopped being a question with an answer. Detection is
-			// still bounded, by `filler.pipeline.max_splits` per pass.)
+			// Splitting has no sweep cadence of its own: it is a rung every long recording reaches
+			// as it is ingested, and detection is bounded by `filler.pipeline.max_splits` per pass.
 			//
-			// ⚠ **ON by default as of V51b, reversing the note this comment used to carry.** It
-			// said: off, because cutting is destructive in a way tagging is not — a mis-cut clip
-			// plays HALF AN ADVERT and the source is consumed either way. That reasoning was
-			// sound and the risk has not changed; what changed is the evidence. The gate is
+			// ⚠ **ON by default (V51b).** Cutting is destructive in a way tagging is not — a
+			// mis-cut clip plays HALF AN ADVERT and the source is consumed either way — and that
+			// risk has not changed; what makes ON safe is the evidence. The gate is
 			// strict — after known duplicates and short fragments are removed, the remaining reel
 			// qualifies as a whole or none of it does; an ungrounded era disqualifies at every
 			// threshold, and any segment the detector admits it could not resolve sends the
@@ -1364,16 +1367,16 @@ func declared() []Setting {
 			Detail: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
-			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
-			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
+			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
+			Kind: KindInt, Unit: UnitSeconds, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc:    "How long before a commercial you've seen can air again on any channel.",
 			Detail: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a
 		// well-meaning "prefer HD" would quietly starve the era-accurate 4:3 commercials the
-		// feature exists to play. That warning still holds — which is why an install that sets
-		// nothing behaves exactly as it did before this key existed, pinned by a test.
+		// feature exists to play. That warning holds — which is why an install that sets
+		// nothing selects no quality floor at all, pinned by a test.
 		//
 		// Advanced: an operator who does not know what 240p looks like in a break should never
 		// meet this, and one who does will go looking.
@@ -1466,9 +1469,8 @@ func declared() []Setting {
 			Detail: "Every channel's commercial language unless the channel sets its own. New clips are kept when their speech is in a language some channel uses and rejected when it is confidently in none of them; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
 		},
 		// --- Filler ingest (§10, §15) ---
-		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
-		// labelled "loomarr:filler image variant only" — that variant no longer exists, so
-		// these paths are overrides for an unusual layout, not an opt-in.
+		// ⚠ The vendored binaries ship in the SINGLE image (§16), so these paths are overrides
+		// for an unusual layout, not an opt-in.
 		// The two tool paths are what the `ingest` feature gate probes. They are
 		// settings rather than hardcoded so an operator can point at a NEWER yt-dlp
 		// than the image ships — yt-dlp releases fixes far faster than we cut images,

@@ -136,11 +136,7 @@ const AccountScreen = () => {
                 </FieldHint>
               )}
               <div className="flex items-center gap-3">
-                {/* A real submit button under Action's look, so Enter in a field still submits. */}
-                <Action
-                  disabled={changePassword.isPending}
-                  render={<button disabled={changePassword.isPending} type="submit" />}
-                >
+                <Action disabled={changePassword.isPending} submit>
                   Change password
                 </Action>
                 {/* The honest consequence, stated before the click rather than after. */}

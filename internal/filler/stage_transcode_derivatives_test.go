@@ -11,13 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t *testing.T) {
 	out, measurements, stored, childHash, err := runEvidenceBoundConditioning(t, 30_000)
-	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue || measurements != 2 || stored.oldHash != childHash {
 		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
 	}
 }
@@ -41,13 +46,13 @@ func TestTranscodeStage_ConditionedChildTakesTheMeasuredContainerLength(t *testi
 				t.Fatal(err)
 			}
 			if !tc.publishes {
-				if out.Verdict != VerdictReview || stored.oldHash != "" {
+				if out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 					t.Fatalf("probed %d ms against a 30000 ms container = %+v, replaced=%q; want held for review",
 						tc.probedMs, out, stored.oldHash)
 				}
 				return
 			}
-			if out.Verdict != VerdictContinue || stored.clip.DurationMs != 30_000 {
+			if out.Verdict != pipelinestate.VerdictContinue || stored.clip.DurationMs != 30_000 {
 				t.Fatalf("probed %d ms = %+v, duration %d; want published at the measured 30000 ms",
 					tc.probedMs, out, stored.clip.DurationMs)
 			}
@@ -62,11 +67,11 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	if err := os.WriteFile(parentSource, []byte("parent source master bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	parentSourceHash, err := ClipID(parentSource)
+	parentSourceHash, err := asset.ClipID(parentSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(context.Background(), dir, parentSource, parentSourceHash, SidecarTags{})
+	master, err := preserveSourceMaster(context.Background(), dir, parentSource, parentSourceHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,16 +81,16 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	}
 	evidenceBytes := []byte("the exact evidence rendition used to detect and cut")
 	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
-		ClipDir: dir, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
+		ClipDir: dir, Source: master, Input: tools.Probed{DurationMs: 61_000, Height: 480},
 		Recipe: tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine()), Tool: tool,
-		Probe: func(context.Context, string) (Probed, error) {
-			return Probed{DurationMs: 61_000, Height: 480}, nil
+		Probe: func(context.Context, string) (tools.Probed, error) {
+			return tools.Probed{DurationMs: 61_000, Height: 480}, nil
 		},
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
-		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, evidenceBytes, 0o600)
+		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+			return tools.MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, evidenceBytes, 0o600)
 		},
 	})
 	if err != nil {
@@ -93,19 +98,19 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	}
 
 	parentHash := writeContentAddressedClip(t, dir, []byte("playback rendition differs from evidence"), ".mp4")
-	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
+	parentRel := filepath.ToSlash(cliplibrary.ClipRelPath(parentHash, ".mp4"))
 	parentFull := filepath.Join(dir, filepath.FromSlash(parentRel))
-	if err := WriteSidecarTags(parentFull, SidecarTags{MediaAssets: &MediaAssetManifest{
-		Version: mediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	if err := asset.WriteSidecarTags(parentFull, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master, Evidence: &evidence,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
 	childHash := writeContentAddressedClip(t, dir, []byte("reviewed child cut from evidence"), ".mkv")
-	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
+	childRel := filepath.ToSlash(cliplibrary.ClipRelPath(childHash, ".mkv"))
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash,
-		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -117,16 +122,16 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
 		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
-	stored := &transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
+	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, DurationMs: 61_000, IsComposite: true,
 	}}}}
-	stage := NewTranscodeStage(stored, func(_ context.Context, path string) (Probed, error) {
+	stage := NewTranscodeStage(stored, func(_ context.Context, path string) (tools.Probed, error) {
 		if path == childFull {
-			return Probed{DurationMs: 30_000, Height: 480}, nil
+			return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 		}
-		return Probed{DurationMs: probedMs, Height: 480}, nil
+		return tools.Probed{DurationMs: probedMs, Height: 480}, nil
 	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		return after.Quality, os.WriteFile(request.Out, []byte("conditioned playback child"), 0o600)
 	}
 	measurements := 0
@@ -142,8 +147,8 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 		return after, nil
 	})
 
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Reviewed child", Role: Commercial, ParentHash: parentHash,
+	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: childHash, Path: childRel, Name: "Reviewed child", Role: clips.Commercial, ParentHash: parentHash,
 	}})
 	return out, measurements, stored, childHash, err
 }
@@ -153,10 +158,10 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 func TestTranscodeStage_OneEncodeFromMasterServesEvidenceAndPlayback(t *testing.T) {
 	dir := t.TempDir()
 	oldHash := writeContentAddressedClip(t, dir, []byte("authoritative source master"), ".mkv")
-	oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
+	oldRel := filepath.ToSlash(cliplibrary.ClipRelPath(oldHash, ".mkv"))
 	stored := &transcodeStore{}
-	probe := func(context.Context, string) (Probed, error) {
-		return Probed{DurationMs: 30_000, Height: 480}, nil
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
 	tool := tools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("a", 64)}
@@ -165,26 +170,26 @@ func TestTranscodeStage_OneEncodeFromMasterServesEvidenceAndPlayback(t *testing.
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
 	var evidenceInput string
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		evidenceInput = request.In
 		// #2032: no derivative is levelled on disk; playout corrects it at air time.
 		if request.Profile.KeyframeSeconds != 1 || request.TargetLUFS != 0 {
 			t.Fatalf("evidence recipe = %+v", request)
 		}
-		return MediaQuality{DurationMs: 30_000, Black: []tools.Interval{{StartMs: 0, EndMs: 120}}},
+		return tools.MediaQuality{DurationMs: 30_000, Black: []tools.Interval{{StartMs: 0, EndMs: 120}}},
 			os.WriteFile(request.Out, []byte("the one derivative encode"), 0o600)
 	}
-	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error) {
 		t.Fatal("a top-level clip's playback rendition was encoded a second time")
-		return MediaQuality{}, nil
+		return tools.MediaQuality{}, nil
 	}
 
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
+	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: clips.Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tags, state := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
-	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
+	tags, state := asset.ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
 		t.Fatalf("media asset manifest = %+v state=%v", tags.MediaAssets, state)
 	}
 	masterPath := filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.SourceMaster.Path))
@@ -214,8 +219,10 @@ func TestTranscodeStage_OneEncodeFromMasterServesEvidenceAndPlayback(t *testing.
 func TestTranscodeStage_EncodesBothDerivativesOnTheHostFamily(t *testing.T) {
 	dir := t.TempDir()
 	oldHash := writeContentAddressedClip(t, dir, []byte("hardware host master"), ".mkv")
-	oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
-	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	oldRel := filepath.ToSlash(cliplibrary.ClipRelPath(oldHash, ".mkv"))
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+	}
 	reads := 0
 	host := encode.HostProfile{Family: encode.FamilyNVENC, Encoder: encode.EncoderNVENC}
 	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).
@@ -226,24 +233,24 @@ func TestTranscodeStage_EncodesBothDerivativesOnTheHostFamily(t *testing.T) {
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	onHost := func(role string) func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
-		return func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	onHost := func(role string) func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error) {
+		return func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 			if request.Profile.Family != encode.FamilyNVENC || request.Host.Family != encode.FamilyNVENC {
 				t.Fatalf("%s encode is not on the host family: %+v", role, request)
 			}
-			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(role+" derivative"), 0o600)
+			return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(role+" derivative"), 0o600)
 		}
 	}
 	stage.evidenceTranscode, stage.transcode = onHost("evidence"), onHost("playback")
 
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
+	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: clips.Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reads != 1 {
 		t.Errorf("host read %d times for one clip, want once", reads)
 	}
-	tags, _ := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	tags, _ := asset.ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
 		t.Fatalf("media asset manifest = %+v", tags.MediaAssets)
 	}
@@ -272,10 +279,10 @@ func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			oldHash := writeContentAddressedClip(t, dir, []byte("quiet source master "+tc.name), ".mkv")
-			oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
+			oldRel := filepath.ToSlash(cliplibrary.ClipRelPath(oldHash, ".mkv"))
 			stored := &transcodeStore{}
-			probe := func(context.Context, string) (Probed, error) {
-				return Probed{DurationMs: 30_000, Height: 480}, nil
+			probe := func(context.Context, string) (tools.Probed, error) {
+				return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 			}
 			stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
 			stage.identifyFFmpeg = func(context.Context, string) (tools.MediaToolIdentity, error) {
@@ -284,24 +291,24 @@ func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
 			stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, _ float64) (tools.DerivativeQC, error) {
 				return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, tc.measured), nil
 			}
-			stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-				return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence"), 0o600)
+			stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+				return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence"), 0o600)
 			}
-			stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-				return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback "+tc.name), 0o600)
+			stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+				return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback "+tc.name), 0o600)
 			}
 
-			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
+			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: clips.Commercial}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !tc.refused {
-				if out.Verdict != VerdictContinue {
+				if out.Verdict != pipelinestate.VerdictContinue {
 					t.Fatalf("correctable clip = %+v, want it to continue", out)
 				}
 				return
 			}
-			if out.Verdict != VerdictReject || out.Reason != ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
+			if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
 				t.Fatalf("too-quiet clip = %+v, want rejected too_quiet with its measurement", out)
 			}
 			if stored.oldHash != "" {
@@ -315,21 +322,21 @@ func TestTranscodeStage_PlaybackQCFailurePreservesSourceAndCatalogIdentity(t *te
 	dir := t.TempDir()
 	sourceBytes := []byte("source must survive a failed playback verification")
 	sourceHash := writeContentAddressedClip(t, dir, sourceBytes, ".mkv")
-	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
+	sourceRel := filepath.ToSlash(cliplibrary.ClipRelPath(sourceHash, ".mkv"))
 	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
 	stored := &transcodeStore{}
-	probe := func(context.Context, string) (Probed, error) {
-		return Probed{DurationMs: 30_000, Height: 480}, nil
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	stage.identifyFFmpeg = func(context.Context, string) (tools.MediaToolIdentity, error) {
 		return tools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("c", 64)}, nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("verified evidence"), 0o600)
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("verified evidence"), 0o600)
 	}
-	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("unseekable playback"), 0o600)
+	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("unseekable playback"), 0o600)
 	}
 	verified := 0
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
@@ -340,8 +347,8 @@ func TestTranscodeStage_PlaybackQCFailurePreservesSourceAndCatalogIdentity(t *te
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
 
-	if _, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: sourceHash, Path: sourceRel, Name: "Advert", Role: Commercial,
+	if _, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: sourceHash, Path: sourceRel, Name: "Advert", Role: clips.Commercial,
 	}}); err == nil || !strings.Contains(err.Error(), "midpoint seek failed") {
 		t.Fatalf("playback verification error = %v", err)
 	}
@@ -358,14 +365,16 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 	dir := t.TempDir()
 	sourceBytes := []byte("legacy playback is the best source still available")
 	hash := writeContentAddressedClip(t, dir, sourceBytes, ".mp4")
-	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	rel := filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mp4"))
 	full := filepath.Join(dir, filepath.FromSlash(rel))
-	quality := MediaQuality{EvidenceVersion: tools.MediaQualityEvidenceV1,
+	quality := tools.MediaQuality{EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance: tools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 30_000}
-	if err := WriteSidecarTags(full, SidecarTags{OriginalName: "Legacy advert", Mezzanine: tools.DefaultMezzanine().ID(), MediaQuality: &quality}, false); err != nil {
+	if err := asset.WriteSidecarTags(full, asset.SidecarTags{OriginalName: "Legacy advert", Mezzanine: tools.DefaultMezzanine().ID(), MediaQuality: &quality}, false); err != nil {
 		t.Fatal(err)
 	}
-	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+	}
 	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	stage.identifyFFmpeg = func(context.Context, string) (tools.MediaToolIdentity, error) {
 		return tools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("b", 64)}, nil
@@ -373,27 +382,27 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		return quality, os.WriteFile(request.Out, []byte("evidence from legacy playback"), 0o600)
 	}
-	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error) {
 		t.Fatal("backfill must not create another playback generation")
-		return MediaQuality{}, nil
+		return tools.MediaQuality{}, nil
 	}
-	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Legacy advert", Role: Commercial}}
+	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: rel, Name: "Legacy advert", Role: clips.Commercial}}
 	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("legacy playback without evidence did not re-enter the rung")
 	}
 	out, err := stage.Run(context.Background(), clip)
-	if err != nil || out.Verdict != VerdictContinue {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("backfill result = %+v, %v", out, err)
 	}
 	got, err := os.ReadFile(full)
 	if err != nil || !bytes.Equal(got, sourceBytes) {
 		t.Fatalf("legacy playback was rewritten: %q, %v", got, err)
 	}
-	tags, state := ReadSidecarTagsState(full)
-	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback != nil {
+	tags, state := asset.ReadSidecarTagsState(full)
+	if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback != nil {
 		t.Fatalf("backfilled asset manifest = %+v state=%v", tags.MediaAssets, state)
 	}
 	if applies, reason := stage.Applies(context.Background(), clip); applies {
@@ -402,7 +411,7 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 }
 
 func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
-	for _, role := range []MediaAssetRole{MediaAssetEvidence, MediaAssetPlayback} {
+	for _, role := range []asset.Role{asset.RoleEvidence, asset.RolePlayback} {
 		t.Run(string(role), func(t *testing.T) {
 			dir := t.TempDir()
 			stage, counts, clip := derivativeReuseFixture(t, dir)
@@ -416,20 +425,20 @@ func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
 			}
 
 			full := derivativeAssetPath(t, dir, clip, role)
-			beforeSparse, err := ClipID(full)
+			beforeSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeFull, size, err := FileSHA256(full)
+			beforeFull, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
 			mutateDerivativeMiddleByte(t, full, size)
-			afterSparse, err := ClipID(full)
+			afterSparse, err := asset.ClipID(full)
 			if err != nil {
 				t.Fatal(err)
 			}
-			afterFull, afterSize, err := FileSHA256(full)
+			afterFull, afterSize, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -455,8 +464,8 @@ func TestTranscodeStage_CompletedReuseRejectsDriftedSourceMaster(t *testing.T) {
 		t.Fatal(err)
 	}
 	clip = out.Clip
-	tags, state := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(clip.Path)))
-	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
+	tags, state := asset.ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(clip.Path)))
+	if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
 		t.Fatalf("completed derivative manifest = %+v state=%v", tags.MediaAssets, state)
 	}
 	evidencePath := filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.Evidence.Asset.Path))
@@ -500,7 +509,7 @@ func TestTranscodeStage_CompletedReuseRejectsDriftedSourceMaster(t *testing.T) {
 }
 
 func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testing.T) {
-	for _, role := range []MediaAssetRole{MediaAssetEvidence, MediaAssetPlayback} {
+	for _, role := range []asset.Role{asset.RoleEvidence, asset.RolePlayback} {
 		t.Run(string(role), func(t *testing.T) {
 			dir := t.TempDir()
 			stage, counts, clip := derivativeReuseFixture(t, dir)
@@ -510,7 +519,7 @@ func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testi
 			}
 			clip = out.Clip
 			full := derivativeAssetPath(t, dir, clip, role)
-			_, size, err := FileSHA256(full)
+			_, size, err := asset.FileSHA256(full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -555,12 +564,12 @@ func TestTranscodeStage_DerivativeReuseRejectsPathSubstitution(t *testing.T) {
 			t.Fatal(err)
 		}
 		full := filepath.Join(dir, filepath.FromSlash(out.Clip.Path))
-		tags, state := ReadSidecarTagsState(full)
-		if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+		tags, state := asset.ReadSidecarTagsState(full)
+		if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 			t.Fatalf("completed derivative manifest = %+v state=%v", tags.MediaAssets, state)
 		}
 		tags.MediaAssets.Evidence.Asset.Path = "../escaped.mp4"
-		if err := tags.MediaAssets.validateReuseFiles(context.Background(), dir, out.Clip.Path, out.Clip.Hash); err == nil {
+		if err := tags.MediaAssets.ValidateReuseFiles(context.Background(), dir, out.Clip.Path, out.Clip.Hash); err == nil {
 			t.Fatal("relative evidence path escape was accepted")
 		}
 	})
@@ -573,7 +582,7 @@ func TestTranscodeStage_DerivativeReuseRejectsPathSubstitution(t *testing.T) {
 			t.Fatal(err)
 		}
 		clip = out.Clip
-		evidence := derivativeAssetPath(t, dir, clip, MediaAssetEvidence)
+		evidence := derivativeAssetPath(t, dir, clip, asset.RoleEvidence)
 		bytes, err := os.ReadFile(evidence)
 		if err != nil {
 			t.Fatal(err)
@@ -602,13 +611,13 @@ type derivativeBuildCounts struct {
 	playback int
 }
 
-func derivativeReuseFixture(t *testing.T, dir string) (*TranscodeStage, *derivativeBuildCounts, StoreClip) {
+func derivativeReuseFixture(t *testing.T, dir string) (*TranscodeStage, *derivativeBuildCounts, cliplibrary.StoreClip) {
 	t.Helper()
 	sourceHash := writeContentAddressedClip(t, dir, []byte(strings.Repeat("authoritative source master\n", 4096)), ".mkv")
-	clip := StoreClip{Clip: Clip{Hash: sourceHash, Path: filepath.ToSlash(ClipRelPath(sourceHash, ".mkv")), Name: "Fixture", Role: Commercial}}
+	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: sourceHash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(sourceHash, ".mkv")), Name: "Fixture", Role: clips.Commercial}}
 	counts := new(derivativeBuildCounts)
-	stage := NewTranscodeStage(&transcodeStore{}, func(context.Context, string) (Probed, error) {
-		return Probed{DurationMs: 30_000, Height: 480}, nil
+	stage := NewTranscodeStage(&transcodeStore{}, func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
 	stage.identifyFFmpeg = func(context.Context, string) (tools.MediaToolIdentity, error) {
 		return tools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("a", 64)}, nil
@@ -616,33 +625,33 @@ func derivativeReuseFixture(t *testing.T, dir string) (*TranscodeStage, *derivat
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		counts.evidence++
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence\n"+strings.Repeat("derivative-byte-", 200000)), 0o600)
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence\n"+strings.Repeat("derivative-byte-", 200000)), 0o600)
 	}
-	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		counts.playback++
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback\n"+strings.Repeat("derivative-byte-", 200000)), 0o600)
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback\n"+strings.Repeat("derivative-byte-", 200000)), 0o600)
 	}
 	return stage, counts, clip
 }
 
-func derivativeAssetPath(t *testing.T, dir string, clip StoreClip, role MediaAssetRole) string {
+func derivativeAssetPath(t *testing.T, dir string, clip cliplibrary.StoreClip, role asset.Role) string {
 	t.Helper()
-	tags, state := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(clip.Path)))
-	if state != SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
+	tags, state := asset.ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(clip.Path)))
+	if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
 		t.Fatalf("completed derivative manifest = %+v state=%v", tags.MediaAssets, state)
 	}
-	asset := tags.MediaAssets.Evidence.Asset
-	if role == MediaAssetPlayback {
-		asset = tags.MediaAssets.Playback.Asset
+	identity := tags.MediaAssets.Evidence.Asset
+	if role == asset.RolePlayback {
+		identity = tags.MediaAssets.Playback.Asset
 	}
-	return filepath.Join(dir, filepath.FromSlash(asset.Path))
+	return filepath.Join(dir, filepath.FromSlash(identity.Path))
 }
 
 func mutateDerivativeMiddleByte(t *testing.T, path string, size int64) {
 	t.Helper()
-	if size <= 2*hashWindow {
+	if size <= 2*asset.HashWindow {
 		t.Fatalf("derivative is %d bytes; need more than two sparse-hash windows", size)
 	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0)

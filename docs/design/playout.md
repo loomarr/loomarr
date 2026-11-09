@@ -501,7 +501,8 @@ Russian, every time, deterministically** — which is exactly what a dev-install
 playback never showed it because the media server applies the viewer's language preference; internal
 playout calls `ffmpeg` itself and bypasses that entirely.
 
-`playout.audio_language` (§15, default `eng`) names the preferred track. The selection is
+`playout.audio_language` (§15, default `en`) names the preferred track; any ISO 639 spelling
+resolves to the language catalog's code, so `eng` reads back as `en`. The selection is
 **preference, not requirement**: `-map 0:a:m:language:<pref>?` with the trailing `?` making the
 match optional, plus a `-map 0:a:0` fallback so a file with no tagged track of that language still
 gets audio. A hard map without the `?` fails the whole encode on an untagged file — a channel that

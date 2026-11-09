@@ -72,8 +72,8 @@ tables:
         confirm them. A held file still counts as present.
       seen_at_ms: When a walk last found the file, in Unix milliseconds.
       missing_at_ms: When a walk stopped finding the file, in Unix milliseconds; 0 means it is present.
-      inventory_item_id: The title the file was last written as (a library_items id); empty until known.
-      inventory_series_id: For an episode, its show (a library_items id); empty otherwise or until known.
+      inventory_item_id: The title the file was last written as (a library_items id); null until known.
+      inventory_series_id: For an episode, its show (a library_items id); null otherwise or until known.
 
   - name: library_items
     about: >
@@ -138,7 +138,12 @@ tables:
       series_key: An episode's show, by the folder part of the show's scan origin; empty otherwise.
       series_id: >
         An episode's show (a library_items id), filled once both the episode and the show are written;
-        empty otherwise.
+        null otherwise.
+      unnumbered: >
+        1 for an episode its show's catalog could not number, because the catalog numbers the show in
+        more than one order or its seasons end elsewhere than the disk's, and nobody has said which
+        order the show's files follow. It keeps its file's name and number, and its show is in Needs
+        you. 0 otherwise.
       name_from: The app that supplied the name (sonarr, radarr, nfo or tmdb); empty when unknown.
       year_from: The app that supplied the year; empty when unknown.
       overview_from: The app that supplied the description; empty when unknown.
@@ -169,7 +174,7 @@ tables:
         columns: [original_title, overview, premiere_date, rating, score, runtime_ms, tagline, trailer]
       - group: An episode's place
         why: An episode belongs to one show at one season and number; movies and shows leave these empty.
-        columns: [season, episode, episode_end, series_authority, series_key, series_id]
+        columns: [season, episode, episode_end, series_authority, series_key, series_id, unnumbered]
       - group: Which app supplied each detail
         why: One source per detail above, so the detail page can say where each one came from.
         columns: [name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from]
@@ -225,9 +230,11 @@ tables:
       filmography pass.
     columns:
       id: >
-        The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name.
+        The person: <namespace>:<id> for a person a catalog knows (tmdb:<id> for TMDB),
+        name:<name> for one kept by name.
       name: Their name.
-      tmdb_id: Their TMDB person id; empty when unlinked.
+      namespace: The catalog that knows them, such as tmdb; empty when unlinked.
+      external_id: Their id in that catalog; empty when unlinked.
       photo: The web address of their headshot; empty when no source had one.
       filmography_at_ms: When their filmography was last fetched, in Unix milliseconds; 0 means never.
       filmography_retry_at_ms: >
@@ -237,9 +244,10 @@ tables:
   - name: library_filmography
     about: >
       The movies and series of the people who directed or created a title, are among a title's ten
-      top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first.
-      Fetched when a person first qualifies and monthly after; deleted with the person. A title the
-      library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+      top-billed actors, or are credited on three or more titles, as the catalog that knows them
+      lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with
+      the person. A title the library owns is found by its namespace and id in library_ids, with
+      library_items.kind matching kind.
     retention: >
       Replaced whenever the person's filmography is fetched again; goes with its person (deleted
       once no title credits them).
@@ -247,8 +255,9 @@ tables:
       person_id: The person (a library_people id).
       position: Where the title comes in their filmography, newest first, from 0.
       kind: movie or series.
-      tmdb_id: The title's TMDB id.
-      title: The title's name, in the household's language when TMDB has it.
+      namespace: The catalog the title's id is from, such as tmdb.
+      external_id: The title's id in that catalog.
+      title: The title's name, in the household's language when the catalog has it.
       year: The year it came out; 0 when unknown.
       role: What they did on it, one of actor, creator, director or writer.
       character_name: An actor's part; empty for crew or when unknown.
@@ -417,18 +426,19 @@ tables:
 
   - name: library_candidates
     about: >
-      The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A
+      The catalog search results for a movie or show Loomarr can't identify, offered in Needs you. A
       title's rows are replaced each time it is searched.
     retention: Replaced each time the title is searched again; a title's last results are kept.
     columns:
       inventory_item_id: The title searched for (a library_items id).
       rank: The result's place in the list, from 0 for the best.
       kind: One of movie or series.
-      tmdb_id: The result's TMDB id.
+      namespace: The catalog that found the result, such as tmdb.
+      external_id: The result's id in that catalog.
       name: The result's name.
       year: The result's year, or 0 when unknown.
       overview: The result's description, or empty.
-      poster: The result's poster URL at TMDB, or empty.
+      poster: The result's poster URL at its catalog, or empty.
       name_match: 1 when the result's name agrees with what is on disk.
       year_match: 1 when the result's year agrees with what is on disk.
       length_match: >
@@ -437,7 +447,7 @@ tables:
 
   - name: library_answers
     about: >
-      The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a
+      The answer for a movie or show nothing else identifies, either the catalog title it is or "not a
       title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted
       when the answer is taken back.
     retention: Kept until someone takes the answer back, even after the title leaves the library.
@@ -445,13 +455,29 @@ tables:
       origin_authority: The scanned folder of the title's scan origin, as in library_items.
       origin_key: Where in that folder the title is, as in library_items.
       kind: One of movie or series.
-      tmdb_id: The TMDB title it is linked to; empty when ignored.
+      namespace: The catalog of the title it is linked to, such as tmdb; empty when ignored.
+      external_id: The title's id in that catalog; empty when ignored.
       ignored: 1 when a person said it is not a title.
       answered_at_ms: When the answer was given, in Unix milliseconds.
       answered_by: >
         Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when
-        exactly one TMDB result agreed on name, year and length. A person's answer replaces a search
+        exactly one catalog result agreed on name, year and length. A person's answer replaces a search
         answer.
+
+  - name: library_episode_orders
+    about: >
+      Which order a show's episode files follow, as a person answered in Needs you, for a show whose
+      catalog numbers it in more than one order or whose seasons end elsewhere than the disk's. Kept
+      against the show's catalog row rather than in the catalog cache, which retention clears, so it
+      outlives the records.
+    retention: Kept until someone answers again for the show; one row per show.
+    columns:
+      series_catalog: The show's catalog row, as provider:series:id (library_items.catalog).
+      choice: >
+        One of catalog (the catalog's own seasons, as first aired), order (one of the catalog's other
+        orders, in order_id) or files (the name and number in each file).
+      order_id: The catalog's id for the order picked; empty unless choice is order.
+      answered_at_ms: When the answer was given, in Unix milliseconds.
 
   - name: library_collections
     about: >
@@ -482,11 +508,13 @@ tables:
   - name: titles
     about: >
       One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking
-      it from wanted to in the library (or given up on).
+      it from wanted to in the library (or given up on). A title added to a lineup by hand that
+      nothing has asked for yet has a pending row, so every lineup entry names a row here.
     retention: >
       A title in the library or given up on that no channel's lineup and no open request names is
       deleted by the nightly housekeeping 180 days after it last changed; picked again, it is
-      requested afresh. A title still on its way is kept.
+      requested afresh. A title still on its way is kept. A pending row goes as soon as no lineup
+      names it.
     columns:
       key: >
         Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or
@@ -495,9 +523,9 @@ tables:
         The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for
         a show, the seasons wanted (none listed means all).
       state: >
-        Where it is. One of wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting
-        for a release), downloading (a release was grabbed), available (in the library), or unavailable
-        (given up on).
+        Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record),
+        wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release),
+        downloading (a release was grabbed), available (in the library), or unavailable (given up on).
       library_id: The media server's id for the title once it is in the library; empty before.
       requested_at: When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet.
       deadline: >
@@ -561,20 +589,48 @@ tables:
       loop_count: >
         How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop.
 
-  - name: image_refs
+  - name: clip_images
     about: >
-      What each image is used for. An image can serve several owners (the same poster as a title's art
-      and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
-    retention: >
-      Kept while the thing using the image keeps it; removed when that thing drops or replaces its
-      images, and goes with its image.
+      A clip's images, such as its thumbnail. One of five tables saying what each image is used
+      for, one per kind of owner, so each owner is a real reference; an image with no row in any of
+      them is cleaned up.
+    retention: Goes with its clip or its image; a clip re-keyed to new bytes keeps its rows.
     columns:
+      clip_hash: The clip (a clips hash).
+      role: What the image is for, such as thumb.
       image_hash: The image (an images hash).
-      owner_kind: >
-        What kind of thing uses it, such as channel, clip, library_item (a title's poster),
-        library_candidate (a Needs you result's poster) or filler_split_proposal.
-      owner_id: The id of the thing that uses it, in that kind's own table.
-      role: What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo.
+
+  - name: filler_split_proposal_images
+    about: The stills a proposed split shows, one per cut.
+    retention: Goes with its proposal or its image.
+    columns:
+      proposal_id: The proposal (a filler_split_proposals id).
+      role: What the image is for, such as thumb.
+      image_hash: The image (an images hash).
+
+  - name: channel_images
+    about: A channel's icon and watermark.
+    retention: Goes with its channel or its image; replaced when the icon or watermark changes.
+    columns:
+      channel_id: The channel (a channels id).
+      role: What the image is for, icon or watermark.
+      image_hash: The image (an images hash).
+
+  - name: library_item_images
+    about: A title's poster, backdrop and logo, the one record of which image each is.
+    retention: Goes with its title or its image; a kind replaces only its own role's row.
+    columns:
+      item_id: The title (a library_items id).
+      role: What the image is for, one of poster, backdrop or logo.
+      image_hash: The image (an images hash).
+
+  - name: library_candidate_images
+    about: The posters of what a search found for a title that Needs you.
+    retention: Goes with its title or its image.
+    columns:
+      item_id: The title the candidates are for (a library_items id).
+      role: What the image is for, poster.
+      image_hash: The image (an images hash).
 
   - name: image_derivatives
     about: >

@@ -18,3 +18,5 @@ and discovery endpoints and merges the results; clips use `LIKE`.
 - No index to build, migrate, keep consistent or back up, on either database.
 - Results are only as good as each owner's search, and a missing connection removes that corpus.
 - A full-text index stays out unless very large filler catalogs outgrow `LIKE` (#1576).
+- Amended by #2151 step 16: the library corpus is Loomarr's own Library, searched by name in its
+  tables rather than through the media server's `SearchTerm`. Still no index.

@@ -66,7 +66,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
                 shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
             <Action
               accessibilityRole="link"
-              render={<Link to="/guide" search={{ manual: "1", ideaId: idea.id }} />}
+              render={<Link to="/requests/new" search={{ manual: 1, ideaId: idea.id }} />}
               variant="ghost"
             >
               Edit first
@@ -146,14 +146,14 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         {hidden && (
           <>
             <span className="text-static-400 text-xs">Hid {hidden.name}</span>
-            <button
-              type="button"
+            <Action
               disabled={unhide.isPending}
-              onClick={() => unhide.mutate({ ideaId: hidden.id })}
-              className="text-foreground focus-visible:ring-ring cursor-pointer border-none bg-transparent p-0 text-xs underline underline-offset-[3px] focus-visible:ring-2 focus-visible:outline-none"
+              layout="text"
+              onPress={() => unhide.mutate({ ideaId: hidden.id })}
+              variant="link"
             >
               Undo
-            </button>
+            </Action>
           </>
         )}
         {ideas.length > PAGE && (
@@ -201,7 +201,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
       <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
         <Action
           accessibilityRole="link"
-          render={<Link to="/guide" search={{ manual: "1" }} />}
+          render={<Link to="/requests/new" search={{ manual: 1 }} />}
           variant="ghost"
         >
           Don’t see it? Describe your own channel

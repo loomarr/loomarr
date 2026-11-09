@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // ServerFile is one media file the media server lists, as the scanner's parity report (#2151

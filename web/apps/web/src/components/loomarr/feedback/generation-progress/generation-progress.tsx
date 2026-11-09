@@ -1,7 +1,6 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { pickCount, progressLine } from "@loomarr/core/requests";
-import { Badge } from "@loomarr/design-system";
-import { Loader2 } from "lucide-react";
+import { ActivityIndicator, Badge } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
@@ -56,10 +55,9 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   return (
     <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
       {!complete && (
-        <Loader2
-          className="text-suggest-300 mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none"
-          aria-hidden
-        />
+        <span className="mt-0.5 flex">
+          <ActivityIndicator decorative size="compact" tone="suggest" />
+        </span>
       )}
       <div className="min-w-0 flex-1">
         <p role="status" aria-live="polite" className="text-sm font-medium">

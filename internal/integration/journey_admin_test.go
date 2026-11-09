@@ -23,7 +23,7 @@ import (
 func TestJourney_NewAdmin(t *testing.T) {
 	// The scripted suggester: search the catalog by term (grounds to the real library
 	// results), then pick the four surfaced ids + a kids policy.
-	llm := testkit.NewLLM(
+	llm := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"query": "cartoon",
 			"dateMeaning": map[string]any{
@@ -200,7 +200,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 // uses TMDB thematic keywords rather than title matching, and stops in submitted
 // review. Discovery may suggest a new title; it must never turn that into approval.
 func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testing.T) {
-	llm := testkit.NewLLM(
+	llm := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"keywords": []any{"Christmas"}, "media_type": "movie", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
 		}),

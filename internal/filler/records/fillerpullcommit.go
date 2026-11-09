@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 // CommitPullApproval owns the whole durable boundary. The first write takes the pending
 // decision; an insert failure rolls it back, so no downloader may start on a partial commit.
-func (s *sqlStore) CommitPullApproval(ctx context.Context, p filler.Pull, run filler.AcquisitionRun) error {
-	if p.ID == "" || p.Status != filler.PullApproved || p.DecidedAt.IsZero() ||
-		run.ID == "" || run.PullID != p.ID || run.Trigger != filler.AcquisitionPull ||
-		run.Status != filler.AcquisitionQueued || len(p.Committed()) == 0 || run.Requested != len(p.Committed()) {
+func (s *sqlStore) CommitPullApproval(ctx context.Context, p acquisition.Pull, run acquisition.AcquisitionRun) error {
+	if p.ID == "" || p.Status != acquisition.PullApproved || p.DecidedAt.IsZero() ||
+		run.ID == "" || run.PullID != p.ID || run.Trigger != acquisition.TriggerPull ||
+		run.Status != acquisition.RunQueued || len(p.Committed()) == 0 || run.Requested != len(p.Committed()) {
 		return fmt.Errorf("invalid filler pull approval")
 	}
 	plan, err := encodePullPlan(p)
@@ -29,7 +29,7 @@ func (s *sqlStore) CommitPullApproval(ctx context.Context, p filler.Pull, run fi
 		WHERE id = ? AND status = ? AND NOT EXISTS
 		(SELECT 1 FROM filler_acquisition_runs WHERE pull_id = ?)`),
 		string(p.Status), p.Note, string(plan), epoch(p.DecidedAt), p.DecidedBy,
-		p.ID, string(filler.PullPending), p.ID)
+		p.ID, string(acquisition.PullPending), p.ID)
 	if err != nil {
 		return fmt.Errorf("claim pull approval: %w", err)
 	}
@@ -53,13 +53,13 @@ func (s *sqlStore) CommitPullApproval(ctx context.Context, p filler.Pull, run fi
 }
 
 // DismissPull preserves the winning audit when approval races with dismissal.
-func (s *sqlStore) DismissPull(ctx context.Context, p filler.Pull) error {
-	if p.Status != filler.PullDismissed || p.DecidedAt.IsZero() {
+func (s *sqlStore) DismissPull(ctx context.Context, p acquisition.Pull) error {
+	if p.Status != acquisition.PullDismissed || p.DecidedAt.IsZero() {
 		return fmt.Errorf("invalid filler pull dismissal")
 	}
 	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_pulls
 		SET status = ?, decided_at = ?, decided_by = ? WHERE id = ? AND status = ?`),
-		string(p.Status), epoch(p.DecidedAt), p.DecidedBy, p.ID, string(filler.PullPending))
+		string(p.Status), epoch(p.DecidedAt), p.DecidedBy, p.ID, string(acquisition.PullPending))
 	if err != nil {
 		return fmt.Errorf("dismiss filler pull: %w", err)
 	}

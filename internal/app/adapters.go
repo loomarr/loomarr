@@ -8,23 +8,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/catalog"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
-	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
@@ -91,14 +91,14 @@ func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
 // api sentinel. Thin, wiring-only.
 type jobsAdapter struct{ s *jobs.Scheduler }
 
-func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
+func (a jobsAdapter) List(ctx context.Context) ([]system.JobView, error) {
 	st, err := a.s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.JobView, 0, len(st))
+	out := make([]system.JobView, 0, len(st))
 	for _, j := range st {
-		out = append(out, api.JobView{
+		out = append(out, system.JobView{
 			Name: j.Name, Group: string(j.Group), Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
@@ -109,25 +109,25 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	return out, nil
 }
 
-func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
+func (a jobsAdapter) History(ctx context.Context, name string) (system.JobHistoryView, error) {
 	history, err := a.s.History(ctx, name)
 	if errors.Is(err, jobs.ErrUnknownJob) {
-		return api.JobHistoryView{}, api.ErrJobNotFound
+		return system.JobHistoryView{}, system.ErrJobNotFound
 	}
 	if err != nil {
-		return api.JobHistoryView{}, err
+		return system.JobHistoryView{}, err
 	}
-	out := api.JobHistoryView{
+	out := system.JobHistoryView{
 		WindowStart: history.WindowStart, RunCount: history.RunCount,
 		FailureCount: history.FailureCount, AverageDurationMs: history.AverageDurationMs,
-		Truncated: history.Truncated, Recent: make([]api.JobExecutionView, 0, len(history.Recent)),
+		Truncated: history.Truncated, Recent: make([]system.JobExecutionView, 0, len(history.Recent)),
 	}
 	for _, run := range history.Recent {
 		trigger := "scheduled"
 		if run.Manual {
 			trigger = "manual"
 		}
-		out.Recent = append(out.Recent, api.JobExecutionView{
+		out.Recent = append(out.Recent, system.JobExecutionView{
 			StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, DurationMs: run.DurationMs,
 			Result: run.Result, Error: run.Error, Trigger: trigger,
 		})
@@ -138,9 +138,9 @@ func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryVi
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
 	switch err := a.s.SetPaused(ctx, name, paused); {
 	case errors.Is(err, jobs.ErrUnknownJob):
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	case errors.Is(err, jobs.ErrJobDisabled):
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	default:
 		return err
 	}
@@ -149,58 +149,19 @@ func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) er
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	switch err := a.s.Trigger(ctx, name); {
 	case errors.Is(err, jobs.ErrUnknownJob):
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	case errors.Is(err, jobs.ErrJobDisabled):
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	case err != nil:
 		return err
 	}
 	return nil
 }
 
-// episodeResolver expands a series lineup entry into the Library's episodes (§9, #2151 step 16),
-// mapping each to a schedule.ResolvedProgram so the schedule domain stays free of a library
-// dependency. An episode that could not play is dropped and its editorial evidence is bounded. An
-// id that is no library series expands to nothing: the media server is never asked.
-func episodeResolver(st store.LibraryEpisodeReader) channels.EpisodeResolver {
-	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
-		rows, _, err := st.LibraryEpisodes(ctx, showItemID)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]schedule.ResolvedProgram, 0, len(rows))
-		for _, r := range rows {
-			if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
-				continue
-			}
-			evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
-			// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
-			airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
-			out = append(out, schedule.ResolvedProgram{
-				LibraryItemID: r.ItemID,
-				Title:         r.Name,
-				DurationMs:    r.DurationMs,
-				Season:        r.Season,
-				Year:          r.Year,
-				AirDate:       airDate,
-				Episode:       r.Episode,
-				EpisodeEnd:    r.EpisodeEnd, // §5 multi-part: single-file span end
-				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
-				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  rating.Normalize(r.Rating),
-				CommunityRating: evidence.CommunityRating,
-				Overview:        evidence.Overview,
-				Tags:            evidence.Tags,
-			})
-		}
-		return out, nil
-	}
-}
-
 // bulkDurations adapts the Library's BULK item metadata read to channels.DurationsResolver, so a
 // layout reads every runtime in one query rather than one per movie. The metadata it also returns
 // is simply unused here.
-func bulkDurations(lib itemMetadata) channels.DurationsResolver {
+func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
 		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
 		// Partial results ride WITH the error (ItemMetadataByID's contract), so convert whatever
@@ -215,16 +176,16 @@ func bulkDurations(lib itemMetadata) channels.DurationsResolver {
 	}
 }
 
-// searchAdapter maps catalog.Catalog to api.SearchService (converts candidates
+// searchAdapter maps titlesearch.Catalog to api.SearchService (converts candidates
 // to the API's dependency-light shape).
-type searchAdapter struct{ cat *catalog.Catalog }
+type searchAdapter struct{ cat *titlesearch.Catalog }
 
-func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([]api.SearchCandidate, error) {
-	var cands []catalog.Candidate
+func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequest) ([]httpcore.SearchCandidate, error) {
+	var cands []titlesearch.Candidate
 	var err error
 	if request.Discovery != nil {
 		discovery := request.Discovery
-		cands, err = a.cat.Discover(ctx, catalog.DiscoveryQuery{
+		cands, err = a.cat.Discover(ctx, titlesearch.DiscoveryQuery{
 			MediaType: provision.MediaType(discovery.MediaType), Keywords: discovery.Keywords, Genres: discovery.Genres,
 			YearFrom: discovery.YearFrom, YearTo: discovery.YearTo,
 			OriginalLanguage: discovery.OriginalLanguage, OriginCountry: discovery.OriginCountry,
@@ -233,9 +194,9 @@ func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([
 			Network: discovery.Network, Cast: discovery.Cast, Creators: discovery.Creators,
 		}, request.Limit)
 	} else {
-		cands, err = a.cat.Search(ctx, request.Query, catalog.ParseScope(request.Scope), request.Limit)
+		cands, err = a.cat.Search(ctx, request.Query, titlesearch.ParseScope(request.Scope), request.Limit)
 		if request.MediaType != "" {
-			filtered := make([]catalog.Candidate, 0, len(cands))
+			filtered := make([]titlesearch.Candidate, 0, len(cands))
 			for _, candidate := range cands {
 				if candidate.MediaType == provision.MediaType(request.MediaType) {
 					filtered = append(filtered, candidate)
@@ -247,45 +208,45 @@ func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.SearchCandidate, 0, len(cands))
+	out := make([]httpcore.SearchCandidate, 0, len(cands))
 	for _, c := range cands {
 		out = append(out, searchCandidateFromCatalog(c))
 	}
 	return out, nil
 }
 
-type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
+type movieCollectionAdapter struct{ resolver *tmdb.CollectionResolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,
-	request api.MovieCollectionRequest,
-) (api.MovieCollectionResolution, error) {
+	request libraryapi.MovieCollectionRequest,
+) (libraryapi.MovieCollectionResolution, error) {
 	keys := make([]provision.Key, 0, len(request.Keys))
 	for _, key := range request.Keys {
 		keys = append(keys, provision.Key(key))
 	}
 	resolved, err := a.resolver.Resolve(ctx, keys)
 	if err != nil {
-		return api.MovieCollectionResolution{}, err
+		return libraryapi.MovieCollectionResolution{}, err
 	}
-	out := api.MovieCollectionResolution{
-		Collections: make([]api.MovieCollection, 0, len(resolved.Collections)),
+	out := libraryapi.MovieCollectionResolution{
+		Collections: make([]libraryapi.MovieCollection, 0, len(resolved.Collections)),
 		Complete:    resolved.Complete,
 	}
 	for _, collection := range resolved.Collections {
-		members := make([]api.SearchCandidate, 0, len(collection.Members))
+		members := make([]httpcore.SearchCandidate, 0, len(collection.Members))
 		for _, member := range collection.Members {
 			members = append(members, searchCandidateFromCatalog(member))
 		}
-		out.Collections = append(out.Collections, api.MovieCollection{
+		out.Collections = append(out.Collections, libraryapi.MovieCollection{
 			TMDBID: collection.TMDBID, Name: collection.Name, Members: members,
 		})
 	}
 	return out, nil
 }
 
-func searchCandidateFromCatalog(c catalog.Candidate) api.SearchCandidate {
-	return api.SearchCandidate{
+func searchCandidateFromCatalog(c titlesearch.Candidate) httpcore.SearchCandidate {
+	return httpcore.SearchCandidate{
 		MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
 		Genres: c.Genres, Overview: c.Overview,
@@ -297,7 +258,7 @@ func searchCandidateFromCatalog(c catalog.Candidate) api.SearchCandidate {
 }
 
 type approvalAdditionAdapter struct {
-	presence catalog.LibraryPresenceSource
+	presence titlesearch.LibraryPresenceSource
 }
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
@@ -380,7 +341,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	t, ok, err := libraryTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
 	if err != nil || !ok {
 		return "", false, err
 	}
@@ -445,8 +406,9 @@ func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	if m.Kind == "series" {
 		r.MediaType = library.Series
 	}
-	r.TMDBID, _ = strconv.Atoi(m.TMDBID)
-	r.TVDBID, _ = strconv.Atoi(m.TVDBID)
+	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
+	r.TMDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TVDB)))
 	return r
 }
 
@@ -458,9 +420,7 @@ type ownCollections interface {
 }
 
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
-// picker (programming-design §2.2): the household's collections (#2151 step 16). The media
-// server's hand-made collections were imported by the cutover rewrite, and its TMDB ones are the
-// Library's ready-made sets, so it is never asked.
+// picker (programming-design §2.2): the household's collections (#2151 step 16).
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
@@ -469,14 +429,14 @@ type libraryCollections struct {
 	own ownCollections
 }
 
-func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
+func (a libraryCollections) Collections(ctx context.Context) ([]libraryapi.LibraryCollection, error) {
 	own, err := a.own.ListLibraryCollections(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.LibraryCollection, 0, len(own))
+	out := make([]libraryapi.LibraryCollection, 0, len(own))
 	for _, c := range own {
-		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
+		out = append(out, libraryapi.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
 	}
 	return out, nil
 }
@@ -504,32 +464,6 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 		return 0, false, err
 	}
 	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
-}
-
-// libraryPresence adapts the Library's titles to catalog.LibraryPresence, so discovery can mark
-// titles the household already owns as in-library, with their library item id and rating
-// (#2151 step 16). Prefers the TMDB id (the discovery id space); falls back to TVDB for a series
-// with no tmdb.
-type libraryPresence struct {
-	titles store.LibraryTitleReader
-}
-
-func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
-	kind, id := library.TMDB, strconv.Itoa(tmdbID)
-	if tmdbID == 0 && tvdbID != 0 {
-		kind, id = library.TVDB, strconv.Itoa(tvdbID)
-	}
-	lmt := library.Movie
-	if mt == provision.Series {
-		lmt = library.Series
-	}
-	t, ok, err := libraryTitle(ctx, a.titles, kind, id, lmt)
-	if err != nil || !ok {
-		return catalog.Presence{}, false, err
-	}
-	return catalog.Presence{
-		LibraryItemID: t.ID, OfficialRating: t.Rating, Genres: t.Genres, SizeBytes: t.SizeBytes,
-	}, true, nil
 }
 
 // --- filler bridging adapters (§10) ---

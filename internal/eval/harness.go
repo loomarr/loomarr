@@ -10,19 +10,18 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/rating"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // buildSuggester constructs the REAL suggester exactly as main.go does — real LLM
@@ -42,27 +41,28 @@ func buildSuggester() (*suggest.Suggester, ScheduleMaterializer, *observedProvid
 }
 
 type evalClients struct {
-	library *library.Client
+	library LibraryReader
 	tmdb    *tmdb.Client
 }
 
 // buildEvalClients constructs only evidence adapters. It deliberately cannot
 // construct or call an inference provider, so live schedule preflight can fail
-// closed before any model resource is available to spend.
+// closed before any model resource is available to spend. The Library is the one
+// a Loomarr database records (LOOMARR_LIBRARY_DB, sqlite://<path>), opened without
+// migrating it and only ever read.
 func buildEvalClients() (evalClients, error) {
-	libURL := os.Getenv("LIBRARY_URL")
-	libTok := os.Getenv("LIBRARY_TOKEN")
-	if libURL == "" || libTok == "" {
-		return evalClients{}, fmt.Errorf("LIBRARY_URL + LIBRARY_TOKEN required for the eval")
+	database := os.Getenv("LOOMARR_LIBRARY_DB")
+	if database == "" {
+		return evalClients{}, fmt.Errorf("LOOMARR_LIBRARY_DB (sqlite://<path> of a Loomarr database) required for the eval")
 	}
-	flavor := library.Emby
-	if os.Getenv("LIBRARY_FLAVOR") == "jellyfin" {
-		flavor = library.Jellyfin
+	lib, err := store.Open(context.Background(), database, false)
+	if err != nil {
+		return evalClients{}, fmt.Errorf("open the eval's Library: %w", err)
 	}
-	lib := library.New(flavor, libURL, libTok, "loomarr-eval")
 
 	tmdbKey := os.Getenv("TMDB_API_KEY")
 	if tmdbKey == "" {
+		_ = lib.Close()
 		return evalClients{}, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
@@ -70,7 +70,8 @@ func buildEvalClients() (evalClients, error) {
 }
 
 func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
-	cat := catalog.New(clients.library, clients.tmdb).WithPresence(libPresence{clients.library})
+	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: clients.library, Facts: clients.library}, clients.tmdb).
+		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library})
 	provider, err := buildProvider()
 	if err != nil {
 		return nil, nil, err
@@ -261,9 +262,9 @@ func (p *observedProvider) Snapshot(groundErr error) Observation {
 	switch {
 	case groundErr == nil:
 		out.GroundingStage = "grounded"
-	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles) && strings.Contains(groundErr.Error(), "llm chat:"):
+	case !errors.Is(groundErr, proposals.ErrNoGroundedTitles) && strings.Contains(groundErr.Error(), "llm chat:"):
 		out.GroundingStage = "provider_error"
-	case !errors.Is(groundErr, suggest.ErrNoGroundedTitles):
+	case !errors.Is(groundErr, proposals.ErrNoGroundedTitles):
 		out.GroundingStage = "generation_error"
 	case out.ToolCalls == 0:
 		out.GroundingStage = "no_tool_call"
@@ -372,25 +373,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// libPresence adapts the library client to catalog.LibraryPresence (mirrors main.go).
-type libPresence struct{ lib *library.Client }
-
-func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
-	kind, id := library.TMDB, strconv.Itoa(tmdbID)
-	if tmdbID == 0 && tvdbID != 0 {
-		kind, id = library.TVDB, strconv.Itoa(tvdbID)
-	}
-	lmt := library.Movie
-	if mt == provision.Series {
-		lmt = library.Series
-	}
-	d, present, err := a.lib.LookupDetail(ctx, kind, id, lmt)
-	if err != nil || !present {
-		return catalog.Presence{}, false, err
-	}
-	return catalog.Presence{LibraryItemID: d.ID, OfficialRating: d.OfficialRating, Genres: d.Genres}, true, nil
-}
-
 // mapIntent converts the corpus Intent to a proposals.Intent.
 func mapIntent(i Intent) proposals.Intent {
 	return proposals.Intent{
@@ -457,7 +439,7 @@ func deterministicChecks(c Case, prop proposals.Proposal, groundErr error) []str
 	// result also satisfies it (nothing fabricated). A provider or generation
 	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
-		if groundErr != nil && (errors.Is(groundErr, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
+		if groundErr != nil && (errors.Is(groundErr, proposals.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
 			if c.MinGrounded == 0 {
 				return nil // an explicit abstention case fabricated nothing → passes
 			}

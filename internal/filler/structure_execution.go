@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 // AssessProposalStructure resolves and re-verifies the proposal's exact retained source, executes
 // one complete-timeline decision, and attaches it without redrawing detector observations. The
 // update is existing-only so a long provider call cannot resurrect a proposal resolved meanwhile.
-func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitProposal, decisioner CompleteTimelineStructureDecisioner) (SplitProposal, error) {
+func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitProposal, decisioner split.CompleteTimelineDecisioner) (SplitProposal, error) {
 	if sp == nil || sp.store == nil || decisioner == nil || proposal.ID == "" || proposal.ClipHash == "" || !proposal.Ready() {
 		return SplitProposal{}, fmt.Errorf("assess proposal structure: execution is unavailable or proposal is incomplete")
 	}
@@ -29,7 +30,7 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	if err != nil {
 		return SplitProposal{}, fmt.Errorf("assess proposal structure source: %w", err)
 	}
-	artifact, err := decisioner.Assess(ctx, StructureAssessmentSource{Source: source, FullPath: fullPath})
+	artifact, err := decisioner.Assess(ctx, split.AssessmentSource{Source: source, FullPath: fullPath})
 	if err != nil {
 		return SplitProposal{}, fmt.Errorf("assess complete proposal timeline: %w", err)
 	}
@@ -42,7 +43,7 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	// the final-child role module owns roles (#1069). Keep it like a held one, so the paid
 	// assessment is retained rather than repeated, and the detector plan stays the reviewable one.
 	if artifact.Decision.Status == structure.StatusConfirmed && everyIntervalHasRole(artifact.Decision) {
-		assessment, projectionErr := ProjectConfirmedStructureDecision(source, proposal.Structure, artifact)
+		assessment, projectionErr := split.ProjectConfirmedDecision(source, proposal.Structure, artifact)
 		if projectionErr != nil {
 			return SplitProposal{}, projectionErr
 		}

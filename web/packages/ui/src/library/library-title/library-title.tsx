@@ -1,6 +1,7 @@
 import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
+import { ChannelIdentity } from "../../identity";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { lengthPhrase, TechnicalDetails } from "../technical-details";
@@ -72,6 +73,11 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
             </Stack>
             <Stack flexBasis={0} flexGrow={1} minWidth={0}>
               <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
+              {episode.fromFile ? (
+                <Text textRole="hint" tone="muted">
+                  Name from the file
+                </Text>
+              ) : null}
             </Stack>
             {episode.ready ? null : (
               <Text textRole="compact" tone="secondary">
@@ -139,7 +145,7 @@ const WrongTitle = ({
     <Stack gap="inline">
       <PickTitle
         kind={title.kind}
-        onPick={(c) => answer(onLink(c.tmdbId), c.name)}
+        onPick={(c) => answer(onLink(c.externalId), c.name)}
         onSearch={onSearch}
         others={[]}
       />
@@ -190,10 +196,10 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
     <Stack gap="control">
       <Line>
         <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
-          Update details
+          {busy === "update" ? "Updating…" : "Update details"}
         </Action>
         <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
-          {checked ? "Checked just now" : "Check files again"}
+          {busy === "check" ? "Checking…" : checked ? "Checked just now" : "Check files again"}
         </Action>
         <Action onPress={() => setWrong(!wrong)} variant="ghost">
           Wrong title?
@@ -369,6 +375,43 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
         .map((file) => (
           <ExtraCopy file={file} key={file.path} onRemove={actions.onRemoveExtra} />
         ))}
+
+      {actions.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (
+        <Surface
+          backgroundColor="stateWarningSurface"
+          borderWidth={0}
+          paddingHorizontal={14}
+          paddingVertical={10}
+        >
+          <Line columnGap="control" flexWrap="wrap" rowGap="inline">
+            <Line flexBasis={240} flexGrow={1} flexWrap="nowrap" minWidth={0}>
+              <StatusDot label="Needs you" tone="warn" />
+              <Text textRole="compact">We're not sure which order these episodes are in.</Text>
+            </Line>
+            <Action onPress={actions.onChooseOrder} variant="secondary">
+              Choose
+            </Action>
+          </Line>
+        </Surface>
+      ) : null}
+
+      {title.channels.length > 0 ? (
+        <Stack aria-label="On these channels" gap="control" role="region">
+          <Heading>On these channels</Heading>
+          <Line columnGap="section" rowGap="control">
+            {title.channels.map((c) => (
+              <ChannelIdentity
+                channel={{
+                  channelLogoState: "missing",
+                  channelName: c.name,
+                  channelNumber: String(c.number),
+                }}
+                key={c.id}
+              />
+            ))}
+          </Line>
+        </Stack>
+      ) : null}
 
       {title.seasons.length > 0 ? (
         <Stack aria-label="Seasons" gap="control" role="region">

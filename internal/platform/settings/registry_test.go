@@ -199,11 +199,14 @@ func TestRegistry_Invariants(t *testing.T) {
 // A size or percentage only the key spells out reads as a bare number in the box ("50" of what?),
 // so the suffix and the declared unit must agree.
 func TestRegistry_UnitsMatchTheKeySuffix(t *testing.T) {
-	suffixes := map[string]Unit{"_gb": UnitGiB, "_mb": UnitMiB, "_pct": UnitPercent}
+	suffixes := map[string]Unit{
+		"_gb": UnitGiB, "_mb": UnitMiB, "_pct": UnitPercent, "_seconds": UnitSeconds, "_hours": UnitHours,
+	}
 	for _, s := range NewRegistry().All() {
 		want := UnitNone
 		for suffix, unit := range suffixes {
-			if strings.HasSuffix(s.Key, suffix) {
+			// A duration carries its own unit in the value ("24h"), whatever its key says.
+			if strings.HasSuffix(s.Key, suffix) && s.Kind != KindDuration {
 				want = unit
 			}
 		}

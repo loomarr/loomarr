@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
@@ -19,7 +19,7 @@ import (
 // so switching the service never rewrites a collection's own setting.
 
 // sourcesFrom reads the sources read-model off a server built by newFillerServer.
-func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
+func sourcesFrom(t *testing.T, srv *httptest.Server) []fillerapi.FillerSourceDTO {
 	t.Helper()
 	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/sources", "", adminToken)
 	if res.StatusCode != http.StatusOK {
@@ -27,7 +27,7 @@ func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
 	}
 	defer func() { _ = res.Body.Close() }()
 	var body struct {
-		Sources []api.FillerSourceDTO `json:"sources"`
+		Sources []fillerapi.FillerSourceDTO `json:"sources"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func addArchive(t *testing.T, st records.Store, id, label string, fetched time.T
 }
 
 // indexOf returns a row's position in the flat array, or -1.
-func indexOf(rows []api.FillerSourceDTO, id string) int {
+func indexOf(rows []fillerapi.FillerSourceDTO, id string) int {
 	for i, r := range rows {
 		if r.ID == id {
 			return i
@@ -87,7 +87,7 @@ func TestSourceGroups_ChildrenFollowTheirGroupInOrder(t *testing.T) {
 	}
 }
 
-func rowID(rows []api.FillerSourceDTO, i int) string {
+func rowID(rows []fillerapi.FillerSourceDTO, i int) string {
 	if i < 0 || i >= len(rows) {
 		return "<out of range>"
 	}

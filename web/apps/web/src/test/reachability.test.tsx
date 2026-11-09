@@ -349,6 +349,7 @@ const stubReachable = () => {
           searched: true,
         },
       ],
+      orders: [],
       problems: [],
     }),
     getGetLibraryItemMockHandler({
@@ -367,6 +368,7 @@ const stubReachable = () => {
       seasons: [],
       match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
       detailsFrom: {},
+      channels: [],
     }),
     // Collections and a collection's editor: one of the household's, served under any id.
     getListCollectionsMockHandler({

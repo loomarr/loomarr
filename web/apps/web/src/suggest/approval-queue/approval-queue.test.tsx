@@ -212,6 +212,45 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     expect(approvals[0]).toEqual({ drop: ["movie:tmdb:90000949"], note: "too violent" });
   });
 
+  // #3012: "Raise to <rating>" in the left-out box rides the same approve call as `audience`.
+  it("approving after Raise to <rating> sends the server-named audience", async () => {
+    const approvals: unknown[] = [];
+    const raised = {
+      ...proposal,
+      raiseAudienceTo: "TV-G",
+      proposal: {
+        ...proposal.proposal,
+        policy: { audience: { ceiling: "TV-Y7" } },
+        refused: [
+          {
+            item: { name: "Bigger Toons", mediaType: "movie", tmdbId: 90000950, officialRating: "TV-G" },
+            reason: "over_ceiling",
+          },
+        ],
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.includes("/approve")) {
+          approvals.push(init?.body ? JSON.parse(init.body as string) : undefined);
+          return Promise.resolve(jsonResponse({ status: "approved", enqueued: 1 }));
+        }
+        if (url.includes("/v1/discovery/feedback")) return Promise.resolve(jsonResponse([]));
+        if (url.endsWith("/outlook")) return Promise.resolve(jsonResponse(outlook({ state: "uncertain" })));
+        if (url.includes("/v1/proposals")) return Promise.resolve(jsonResponse({ proposals: [raised] }));
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+    render(<ApprovalQueue />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Raise to TV-G" }));
+    await userEvent.click(await rowApprove());
+
+    await waitFor(() => expect(approvals).toHaveLength(1));
+    expect(approvals[0]).toEqual({ audience: "TV-G" });
+  });
+
   it("undoing every edit returns to the unmodified body", async () => {
     const approvals = stubApi();
     render(<ApprovalQueue />);

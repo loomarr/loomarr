@@ -231,3 +231,22 @@ tables:
         The hidden idea's stable name, such as genre:comedy. It isn't a link to another table, so the hide
         survives the library changing.
       hidden_at_ms: When the person hid it, in Unix milliseconds.
+
+  - name: viewings
+    about: >
+      The watch history: one row per person watching one programme on one channel on one device in the
+      Loomarr apps, from when their player started to when it stopped. Only admins can read it, and the
+      person isn't told. Watching through the media server's Live TV isn't recorded.
+    retention: Kept until an admin clears it, for one person or everyone; goes with the person.
+    columns:
+      id: Identifies the row.
+      user_id: The person watching, from users.
+      device: What the household calls the device, such as a paired TV's name or the browser and system.
+      channel_id: >
+        The channel watched. It isn't a link to channels, so the history survives the channel being deleted.
+      channel_name: The channel's name when the viewing began.
+      programme: >
+        The programme watched; a new row starts when the next programme does. Empty when the guide had
+        nothing for it.
+      started_at: When the player started, in Unix seconds.
+      ended_at: When the player was last seen, in Unix seconds.

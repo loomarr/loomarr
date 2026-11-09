@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 type inferiorCopies map[string]bool
@@ -27,17 +30,17 @@ func TestSync_NeverCataloguesOrFilesAKnownInferiorCopy(t *testing.T) {
 	if err := os.WriteFile(arrival, []byte("a re-upload of an ad the catalog holds in a better copy"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	arrivalHash, err := filler.ClipID(arrival)
+	arrivalHash, err := asset.ClipID(arrival)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const leftover = "leftover-inferior-row"
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("survivor", "Burger Barn", filler.Commercial, 30_000, 0),
-		raw(leftover, "Burger Barn (copy)", filler.Commercial, 30_000, 0),
+	source := &fakeSource{clips: []cliplibrary.RawClip{
+		raw("survivor", "Burger Barn", clips.Commercial, 30_000, 0),
+		raw(leftover, "Burger Barn (copy)", clips.Commercial, 30_000, 0),
 	}}
 	st := newMemStore()
-	st.clips[leftover] = filler.StoreClip{Clip: filler.Clip{Hash: leftover, Path: "le/ft/" + leftover + ".mp4"}}
+	st.clips[leftover] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: leftover, Path: "le/ft/" + leftover + ".mp4"}}
 	syncer := filler.NewSyncer(source, st, testLayout(dir, watch), time.Now, discardLog()).
 		WithInferiorCopies(inferiorCopies{leftover: true, arrivalHash: true})
 
@@ -54,7 +57,7 @@ func TestSync_NeverCataloguesOrFilesAKnownInferiorCopy(t *testing.T) {
 	if _, err := os.Stat(arrival); err != nil {
 		t.Fatalf("a known inferior arrival was moved or removed from where it was dropped: %v", err)
 	}
-	if filed, _ := filler.ClipPath(dir, arrivalHash, ".mp4"); fileExists(filed) {
+	if filed, _ := cliplibrary.ClipPath(dir, arrivalHash, ".mp4"); fileExists(filed) {
 		t.Fatal("a known inferior arrival was filed into the clip folder")
 	}
 }

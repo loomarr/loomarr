@@ -85,7 +85,7 @@ const ApprovalBulkGroup = ({
           accessibilityRole="button"
           disabled={disabled || selectedCount === 0}
           onPress={onApprove}
-          tone="primary"
+          tone="secondary"
         >
           {selectedCount > 0 ? `Approve ${selectedCount}` : "Approve"}
         </Action>

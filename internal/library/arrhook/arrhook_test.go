@@ -48,6 +48,18 @@ func TestParse(t *testing.T) {
 			typ:  "MovieDelete", folders: []string{"/movies/Oscar (1999)"},
 		},
 		{
+			// A delete's deletedFiles says whether the files went too: a bool, where an upgrade's is
+			// a list (Sonarr's WebhookSeriesDeletePayload, Radarr's WebhookMovieDeletePayload).
+			name: "a series delete that took its files names its folder",
+			body: `{"eventType":"SeriesDelete","series":{"path":"/tv/Romeo","tvdbId":90081202},"deletedFiles":true}`,
+			typ:  "SeriesDelete", folders: []string{"/tv/Romeo"},
+		},
+		{
+			name: "a movie delete that kept its files names its folder",
+			body: `{"eventType":"MovieDelete","movie":{"folderPath":"/movies/Sierra (2003)"},"deletedFiles":false}`,
+			typ:  "MovieDelete", folders: []string{"/movies/Sierra (2003)"},
+		},
+		{
 			name: "a Windows arr's backslashes become slashes",
 			body: `{"eventType":"EpisodeFileDelete","series":{"path":"D:\\tv\\Papa"},"episodeFile":{"path":"D:\\tv\\Papa\\Season 01\\Papa S01E01.mkv"}}`,
 			typ:  "EpisodeFileDelete", folders: []string{"D:/tv/Papa/Season 01"},
@@ -162,6 +174,15 @@ func masked(n map[string]any) map[string]any {
 	return out
 }
 
+func fieldValue(n map[string]any, name string) any {
+	for _, f := range n["fields"].([]any) {
+		if field := f.(map[string]any); field["name"] == name {
+			return field["value"]
+		}
+	}
+	return nil
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -175,7 +196,7 @@ func TestRegister(t *testing.T) {
 	c := arrhook.Client{Conn: func() (string, string) { return srv.URL + "/", "key-90000002" }}
 	const hook = "http://loomarr.test/v1/library/hooks/sonarr"
 
-	changed, err := c.Register(ctx, hook, "secret-90000003")
+	changed, err := c.Register(ctx, hook, "secret-90000003", false)
 	if err != nil || !changed {
 		t.Fatalf("first Register = %v, %v; want a new connection", changed, err)
 	}
@@ -204,11 +225,18 @@ func TestRegister(t *testing.T) {
 		t.Error("a field Loomarr does not set was dropped")
 	}
 
-	if changed, err := c.Register(ctx, hook, "secret-90000003"); err != nil || changed {
+	if changed, err := c.Register(ctx, hook, "secret-90000003", false); err != nil || changed {
 		t.Fatalf("second Register = %v, %v; want no write (the masked password matches)", changed, err)
 	}
-	if changed, err := c.Register(ctx, hook+"?moved", "secret-90000003"); err != nil || !changed || arr.writes != 2 {
+	if changed, err := c.Register(ctx, hook+"?moved", "secret-90000003", false); err != nil || !changed || arr.writes != 2 {
 		t.Fatalf("Register with a new address = %v, %v, %d writes; want an update", changed, err, arr.writes)
+	}
+	// The arr masks the password, so a new secret is only written when asked to rewrite.
+	if changed, err := c.Register(ctx, hook+"?moved", "secret-90000004", true); err != nil || !changed || arr.writes != 3 {
+		t.Fatalf("Register rewriting = %v, %v, %d writes; want an update", changed, err, arr.writes)
+	}
+	if got := fieldValue(arr.saved[0], "password"); got != "secret-90000004" {
+		t.Fatalf("saved password = %v, want the new secret", got)
 	}
 	if len(arr.saved) != 1 {
 		t.Fatalf("connections = %d, want 1", len(arr.saved))
@@ -228,11 +256,11 @@ func TestRegisterReportsAnArrThatCannotReachLoomarr(t *testing.T) {
 	srv := httptest.NewServer(arr)
 	defer srv.Close()
 	c := arrhook.Client{Conn: func() (string, string) { return srv.URL, "key" }}
-	if _, err := c.Register(context.Background(), "http://unreachable.test/hook", "s"); err == nil {
+	if _, err := c.Register(context.Background(), "http://unreachable.test/hook", "s", false); err == nil {
 		t.Fatal("Register = nil error, want the arr's refusal")
 	}
 	unset := arrhook.Client{Conn: func() (string, string) { return "", "" }}
-	if _, err := unset.Register(context.Background(), "http://x/hook", "s"); !errors.Is(err, arrhook.ErrNotConfigured) {
+	if _, err := unset.Register(context.Background(), "http://x/hook", "s", false); !errors.Is(err, arrhook.ErrNotConfigured) {
 		t.Fatalf("Register with no address = %v, want ErrNotConfigured", err)
 	}
 }

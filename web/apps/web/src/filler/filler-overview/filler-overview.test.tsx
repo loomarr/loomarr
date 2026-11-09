@@ -224,6 +224,56 @@ describe("FillerOverview", () => {
     expect(await screen.findByText(label)).toHaveStyle({ color });
   });
 
+  // #2733: channels drawing the same pool showed identical cards side by side. One card says it.
+  it("shows one shared-pool card when every channel's coverage is the same", async () => {
+    const channel = {
+      level: "exact" as const,
+      total: 12,
+      durationMs: 360_000,
+      categories: 3,
+      brands: 7,
+    };
+    show(
+      readiness({
+        pool: {
+          clips: 25,
+          breakBody: 20,
+          eligible: 18,
+          untagged: 0,
+          channels: [
+            { ...channel, channelId: "ch-1", name: "Saturday Mornings", number: 1 },
+            { ...channel, channelId: "ch-2", name: "Late Horror", number: 2 },
+            { ...channel, channelId: "ch-3", name: "Cartoon Club", number: 3 },
+          ],
+        },
+      }),
+    );
+    expect(await screen.findByText("All 3 channels")).toBeInTheDocument();
+    expect(screen.getAllByText("6m playable · 12 clips")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "1 · Saturday Mornings" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a card per channel when their coverage differs", async () => {
+    const channel = { level: "exact" as const, durationMs: 360_000, categories: 3, brands: 7 };
+    show(
+      readiness({
+        pool: {
+          clips: 25,
+          breakBody: 20,
+          eligible: 18,
+          untagged: 0,
+          channels: [
+            { ...channel, total: 12, channelId: "ch-1", name: "Saturday Mornings", number: 1 },
+            { ...channel, total: 9, channelId: "ch-2", name: "Late Horror", number: 2 },
+          ],
+        },
+      }),
+    );
+    expect(await screen.findByRole("link", { name: "1 · Saturday Mornings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "2 · Late Horror" })).toBeInTheDocument();
+    expect(screen.queryByText(/^All \d+ channels$/)).not.toBeInTheDocument();
+  });
+
   it("says a bumper-only channel has only the card, not zero minutes", async () => {
     show(
       readiness({

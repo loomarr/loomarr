@@ -2,10 +2,10 @@ package app
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -30,21 +30,9 @@ func (s libraryTitleScanner) scan(ctx context.Context, since time.Time) ([]libra
 	}
 	out := make([]library.SearchResult, 0, len(titles))
 	for _, t := range titles {
-		out = append(out, librarySearchResult(t))
+		out = append(out, titlesearch.LibrarySearchResult(t))
 	}
 	return out, nil
-}
-
-// librarySearchResult reads a Library title as the media server's search result, so scan keys
-// come from the one derivation the media server's items use.
-func librarySearchResult(t store.LibraryTitle) library.SearchResult {
-	r := library.SearchResult{LibraryItemID: t.ID, Name: t.Name, MediaType: library.Movie}
-	if t.Kind == "series" {
-		r.MediaType = library.Series
-	}
-	r.TMDBID, _ = strconv.Atoi(t.TMDBID)
-	r.TVDBID, _ = strconv.Atoi(t.TVDBID)
-	return r
 }
 
 // libraryLookup is the provisioning backstop's last look before it gives a title up
@@ -57,23 +45,6 @@ type libraryLookup struct {
 func (l libraryLookup) Lookup(
 	ctx context.Context, kind library.ProviderKind, id string, mt library.MediaType,
 ) (string, bool, error) {
-	t, ok, err := libraryTitle(ctx, l.titles, kind, id, mt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, l.titles, kind, id, mt)
 	return t.ID, ok, err
-}
-
-// libraryTitle is the Library's movie or series a provider id names, when titles is wired.
-func libraryTitle(
-	ctx context.Context, titles store.LibraryTitleReader, kind library.ProviderKind, id string, mt library.MediaType,
-) (store.LibraryTitle, bool, error) {
-	if titles == nil {
-		return store.LibraryTitle{}, false, nil
-	}
-	namespace, libraryKind := "tmdb", "movie"
-	if kind == library.TVDB {
-		namespace = "tvdb"
-	}
-	if mt == library.Series {
-		libraryKind = "series"
-	}
-	return titles.LibraryTitleByProviderID(ctx, libraryKind, namespace, id)
 }

@@ -1,10 +1,11 @@
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Action, Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
-import { ChevronDown, ShieldAlert } from "lucide-react";
+import { Action, Badge, Card, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { cn } from "@/lib/utils";
+import { useAppForm } from "@/lib/app-form";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
@@ -38,6 +39,19 @@ const seasonNotKeptLabel = ({ country, holidays }: SeasonNotKept): string => {
   return `${names} ${one ? "isn't" : "aren't"} on your holiday calendar (${regionName(country)}), so this channel won't follow ${
     one ? "its season" : "their seasons"
   }.`;
+};
+
+// withAudience joins the title edits with a raised audience limit (#3012). The title editor and
+// the Raise button each change their own half; no half left means no edit at all.
+const withAudience = (
+  edit: ApprovalEditDTO | undefined,
+  audience: Rating | undefined,
+): ApprovalEditDTO | undefined => {
+  const titles =
+    edit?.drop?.length || edit?.add?.length || edit?.note?.trim()
+      ? { drop: edit.drop, add: edit.add, note: edit.note }
+      : undefined;
+  return audience ? { ...titles, audience } : titles;
 };
 
 const PickRow = ({
@@ -92,6 +106,7 @@ const ApprovalQueueItem = ({
   episodeSelectionPreview,
   refused,
   audienceLimit,
+  raiseAudienceTo,
   seasonNotKept,
   edit,
   onEdit,
@@ -105,9 +120,15 @@ const ApprovalQueueItem = ({
   const denied = status === "denied";
   const [open, setOpen] = useState(false);
   const [denying, setDenying] = useState(false);
-  const [reason, setReason] = useState("");
+  // The reason is optional: blank denies without one.
+  const form = useAppForm({
+    defaultValues: { reason: "" },
+    onSubmit: ({ value }) => onDeny?.(value.reason.trim() || undefined),
+  });
   const reasonId = useId();
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
+  const canRaise = raiseAudienceTo !== undefined && onEdit !== undefined;
+  const raising = canRaise && edit?.audience !== undefined;
 
   return (
     <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
@@ -158,37 +179,41 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <div className="border-border flex flex-col gap-2 border-t pt-2">
-          <Field
-            autoFocus
-            disabled={busy}
-            id={reasonId}
-            label="Why not? Optional: the requester sees this."
-            onChangeText={setReason}
-            placeholder="e.g. over the acquisition cap this week, ask again Monday"
-            value={reason}
-          />
+        <form
+          className="border-border flex flex-col gap-2 border-t pt-2"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <form.AppField name="reason">
+            {(field) => (
+              <field.TextField
+                autoFocus
+                disabled={busy}
+                id={reasonId}
+                label="Why not? Optional: the requester sees this."
+                placeholder="e.g. over the acquisition cap this week, ask again Monday"
+              />
+            )}
+          </form.AppField>
           <div className="flex justify-end gap-2">
             <Action
               disabled={busy}
               onPress={() => {
                 setDenying(false);
-                setReason("");
+                form.reset();
               }}
               variant="ghost"
             >
               Cancel
             </Action>
-            <Action
-              disabled={busy}
-              icon="close"
-              onPress={() => onDeny?.(reason.trim() || undefined)}
-              variant="outline"
-            >
+            <Action disabled={busy} icon="close" onPress={() => void form.handleSubmit()} variant="outline">
               Deny
             </Action>
           </div>
-        </div>
+        </form>
       )}
 
       {/* ⚠ OUTSIDE the picks disclosure, and above it. What a reviewer is approving changed:
@@ -200,7 +225,7 @@ const ApprovalQueueItem = ({
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
         <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm">
-            <ShieldAlert className="text-caution size-4 shrink-0" aria-hidden />
+            <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title was" : "titles were"} left out
             </span>
@@ -219,12 +244,32 @@ const ApprovalQueueItem = ({
             ))}
           </ul>
           <p className="text-muted-foreground text-xs">
-            {audienceLimit
-              ? `This channel's audience limit is ${audienceLimit}, so anything rated higher is left out.`
-              : "This channel has an audience limit, so anything rated higher is left out."}{" "}
-            Approving adds everything else. To include these, raise the audience limit after the channel is
-            created.
+            {raising
+              ? `Approving raises this channel's audience limit to ${edit?.audience}, so titles rated up to ${edit?.audience} are included.`
+              : `${
+                  audienceLimit
+                    ? `This channel's audience limit is ${audienceLimit}, so anything rated higher is left out.`
+                    : "This channel has an audience limit, so anything rated higher is left out."
+                } Approving adds everything else.${
+                  canRaise ? "" : " To include these, raise the audience limit after the channel is created."
+                }`}
           </p>
+          {/* #3012: one button, the lowest limit that lets these in (named by the server). It
+              rides the approval like any other edit, so it applies when the channel is created;
+              pressing it again takes it back. */}
+          {canRaise && (
+            <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0}>
+              <Action
+                aria-pressed={raising}
+                disabled={busy}
+                onPress={() => onEdit?.(withAudience(edit, raising ? undefined : raiseAudienceTo))}
+                selected={raising}
+                variant="outline"
+              >
+                {`Raise to ${raiseAudienceTo}`}
+              </Action>
+            </Surface>
+          )}
         </div>
       )}
 
@@ -246,17 +291,15 @@ const ApprovalQueueItem = ({
 
       {hasPicks && (
         <div className="border-border border-t pt-2">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-            // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-            onClick={() => setOpen((v) => !v)}
+          <Action
             aria-expanded={open}
+            icon={open ? "showLess" : "showMore"}
+            onPress={() => setOpen((v) => !v)}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
-            <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} aria-hidden />
             {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
-          </button>
+          </Action>
           {open &&
             // With an edit handler the disclosure IS the edit surface (V25b) — the same list,
             // with drop/add/note. Without one it stays read-only, so every other caller and the
@@ -270,7 +313,8 @@ const ApprovalQueueItem = ({
                 episodeSelectionPreview={episodeSelectionPreview}
                 value={edit}
                 disabled={status === "approving"}
-                onChange={onEdit}
+                // The title editor knows drops, adds and the note; a raised limit is kept across.
+                onChange={(next) => onEdit(withAudience(next, edit?.audience))}
                 showNote
                 renderFeedback={renderFeedback}
               />

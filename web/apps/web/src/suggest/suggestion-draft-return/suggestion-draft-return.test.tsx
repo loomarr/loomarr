@@ -13,11 +13,11 @@ describe("SuggestionDraftReturn", () => {
     expect(screen.queryByText(/channel draft is saved/i)).not.toBeInTheDocument();
   });
 
-  it("links back to the Guide when a draft is saved", async () => {
+  it("links back to the request page when a draft is saved", async () => {
     writeSuggestionDraft({ description: "Saturday morning cartoons" });
     render(<RouterHarness content={<SuggestionDraftReturn />} />);
 
     expect(await screen.findByText(/channel draft is saved/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /return to channel/i })).toHaveAttribute("href", "/guide");
+    expect(screen.getByRole("link", { name: /return to channel/i })).toHaveAttribute("href", "/requests/new");
   });
 });

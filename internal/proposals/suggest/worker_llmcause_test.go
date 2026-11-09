@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
 // The production failure (#1402/#1410) persisted only "suggestion failed: provider failure":
@@ -68,11 +68,10 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			t.Cleanup(provider.Close)
 
 			st := newStore(t)
-			ms := testkit.NewMediaServer(t)
-			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			lib := catalogfixture.NewScriptedLibrary()
 			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
-			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), catalog.New(lib, tm), tm, 10)
-			svc := suggest.NewService(st, workflow.New(st, func() string { return "wf-1" }, time.Now), sug,
+			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), titlesearch.New(lib, tm), tm, 10)
+			svc := suggest.NewService(st, workflow.New(st, func() string { return "wf-1" }, time.Now, suggest.IntentHash), sug,
 				suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour}, time.Now, testkit.Logger())
 			jobID, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 			if err != nil {
@@ -82,7 +81,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			defer cancel()
 			go svc.Run(ctx)
 
-			var job store.Job
+			var job proposalstore.Job
 			deadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(deadline) {
 				job, _ = st.GetJob(context.Background(), jobID)

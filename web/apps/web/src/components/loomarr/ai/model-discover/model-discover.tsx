@@ -1,7 +1,6 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, Badge } from "@loomarr/design-system";
-import { Loader2 } from "lucide-react";
+import { Action, ActivityIndicator, Badge } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
@@ -45,7 +44,7 @@ const ModelDiscover = ({
 
       {loading && (
         <p className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          <ActivityIndicator decorative size="compact" tone="inherit" />
           Finding compatible models…
         </p>
       )}

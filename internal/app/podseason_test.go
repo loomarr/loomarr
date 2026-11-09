@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
 
@@ -26,16 +27,16 @@ func TestPodAdapter_DatesHolidaysOnTheHouseholdCalendar(t *testing.T) {
 
 	for _, tc := range []struct {
 		country string
-		want    filler.FitReason
-	}{{"GB", ""}, {"US", filler.FitSeason}} {
+		want    pod.FitReason
+	}{{"GB", ""}, {"US", pod.FitSeason}} {
 		// A national ad of the household's own country, so only the season can refuse it.
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
+		ad := clips.Clip{Hash: "ad", Path: "ad.mp4", Role: clips.Commercial, Audience: clips.General,
 			DurationMs: 15_000, Tags: []string{"pancake-day"}, AssertedTags: []string{"pancake-day"},
-			GeographicScope: filler.GeographicNational, Country: tc.country}
+			GeographicScope: pod.GeographicNational, Country: tc.country}
 		set := visionSet(t, map[string]string{"filler.home_country": tc.country})
 		log := slog.New(slog.DiscardHandler)
 		pods := buildPodAdapter(nil, set, householdCalendar(set, holidays, log), log)
-		if got := pods.FitForChannel("ch", filler.Selection{}, ad).Reason; got != tc.want {
+		if got := pods.FitForChannel("ch", pod.Selection{}, ad).Reason; got != tc.want {
 			t.Errorf("%s household: fit reason = %q, want %q", tc.country, got, tc.want)
 		}
 	}
@@ -48,13 +49,13 @@ func TestPodAdapter_TheHouseholdLanguageIsEveryChannelsDefault(t *testing.T) {
 	holidays := func() holidayvocab.Vocabulary { return holidayvocab.Vocabulary{} }
 	for _, tc := range []struct {
 		household string
-		want      filler.FitReason
-	}{{"es", ""}, {"en", filler.FitLanguage}} {
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
+		want      pod.FitReason
+	}{{"es", ""}, {"en", pod.FitLanguage}} {
+		ad := clips.Clip{Hash: "ad", Path: "ad.mp4", Role: clips.Commercial, Audience: clips.General,
 			DurationMs: 15_000, Language: "es"}
 		set := visionSet(t, map[string]string{"filler.language": tc.household})
 		pods := buildPodAdapter(nil, set, householdCalendar(set, holidays, log), log)
-		if got := pods.FitForChannel("ch", filler.Selection{}, ad).Reason; got != tc.want {
+		if got := pods.FitForChannel("ch", pod.Selection{}, ad).Reason; got != tc.want {
 			t.Errorf("%s household: fit reason = %q, want %q", tc.household, got, tc.want)
 		}
 	}

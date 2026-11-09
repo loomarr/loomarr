@@ -1,37 +1,24 @@
-import { Collapsible } from "@base-ui/react/collapsible";
 import { parseDocHref } from "@loomarr/core/anchor";
-import { StatusWord, type StatusWordKind } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
 // ConnectionBlock — one service (Media server, Tunarr, …) as a self-diagnosing, collapsible
-// block (config-design §5/§6): a header with a live status dot, the connection's fields in a
-// slide-open body, and its Test verdict INLINE below them. Diagnosis lives on the thing that
-// fixes it — no separate checklist to scroll between.
+// block (config-design §5/§6): a header with a live status dot, the connection's fields in the
+// body, and its Test verdict INLINE below them. Diagnosis lives on the thing that fixes it — no
+// separate checklist to scroll between.
 //
-// This is the wizard's connection block (was hand-rolled in wizard/checklist-step) lifted into
-// a shared primitive so the wizard and Settings/Connections are the same shell by construction,
-// not two lookalikes. It shares CollapsibleSection's `.reveal` mechanics (grid 0fr→1fr,
-// height-agnostic, reduced-motion frozen; styles.css) but has its own compact header — a small
-// status dot on the left, not an icon — so it reads as a status row, not a heading.
+// The wizard and Settings/Connections share this shell, and it is the DS Disclosure: the status
+// dot is the Disclosure's `status`, and the one-line summary is its description, the words a
+// colour-only dot needs beside it.
 //
 // Controlled open: the caller drives expansion so broken blocks open and healthy ones collapse.
 //
-// ⚠ **A COLLAPSED BLOCK USED TO BE KEYBOARD-REACHABLE (fixed in V50d).** The hand-rolled version
-// closed with `grid-template-rows: 0fr` + `overflow:hidden` — zero height but NOT `display:none` —
-// so its body stayed in the accessibility tree and stayed focusable. This block's body holds a
-// "Test connection" button and, when a check fails, a "Fix" link into the Help centre: a keyboard
-// user tabbing through the wizard hit both while the section was visibly shut.
-//
-// CollapsibleSection was ported in V50c and this was left behind, which is why the two lookalikes
-// disagreed for three phases. `Collapsible.Panel hiddenUntilFound` renders the closed body as
-// `content-visibility: hidden` — out of the a11y tree, still reachable by the browser's
-// find-in-page, and still mounted so nothing loses state.
-//
-// ⚠ It has no story, so **axe never sees this component** — the fix is verified by a unit test
-// asserting the closed panel carries `hidden="until-found"`, not by the visual suite.
+// ⚠ A collapsed body must stay out of the tab order. Its "Test connection" button and "Fix" link
+// were once reachable while the block was visibly shut (V50d). The Disclosure keeps a collapsed
+// body mounted under `hidden="until-found"`: out of the accessibility tree, reachable by the
+// browser's find-in-page, and no half-filled form loses its state.
 const ConnectionBlock = ({
   title,
   optional = false,
@@ -44,90 +31,79 @@ const ConnectionBlock = ({
   action,
   footer,
 }: ConnectionBlockProps) => {
-  const failing = verdict !== undefined && !verdict.ok && !verdict.notSetUp;
+  // An optional service nobody has set up is not failing (#2781): neutral dot, "Not set up".
+  // A required one stays red, because the app cannot work without it.
+  const notSetUp = optional && verdict !== undefined && !verdict.ok && verdict.notSetUp === true;
+  const failing = verdict !== undefined && !verdict.ok && !notSetUp;
   // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
   // sent by the backend: it is display text assembled from state the client already holds,
   // and a `summary` field on `SetupCheck` would put copy in the API for no new information.
   // The mock's own vocabulary — pass/fail/running — with "not tested yet" standing in for
   // its `c.target`, which we do not carry.
-  const word: StatusWordKind | undefined =
-    testing || verdict === undefined
-      ? undefined
+  const summary = testing
+    ? "testing…"
+    : verdict === undefined
+      ? "not tested yet"
+      : verdict.ok
+        ? "OK"
+        : notSetUp
+          ? "Not set up"
+          : "Needs attention";
+  const status: StatusTone = testing
+    ? "progress"
+    : verdict === undefined || notSetUp
+      ? "off"
       : verdict.ok
         ? "ok"
-        : verdict.notSetUp
-          ? "notSetUp"
-          : "attention";
-  const pending = testing ? "testing…" : "not tested yet";
+        : "error";
 
   return (
-    <Collapsible.Root
-      open={open}
+    <Disclosure
+      description={optional ? `optional · ${summary}` : summary}
+      expanded={open}
+      label={title}
       // ⚠ Controlled-only by design (the caller opens broken blocks and collapses healthy ones),
-      // so `onToggle` takes no argument and Base UI's `(open, details)` is dropped deliberately
-      // rather than widened into the public prop type.
-      onOpenChange={() => onToggle()}
-      render={<section className="border-border overflow-hidden rounded-lg border" />}
+      // so `onToggle` takes no argument.
+      onExpandedChange={() => onToggle()}
+      status={status}
     >
-      <Collapsible.Trigger className="group hover:bg-static-800 flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors">
-        <span className="text-sm font-medium">{title}</span>
-        {optional && <span className="text-static-400 text-xs">optional</span>}
-        {/* The resting status, so a COLLAPSED block still says where it stands: the shared
-            StatusWord vocabulary (dot + word), never a colour alone. The full hint lives in the
-            body — this is the one-line version. `ml-auto` right-aligns it as the mock does. */}
-        <span className="ml-auto min-w-0 truncate text-xs">
-          {word ? <StatusWord kind={word} /> : <span className="text-static-400">{pending}</span>}
-        </span>
-        <ChevronDown
-          className="text-muted-foreground size-4 shrink-0 transition-transform group-data-[panel-open]:rotate-180"
-          aria-hidden
-        />
-      </Collapsible.Trigger>
-
-      {/* The reveal: grid 0fr→1fr so the body slides open with no fixed height (styles.css).
-          ⚠ `.reveal` matches BOTH `[data-open="true"]` (a React boolean) and `[data-open=""]`
-          (Base UI's valueless attribute); this now emits the latter. */}
-      <Collapsible.Panel hiddenUntilFound className="reveal">
-        <div className="reveal-inner">
-          <div className="border-border flex flex-col gap-4 border-t px-4 py-4">
-            {children}
-            {(action || verdict) && (
-              <div className="flex flex-wrap items-center gap-3">
-                {action}
-                {verdict && (
-                  <p
-                    role="status"
-                    className={cn(
-                      "flex items-center gap-1.5 text-sm",
-                      verdict.ok ? "text-lock" : verdict.notSetUp ? "text-static-400" : "text-onair-300",
-                    )}
-                  >
-                    {failing && <X className="size-3.5 shrink-0" aria-hidden />}
-                    <span className="min-w-0">
-                      {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
-                    </span>
-                    {failing && docHref && (
-                      // Route into the Help center via parseDocHref — a raw href would
-                      // resolve relative to /settings and 404 (mirrors ChecklistItem).
-                      <Link
-                        to="/help"
-                        search={parseDocHref(docHref)}
-                        className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
-                      >
-                        Fix <ArrowUpRight className="size-3" aria-hidden />
-                      </Link>
-                    )}
-                  </p>
+      <div className="flex flex-col gap-4">
+        {children}
+        {(action || verdict) && (
+          <div className="flex flex-wrap items-center gap-3">
+            {action}
+            {verdict && (
+              <p
+                role="status"
+                className={cn(
+                  "flex items-center gap-1.5 text-sm",
+                  verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
                 )}
-              </div>
+              >
+                {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
+                <span className="min-w-0">
+                  {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
+                </span>
+                {failing && docHref && (
+                  // Route into the Help center via parseDocHref — a raw href would
+                  // resolve relative to /settings and 404 (mirrors ChecklistItem).
+                  <Link
+                    to="/help"
+                    search={parseDocHref(docHref)}
+                    className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
+                  >
+                    Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
+                  </Link>
+                )}
+              </p>
             )}
-            {/* Below the fields AND below the Test row — a statement about the service, read
-                after its settings rather than competing with them. */}
-            {footer}
           </div>
-        </div>
-      </Collapsible.Panel>
-    </Collapsible.Root>
+        )}
+        {/* Below the fields AND below the Test row — a statement about the service, read
+            after its settings rather than competing with them. */}
+        {footer}
+      </div>
+    </Disclosure>
   );
 };
 

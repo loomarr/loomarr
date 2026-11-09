@@ -4,7 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -36,9 +37,9 @@ type databaseService struct {
 	// string, so editing any connection field invalidates it — which is intended: a
 	// preflight result is about one target, not about the operator's good intentions.
 	preflighted string
-	backup      *api.DatabaseBackup
+	backup      *system.DatabaseBackup
 	phase       string // idle|migrating|verified|failed
-	tables      []api.DatabaseTable
+	tables      []system.DatabaseTable
 	parity      string // unknown|match|mismatch
 	lastErr     string
 	running     bool
@@ -69,15 +70,15 @@ func (d *databaseService) WithLastError(lastErr string) *databaseService {
 	return d
 }
 
-func (d *databaseService) Status(context.Context) (api.DatabaseStatus, error) {
+func (d *databaseService) Status(context.Context) (system.DatabaseStatus, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.statusLocked(), nil
 }
 
-func (d *databaseService) statusLocked() api.DatabaseStatus {
+func (d *databaseService) statusLocked() system.DatabaseStatus {
 	backend := string(store.DialectOf(d.src))
-	return api.DatabaseStatus{
+	return system.DatabaseStatus{
 		Backend: backend,
 		// Only SQLite installs are offered a migration: Postgres→SQLite is not a
 		// direction anyone migrates, and offering a disabled control would raise the
@@ -91,17 +92,17 @@ func (d *databaseService) statusLocked() api.DatabaseStatus {
 	}
 }
 
-func (d *databaseService) Preflight(ctx context.Context, dsn string) ([]api.DatabaseCheck, error) {
+func (d *databaseService) Preflight(ctx context.Context, dsn string) ([]system.DatabaseCheck, error) {
 	if !store.CanMigrateToPostgres(store.DialectOf(d.src)) {
-		return nil, api.ErrNotSQLite
+		return nil, system.ErrNotSQLite
 	}
 	checks, err := store.Preflight(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.DatabaseCheck, 0, len(checks))
+	out := make([]system.DatabaseCheck, 0, len(checks))
 	for _, c := range checks {
-		out = append(out, api.DatabaseCheck{Name: c.Name, Detail: c.Detail, OK: c.OK})
+		out = append(out, system.DatabaseCheck{Name: c.Name, Detail: c.Detail, OK: c.OK})
 	}
 
 	d.mu.Lock()
@@ -117,16 +118,16 @@ func (d *databaseService) Preflight(ctx context.Context, dsn string) ([]api.Data
 	return out, nil
 }
 
-func (d *databaseService) Backup(ctx context.Context) (api.DatabaseBackup, error) {
+func (d *databaseService) Backup(ctx context.Context) (system.DatabaseBackup, error) {
 	w := store.BackupWriter(d.src)
 	if w == nil {
-		return api.DatabaseBackup{}, api.ErrNotSQLite
+		return system.DatabaseBackup{}, system.ErrNotSQLite
 	}
 	bk, err := w.WriteBackup(ctx, d.backupD())
 	if err != nil {
-		return api.DatabaseBackup{}, err
+		return system.DatabaseBackup{}, err
 	}
-	out := api.DatabaseBackup{Path: bk.Path, Bytes: bk.Bytes, WrittenAt: bk.WrittenAt}
+	out := system.DatabaseBackup{Path: bk.Path, Bytes: bk.Bytes, WrittenAt: bk.WrittenAt}
 
 	d.mu.Lock()
 	d.backup = &out
@@ -140,22 +141,22 @@ func (d *databaseService) Migrate(_ context.Context, dsn string) error {
 	switch {
 	case !store.CanMigrateToPostgres(store.DialectOf(d.src)):
 		d.mu.Unlock()
-		return api.ErrNotSQLite
+		return system.ErrNotSQLite
 	case d.running:
 		d.mu.Unlock()
-		return api.ErrMigrationRunning
+		return system.ErrMigrationRunning
 	case config.PinnedByEnv("DATABASE_URL"):
 		d.mu.Unlock()
-		return api.ErrDatabaseURLPinned
+		return system.ErrDatabaseURLPinned
 	case d.preflighted != dsn:
 		d.mu.Unlock()
-		return api.ErrPreflightFailed
+		return system.ErrPreflightFailed
 	case d.backup == nil:
 		d.mu.Unlock()
-		return api.ErrNoBackup
+		return system.ErrNoBackup
 	case d.requestMigration == nil:
 		d.mu.Unlock()
-		return api.ErrMigrationUnavailable
+		return system.ErrMigrationUnavailable
 	}
 	d.running = true
 	d.phase = "migrating"
@@ -184,11 +185,11 @@ func (d *databaseService) Migrate(_ context.Context, dsn string) error {
 // emit announces admission-state changes. It does not claim copy progress: once the
 // request is accepted the generation drains, and the reconnecting status endpoint is
 // the source of truth for either the new PostgreSQL generation or a carried failure.
-func (d *databaseService) emit(st api.DatabaseStatus) {
+func (d *databaseService) emit(st system.DatabaseStatus) {
 	if d.bus == nil {
 		return
 	}
-	d.bus.Publish(events.Event{Type: "database", Payload: api.DatabaseEvent{
+	d.bus.Publish(events.Event{Type: "database", Payload: opsapi.DatabaseEvent{
 		Phase: st.Phase, Parity: st.Parity, Tables: st.Tables, Error: st.Error,
 	}})
 }

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 )
@@ -67,7 +67,7 @@ type ytDlpSourceListing struct {
 func (f *YouTubeSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]source.Suggestion, error) {
 	query = strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
 	if len(query) < 3 || len(query) > 120 {
-		return nil, fmt.Errorf("%w: YouTube channel search must be between 3 and 120 characters", filler.ErrInvalidSourceReference)
+		return nil, fmt.Errorf("%w: YouTube channel search must be between 3 and 120 characters", acquisition.ErrInvalidSourceReference)
 	}
 	if _, _, ok := youtubeSourceInput(query); ok {
 		resolved, err := f.Resolve(ctx, query)
@@ -99,11 +99,11 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 		"--playlist-end", strconv.Itoa(searchLimit), fmt.Sprintf("ytsearch%d:%s", searchLimit, query),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("%w: YouTube channel search %q: %w", filler.ErrSourceProvider, query, err)
+		return nil, fmt.Errorf("%w: YouTube channel search %q: %w", acquisition.ErrSourceProvider, query, err)
 	}
 	var listing ytDlpSourceListing
 	if err := json.Unmarshal(data, &listing); err != nil {
-		return nil, fmt.Errorf("%w: decode YouTube search results: %v", filler.ErrSourceProvider, err)
+		return nil, fmt.Errorf("%w: decode YouTube search results: %v", acquisition.ErrSourceProvider, err)
 	}
 	results := make([]source.Suggestion, 0, limit)
 	seen := make(map[string]struct{}, limit)
@@ -137,7 +137,7 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 		}
 	}
 	if len(listing.Entries) > 0 && len(results) == 0 {
-		return nil, fmt.Errorf("%w: YouTube search results carried no channel identity", filler.ErrSourceProvider)
+		return nil, fmt.Errorf("%w: YouTube search results carried no channel identity", acquisition.ErrSourceProvider)
 	}
 	return results, nil
 }
@@ -145,7 +145,7 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 func (f *YouTubeSourceFinder) Resolve(ctx context.Context, input string) (source.Suggestion, error) {
 	normalized, inputType, ok := youtubeSourceInput(input)
 	if !ok {
-		return source.Suggestion{}, fmt.Errorf("%w: enter a YouTube channel, playlist, or video URL", filler.ErrInvalidSourceReference)
+		return source.Suggestion{}, fmt.Errorf("%w: enter a YouTube channel, playlist, or video URL", acquisition.ErrInvalidSourceReference)
 	}
 	results, err := f.cached(ctx, "resolve:"+strings.ToLower(normalized), func() ([]source.Suggestion, error) {
 		resolved, resolveErr := f.resolveUncached(ctx, normalized, inputType)
@@ -166,11 +166,11 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 		"--playlist-end", strconv.Itoa(maxSourcePreviewItems), input,
 	)
 	if err != nil {
-		return source.Suggestion{}, fmt.Errorf("%w: check YouTube source: %w", filler.ErrSourceProvider, err)
+		return source.Suggestion{}, fmt.Errorf("%w: check YouTube source: %w", acquisition.ErrSourceProvider, err)
 	}
 	var metadata ytDlpSourceMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
-		return source.Suggestion{}, fmt.Errorf("%w: decode YouTube source: %v", filler.ErrSourceProvider, err)
+		return source.Suggestion{}, fmt.Errorf("%w: decode YouTube source: %v", acquisition.ErrSourceProvider, err)
 	}
 	if inputType == "channel" && metadata.ChannelID == "" && strings.HasPrefix(strings.TrimSpace(metadata.ID), "UC") {
 		metadata.ChannelID = strings.TrimSpace(metadata.ID)
@@ -182,7 +182,7 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 			id = strings.TrimSpace(metadata.ID)
 		}
 		if id == "" {
-			return source.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a playlist", filler.ErrInvalidSourceReference)
+			return source.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a playlist", acquisition.ErrInvalidSourceReference)
 		}
 		title := strings.TrimSpace(metadata.Title)
 		if title == "" {
@@ -198,7 +198,7 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 
 	id, canonicalURL := youtubeChannelIdentity(metadata)
 	if id == "" || canonicalURL == "" {
-		return source.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a channel", filler.ErrInvalidSourceReference)
+		return source.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a channel", acquisition.ErrInvalidSourceReference)
 	}
 	title := strings.TrimSpace(metadata.Channel)
 	if title == "" {

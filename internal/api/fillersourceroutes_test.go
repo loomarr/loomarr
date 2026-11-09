@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
@@ -81,7 +83,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	if !got[0].Enabled {
 		t.Error("persisted source is disabled")
 	}
-	if got[0].Geography != (filler.Geography{Country: "US"}) {
+	if got[0].Geography != (pod.Geography{Country: "US"}) {
 		t.Errorf("persisted geography = %+v", got[0].Geography)
 	}
 }
@@ -175,11 +177,10 @@ func TestAddFillerSource_RefusesANearMissYouTubeHost(t *testing.T) {
 	}
 }
 
-// Folders and libraries are ADDABLE (§10 V38c). ⚠ This replaces
-// TestAddFillerSource_RefusesTheConfigBackedKinds, which pinned the opposite rule: both kinds
-// were singletons materialised from configuration and 409'd here. V38c allows many of each, and
-// the maintainer's 2026-08-02 decision returned `library` to being scanned for real — so the
-// dialog offering three kinds must not be refused by two of them.
+// Folders and libraries are ADDABLE (§10 V38c). ⚠ Refusing them as config-backed singletons
+// would be the opposite rule: V38c allows many of each, and the maintainer's 2026-08-02 decision
+// returned `library` to being scanned for real — so the dialog offering three kinds must not be
+// refused by two of them.
 func TestAddFillerSource_AcceptsFoldersAndLibraries(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 
@@ -354,7 +355,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if every, ok := got.FetchEvery(time.Hour); !ok || every != 15*time.Minute {
 		t.Errorf("FetchEvery = %v/%v, want 15m and pollable", every, ok)
 	}
-	var projected api.FillerSourceDTO
+	var projected fillerapi.FillerSourceDTO
 	for _, row := range sourcesFrom(t, srv) {
 		if row.ID == "classic" {
 			projected = row
@@ -663,7 +664,7 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	overridden := records.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
-	overridden.Geography = filler.Geography{Country: "CA"}
+	overridden.Geography = pod.Geography{Country: "CA"}
 	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
 		t.Fatal(err)
 	}
@@ -709,10 +710,10 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 // pinnedFolderSettings refuses every write the way an environment-pinned key does.
 type pinnedFolderSettings struct{ *fakeSettings }
 
-func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []api.SettingResult {
-	out := make([]api.SettingResult, 0, len(edits))
+func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []setupapi.SettingResult {
+	out := make([]setupapi.SettingResult, 0, len(edits))
 	for key := range edits {
-		out = append(out, api.SettingResult{Key: key, Status: "pinned"})
+		out = append(out, setupapi.SettingResult{Key: key, Status: "pinned"})
 	}
 	return out
 }
@@ -729,7 +730,7 @@ func TestSetFillerSourceEnabled_RefusedFolderSwitchLeavesTheCoverageAlone(t *tes
 	if err := st.UpsertFillerSource(ctx, records.NewFillerSource("folder", "folder", "/data/filler", "Drop folder", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetFillerSourceGeography(ctx, "folder", filler.Geography{Country: "US"}); err != nil {
+	if err := st.SetFillerSourceGeography(ctx, "folder", pod.Geography{Country: "US"}); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{

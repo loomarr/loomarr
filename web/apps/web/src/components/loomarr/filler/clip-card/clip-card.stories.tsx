@@ -39,14 +39,18 @@ const framedClip = { ...thumbnailedClip, name: "Fizzwell Soda — summer jingle"
 // Ready is the default and wears no chip (#1908); a clip that isn't ready names its state.
 const Preparing: Story = { args: { clip: { ...framedClip, held: true }, onOpen: noop } };
 
-// The phone library's 2-up card, at its 172px column: frame, duration, name and the exception
-// chip only. The select target is the 24px label around the checkbox.
-const Compact: Story = {
-  args: { clip: framedClip, onOpen: noop, onToggleSelect: noop, compact: true },
+// A clip the server says still needs its details names that as its status, and its one action asks
+// for attention (#2765).
+const NeedsDetails: Story = { args: { clip: { ...framedClip, needsDetails: true }, onOpen: noop } };
+
+// The phone library's 2-up card, at its 172px column: the same card, its metadata line wrapping. The
+// select target is the 24px label around the checkbox.
+const Narrow: Story = {
+  args: { clip: framedClip, onOpen: noop, onToggleSelect: noop },
   decorators: [widthFrame(172)],
 };
-const CompactPreparing: Story = {
-  args: { clip: { ...framedClip, held: true }, onOpen: noop, compact: true },
+const NarrowPreparing: Story = {
+  args: { clip: { ...framedClip, held: true }, onOpen: noop },
   decorators: [widthFrame(172)],
 };
 
@@ -61,8 +65,9 @@ export default meta;
 export {
   AdminActions,
   AiSuggestedTags,
-  Compact,
-  CompactPreparing,
+  Narrow,
+  NarrowPreparing,
+  NeedsDetails,
   Preparing,
   SplitAction,
   SplitPending,

@@ -2,18 +2,22 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
+	"github.com/loomarr/loomarr/internal/filler/capability"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -43,8 +47,6 @@ import (
 // for runtime nils. A `buildX` FUNCTION takes only what it needs and RETURNS values, so nothing
 // widens and the compiler still catches use-before-assignment. §14.1 records the distinction.
 //
-// The measurement that makes this tractable: the 434-line filler section reads only
-// EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
 // offerCuratedSources offers this build's curated sources the install has not been offered, switched
@@ -78,25 +80,22 @@ func offerCuratedSources(ctx context.Context, st records.Store, log *slog.Logger
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
-func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog.Logger,
+func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
-	src := filler.DirSource{
+	src := cliplibrary.DirSource{
 		Layout: layout,
-		Probe:  filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
-		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
-		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
-		// points that setting at a custom build (the whole reason it exists — see the
-		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
-		// silently, and the setting appeared to do nothing here.
-		Artwork: filler.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
+		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		// ⚠ **Artwork must be given `playout.ffmpeg_path`**: its nil default shells out to whatever
+		// `ffmpeg` PATH resolves to, so an operator who points that setting at a custom build
+		// would get frames from a DIFFERENT binary than playout uses, silently.
+		Artwork: cliplibrary.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
 		Storage: governor,
 		// The quality gate's floor (§10 V40).
 		MinDuration: func() time.Duration { return settings.FillerMinDuration.Get(set) },
-		// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
-		// warning has never once been emitted. That count exists precisely because extraction is
-		// best-effort and failures are skipped — the shape that already produced one
-		// silently-empty catalog in this repo's history (see FFprobeNextTo). A generator that
-		// counts failures into a logger nobody wired is the same silence with extra steps.
+		// ⚠ **Log must be assigned**: the "some thumbnails could not be generated" warning exists
+		// because extraction is best-effort and failures are skipped (the shape that once produced
+		// a silently-empty catalog, see FFprobeNextTo). A generator that counts failures into a
+		// logger nobody wired is the same silence with extra steps.
 		Log: log.Warn,
 	}
 	// Keep the adapter present across the process lifetime, but resolve availability per
@@ -108,13 +107,13 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 		configured: func() bool { return settings.TunarrURL.Get(set) != "" },
 	}
 
-	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
+	syncer := filler.NewSyncer(src, storeadapter.NewSync(st), layout, time.Now, log).
 		WithEnabled(func() bool { return settings.FillerSourceFolderEnabled.Get(set) }).
 		WithAcquisitionManifests(st).
 		WithStorageGovernor(governor).
 		WithInferiorCopies(st)
 
-	libScanner := filler.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
+	libScanner := cliplibrary.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
 	cutover := &fillerLibraryCutover{st: st, roots: st, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
 	return syncer.WithScanSources(fillerScanSourceAdapter{st: st, cutover: cutover}, libScanner)
 }
@@ -130,10 +129,10 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 // then failed at the point of use with "ingest tooling not present in this image". Two claims
 // that cannot both be true, which is the exact shape that started V38b.
 //
-// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
-// described these as defaulting to the vendored binaries, and only the Docker image set them, so
+// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15
+// describes these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
+func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
 	ytPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
 	ffPath := resolveTool(settings.IngestFFmpegPath.Get(set), "ffmpeg")
 	if ffPath == "" {
@@ -149,8 +148,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 		downloaders[youtubeprovider.ID] = fetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return fetch.New(downloaders, layout.WatchDir(), log).
-		WithArtifactWriter(artifacts).
+	return fetch.New(downloaders, layout.WatchDir(), artifacts, log).
 		WithStorageGovernor(governor)
 }
 
@@ -163,7 +161,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -174,7 +172,7 @@ func buildSplitter(st records.Store, set resolved, layout filler.Layout, log *sl
 	tools := buildFillerMediaTools(set, recorder)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, wake), tools, splitProvider, dir,
 		func() time.Duration { return settings.FillerMinDuration.Get(set) }, newID, time.Now, log).
 		WithStorageGovernor(governor)
 	if imageService != nil {
@@ -199,7 +197,7 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 // to the next span without restarting, matching the rest of the filler settings contract.
 func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmpegTools {
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	mediaTools := tools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+	mediaTools := tools.NewFFmpegTools(ffmpegPath, cliplibrary.FFprobePathNextTo(ffmpegPath),
 		settings.IngestWhisperPath.Get(set), settings.IngestWhisperModel.Get(set), "")
 	hosted := &tools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
@@ -217,10 +215,10 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmp
 }
 
 // intakeLanguages is the language gate's wanted set, read live (#2030 decision 13): the union of
-// the channels' commercial languages (filler.IntakeLanguages). A detached channel no longer airs,
+// the channels' commercial languages (language.IntakeSet). A detached channel no longer airs,
 // so it no longer counts; a paused one resumes with its language, so it does.
 func intakeLanguages(st interface {
-	ListChannels(context.Context) ([]store.Channel, error)
+	ListChannels(context.Context) ([]channelstore.Channel, error)
 }, set resolved) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
 		channels, err := st.ListChannels(ctx)
@@ -238,39 +236,32 @@ func intakeLanguages(st interface {
 			}
 			own = append(own, lang)
 		}
-		return filler.IntakeLanguages(settings.FillerLanguage.Get(set), own), nil
+		return language.IntakeSet(settings.FillerLanguage.Get(set), own), nil
 	}
 }
 
 // buildPipeline constructs the ingest pipeline: one driver over ten rungs (§10 V51b/V61).
 //
-// ⚠ **This block was measured as an 11-input seam and skipped on that basis. The measurement
-// was wrong, and the way it was wrong is worth keeping.** The window had been drawn at the
-// `pipelineStages` slice, so `langDetect`, `fillerTools`, `fillerDrop`, `visionProvider` and
-// `clipDir` — all of them DEFINED in the preamble immediately above and referenced nowhere
-// else in the composition root — counted as inputs crossing the boundary. They are locals of this
-// unit, not couplings to the rest of the composition root. Widened to the whole unit, the
-// external inputs are the six parameters below, which is `buildSyncer`'s number.
-//
-// The lesson generalises past this function: a coupling count is a property of the BOUNDARY,
-// not of the code, and a boundary drawn mid-unit reports the unit's own locals as coupling.
-// Measure from the first line the unit owns, or the number means nothing.
+// The external inputs are the six parameters below: `langDetect`, `fillerTools`, `fillerDrop`,
+// `visionProvider` and `clipDir` are locals of this unit, not couplings to the rest of the
+// composition root. A coupling count is a property of the BOUNDARY, so measure from the first
+// line the unit owns.
 //
 // ⚠ Every rung is registered UNCONDITIONALLY, even when the thing it needs is absent — a stage
 // missing from the slice reports "not available on this install" on every clip's ladder, while
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck,
+	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
 	interactiveLLM *llm.InteractiveGate) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
 	encodeHost := func() encode.HostProfile {
-		return playoutRes.fileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
+		return playoutRes.FileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
 	}
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
@@ -281,12 +272,12 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	// HTTP client with a key. The wanted languages and the reject rule still hot-apply; changing
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
 	wantLanguages := intakeLanguages(st, set)
-	var langDetect filler.LanguageDetector
+	var langDetect language.Detector
 	if settings.ASRProvider.Get(set) == "hosted" {
 		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint
 		// should not need a second chat model that happens to accept audio just to answer the same
 		// question. The closures keep URL, model and credential changes live between clips.
-		langDetect = filler.NewHostedLanguage(
+		langDetect = language.NewHosted(
 			func() tools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
 			func() string { return settings.ASRModel.Get(set) },
 			settings.PlayoutFFmpegPath.Get(set), "")
@@ -295,7 +286,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		// `ggml-small.en.bin` — an ENGLISH-ONLY build that does not identify languages at all,
 		// so pointing this at it would answer "en" for every clip on earth and the gate would
 		// silently never reject anything.
-		langDetect = filler.NewWhisperLanguage(
+		langDetect = language.NewWhisper(
 			settings.IngestWhisperPath.Get(set), settings.FillerLanguageModel.Get(set),
 			settings.PlayoutFFmpegPath.Get(set), "")
 	}
@@ -311,12 +302,10 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	//
 	// The provider is wired even while the capability is off; the enabled closure still prevents
 	// calls. That lets a later opt-in wake Ready clips without a restart, while the endpoint itself
-	// remains resolved per call by `hotVisionProvider`, so changing the provider, URL, key or model
-	// applies to the next clip. This used to
-	// build the provider here, from `llm.url` and `llm.api_key`, behind an unlogged
-	// `&& settings.LLMURL.Get(set) != ""` — so an install with vision enabled and no reachable endpoint
-	// was indistinguishable from one with vision switched off.
-	h := &hotVisionProvider{set: set, log: log, metrics: recorder}
+	// remains resolved per call by `capability.HotVision`, so changing the provider, URL, key or model
+	// applies to the next clip. Gating construction on a configured URL would make an install with
+	// vision enabled and no reachable endpoint indistinguishable from one with vision switched off.
+	h := capability.NewHotVision(set, mainSelection(set), log, recorder)
 	// Background vision (the vision rung and split-time grounding) yields each model call to an
 	// interactive suggestion in flight, so Add a channel gets the AI server's slots first (#1508).
 	visionProvider := filler.YieldToInteractive(h, interactiveLLM, filler.DefaultInteractiveYield(), log)
@@ -324,33 +313,29 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
 		// fix the setting without restarting, which is the entire point of resolving per call —
 		// but it must not be silent, because this is the diagnosis for "grounding never runs".
-		if _, err := h.resolve(); err != nil {
+		if err := h.Check(); err != nil {
 			log.Warn("filler vision enabled but not currently reachable; grounding will no-op until this is fixed",
 				"err", err)
 		}
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
-	// One driver over ten rungs, replacing `filler-language`, `filler-split`,
-	// `filler-transcribe` and `filler-vision`.
+	// One driver over ten rungs.
 	//
-	// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
-	// A stage missing from this slice is reported as "not available on this install" on every
-	// clip's ladder, while one that is present says WHY it skipped in the operator's own terms
-	// ("vision tagging is off", "no language backend is configured"). Registering all of them
-	// and letting `Applies` answer is what makes the ladder explain an install rather than
-	// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
+	// Every rung is registered unconditionally (see buildPipeline): `Applies` answers WHY a rung
+	// skipped ("vision tagging is off", "no language backend is configured"), which is the same
+	// visible-but-idle contract the Tasks page rows use.
 	clipDir := layout.ClipDir()
 	screeningRuntime, screeningErr := buildQualificationSegmentScreeningRuntime(st, layout)
 	if screeningErr != nil {
 		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
 	}
-	transcribeStage := filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
+	transcribeStage := filler.NewTranscribeStage(fillerTools, storeadapter.NewTranscribe(st), clipDir, fillerDrop,
 		func() bool { return settings.FillerTranscribeEnabled.Get(set) }, time.Now)
-	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
+	visionStage := filler.NewVisionStage(fillerTools, visionProvider, storeadapter.NewVision(st), clipDir,
 		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		storeadapter.NewPipelineClips(st), cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		clipDir, tools.DefaultMezzanine(),
 		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
@@ -367,10 +352,10 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
 		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
 		WithEncodeHost(encodeHost).
-		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
+		WithAiringReplacement(storeadapter.NewPipelineClips(st), checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
-			filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), fillerPipelineClipAdapter{st}, clipDir,
+			cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), storeadapter.NewPipelineClips(st), clipDir,
 			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
 			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,
@@ -379,8 +364,8 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
 		screening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
-		defectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
-		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
+		defectfloor.NewDefectsStage(storeadapter.NewDefects(st)),
+		filler.NewLanguageStage(langDetect, storeadapter.NewLanguage(st), clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
 		filler.NewFinishStage(),
@@ -446,13 +431,13 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 				return rt
 			},
 		}
-		// Build once at boot so a bad file is reported at startup, as before.
+		// Build once at boot so a bad file is reported at startup.
 		structureRuntime.Current()
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
 		// invites someone to "fix" its order.
-		splitStage := filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st: st, wake: wake}).
+		splitStage := filler.NewSplitStage(splitter, storeadapter.NewSplit(st, wake)).
 			WithLogger(log).
 			WithAutoConfirm(*autoSplitPolicy, minClipDuration).
 			// The split-time grounder (§10 V54). Without it the auto-confirm gate has no data
@@ -465,7 +450,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 			WithSegmentVision(&filler.SegmentVision{
 				Tools:    fillerTools,
 				Provider: visionProvider,
-				Taxa:     fillerVisionStoreAdapter{st},
+				Taxa:     storeadapter.NewVision(st),
 				ClipDir:  clipDir,
 				Budget: func() int {
 					if !settings.FillerVisionEnabled.Get(set) {
@@ -480,7 +465,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		splitStage.WithStructureRuntime(structureRuntime.Current)
 		pipelineStages = append(pipelineStages, splitStage)
 	}
-	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
+	fillerPipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), pipelineStages,
 		filler.Budget{
 			MaxClips: func() int { return settings.FillerPipelineMaxClips.Get(set) },
 			// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
@@ -492,9 +477,9 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 			MaxSplits:     func() int { return settings.FillerPipelineMaxSplits.Get(set) },
 		},
 		emitter.FillerClipStage, time.Now, log).
-		WithRewind(fillerRewindAdapter{st}, clipDir).
+		WithRewind(storeadapter.NewRewind(st), clipDir).
 		// Idle passes move the airing library onto the current encode profile (#2121).
-		WithLibraryReencode(transcodeStage, fillerAiringClipsAdapter{st})
+		WithLibraryReencode(transcodeStage, storeadapter.NewAiringClips(st))
 	if headroom != nil {
 		// Media rungs yield to live playback instead of competing with it for CPU (#1512 G5).
 		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())
@@ -534,38 +519,34 @@ func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTra
 // back-patches (the resolver is built with the channel engine, the adapter needs the filler
 // catalog), and pulling them in here would mean handing a builder the two services it exists to
 // stay independent of.
-func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *filler.PodAdapter {
+func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *pod.Adapter {
 	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
-	// This was a value built here at boot, so every reader took a snapshot: writing
-	// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
-	// `filler.max_clip_duration` changed the stored setting, the API read the new value
-	// back, and the assembler went on using the old one until the process restarted.
+	// A value built here at boot would be a snapshot: writing `filler.pod_max`,
+	// `filler.min_quality`, `filler.min_clip_duration` or `filler.max_clip_duration` would
+	// change the stored setting and the value the API reads back, while the assembler went on
+	// using the old one until the process restarted. Unit tests build a `pod.Policy` literal
+	// and call the domain directly, so the setting→policy edge is the one segment they cannot
+	// reach; only a live check of a setting change catches a regression here.
 	//
-	// Caught on the live stack, not by a test: `filler.max_clip_duration=45s` left
-	// `PoolReport.Eligible` at 20 with a 64s clip in the catalog; it dropped to 19 only
-	// after a re-exec. Every unit test builds a `filler.Policy` literal and calls the domain
-	// functions directly, so the setting→policy edge is the one segment they cannot reach.
-	//
-	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
-	// resolves per call and says so. This is that contract, honoured by the pod path too.
+	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` resolves per
+	// call too. This is that contract, honoured by the pod path.
 	// The radius is read per call like the rest of the policy; the resolver memoises per radius.
 	// A closure, not the method value: the store is read only when a place is set.
 	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
-	local := &localStations{stations: &stationDirectory{list: list},
-		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
-	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
-		return filler.Policy{
+	local := &station.LocalResolver{Stations: station.NewLazy(list),
+		RadiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, Log: log}
+	podAdapter := pod.NewAdapter(storeadapter.NewCatalog(st), clipExposureAdapter{st}, func() pod.Policy {
+		return pod.Policy{
 			Geography:       set.homeGeography(),
 			Language:        settings.FillerLanguage.Get(set),
-			LocalStations:   local.resolve,
+			LocalStations:   local.Resolve,
 			PodMax:          settings.FillerPodMax.Get(set),
 			BreakDurationMs: settings.FillerBreakDuration.Get(set).Milliseconds(),
-			// V17c: 0 (the default) leaves selection exactly as it was before the floor
-			// existed — see the warning on Policy.MinQualityHeight.
+			// V17c: 0 (the default) means no quality floor — see the warning on
+			// Policy.MinQualityHeight.
 			MinQualityHeight: settings.FillerMinQuality.Get(set),
-			// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
-			// default to 0s = off, so `durationEligible` keeps returning true on an untouched
-			// install — the difference is that it CAN now return false, which is what lets
+			// V51f: the pod-eligibility duration bounds. Both default to 0s = off, so
+			// `durationEligible` returns true on an untouched install; setting one is what lets
 			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
 			MinClipMs: settings.FillerMinClipDuration.Get(set).Milliseconds(),
 			MaxClipMs: settings.FillerMaxClipDuration.Get(set).Milliseconds(),
@@ -576,155 +557,6 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 		}
 	}, log)
 	return podAdapter
-}
-
-// visionWiring is the resolved endpoint the frame-reader talks to (§10 V54a, §15).
-type visionWiring struct {
-	provider, identity, url, model, key string
-	// own reports that vision was pointed at its OWN service rather than inheriting the main
-	// LLM's. It is logged, because "which endpoint is vision actually using" was previously
-	// underivable from any output the process produced.
-	own bool
-}
-
-// visionEndpoint resolves where clip frames get read, and by what.
-//
-// ⚠ **`filler.vision.model` alone was a half-separation, and the missing half failed silently.**
-// The model knob let an operator name a vision model, but the provider was built from
-// `llm.provider`/`llm.url`/`llm.api_key` — so naming a LOCAL model while the main LLM was hosted
-// sent an Ollama tag to the hosted endpoint. Measured on the maintainer's stack: `llava:7b` →
-// `https://openrouter.ai/api/v1` → 401 on every segment. `ground` reports that as zero looks, the
-// gate refuses the reel with "a segment could not be classified", and nothing anywhere says why.
-// A model name is useless without the host that serves it.
-//
-// ⚠ **The key is NEVER inherited once a vision provider is named.** Declaring a separate service
-// means declaring its own credentials: inheriting would send the operator's hosted key to whatever
-// host they just named, `localhost` included. A local Ollama needs none, so the common case sends
-// nothing.
-func visionEndpoint(set resolved) visionWiring {
-	sel := resolveSelection(set)
-	wireProvider := sel.Provider
-	if wireProvider != "" && wireProvider != "ollama" {
-		// OpenRouter and Custom are Loomarr's provider identities; both speak the
-		// OpenAI-compatible wire used by the vision client.
-		wireProvider = "openai"
-	}
-	v := visionWiring{
-		provider: wireProvider,
-		identity: sel.Provider,
-		url:      sel.URL,
-		key:      sel.APIKey,
-		model:    settings.FillerVisionModel.Get(set),
-	}
-	// Empty ⇒ reuse the main model, for an install whose model already sees images. Same
-	// separation `filler.language_model` makes for the audio gate.
-	if v.model == "" {
-		v.model = sel.Model
-	}
-	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
-	// resolves to "" and means the same thing — inherit, not "no provider".
-	if p := settings.FillerVisionProvider.Get(set); p != "" && p != "inherit" {
-		v.provider, v.identity, v.url, v.key, v.own = p, p, settings.FillerVisionURL.Get(set), settings.FillerVisionAPIKey.Get(set), true
-		// A local Ollama on the conventional port is the case worth needing no second setting —
-		// the same default `ollamaBase` applies to probes and pulls.
-		if v.url == "" && p == "ollama" {
-			v.url = defaultOllamaBase
-		}
-	}
-	return v
-}
-
-// hotVisionProvider re-resolves `visionEndpoint` on every call, so an operator changing
-// `filler.vision.*` in Settings takes effect on the next clip rather than on the next restart
-// (config-design §8 hot-apply).
-//
-// ⚠ **The alternative was a provider captured at boot, which is what this replaces.** A settings
-// subsystem whose whole point is `env > database > default` resolved live, wired to a knob that
-// silently needs a restart, produces the worst kind of control: one that looks like it worked.
-// The operator saves "Ollama", the next reel still 401s against the hosted endpoint, and nothing
-// connects the two.
-//
-// ⚠ Memoised on the RESOLVED WIRING, not built per call. Rebuilding would discard the HTTP
-// connection pool on every segment — 60 of them in one pass at the default `max_split_vision`.
-type hotVisionProvider struct {
-	set     resolved
-	log     *slog.Logger
-	metrics *metrics.Recorder
-
-	mu   sync.Mutex
-	raw  visionWiring // the wiring as settings resolved it: what memoisation compares
-	last visionWiring // what was built, after reconcileModel
-	cur  llm.VisionProvider
-}
-
-func (h *hotVisionProvider) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (llm.Response, error) {
-	p, err := h.resolve()
-	if err != nil {
-		return llm.Response{}, err
-	}
-	return p.AskAboutImages(ctx, prompt, jpegs)
-}
-
-// resolve returns the provider for the CURRENT settings, rebuilding only when they have changed.
-//
-// ⚠ The errors are the point of this method existing separately. `ground` treats a provider
-// failure as "stop, try again next pass", and every one of these used to be an unlogged nil
-// provider instead — indistinguishable from vision being switched off.
-func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
-	v := visionEndpoint(h.set)
-	if v.url == "" {
-		return nil, fmt.Errorf("no vision endpoint configured: set filler.vision.url, or llm.url for the main provider")
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.cur != nil && h.raw == v {
-		return h.cur, nil
-	}
-	raw := v
-	v = h.reconcileModel(v)
-	var p llm.VisionProvider
-	switch v.provider {
-	case "openai":
-		p = llm.NewOpenAIForProvider(v.identity, v.url, v.model, v.key).WithMetrics(h.metrics)
-	case "ollama":
-		p = llm.NewOllama(v.url, v.model).WithMetrics(h.metrics)
-	default:
-		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
-	}
-	if h.log != nil && h.raw != raw {
-		// The line that answers "which endpoint is vision actually using" — underivable from any
-		// output this process produced before V54a.
-		h.log.Info("filler vision endpoint resolved",
-			"provider", v.identity, "wire_provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
-	}
-	h.raw, h.last, h.cur = raw, v, p
-	return p, nil
-}
-
-// reconcileModel answers a stale vision model honestly. With the provider inherited, filler.vision.model
-// names a model the MAIN endpoint must serve; a name left over from another provider (an OpenRouter
-// id against a llama.cpp server) was answered by whatever the server had loaded, so vision worked by
-// accident and attribution recorded a model that never ran. Where the endpoint lists its models and
-// does not list this one, say so once (the wiring is memoised) and use the main model. An endpoint
-// that cannot list models is trusted: no list proves nothing. OpenRouter is a catalog whose ids are
-// exactly these names, and a separately named vision service is the operator's declaration.
-func (h *hotVisionProvider) reconcileModel(v visionWiring) visionWiring {
-	main := resolveSelection(h.set)
-	if v.provider != "openai" || v.own || v.identity == "openrouter" || v.model == main.Model || main.Model == "" {
-		return v
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	served, err := llm.ServedModels(ctx, v.url, v.key)
-	if err != nil || len(served) == 0 || slices.Contains(served, v.model) {
-		return v
-	}
-	if h.log != nil {
-		h.log.Warn("filler.vision.model is not served by the inherited LLM endpoint; using the main model instead — clear filler.vision.model or set it to a served model",
-			"configured", v.model, "url", v.url, "using", main.Model, "served", served)
-	}
-	v.model = main.Model
-	return v
 }
 
 // playbackHeadroomFor is filler's PlaybackHeadroom: the ResourceBudget, the one admission ledger

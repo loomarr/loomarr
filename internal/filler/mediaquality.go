@@ -3,6 +3,9 @@ package filler
 import (
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -15,9 +18,9 @@ const (
 // near-total dead air is objective; a long span that may be an intentional creative choice is not.
 // Keeping this policy behind one interface lets offline calibration measure the production rule
 // without copying thresholds that could silently drift.
-func EvaluateMediaQuality(q MediaQuality) (Verdict, RejectReason, string) {
+func EvaluateMediaQuality(q tools.MediaQuality) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
 	if q.DurationMs <= 0 {
-		return VerdictContinue, "", ""
+		return pipelinestate.VerdictContinue, "", ""
 	}
 	blackMs, blackLongest := intervalFacts(q.Black)
 	silenceMs, silenceLongest := intervalFacts(q.Silence)
@@ -27,23 +30,23 @@ func EvaluateMediaQuality(q MediaQuality) (Verdict, RejectReason, string) {
 
 	switch {
 	case blackPct >= hardDeadAirPercent:
-		return VerdictReject, ReasonBlackContent,
+		return pipelinestate.VerdictReject, pipelinestate.ReasonBlackContent,
 			fmt.Sprintf("%d%% of the %.1fs clip is black", blackPct, float64(q.DurationMs)/1000)
 	case silencePct >= hardDeadAirPercent:
-		return VerdictReject, ReasonSilentContent,
+		return pipelinestate.VerdictReject, pipelinestate.ReasonSilentContent,
 			fmt.Sprintf("%d%% of the %.1fs audio is silent", silencePct, float64(q.DurationMs)/1000)
 	case blackLongest >= reviewBlackSilence.Milliseconds():
-		return VerdictReview, "", fmt.Sprintf("A %.1fs black span needs a look before this airs.", float64(blackLongest)/1000)
+		return pipelinestate.VerdictReview, "", fmt.Sprintf("A %.1fs black span needs a look before this airs.", float64(blackLongest)/1000)
 	case silenceLongest >= reviewBlackSilence.Milliseconds():
-		return VerdictReview, "", fmt.Sprintf("A %.1fs silent span needs a look before this airs.", float64(silenceLongest)/1000)
+		return pipelinestate.VerdictReview, "", fmt.Sprintf("A %.1fs silent span needs a look before this airs.", float64(silenceLongest)/1000)
 	case freezeLongest >= reviewFreeze.Milliseconds():
-		return VerdictReview, "", fmt.Sprintf("The picture is unchanged for %.1fs; this may be intentional.", float64(freezeLongest)/1000)
+		return pipelinestate.VerdictReview, "", fmt.Sprintf("The picture is unchanged for %.1fs; this may be intentional.", float64(freezeLongest)/1000)
 	default:
-		return VerdictContinue, "", ""
+		return pipelinestate.VerdictContinue, "", ""
 	}
 }
 
-func intervalFacts(spans []Interval) (totalMs, longestMs int64) {
+func intervalFacts(spans []tools.Interval) (totalMs, longestMs int64) {
 	for _, span := range spans {
 		if d := span.EndMs - span.StartMs; d > 0 {
 			totalMs += d

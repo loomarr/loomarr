@@ -2,7 +2,8 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import { DemoBanner } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 
 // The demo tour (#2268): on a demo site, a banner at the top of every page says so and offers the
 // next thing to try. Whether this is a demo site comes from the SERVER (GET /v1/setup/state, the
@@ -64,13 +65,23 @@ const useDemoTour = (): DemoTourState => {
   const { pathname } = useLocation();
   const [progress, setProgress] = useState(readProgress);
 
+  // The page that finishes the tour says so; moving on from it dismisses the banner (#2750), so a
+  // finished tour doesn't sit on every page until the visitor finds the X.
+  const finishedOn = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const step = enabled ? STEPS.find((candidate) => candidate.visited(pathname)) : undefined;
-    if (!step) return;
-    setProgress((current) =>
-      current.visited.includes(step.id) ? current : { ...current, visited: [...current.visited, step.id] },
-    );
-  }, [enabled, pathname]);
+    if (!enabled) return;
+    const step = STEPS.find((candidate) => candidate.visited(pathname));
+    if (step && !progress.visited.includes(step.id)) {
+      setProgress((current) => ({ ...current, visited: [...current.visited, step.id] }));
+      return;
+    }
+    if (progress.dismissed || !STEPS.every((candidate) => progress.visited.includes(candidate.id))) return;
+    if (finishedOn.current === undefined) {
+      finishedOn.current = pathname;
+      return;
+    }
+    if (finishedOn.current !== pathname) setProgress((current) => ({ ...current, dismissed: true }));
+  }, [enabled, pathname, progress]);
 
   useEffect(() => {
     if (enabled) writeProgress(progress);
@@ -98,11 +109,14 @@ type DemoTourProps = {
 };
 
 const DemoTour = ({ tour, channelId }: DemoTourProps) => {
+  // Below `md`, one line under 56px rather than three wrapped rows (#2750).
+  const phone = usePhoneWidth();
   if (!tour.show) return null;
   const index = STEPS.findIndex((step) => !tour.progress.visited.includes(step.id));
   const next = index === -1 ? undefined : STEPS[index];
   return (
     <DemoBanner
+      compact={phone}
       next={next ? { label: next.label, link: stepLink(next.id, channelId) } : undefined}
       onDismiss={tour.dismiss}
       step={index + 1}

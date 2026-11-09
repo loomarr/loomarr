@@ -9,7 +9,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, waitFor } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { SETTINGS_DESTINATIONS } from "@/settings/settings-destinations";
@@ -17,6 +17,7 @@ import type { SettingsBlock } from "@/settings/settings-page";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
+import { render } from "./render";
 
 // Issue #1524: a registry key with no row anywhere in the Settings UI is a silent regression — it
 // is reachable only through Advanced settings' raw table, which a person browsing their actual

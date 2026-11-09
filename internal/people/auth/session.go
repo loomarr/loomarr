@@ -126,9 +126,8 @@ func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (ident
 }
 
 // touchGranularity is how stale a recorded use may get before a request records a new one (#2446).
-// Every authenticated request used to write the session row (or would have, for a device), and a
-// page load fires dozens of requests: dozens of write transactions, each waiting for SQLite's one
-// write lock. "Last seen" reads "now" or "2h ago", and a sliding expiry measured in weeks loses
+// Writing the row on every authenticated request would cost dozens of write transactions per page
+// load, each waiting for SQLite's one write lock. "Last seen" reads "now" or "2h ago", and a sliding expiry measured in weeks loses
 // nothing by moving a minute late, so a minute is plenty — the same granularity the person-level
 // last_seen_at already uses.
 const touchGranularity = time.Minute

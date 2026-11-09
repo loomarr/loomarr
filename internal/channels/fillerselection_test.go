@@ -5,8 +5,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // The three states of a filler era (§10, V51f), and the reason the middle one had to exist.
@@ -22,35 +23,35 @@ func TestSelectionFrom_EraHasThreeStates(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		sel  *schedule.FillerSelection
-		want filler.EraRange
+		want pod.EraRange
 	}{
 		{
 			name: "no filler selection at all inherits the channel's era",
 			sel:  nil,
-			want: filler.EraRange{From: 1990, To: 1999},
+			want: pod.EraRange{From: 1990, To: 1999},
 		},
 		{
 			name: "an unset era inherits the channel's era",
 			sel:  &schedule.FillerSelection{Audience: "kids"},
-			want: filler.EraRange{From: 1990, To: 1999},
+			want: pod.EraRange{From: 1990, To: 1999},
 		},
 		{
 			// The state that did not exist before V51f.
 			name: "a present but empty range means ANY era, and does NOT re-inherit",
 			sel:  &schedule.FillerSelection{Era: &schedule.Range{}},
-			want: filler.EraRange{},
+			want: pod.EraRange{},
 		},
 		{
 			name: "a set range wins over the channel's era",
 			sel:  &schedule.FillerSelection{Era: &schedule.Range{From: 1975, To: 1985}},
-			want: filler.EraRange{From: 1975, To: 1985},
+			want: pod.EraRange{From: 1975, To: 1985},
 		},
 		{
 			// ⚠ Both bounds, which is the whole defect: `To` was rendered, typed, canonicalised
 			// and inverted-range-validated, then dropped on the floor by every consumer.
 			name: "an open-ended range keeps its one bound",
 			sel:  &schedule.FillerSelection{Era: &schedule.Range{From: 1980}},
-			want: filler.EraRange{From: 1980},
+			want: pod.EraRange{From: 1980},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,22 +80,22 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		filler       *schedule.FillerSelection
-		wantAudience filler.Audience
-		wantEra      filler.EraRange
+		wantAudience clips.Audience
+		wantEra      pod.EraRange
 	}{
-		{"no filler policy derives", nil, filler.Kids, filler.EraRange{From: 1994, To: 1998}},
-		{"an empty filler policy derives", &schedule.FillerSelection{}, filler.Kids, filler.EraRange{From: 1994, To: 1998}},
+		{"no filler policy derives", nil, clips.Kids, pod.EraRange{From: 1994, To: 1998}},
+		{"an empty filler policy derives", &schedule.FillerSelection{}, clips.Kids, pod.EraRange{From: 1994, To: 1998}},
 		{
 			"an explicit audience wins over derivation",
-			&schedule.FillerSelection{Audience: "general"}, filler.General, filler.EraRange{From: 1994, To: 1998},
+			&schedule.FillerSelection{Audience: "general"}, clips.General, pod.EraRange{From: 1994, To: 1998},
 		},
 		{
 			"an explicit any-era wins over derivation",
-			&schedule.FillerSelection{Era: &schedule.Range{}}, filler.Kids, filler.EraRange{},
+			&schedule.FillerSelection{Era: &schedule.Range{}}, clips.Kids, pod.EraRange{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := store.Channel{Lineup: kidsLineup}
+			ch := channelstore.Channel{Lineup: kidsLineup}
 			ch.Policy.Filler = tc.filler
 			got := channels.SelectionForChannel(ch)
 			if got.Audience != tc.wantAudience || got.Era != tc.wantEra {
@@ -105,9 +106,9 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 }
 
 func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
-	ch := store.Channel{Lineup: []schedule.LineupEntry{{Year: 2010}}}
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{Year: 2010}}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1989, To: 1999})
-	if got := channels.SelectionForChannel(ch).Era; got != (filler.EraRange{From: 1989, To: 1999}) {
+	if got := channels.SelectionForChannel(ch).Era; got != (pod.EraRange{From: 1989, To: 1999}) {
 		t.Errorf("era = %+v, want the scope era", got)
 	}
 }
@@ -116,15 +117,15 @@ func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
 // settings. Japanese audio does not make Japanese commercials, and nothing about the shows sets a
 // location, so an unset channel inherits the household's at assembly.
 func TestSelectionForChannel_LanguageAndLocationAreNeverInferred(t *testing.T) {
-	ch := store.Channel{Lineup: []schedule.LineupEntry{{OfficialRating: "TV-14", Year: 1999}}}
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{OfficialRating: "TV-14", Year: 1999}}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{AudioLanguage: "jpn"}
-	if got := channels.SelectionForChannel(ch); got.Language != "" || got.Geography != (filler.Geography{}) {
+	if got := channels.SelectionForChannel(ch); got.Language != "" || got.Geography != (pod.Geography{}) {
 		t.Errorf("inferred language=%q geography=%+v, want neither", got.Language, got.Geography)
 	}
 
 	ch.Policy.Filler = &schedule.FillerSelection{Language: "spa", Geography: &schedule.FillerGeography{Country: "gb"}}
 	got := channels.SelectionForChannel(ch)
-	if got.Language != "es" || got.Geography != (filler.Geography{Country: "GB"}) {
+	if got.Language != "es" || got.Geography != (pod.Geography{Country: "GB"}) {
 		t.Errorf("language=%q geography=%+v, want es and GB", got.Language, got.Geography)
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type collectionBody struct {
@@ -140,10 +141,15 @@ func TestCollections(t *testing.T) {
 	if resp := h.Do(http.MethodPost, "/v1/collections", adminToken, `{"name":"  ","titles":[]}`); resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("no name = %d, want 422", resp.StatusCode)
 	}
+	// A title the library has no row for refuses the whole write (#3179), rather than being left out.
+	if resp := h.Do(http.MethodPost, "/v1/collections", adminToken,
+		`{"name":"Rainy days","titles":["90000013","90000099","90000011"]}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown title = %d, want 422", resp.StatusCode)
+	}
 	made := decodeCollection(t, h.Do(http.MethodPost, "/v1/collections", adminToken,
-		`{"name":"Rainy days","titles":["90000013","90000099","90000011"]}`), http.StatusCreated)
+		`{"name":"Rainy days","titles":["90000013","90000011"]}`), http.StatusCreated)
 	if made.ID == "" || made.titleIDs() != "[90000013 90000011]" || len(made.UsedBy) != 0 {
-		t.Fatalf("made %+v, want Charlie then Alpha, the unknown id left out", made)
+		t.Fatalf("made %+v, want Charlie then Alpha", made)
 	}
 
 	edited := decodeCollection(t, h.Do(http.MethodPut, "/v1/collections/"+made.ID, adminToken,
@@ -152,7 +158,7 @@ func TestCollections(t *testing.T) {
 		t.Fatalf("edited %+v", edited)
 	}
 
-	if _, err := h.Store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := h.Store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch-4", Name: "Saturday Morning", Number: 4, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
 	}, Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{
 		{What: &schedule.ScopePolicy{Collections: []string{made.ID}}},

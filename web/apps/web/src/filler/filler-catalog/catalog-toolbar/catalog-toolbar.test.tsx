@@ -31,12 +31,10 @@ describe("CatalogToolbar", () => {
     const onFilterChange = vi.fn();
     render(<CatalogToolbar {...props} phone={false} audience="kids" onFilterChange={onFilterChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Kind" }));
-    await userEvent.click(await screen.findByRole("option", { name: "PSA" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Kind" }), "PSA");
     expect(onFilterChange).toHaveBeenLastCalledWith({ role: "psa" });
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Audience" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Any" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Audience" }), "Any");
     expect(onFilterChange).toHaveBeenLastCalledWith({ audience: undefined });
   });
 
@@ -44,10 +42,13 @@ describe("CatalogToolbar", () => {
     const onFilterChange = vi.fn();
     const { rerender } = render(<CatalogToolbar {...props} phone={false} onFilterChange={onFilterChange} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Untagged only" }));
+    const toggle = screen.getByRole("button", { name: "Untagged only" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(toggle);
     expect(onFilterChange).toHaveBeenLastCalledWith({ untagged: true });
 
     rerender(<CatalogToolbar {...props} phone={false} untagged onFilterChange={onFilterChange} />);
+    expect(screen.getByRole("button", { name: "Untagged only" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByRole("button", { name: "Untagged only" }));
     expect(onFilterChange).toHaveBeenLastCalledWith({ untagged: undefined });
   });

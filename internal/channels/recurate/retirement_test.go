@@ -7,8 +7,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -24,7 +26,7 @@ func lineupEntry(n int, title string) schedule.LineupEntry {
 // scheduled (ch.Desired) and the rest retirable.
 func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, airing []provision.Key) {
 	t.Helper()
-	ch := store.Channel{Lineup: lineup}
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.Name = "Full " + id
@@ -82,12 +84,12 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 
 	item := acqItem(300, "Much Better Fit", 0.95)
 	body := proposals.Proposal{Acquisitions: []proposals.ProposalItem{item}, Trace: proposals.DecisionTrace{
-		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
-			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: proposals.DispositionSelected, Reason: "selected"}},
 	}}
 	now := time.Now()
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -133,9 +135,9 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 	seedFullChannel(t, st, "ch-keep", "job-keep",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Family Favorite")},
 		[]provision.Key{"movie:tmdb:90000100"})
-	if err := st.AppendDiscoveryFeedback(context.Background(), store.DiscoveryFeedback{
-		ID: "keep-1", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "ch-keep",
-		Target: "movie:tmdb:90000200", Action: store.FeedbackKeep,
+	if err := st.AppendDiscoveryFeedback(context.Background(), channeldatastore.DiscoveryFeedback{
+		ID: "keep-1", ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-keep",
+		Target: "movie:tmdb:90000200", Action: channeldatastore.FeedbackKeep,
 	}); err != nil {
 		t.Fatal(err)
 	}
