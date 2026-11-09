@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -23,11 +24,15 @@ type fakeRefiner struct {
 	calls   []string
 	intents map[string]proposals.Intent
 	err     error
+	errFor  map[string]error // per-channel failures; err fails every channel
 }
 
 func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent proposals.Intent) (string, error) {
 	if f.err != nil {
 		return "", f.err
+	}
+	if err := f.errFor[channelID]; err != nil {
+		return "", err
 	}
 	f.calls = append(f.calls, channelID)
 	if f.intents == nil {
@@ -207,6 +212,46 @@ func TestRunner_NoEligibleChannelsIsNoop(t *testing.T) {
 	}
 	if len(fr.calls) != 0 {
 		t.Errorf("no channel should have been refined, got %v", fr.calls)
+	}
+}
+
+// A sweep where every eligible channel's refine fails is a failed run: the job must report the
+// per-channel errors, not a clean zero.
+func TestRunner_EveryChannelFailingIsAnError(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedJob(t, st, "job-a", "90s action")
+	seedJob(t, st, "job-b", "90s comedy")
+	seedChannelStatus(t, st, "c-a", "job-a", schedule.StatusLive, &schedule.AutoCurate{}, 1)
+	seedChannelStatus(t, st, "c-b", "job-b", schedule.StatusLive, &schedule.AutoCurate{}, 2)
+	errA, errB := errors.New("llm down for a"), errors.New("llm down for b")
+	fr := &fakeRefiner{errFor: map[string]error{"c-a": errA, "c-b": errB}}
+
+	kicked, err := recurate.NewRunner(st, fr, testkit.Logger()).Run(context.Background())
+	if kicked != 0 {
+		t.Errorf("kicked = %d, want 0", kicked)
+	}
+	if !errors.Is(err, errA) || !errors.Is(err, errB) {
+		t.Fatalf("Run err = %v, want both channels' errors joined", err)
+	}
+	if !strings.Contains(err.Error(), "c-a") || !strings.Contains(err.Error(), "c-b") {
+		t.Errorf("Run err = %q, want each error to name its channel", err)
+	}
+}
+
+// One bad channel does not fail the sweep: the others were kicked, and a retry would re-run them.
+func TestRunner_OneChannelFailingKeepsTheSweepClean(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedJob(t, st, "job-a", "90s action")
+	seedJob(t, st, "job-b", "90s comedy")
+	seedChannelStatus(t, st, "c-a", "job-a", schedule.StatusLive, &schedule.AutoCurate{}, 1)
+	seedChannelStatus(t, st, "c-b", "job-b", schedule.StatusLive, &schedule.AutoCurate{}, 2)
+	fr := &fakeRefiner{errFor: map[string]error{"c-a": errors.New("llm down for a")}}
+
+	kicked, err := recurate.NewRunner(st, fr, testkit.Logger()).Run(context.Background())
+	if err != nil || kicked != 1 {
+		t.Fatalf("kicked=%d err=%v, want 1,nil", kicked, err)
 	}
 }
 
