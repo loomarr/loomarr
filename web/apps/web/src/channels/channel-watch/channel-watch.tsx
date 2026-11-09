@@ -13,6 +13,7 @@ import {
   PlayerOptions,
   PlayerSheet,
   playbarFromTimeline,
+  rungFor,
   WatchingPanel,
   watermarkOf,
 } from "@loomarr/ui";
@@ -235,6 +236,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     playheadMs: viewerTimeMs,
   });
   const { info, startOverMs } = chromeData;
+  // The hold (a wait of 1.5 s or more): the programme's fanart, from the rung this screen will draw.
+  const holdArt = chromeData.band.backdrop;
+  const holdBackdrop =
+    tunePhase === "hold" && holdArt
+      ? rungFor(holdArt, window.innerWidth, window.devicePixelRatio)
+      : undefined;
 
   // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
   // hidden. A retune drops it until the new channel settles, then shows it afresh.
@@ -453,7 +460,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
+            <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }

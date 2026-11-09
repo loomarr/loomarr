@@ -107,6 +107,35 @@ describe("playbarFromTimeline", () => {
     expect(band.next).toEqual({ name: "Programme now", startMs: at(-5) });
   });
 
+  it("carries the title's logo and backdrop to the band, and a break's returning programme's", () => {
+    const image = (hash: string) => ({
+      animated: false,
+      dominantHex: "#333333",
+      hash,
+      height: 100,
+      placeholder: "",
+      role: "logo",
+      src: `/v1/images/${hash}`,
+      srcSetAvif: "",
+      srcSetWebp: "",
+      width: 600,
+    });
+    const art = { backdropImage: image("back"), logoImage: image("logo") };
+    const read = (airings: Airing[], playheadMs: number) =>
+      playbarFromTimeline({ airings, channel, live, nowMs: NOW, playheadMs }).band;
+
+    expect(read([programme("p", -9, 13, art)], NOW)).toMatchObject({
+      backdrop: { hash: "back" },
+      logo: { hash: "logo" },
+    });
+    expect(read([programme("p", -9, 13)], NOW)).not.toHaveProperty("logo");
+    const inBreak = read(
+      [breakAt("b", -2, [spot("station_id", "", 90)]), programme("back", 0, 22, art)],
+      at(-2) + 10_000,
+    );
+    expect(inBreak).toMatchObject({ inBreak: true, logo: { hash: "logo" } });
+  });
+
   it("marks live on the progress line only while the playhead is behind it", () => {
     const airings = [programme("p", -20, 20)];
     const read = (playheadMs: number, state: Parameters<typeof playbarFromTimeline>[0]["live"]) =>

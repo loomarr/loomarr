@@ -4,6 +4,7 @@ import { type LayoutChangeEvent, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
 import { gradientOr, webOnly } from "./flat";
+import { IdentBackdrop } from "./ident-backdrop";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
 import { PlayerReadout } from "./player-readout";
@@ -63,6 +64,9 @@ const ChromeBody = memo(
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
         <TuneDip tuneKey={band.channelNumber} />
+        {card && band.backdrop && frame.width > 0 ? (
+          <IdentBackdrop art={band.backdrop} frame={frame} />
+        ) : null}
         <View
           aria-hidden={!shown || undefined}
           pointerEvents="none"

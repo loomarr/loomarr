@@ -722,6 +722,47 @@ describe("ChannelWatch switch readout", () => {
     expect(wash()).toBeNull();
   });
 
+  it("holds on the programme's fanart, contained, once a wait runs past 1.5 s", async () => {
+    server.use(
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_000_000,
+        airings: [
+          {
+            backdropImage: {
+              animated: false,
+              dominantHex: "#333333",
+              hash: "fanart",
+              height: 720,
+              placeholder: "",
+              role: "backdrop",
+              src: "/v1/images/fanart",
+              srcSetAvif: "",
+              srcSetWebp: "/v1/images/fanart?w=780 780w, /v1/images/fanart?w=1280 1280w",
+              width: 1280,
+            },
+            kind: "program",
+            scheduleBlockId: "p",
+            startMs: 900_000,
+            stopMs: 2_000_000,
+            title: "A Programme",
+          },
+        ],
+      }),
+    );
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await tuningIn();
+    // The signature shows first; the fanart waits for the hold.
+    expect(document.querySelector("img[src*='fanart']")).toBeNull();
+    await waitFor(
+      () =>
+        expect(document.querySelector<HTMLImageElement>("img[src*='fanart']")?.style.objectFit).toBe(
+          "contain",
+        ),
+      { timeout: 3_000 },
+    );
+  });
+
   it("starts the dial set once when a switch begins, on the player's own element", async () => {
     await switchTo(next);
     expect(switchSound).toHaveBeenCalledTimes(1);
