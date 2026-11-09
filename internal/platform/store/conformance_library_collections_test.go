@@ -9,14 +9,27 @@ import (
 )
 
 // testLibraryCollections: a collection keeps its titles in the household's order, an edit replaces
-// them whole, and a deleted one is gone with its members.
+// them whole, one naming a title the library has no row for is refused whole, and a deleted one is
+// gone with its members.
 func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
+	var items []LibraryItem
+	for _, id := range []string{"a", "b", "c", "d"} {
+		items = append(items, LibraryItem{ID: id, Kind: "movie", Name: id})
+	}
+	if err := st.SaveLibraryItems(ctx, items, at); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "  "}, at); err == nil {
 		t.Fatal("a collection with no name was saved")
+	}
+	if _, err := st.CreateLibraryCollection(ctx, LibraryCollection{
+		Name: "Strays", Members: []string{"a", "gone"},
+	}, at); !errors.Is(err, ErrUnknownLibraryItem) {
+		t.Fatalf("a collection naming an unknown title: %v, want ErrUnknownLibraryItem", err)
 	}
 	night, err := st.CreateLibraryCollection(ctx, LibraryCollection{
 		Name: "Night Ferry Nights", Description: "Late shows", Members: []string{"c", "a", "c", "b"},
@@ -59,6 +72,16 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	if got.Name != "Nights" || got.Description != "" || !reflect.DeepEqual(got.Members, []string{"b", "d"}) ||
 		!got.UpdatedAt.Equal(later) {
 		t.Fatalf("after the edit %+v", got)
+	}
+	// A refused edit changes nothing, not even the titles listed before the unknown one.
+	if err := st.UpdateLibraryCollection(ctx, LibraryCollection{
+		ID: night, Name: "Renamed", Members: []string{"a", "gone"},
+	}, later.Add(time.Hour)); !errors.Is(err, ErrUnknownLibraryItem) {
+		t.Fatalf("an edit naming an unknown title: %v, want ErrUnknownLibraryItem", err)
+	}
+	if kept, err := st.LibraryCollection(ctx, night); err != nil || kept.Name != "Nights" ||
+		!reflect.DeepEqual(kept.Members, []string{"b", "d"}) {
+		t.Fatalf("after a refused edit %+v, %v", kept, err)
 	}
 	if err := st.UpdateLibraryCollection(ctx, LibraryCollection{ID: "gone", Name: "x"}, later); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("editing a missing collection: %v, want ErrNotFound", err)

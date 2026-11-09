@@ -176,6 +176,9 @@ func (s *Handlers) createCollection(ctx context.Context, in *struct{ Body collec
 		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
 	}
 	id, err := svc.CreateCollection(ctx, name, strings.TrimSpace(in.Body.Description), in.Body.Titles)
+	if errors.Is(err, store.ErrUnknownLibraryItem) {
+		return nil, unknownCollectionTitle()
+	}
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
 	}
@@ -198,10 +201,19 @@ func (s *Handlers) updateCollection(ctx context.Context, in *struct {
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, collectionNotFound()
 	}
+	if errors.Is(err, store.ErrUnknownLibraryItem) {
+		return nil, unknownCollectionTitle()
+	}
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
 	}
 	return s.collectionResponse(ctx, in.ID)
+}
+
+// unknownCollectionTitle refuses a collection naming a title the library has no record of.
+func unknownCollectionTitle() error {
+	return httpcore.Problem(http.StatusUnprocessableEntity, "A title isn't in your library",
+		"One of the titles is no longer in your library. Reload the page, then save again.")
 }
 
 func (s *Handlers) deleteCollection(ctx context.Context, in *collectionIDInput) (*struct{}, error) {
