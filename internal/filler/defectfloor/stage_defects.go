@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The DEFECTS stage (#2036): the defect floor, enforced at admission. It measures nothing itself.
@@ -38,7 +38,7 @@ func (s *DefectsStage) ID() pipelinestate.StageID { return pipelinestate.StageDe
 func (s *DefectsStage) Cost() filler.StageCost    { return filler.CostCheap }
 
 // Applies to every clip that may air as an ad of its own, the clips the floor judges.
-func (s *DefectsStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
+func (s *DefectsStage) Applies(_ context.Context, c clipstore.Clip) (bool, string) {
 	switch {
 	case c.IsComposite:
 		return false, "a recording of a whole break is judged through its segments"
@@ -51,7 +51,7 @@ func (s *DefectsStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool
 // Run admits a clip that passed, or that had too little picture to judge, and refuses one that
 // failed. Without a current verdict the clip waits its turn, spending no attempt. A held clip that
 // fails is refused here, by the pipeline; the floor retires only copies already on air.
-func (s *DefectsStage) Run(ctx context.Context, c cliplibrary.StoreClip) (filler.StageResult, error) {
+func (s *DefectsStage) Run(ctx context.Context, c clipstore.Clip) (filler.StageResult, error) {
 	rec, ok, err := s.verdicts.GetClipDefects(ctx, c.Hash)
 	if err != nil {
 		return filler.StageResult{}, err
