@@ -16,6 +16,7 @@ import {
   Disclosure,
   Field,
   Surface,
+  Text,
 } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -24,7 +25,6 @@ import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { Label } from "@/components/ui/label";
 import { eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
@@ -144,7 +144,9 @@ const DurationChoiceField = ({
 
   return (
     <div className="grid gap-2 sm:max-w-md">
-      <Label htmlFor={choice.id}>{choice.label}</Label>
+      <Text as="label" htmlFor={choice.id} textRole="label">
+        {choice.label}
+      </Text>
       <CompactSelect
         disabled={disabled}
         id={choice.id}
@@ -231,7 +233,9 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 
   return (
     <div className="grid gap-2 sm:max-w-md">
-      <Label htmlFor="channel-break-frequency">Break frequency</Label>
+      <Text as="label" htmlFor="channel-break-frequency" textRole="label">
+        Break frequency
+      </Text>
       <CompactSelect
         disabled={disabled}
         id="channel-break-frequency"
