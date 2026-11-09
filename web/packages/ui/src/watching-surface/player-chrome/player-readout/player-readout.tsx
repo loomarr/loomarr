@@ -11,9 +11,11 @@ interface PlayerReadoutProps {
   digits: string;
   /** No channel has this number. */
   missed?: boolean;
+  /** Distance from the frame's top: the chrome starts it below the top row and the watermark. */
+  top: number;
 }
 
-const PlayerReadout = ({ density, digits, missed = false }: PlayerReadoutProps) => (
+const PlayerReadout = ({ density, digits, missed = false, top }: PlayerReadoutProps) => (
   <View
     role="status"
     style={{
@@ -24,7 +26,8 @@ const PlayerReadout = ({ density, digits, missed = false }: PlayerReadoutProps) 
       paddingVertical: 16,
       position: "absolute",
       right: 48,
-      top: 112,
+      top,
+      zIndex: 40,
     }}
   >
     <Text density={density} strong textRole="display" tone="primary">

@@ -20,6 +20,11 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
+// interactiveOperationWriter persists the durable record of an interactive operation.
+type interactiveOperationWriter interface {
+	UpsertInteractiveOperation(context.Context, store.InteractiveOperation) error
+}
+
 // resolveSelection reads the active LLM selection from the settings (§8.1).
 func resolveSelection(set resolved) llm.Selection { return selection.Resolve(set, set.svc) }
 

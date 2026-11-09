@@ -1,6 +1,8 @@
 import type { Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
+import type { PlayerWatermark } from "./watermark-clearance";
+
 /** One spot in a break's pod: a commercial, a bumper, a station ID… (§9.3). */
 interface PlaybarSpot {
   id: string;
@@ -128,8 +130,15 @@ interface PlayerChromeProps {
   top: PlayerTopRowProps;
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
+  /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
+  readout?: { digits: string; missed?: boolean };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
   sheet?: ReactNode;
+  /**
+   * The channel's watermark, burned into the picture (§9.6): the chrome keeps out of its box. Omitted
+   * when the channel has none, so nothing moves.
+   */
+  watermark?: PlayerWatermark;
 }
 
 /** The keys (§9.3): the same on desktop and phone. */
