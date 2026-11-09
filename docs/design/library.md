@@ -292,7 +292,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
     keeps one webhook connection named "Loomarr" in each connected Sonarr and Radarr, posting
     the file events (download, upgrade, rename, file and series/movie delete) to
     `POST /v1/library/hooks/{app}` at `server.public_url`. The arr tests a connection before saving
-    it, so a saved one could reach Loomarr. Each event's folders map through that arr's path map.
+    it, so a saved one could reach Loomarr. A failed registration is tried again after a minute,
+    doubling up to the hour: at start, a proxy that routes only to a healthy container answers
+    the arr's test 404. The operators hear of it only when the retry fails too. Each event's
+    folders map through that arr's path map.
     The route is public: an arr holds no session, so the credential is a generated secret
     (`secret.arr_webhook`, never shown) sent as the basic-auth password. `GET /v1/library/status`
     lists each arr's state (registered, not connected, no address, failed) and its last event,
