@@ -14,6 +14,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/web"
@@ -54,7 +55,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		// original boot.
 		startedAt: time.Now(),
 		store:     opts.Store, auth: opts.Auth, log: log, metrics: recorder, backupSQLite: opts.BackupSQLite,
-		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, invitations: opts.Invitations, invitationDelivery: opts.InvitationDelivery, invitationRedemption: opts.InvitationRedemption, passwordRecovery: opts.PasswordRecovery, accessPublicURL: opts.AccessPublicURL, devices: opts.Devices, deviceLimiter: opts.DeviceLimiter, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
+		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
@@ -97,13 +98,15 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
-	srv.registerAuth(humaAPI)
-	srv.registerDeviceAuth(humaAPI)
-	srv.registerUsers(humaAPI)
-	srv.registerInvitations(humaAPI)
-	srv.registerInvitationRedemption(humaAPI)
-	srv.registerPasswordRecovery(humaAPI)
-	srv.registerPasswords(humaAPI)
+	people.New(people.Deps{
+		Store: opts.Store, Log: log, Metrics: recorder, Origin: srv.origin,
+		Login: opts.Login, Sessions: opts.Sessions, Passwords: opts.Passwords, UserSync: opts.UserSync,
+		Invitations: opts.Invitations, InvitationDelivery: opts.InvitationDelivery,
+		InvitationRedemption: opts.InvitationRedemption, PasswordRecovery: opts.PasswordRecovery,
+		AccessPublicURL: opts.AccessPublicURL, Devices: opts.Devices, DeviceLimiter: opts.DeviceLimiter,
+		DevLogin: opts.DevLogin, SSO: opts.SSO,
+		ConfigInt: srv.configInt, LibraryUnconfigured: srv.libraryUnconfigured,
+	}, false).Register(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
 	srv.registerGuide(humaAPI)
@@ -146,7 +149,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerNotificationDestinations(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
-	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider
 	srv.registerProvisioning(humaAPI)
 	srv.registerOps(humaAPI, opts.Pprof, opts.MetricsToken) // §17 probes/metrics/profiler + the API reference
 

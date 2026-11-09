@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
-func (s *Server) registerInvitationRedemption(api huma.API) {
+func (s *Handlers) registerInvitationRedemption(api huma.API) {
 	if s.invitationRedemption == nil && !s.schemaOnly {
 		return
 	}
@@ -45,7 +45,7 @@ type invitationPreviewOutput struct {
 	}
 }
 
-func (s *Server) previewInvitation(ctx context.Context, in *invitationBearerInput) (*invitationPreviewOutput, error) {
+func (s *Handlers) previewInvitation(ctx context.Context, in *invitationBearerInput) (*invitationPreviewOutput, error) {
 	value, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
 	if err != nil {
 		return nil, invitationRedemptionError(err)
@@ -72,7 +72,7 @@ type redeemInvitationInput struct {
 	}
 }
 
-func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput) (*meOutput, error) {
+func (s *Handlers) redeemInvitation(ctx context.Context, in *redeemInvitationInput) (*meOutput, error) {
 	preview, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
 	if err != nil {
 		return nil, invitationRedemptionError(err)

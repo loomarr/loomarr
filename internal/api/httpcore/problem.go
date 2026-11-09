@@ -9,6 +9,7 @@ package httpcore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -102,6 +103,14 @@ func GroundingNotConfigured(title, detail string) huma.StatusError {
 func Unprocessable(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusUnprocessableEntity, title, detail, doc...)
 }
+
+// PasswordTooShort is the one refusal every password-setting route returns for a password below
+// minLen characters. Each such route also declares minLength on its body field, so the spec carries
+// the bound to clients.
+func PasswordTooShort(minLen int) huma.StatusError {
+	return Unprocessable("Password too short", fmt.Sprintf("Use at least %d characters.", minLen))
+}
+
 func TooManyRequests(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusTooManyRequests, title, detail, doc...)
 }

@@ -1,4 +1,8 @@
-package api
+// Package people mounts the people routes of the HTTP API: sign-in and sessions, paired devices,
+// the user directory, invitations and their redemption, password change and recovery, and single
+// sign-on. A Handlers holds only what those routes need; internal/api builds one from its options
+// and registers it beside every other area.
+package people
 
 import (
 	"context"
@@ -15,7 +19,7 @@ import (
 
 // registerAuth mounts /v1/auth/* (§11). login and logout manage the session
 // cookie; me reports the current user. Absent if no LoginService is configured.
-func (s *Server) registerAuth(api huma.API) {
+func (s *Handlers) registerAuth(api huma.API) {
 	if s.login == nil && !s.schemaOnly {
 		return
 	}
@@ -84,7 +88,7 @@ type meOutput struct {
 	Body      meBody
 }
 
-func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
+func (s *Handlers) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	rateKey := s.origin.ClientIP(r) + "|" + in.Body.Username
 	token, expires, u, err := s.login.Login(ctx, in.Body.Username, in.Body.Password, rateKey)
@@ -118,7 +122,7 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 // It is NOT rate-limited, on purpose: rate limiting exists to slow credential
 // guessing, and there is no credential here to guess. The protection is that the
 // route does not exist unless an operator deliberately turned it on.
-func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, error) {
+func (s *Handlers) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	token, expires, u, err := s.login.DevLogin(ctx)
 	if err != nil {
@@ -146,7 +150,7 @@ type logoutOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
 }
 
-func (s *Server) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, error) {
+func (s *Handlers) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" && s.sessions != nil {
 		_ = s.sessions.Revoke(ctx, c.Value)
@@ -159,7 +163,7 @@ func (s *Server) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, 
 
 type meOnlyOutput struct{ Body meBody }
 
-func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, error) {
+func (s *Handlers) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, error) {
 	u, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Not signed in", "You need to sign in to view this.")
@@ -172,6 +176,6 @@ func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, erro
 
 // sessionCookie builds the session cookie: HttpOnly, SameSite=Strict, Secure per
 // COOKIE_SECURE (§11).
-func (s *Server) sessionCookie(r *http.Request, token string, expires time.Time) http.Cookie {
+func (s *Handlers) sessionCookie(r *http.Request, token string, expires time.Time) http.Cookie {
 	return s.origin.Cookie(r, auth.CookieName, token, "/", http.SameSiteStrictMode, expires)
 }

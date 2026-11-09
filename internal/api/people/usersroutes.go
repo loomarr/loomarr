@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 )
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
-func (s *Server) registerUsers(api huma.API) {
+func (s *Handlers) registerUsers(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-users", Method: http.MethodGet, Path: "/v1/users",
 		Summary: "List users (admin)", Tags: []string{"users"},
@@ -69,7 +69,7 @@ type syncOutput struct {
 	}
 }
 
-func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error) {
+func (s *Handlers) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error) {
 	if s.userSync == nil || s.libraryUnconfigured() {
 		return nil, httpcore.NotImplemented("Media server not connected",
 			"Connect a media server in Settings to sync imported users.")
@@ -134,7 +134,7 @@ func toUserBody(u identitystore.User, lastSeen time.Time) userBody {
 
 // userLastSeen is one read of everyone's last-seen. It only decorates the response, so a failure
 // leaves lastSeenAt out rather than failing the request.
-func (s *Server) userLastSeen(ctx context.Context) map[string]time.Time {
+func (s *Handlers) userLastSeen(ctx context.Context) map[string]time.Time {
 	seen, err := s.store.UserLastSeen(ctx)
 	if err != nil {
 		s.log.Warn("user last-seen unavailable", "err", err)
@@ -170,7 +170,7 @@ type listUsersOutput struct {
 	}
 }
 
-func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, error) {
+func (s *Handlers) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, error) {
 	users, err := s.store.ListUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ type putUserContactAddressInput struct {
 	}
 }
 
-func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAddressInput) (*struct{}, error) {
+func (s *Handlers) putUserContactAddress(ctx context.Context, in *putUserContactAddressInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
@@ -233,7 +233,7 @@ func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAd
 	return nil, nil
 }
 
-func (s *Server) deleteUserContactAddress(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
+func (s *Handlers) deleteUserContactAddress(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
@@ -245,7 +245,7 @@ func (s *Server) deleteUserContactAddress(ctx context.Context, in *userContactID
 	return nil, nil
 }
 
-func (s *Server) deleteUserContactReplacement(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
+func (s *Handlers) deleteUserContactReplacement(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
@@ -261,7 +261,7 @@ func (s *Server) deleteUserContactReplacement(ctx context.Context, in *userConta
 // leaves the count at zero rather than failing the whole list — the Users page must still
 // render so an admin can act, and a wrong-looking zero is visibly different from a page
 // that will not load.
-func (s *Server) withUsage(ctx context.Context, body userBody, u identitystore.User) userBody {
+func (s *Handlers) withUsage(ctx context.Context, body userBody, u identitystore.User) userBody {
 	limit := u.Quota
 	if limit <= 0 {
 		limit = s.configInt(settings.SuggestMaxAcquisitions)
@@ -286,7 +286,7 @@ type patchUserInput struct {
 }
 type patchUserOutput struct{ Body userBody }
 
-func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserOutput, error) {
+func (s *Handlers) patchUser(ctx context.Context, in *patchUserInput) (*patchUserOutput, error) {
 	u, err := s.store.GetUser(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("User not found", "That user doesn't exist — it may have been removed.")
@@ -346,7 +346,7 @@ type listUserSessionsOutput struct {
 	}
 }
 
-func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput) (*listUserSessionsOutput, error) {
+func (s *Handlers) listUserSessions(ctx context.Context, in *listUserSessionsInput) (*listUserSessionsOutput, error) {
 	if s.sessions == nil {
 		return nil, httpcore.ServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so live sessions can't be listed right now.")
 	}
@@ -393,7 +393,7 @@ type revokeSessionInput struct {
 	Hash string `path:"hash"`
 }
 
-func (s *Server) revokeSession(ctx context.Context, in *revokeSessionInput) (*struct{}, error) {
+func (s *Handlers) revokeSession(ctx context.Context, in *revokeSessionInput) (*struct{}, error) {
 	if s.sessions == nil {
 		return nil, httpcore.ServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so this session can't be revoked right now.")
 	}

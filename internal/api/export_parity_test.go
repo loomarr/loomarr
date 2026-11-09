@@ -48,9 +48,13 @@ func TestRegisterListsMatchBetweenRouterAndExporter(t *testing.T) {
 	}
 }
 
-// registrarCalls parses one file and returns, sorted, the name of every `srv.registerX(humaAPI,
-// …)` call in it: a call on srv whose method starts with "register" and whose first argument is
-// humaAPI, whatever else it takes (`srv.registerOps(humaAPI, opts.Pprof)` counts).
+// registrarCalls parses one file and returns, sorted, the name of every registrar call in it:
+//
+//   - `srv.registerX(humaAPI, …)`: a call on srv whose method starts with "register" and whose first
+//     argument is humaAPI, whatever else it takes (`srv.registerOps(humaAPI, opts.Pprof)` counts);
+//   - `area.New(…).Register(humaAPI)`: an area package's handlers, named "area.Register". Area
+//     packages (internal/api/people and its siblings) are mounted in exactly this shape, so a new
+//     area is covered by this guard without editing it.
 func registrarCalls(t *testing.T, path string) []string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -64,6 +68,18 @@ func registrarCalls(t *testing.T, path string) []string {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "Register" {
+			if area, isIdent := call.Args[0].(*ast.Ident); isIdent && area.Name == "humaAPI" {
+				if ctor, ok := sel.X.(*ast.CallExpr); ok {
+					if newSel, ok := ctor.Fun.(*ast.SelectorExpr); ok && newSel.Sel.Name == "New" {
+						if pkg, ok := newSel.X.(*ast.Ident); ok {
+							out = append(out, pkg.Name+".Register")
+						}
+					}
+				}
+			}
+			return true
+		}
 		if !ok || !strings.HasPrefix(sel.Sel.Name, "register") {
 			return true
 		}

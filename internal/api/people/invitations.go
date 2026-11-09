@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
-func (s *Server) registerInvitations(api huma.API) {
+func (s *Handlers) registerInvitations(api huma.API) {
 	if s.invitations == nil && !s.schemaOnly {
 		return
 	}
@@ -86,7 +86,7 @@ type createInvitationInput struct {
 }
 type createInvitationOutput struct{ Body invitationBody }
 
-func (s *Server) createInvitation(ctx context.Context, in *createInvitationInput) (*createInvitationOutput, error) {
+func (s *Handlers) createInvitation(ctx context.Context, in *createInvitationInput) (*createInvitationOutput, error) {
 	value, err := s.invitations.Create(ctx, access.CreateCommand{
 		Kind: access.Kind(in.Body.Kind), Username: in.Body.Username,
 		LibraryUserID: in.Body.LibraryUserID, ContactEmail: in.Body.ContactEmail,
@@ -108,7 +108,7 @@ type listInvitationsOutput struct {
 	}
 }
 
-func (s *Server) listInvitations(ctx context.Context, _ *struct{}) (*listInvitationsOutput, error) {
+func (s *Handlers) listInvitations(ctx context.Context, _ *struct{}) (*listInvitationsOutput, error) {
 	values, err := s.invitations.List(ctx)
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ type invitationIDInput struct {
 }
 type getInvitationOutput struct{ Body invitationBody }
 
-func (s *Server) getInvitation(ctx context.Context, in *invitationIDInput) (*getInvitationOutput, error) {
+func (s *Handlers) getInvitation(ctx context.Context, in *invitationIDInput) (*getInvitationOutput, error) {
 	value, err := s.invitations.Get(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Invitation not found", "That invitation doesn't exist or is no longer retained.")
@@ -158,7 +158,7 @@ type issueInvitationGrantOutput struct {
 	}
 }
 
-func (s *Server) issueInvitationGrant(ctx context.Context, in *issueInvitationGrantInput) (*issueInvitationGrantOutput, error) {
+func (s *Handlers) issueInvitationGrant(ctx context.Context, in *issueInvitationGrantInput) (*issueInvitationGrantOutput, error) {
 	base, err := recipientOrigin(s.accessPublicURL)
 	if err != nil {
 		return nil, httpcore.Unprocessable("Recipient address required",
@@ -183,7 +183,7 @@ type sendInvitationEmailInput struct {
 
 type sendInvitationEmailOutput struct{ Body invitationDeliveryBody }
 
-func (s *Server) sendInvitationEmail(
+func (s *Handlers) sendInvitationEmail(
 	ctx context.Context,
 	in *sendInvitationEmailInput,
 ) (*sendInvitationEmailOutput, error) {
@@ -197,14 +197,14 @@ func (s *Server) sendInvitationEmail(
 	return &sendInvitationEmailOutput{Body: invitationDeliveryResponse(summary)}, nil
 }
 
-func (s *Server) revokeInvitation(ctx context.Context, in *invitationIDInput) (*struct{}, error) {
+func (s *Handlers) revokeInvitation(ctx context.Context, in *invitationIDInput) (*struct{}, error) {
 	if err := s.invitations.Revoke(ctx, in.ID); err != nil {
 		return nil, invitationMutationError(err)
 	}
 	return &struct{}{}, nil
 }
 
-func (s *Server) invitationResponse(ctx context.Context, value access.Invitation) (invitationBody, error) {
+func (s *Handlers) invitationResponse(ctx context.Context, value access.Invitation) (invitationBody, error) {
 	body := invitationBody{
 		ID: value.ID, Kind: string(value.Kind), Username: value.Username,
 		LibraryUserID: value.LibraryUserID, DisplayName: value.DisplayName,
