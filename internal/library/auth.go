@@ -55,5 +55,5 @@ func mediaBrowserHeader(deviceID, token string) string {
 }
 
 // version is Loomarr's client version reported to the media server. Emby wants
-// a value here (Phase 0 used 1.0.0); kept a constant until wired to build info.
+// a value here; it is a fixed constant, not the release version in internal/platform/buildinfo.
 const version = "0.1.0"
