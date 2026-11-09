@@ -165,9 +165,6 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		if err := seedAttemptArchive(src.PublicationDir, archiveFile); err != nil {
 			return DownloadResult{}, err
 		}
-	} else if src.PublicationDir != "" {
-		// Direct downloader users retain their historic shared-archive contract.
-		archiveFile = filepath.Join(src.PublicationDir, ".yt-dlp-archive.txt")
 	}
 	resultFile, err := os.CreateTemp(absDropDir, ".loomarr-ytdlp-results-*")
 	if err != nil {

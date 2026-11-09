@@ -111,8 +111,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, layout.WatchDir(), nil).
-		WithArtifactWriter(st).
+	fetcher := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, layout.WatchDir(), st, nil).
 		WithStorageGovernor(governor)
 	adapter := fillerServiceAdapter{
 		fetcher: fetcher, acquisitions: st, sources: st, providers: testFillerProviders(),
