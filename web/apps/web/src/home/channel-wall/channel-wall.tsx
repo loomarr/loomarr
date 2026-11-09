@@ -3,7 +3,7 @@ import type { GuideChannelLayout } from "@loomarr/core/guide";
 import {
   formatGuideEpisode,
   formatGuideTimeRange,
-  guideAiringLabel,
+  formatProgrammeTitle,
   guideBreakProgramme,
   guideChannelState,
   guideWaitingForTitles,
@@ -15,7 +15,7 @@ import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import type { AiringArtworkProps, ChannelWallProps } from "./channel-wall.type";
+import type { AiringArtworkProps, ChannelViewer, ChannelWallProps } from "./channel-wall.type";
 
 // A legacy thumbnail URL that 404s must not leave a blank box (#2762): it falls to the generated art.
 const ThumbUrl = ({ url, channel }: { url: string; channel: AiringArtworkProps["channel"] }) => {
@@ -106,7 +106,7 @@ const wallEntry = (channel: GuideChannelLayout, nowMs: number, timezone?: string
     return {
       ...identity,
       airing: programme,
-      title: programme.series ?? guideAiringLabel(programme),
+      title: programme.series ?? formatProgrammeTitle(programme),
       detail: ["Ad break", episode, formatGuideTimeRange(programme.startMs, programme.stopMs, timezone)]
         .filter(Boolean)
         .join(" · "),
@@ -127,12 +127,24 @@ const wallEntry = (channel: GuideChannelLayout, nowMs: number, timezone?: string
   };
 };
 
+// The names on one tile, each person once, in the order they started watching.
+const watchersOn = (viewers: ChannelViewer[], channelId: string): string[] => [
+  ...new Set(viewers.filter((v) => v.channelId === channelId).map((v) => v.name)),
+];
+
+// "2 people watching" in the header: people, not devices.
+const watchingCount = (viewers: ChannelViewer[]): string => {
+  const people = new Set(viewers.map((v) => v.userId)).size;
+  if (people === 0) return "Nobody is watching right now";
+  return `${people} ${people === 1 ? "person" : "people"} watching`;
+};
+
 // ChannelWall — Home's first section (#2764, Direction mock "Channel wall"): every channel as a live
 // tile, like a TV multiview, the channel the viewer tuned last first and marked, the rest in channel
 // number order. No hero picture and no filled button: the tile is the control. A channel still
 // downloading its titles is a dimmer tile that says so instead of airing an ad as its "now". For an
 // admin, the "Needs you" counts sit as one quiet line between the header and the tiles (#2785).
-const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs }: ChannelWallProps) => {
+const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: ChannelWallProps) => {
   const phone = usePhoneWidth();
   const byNumber = [...layout.channels].sort((a, b) => a.source.number - b.source.number);
   const last = byNumber.find((c) => c.source.channelId === lastChannelId);
@@ -143,10 +155,11 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs }: ChannelWallPr
     filling > 0
       ? `${filling} of ${entries.length} channels are still filling up`
       : `${entries.length} ${entries.length === 1 ? "channel" : "channels"}`;
+  const headerMeta = viewers ? `${meta} · ${watchingCount(viewers)}` : meta;
 
   return (
     <section aria-labelledby="home-wall">
-      <SectionHeader id="home-wall" title="On now" meta={meta}>
+      <SectionHeader id="home-wall" title="On now" meta={headerMeta}>
         <Action accessibilityRole="link" render={<Link to="/guide" />} variant="ghost">
           Full guide
         </Action>
@@ -188,6 +201,7 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs }: ChannelWallPr
               render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
               title={entry.title}
               {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
+              {...(viewers ? { watchers: watchersOn(viewers, channel.source.channelId) } : {})}
               {...(entry.detail ? { detail: entry.detail } : {})}
               {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
             />

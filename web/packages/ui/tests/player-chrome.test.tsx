@@ -290,3 +290,11 @@ describe("PlayerCover", () => {
     expect(button(host, "Leave")).toBeDefined();
   });
 });
+
+describe("player chrome tokens", () => {
+  it("are flat: no glass, shadow, blur or glow token exists (#2769)", () => {
+    expect(Object.keys(playerChrome).filter((key) => /glass|shadow|blur|glow|highlight/i.test(key))).toEqual(
+      [],
+    );
+  });
+});

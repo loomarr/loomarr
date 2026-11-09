@@ -1,6 +1,7 @@
 import {
   getChannelGuideMockHandler,
   getGuideHighlightsMockHandler,
+  getHouseholdViewingMockHandler,
   getJobsListMockHandler,
 } from "@loomarr/api/msw";
 import { act, screen, waitFor, within } from "@testing-library/react";
@@ -185,5 +186,52 @@ describe("HomePage — Needs you (#2785)", () => {
 
     expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Needs you" })).not.toBeInTheDocument();
+  });
+});
+
+// Names on the wall's tiles are an admin's view only (#2785, privacy decision on #3010): a member is
+// not told who else is watching.
+describe("HomePage — who is watching on the wall (#2785)", () => {
+  const channel = { airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" };
+  const guide = getChannelGuideMockHandler({
+    channels: [{ ...channel, status: "live" }],
+    fromMs: 0,
+    toMs: 0,
+  });
+  const sam = { channelId: "c1", device: "TV", name: "Sam", since: "2026-11-09T10:00:00Z", userId: "u1" };
+
+  it("names the viewers on their tile for an admin", async () => {
+    stub({ me: ADMIN });
+    server.use(
+      guide,
+      getHouseholdViewingMockHandler({
+        channels: [{ channelId: "c1", viewers: 1 }],
+        scope: "household",
+        viewers: [{ ...sam, you: false }],
+        watching: 1,
+      }),
+    );
+    renderAt("/dashboard");
+
+    expect(await screen.findByText("Sam watching")).toBeInTheDocument();
+    expect(screen.getByText("1 channel · 1 person watching")).toBeInTheDocument();
+  });
+
+  it("gives a member no names and no count on the wall", async () => {
+    stub({ me: MEMBER });
+    server.use(
+      guide,
+      getHouseholdViewingMockHandler({
+        channels: [{ channelId: "c1", viewers: 1 }],
+        scope: "self",
+        viewers: [],
+        watching: 1,
+      }),
+    );
+    renderAt("/dashboard");
+
+    expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
+    expect(screen.getByText("1 channel")).toBeInTheDocument();
+    expect(screen.queryByText(/Sam/)).not.toBeInTheDocument();
   });
 });

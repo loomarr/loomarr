@@ -128,9 +128,9 @@ func (f *fakeImageService) PathFor(hash string, width int, format images.Format)
 	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
 }
 
-func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format) string {
+func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format, sourceWidth int) string {
 	out := ""
-	for i, w := range role.Widths() {
+	for i, w := range role.WidthsFor(sourceWidth) {
 		if i > 0 {
 			out += ", "
 		}

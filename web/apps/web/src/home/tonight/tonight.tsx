@@ -1,6 +1,6 @@
 import type { GuideHighlightDTO } from "@loomarr/api/models/guideHighlightDTO";
 import { GuideHighlightDTOReason } from "@loomarr/api/models/guideHighlightDTOReason";
-import { formatGuideTime } from "@loomarr/core/guide";
+import { formatGuideTime, formatProgrammeTitle } from "@loomarr/core/guide";
 import { Action, SectionHeader } from "@loomarr/design-system";
 import { HighlightRow, ListGroup } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
@@ -37,8 +37,7 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
             key={h.airing.scheduleBlockId}
             time={formatGuideTime(h.airing.startMs, timeZone)}
             channelNumber={String(h.channelNumber).padStart(2, "0")}
-            title={h.airing.series ?? h.airing.title}
-            detail={h.airing.series ? ` · ${h.airing.title}` : undefined}
+            title={formatProgrammeTitle(h.airing)}
             reason={highlightReason(h, timeZone)}
             render={<Link to="/watch/$id" params={{ id: h.channelId }} />}
           />

@@ -2,9 +2,9 @@ import {
   formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   type GuideAiringLayout,
   type GuideLayout,
-  guideAiringLabel,
   guideFillerNowLabel,
 } from "@loomarr/core/guide";
 
@@ -35,7 +35,7 @@ const fillerFacts = (entry: NonNullable<ReturnType<typeof activeFillerEntry>>) =
 
 const watchingAiringTitle = (airing: GuideAiringLayout, nowMs: number): string => {
   const entry = activeFillerEntry(airing, nowMs);
-  return entry ? guideFillerNowLabel(entry) : guideAiringLabel(airing.source);
+  return entry ? guideFillerNowLabel(entry) : formatProgrammeTitle(airing.source);
 };
 
 const progressPercentAt = (airing: GuideAiringLayout, nowMs: number): number | undefined => {
@@ -64,7 +64,7 @@ const surfChannelData = (
     next: next
       ? {
           timeLabel: formatGuideTime(next.source.startMs, timezone),
-          title: guideAiringLabel(next.source),
+          title: formatProgrammeTitle(next.source),
         }
       : undefined,
     now: now
