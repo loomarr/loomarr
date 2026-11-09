@@ -129,6 +129,9 @@ func (r *recordingSources) MarkFillerSourceFetched(context.Context, string, time
 	return nil
 }
 func (r *recordingSources) SetFillerSourceEnabled(context.Context, string, bool) error { return nil }
+func (r *recordingSources) ChangeFillerSource(context.Context, string, records.FillerSourceChange) error {
+	return nil
+}
 func (r *recordingSources) SetFillerSourceFetchPolicy(context.Context, string, *int, *int) error {
 	return nil
 }
