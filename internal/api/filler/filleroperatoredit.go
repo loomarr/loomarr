@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 
 // groundOperatorTags grounds an operator's tag set against the LIVE taxonomy. An unknown slug 422s
 // before the edit writes anything — never silently persisted, never silently dropped.
-func (s *Server) groundOperatorTags(ctx context.Context, raw []string) ([]string, *taxonomy.Forest, error) {
+func (s *Handlers) groundOperatorTags(ctx context.Context, raw []string) ([]string, *taxonomy.Forest, error) {
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -35,7 +35,7 @@ func (s *Server) groundOperatorTags(ctx context.Context, raw []string) ([]string
 // resolveOperatorGeography turns an operator's geography edit into the grounded value to store,
 // refusing it before the edit writes anything. Every station resolves against the directory
 // (#2059 decision 5): a local clip airs near it, and a national one keeps it as provenance.
-func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDTO) (enrichment.Geography, error) {
+func (s *Handlers) resolveOperatorGeography(ctx context.Context, g ClipGeographyDTO) (enrichment.Geography, error) {
 	scope := pod.GeographicScope(g.Scope)
 	geo := pod.Geography{Country: g.Country}.Normalize()
 	if err := geo.Validate(); err != nil {
@@ -83,7 +83,7 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 
 // operatorEvidence records one clip's operator edit as enrichment evidence, axis by axis.
 type operatorEvidence struct {
-	s         *Server
+	s         *Handlers
 	clipHash  string
 	reference string
 	at        time.Time

@@ -814,7 +814,7 @@ func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input
 	return finder.Resolve(ctx, input)
 }
 
-var _ api.FillerRewinder = fillerServiceAdapter{}
+var _ fillerapi.Rewinder = fillerServiceAdapter{}
 
 // fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
 // this adapter registers and fetches sources but cannot publish a Clip by itself.
@@ -1172,7 +1172,7 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res fetch.Resu
 // answer the caller should get as a 404, not as an SSE error frame seconds later.
 func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string, error) {
 	if a.splitter == nil {
-		return "", api.ErrSplitUnavailable
+		return "", fillerapi.ErrSplitUnavailable
 	}
 	if a.start == nil {
 		return "", errors.New("filler split lifecycle is not configured")
@@ -1265,7 +1265,7 @@ func (a fillerServiceAdapter) persistInteractiveOperation(ctx context.Context, o
 // (store.ErrNotFound) the API maps to 422/409/404.
 func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID string, segments []split.Segment) error {
 	if a.splitter == nil {
-		return api.ErrSplitUnavailable
+		return fillerapi.ErrSplitUnavailable
 	}
 	// Confirm owns the complete parent/child durable batch, including terminal parent pipeline
 	// completion. The adapter must not add a fallible write after the generation commits: reporting an
@@ -1479,7 +1479,7 @@ func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, s
 // because Archive needs no key or binary), so an operator on the default image can browse and
 // see what exists — they simply cannot fetch it. Refusing the search too would hide the reason
 // the fetch is unavailable behind a second, unrelated-looking wall.
-func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	res, err := fetch.NewArchiveDownloader().Search(ctx, query, limit)
 	if err != nil {
 		return nil, 0, err
@@ -1495,7 +1495,7 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 //
 // ⚠ This is the only production caller of fetch.ArchiveDownloader.DiscoverCollection: the
 // starter pack reaches archive.org through here, not through an acquisition path of its own.
-func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	discoverer := fetch.NewArchiveDownloader()
 	var (
 		res fetch.DiscoveryResult
@@ -1518,7 +1518,7 @@ func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query
 // ⚠ Only ids archive.org actually answered for appear in the map. An item it never probed is
 // OMITTED rather than returned as zero — 0 renders as "0:00", which claims a clip is empty,
 // and absence is what lets a client render "—" instead.
-func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
+func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string) (map[string]fillerapi.DiscoveredClipStats, error) {
 	items := make([]fetch.DiscoveredItem, len(ids))
 	for i, id := range ids {
 		items[i].ID = id
@@ -1532,23 +1532,23 @@ func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string
 // ⚠ Split out from EnrichDiscovered so the omit-vs-zero rule is TESTABLE: the caller builds its
 // own ArchiveDownloader (there is no seam to stub), so a test through the adapter would have to
 // reach archive.org.
-func discoveredStats(items []fetch.DiscoveredItem) map[string]api.DiscoveredClipStats {
-	out := make(map[string]api.DiscoveredClipStats, len(items))
+func discoveredStats(items []fetch.DiscoveredItem) map[string]fillerapi.DiscoveredClipStats {
+	out := make(map[string]fillerapi.DiscoveredClipStats, len(items))
 	for _, it := range items {
 		if it.DurationMS == 0 && it.Height == 0 {
 			continue // learned nothing — absent, never zeroed (see DiscoveredClipStats)
 		}
-		out[it.ID] = api.DiscoveredClipStats{DurationMS: it.DurationMS, Height: it.Height}
+		out[it.ID] = fillerapi.DiscoveredClipStats{DurationMS: it.DurationMS, Height: it.Height}
 	}
 	return out
 }
 
 // discoveredClips maps a fetch.DiscoveryResult to the DTO. Shared by both discovery modes so a
 // field added for one cannot silently go missing from the other.
-func discoveredClips(res fetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
-	out := make([]api.DiscoveredClip, 0, len(res.Items))
+func discoveredClips(res fetch.DiscoveryResult) ([]fillerapi.DiscoveredClip, int) {
+	out := make([]fillerapi.DiscoveredClip, 0, len(res.Items))
 	for _, it := range res.Items {
-		out = append(out, api.DiscoveredClip{
+		out = append(out, fillerapi.DiscoveredClip{
 			ID:         it.ID,
 			Title:      it.Title,
 			Year:       it.Year,

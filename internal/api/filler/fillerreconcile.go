@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 // reconcileChannelsForFillerChange is the latency path for §10 V56. The clip state is already
 // durable when this runs, so a reconcile failure must not turn a successful catalog decision into
 // an HTTP failure. The ordinary channel sweep remains the crash-safe retry.
-func (s *Server) reconcileChannelsForFillerChange(ctx context.Context, snapshots ...clips.Clip) {
+func (s *Handlers) reconcileChannelsForFillerChange(ctx context.Context, snapshots ...clips.Clip) {
 	if s.channels == nil || s.store == nil {
 		return
 	}

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -55,7 +55,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
-	var body api.FillerReadinessDTO
+	var body fillerapi.FillerReadinessDTO
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 	}
 	previewResponse := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
 	defer func() { _ = previewResponse.Body.Close() }()
-	var preview api.FillerStorageCleanupPreviewDTO
+	var preview fillerapi.FillerStorageCleanupPreviewDTO
 	if err := json.NewDecoder(previewResponse.Body).Decode(&preview); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 
 	cleanupResponse := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
 	defer func() { _ = cleanupResponse.Body.Close() }()
-	var result api.FillerStorageCleanupResultDTO
+	var result fillerapi.FillerStorageCleanupResultDTO
 	if err := json.NewDecoder(cleanupResponse.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("acquisition read = %d, want 200", res.StatusCode)
 	}
-	var body api.FillerAcquisitionRunDTO
+	var body fillerapi.FillerAcquisitionRunDTO
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}

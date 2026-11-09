@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -118,7 +117,7 @@ type incomingCursor struct {
 	ID        string `json:"id"`
 }
 
-func (s *Server) registerFillerIncoming(api huma.API) {
+func (s *Handlers) registerFillerIncoming(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
 		Summary:     "Filler clips being prepared, needing help, or recently ready",
@@ -127,7 +126,7 @@ func (s *Server) registerFillerIncoming(api huma.API) {
 	}, httpcore.RoleAdmin), s.fillerIncoming)
 }
 
-func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*fillerIncomingOutput, error) {
+func (s *Handlers) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*fillerIncomingOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -157,12 +156,12 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	return out, nil
 }
 
-func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
+func (s *Handlers) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingClipGroupDTO{}, err
 	}
-	filter := fillerapi.IncomingPreparingFilter()
+	filter := IncomingPreparingFilter()
 	filter.BeforeUpdatedAt, filter.BeforeClipHash, filter.Limit = beforeAt, beforeID, incomingPageLimit+1
 	if ready {
 		filter.Dispositions = []pipelinestate.Disposition{pipelinestate.DispositionReady}
@@ -206,7 +205,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyW
 	return group, nil
 }
 
-func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (IncomingHelpGroupDTO, error) {
+func (s *Handlers) incomingHelpGroup(ctx context.Context, cursorValue string) (IncomingHelpGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingHelpGroupDTO{}, err
@@ -290,7 +289,7 @@ func incomingPreparationDTO(row pipelinestate.ClipPipeline, at time.Time, estima
 
 const maximumPreparationEvidenceRows = 200
 
-func (s *Server) incomingPreparationEstimates(ctx context.Context, at time.Time) (map[string]filler.ReadyEstimate, error) {
+func (s *Handlers) incomingPreparationEstimates(ctx context.Context, at time.Time) (map[string]filler.ReadyEstimate, error) {
 	history, err := s.store.ListPreparationWork(ctx, pipelinestate.PipelineFilter{
 		Dispositions:     []pipelinestate.Disposition{pipelinestate.DispositionReady},
 		UpdatedAtOrAfter: at.Add(-filler.PreparationEvidenceWindow), Limit: maximumPreparationEvidenceRows,

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
@@ -32,7 +32,7 @@ func TestFillerExactClipSourceProvenance(t *testing.T) {
 	if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
-	read := func(query string) []api.ClipDTO {
+	read := func(query string) []fillerapi.ClipDTO {
 		t.Helper()
 		res := do(t, srv, http.MethodGet, "/v1/filler?includeComposites=true&"+query, memberToken, "")
 		defer func() { _ = res.Body.Close() }()
@@ -40,7 +40,7 @@ func TestFillerExactClipSourceProvenance(t *testing.T) {
 			t.Fatalf("status = %d", res.StatusCode)
 		}
 		var body struct {
-			Clips []api.ClipDTO `json:"clips"`
+			Clips []fillerapi.ClipDTO `json:"clips"`
 		}
 		if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 			t.Fatal(err)

@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"errors"
@@ -60,7 +60,7 @@ var mediaTypes = map[string]string{
 // Member-visible, matching `list-filler` and `thumb`: the catalog listing is already visible to
 // any authenticated user, and these are the same commercials the household's channels play at
 // them. NOT public — unlike the channel icon, nothing machine-to-machine needs this.
-func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	// A clip path is meaningful only relative to the layout that catalogued it. The applied root
 	// is immutable for this server generation; a newly saved desired root takes effect when the
 	// generation restarts, together with scan, intake, artwork and playout.
@@ -175,7 +175,7 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 // refuse them — a thumbnail is not a catalog row, and `.jpg` is not in `mediaTypes`.
 // clipFileOnDisk resolves a catalogue path to its media file in the applied drop-folder, and
 // reports false when there is no drop-folder or no file there.
-func (s *Server) clipFileOnDisk(rel string) (string, bool) {
+func (s *Handlers) clipFileOnDisk(rel string) (string, bool) {
 	dir := s.fillerLayout.ClipDir()
 	if dir == "" {
 		return "", false
