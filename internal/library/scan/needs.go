@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
@@ -61,18 +62,18 @@ func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	return len(needs) + problems.Total, err
 }
 
-// Link answers a title: it is the TMDB title tmdbID. Its files are written again with the link.
-func (l *Library) Link(ctx context.Context, itemID, tmdbID string) error {
-	tmdbID = strings.TrimSpace(tmdbID)
-	if tmdbID == "" {
-		return errors.New("a TMDB id is required")
+// Link answers a title: it is the catalog title id. Its files are written again with the link.
+func (l *Library) Link(ctx context.Context, itemID string, id store.LibraryID) error {
+	id.Namespace, id.Value = strings.TrimSpace(id.Namespace), strings.TrimSpace(id.Value)
+	if id.Namespace == "" || id.Value == "" {
+		return errors.New("a catalog and an id are required")
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID})
+	return l.answer(ctx, itemID, store.LibraryAnswer{ID: id})
 }
 
-// MatchBySearch answers a title for the Matcher: a search agreed it is the TMDB title tmdbID
+// MatchBySearch answers a title for the Matcher: a search agreed it is the catalog title id
 // (decisions 56 and 57). A title the maintainer answered meanwhile keeps their answer.
-func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) error {
+func (l *Library) MatchBySearch(ctx context.Context, itemID string, id mp.ExternalID) error {
 	_, origin, err := l.origin(ctx, itemID)
 	if err != nil {
 		return err
@@ -80,7 +81,7 @@ func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) erro
 	if _, answered, err := l.NeedStore.LibraryAnswerFor(ctx, origin); err != nil || answered {
 		return err
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID, By: store.AnsweredBySearch})
+	return l.answer(ctx, itemID, store.LibraryAnswer{ID: libraryID(id), By: store.AnsweredBySearch})
 }
 
 // Ignore answers a title: it is not one. It leaves the Library and Needs you.

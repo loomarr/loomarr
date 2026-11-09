@@ -67,7 +67,7 @@ const PickTitle = ({
         <Text textRole="body" tone="secondary">{`Nothing matches "${query}".`}</Text>
       ) : null}
       {list.map((c) => (
-        <Line flexWrap="nowrap" key={c.tmdbId}>
+        <Line flexWrap="nowrap" key={`${c.externalId.namespace}:${c.externalId.value}`}>
           <Stack flexShrink={0} width={28}>
             <LibraryPoster art={c.poster} name={c.poster ? c.name : ""} />
           </Stack>

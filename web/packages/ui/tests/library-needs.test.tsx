@@ -32,7 +32,7 @@ const doc = (
 ).document;
 
 const guess = (over: Partial<NonNullable<LibraryNeed["best"]>> = {}) => ({
-  tmdbId: "90000901",
+  externalId: { namespace: "tmdb", value: "90000901" },
   kind: "movie" as const,
   name: "Paper Kites",
   year: 1996,
@@ -143,7 +143,7 @@ describe("LibraryNeedsStrip", () => {
     const needs = [need("90000811")];
     const { host, show, button, cleanup } = mount(strip({ needs, onLink }));
     act(() => button("Yes, that's it").click());
-    expect(onLink).toHaveBeenCalledWith("90000811", "90000901");
+    expect(onLink).toHaveBeenCalledWith("90000811", { namespace: "tmdb", value: "90000901" });
     // The refetch no longer holds it; the answered row stays until it has been seen.
     show(strip({ onLink }));
     expect(host.textContent).toContain("Done — Paper Kites is sorted.");
@@ -251,14 +251,18 @@ describe("LibraryNeedsCards", () => {
 
   it("picks one of the other guesses", () => {
     const onLink = vi.fn(() => Promise.resolve());
-    const other = guess({ tmdbId: "90000902", year: 2014, lengthMatches: false });
+    const other = guess({
+      externalId: { namespace: "imdb", value: "tt90000902" },
+      year: 2014,
+      lengthMatches: false,
+    });
     const { host, button, cleanup } = mount(
       cards({ onLink, needs: [need("90000811", { others: [other] })] }),
     );
     act(() => button("Pick a different title").click());
     expect(host.textContent).toContain("Paper Kites (2014)");
     act(() => button("Use this one").click());
-    expect(onLink).toHaveBeenCalledWith("90000811", "90000902");
+    expect(onLink).toHaveBeenCalledWith("90000811", { namespace: "imdb", value: "tt90000902" });
     expect(host.textContent).toContain("Added to your library.");
     cleanup();
   });
