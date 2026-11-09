@@ -18,7 +18,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 	}{
 		{
 			name:    "catalog failure",
-			trace:   proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure},
+			trace:   proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure},
 			failure: &Failure{Code: FailureCodeNoGroundedTitles},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeFailed},
@@ -28,7 +28,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "alternate searches returned no candidates",
-			trace:   proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: ReasonRetrievalEmpty},
+			trace:   proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.ReasonRetrievalEmpty},
 			failure: &Failure{Code: FailureCodeNoGroundedTitles},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeEmpty},
@@ -38,7 +38,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "provider failed before retrieval",
-			trace:   proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalProviderFailure},
+			trace:   proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalProviderFailure},
 			failure: &Failure{Code: FailureProvider},
 			want: []quality.Observation{
 				{Stage: quality.StageGeneration, Outcome: quality.OutcomeFailed, Duration: time.Second},
@@ -46,7 +46,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "provider failed after retrieval",
-			trace:   proposals.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 4, Terminal: TerminalProviderFailure},
+			trace:   proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 4, Terminal: proposals.TerminalProviderFailure},
 			failure: &Failure{Code: FailureProvider},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeSucceeded, CandidateCount: 4},

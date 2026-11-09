@@ -483,7 +483,7 @@ func classifySuggestionQuality(
 		retrievalOutcome := quality.OutcomeEmpty
 		if trace.SurfacedTotal > 0 {
 			retrievalOutcome = quality.OutcomeSucceeded
-		} else if trace.Terminal == TerminalRetrievalFailure {
+		} else if trace.Terminal == proposals.TerminalRetrievalFailure {
 			retrievalOutcome = quality.OutcomeFailed
 		}
 		retrieval := observation(quality.StageRetrieval, retrievalOutcome)
@@ -502,9 +502,9 @@ func classifySuggestionQuality(
 		retrieval := observation(quality.StageRetrieval, quality.OutcomeSucceeded)
 		retrieval.CandidateCount = trace.SurfacedTotal
 		result = append(result, retrieval)
-	} else if trace.Terminal == ReasonRetrievalEmpty || trace.Terminal == TerminalRetrievalFailure {
+	} else if trace.Terminal == proposals.ReasonRetrievalEmpty || trace.Terminal == proposals.TerminalRetrievalFailure {
 		outcome := quality.OutcomeEmpty
-		if trace.Terminal == TerminalRetrievalFailure {
+		if trace.Terminal == proposals.TerminalRetrievalFailure {
 			outcome = quality.OutcomeFailed
 		}
 		result = append(result, observation(quality.StageRetrieval, outcome))
@@ -539,15 +539,15 @@ func normalizeContextFailure(cause error) error {
 	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
 		return cause
 	}
-	trace := proposals.DecisionTrace{Version: DecisionTraceVersion}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion}
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace.Clone()
 		if trace.Version == 0 {
-			trace.Version = DecisionTraceVersion
+			trace.Version = proposals.DecisionTraceVersion
 		}
 	}
-	trace.Terminal = TerminalGenerationFailure
+	trace.Terminal = proposals.TerminalGenerationFailure
 	return NewFailure(FailureCodeGenerationFailed, trace, cause)
 }
 

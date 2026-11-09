@@ -1249,7 +1249,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
 	approved := p.Body
-	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:90000100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
+	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:90000100" || approved.Trace.Candidates[0].Disposition != proposals.DispositionSelected {
 		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
 	}
 }

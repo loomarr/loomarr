@@ -751,10 +751,10 @@ func proposalQualityMatches(c Case, proposal proposals.Proposal, err error) bool
 
 func typedFailureTerminal(err error) string {
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || suggest.ValidateDecisionTrace(failure.Trace) != nil {
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || proposals.ValidateDecisionTrace(failure.Trace) != nil {
 		return ""
 	}
-	if failure.Trace.Terminal != suggest.TerminalConstraintsConflict && failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+	if failure.Trace.Terminal != proposals.TerminalConstraintsConflict && failure.Trace.Terminal != proposals.TerminalDateSemanticsUnclear {
 		return ""
 	}
 	return failure.Trace.Terminal

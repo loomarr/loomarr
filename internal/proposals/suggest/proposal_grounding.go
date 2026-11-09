@@ -46,19 +46,19 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		cand, rejection := resolvePick(intent, p, surfaced)
 		switch rejection {
 		case pickMalformed:
-			traceDecision(trace, proposals.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+			traceDecision(trace, proposals.DecisionCandidate{Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID})
 			otherRejection = true
 			continue // no usable id → not grounded, drop
 		case pickNotSurfaced:
-			traceDecision(trace, proposals.DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
+			traceDecision(trace, proposals.DecisionCandidate{Key: key, Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonNotSurfaced})
 			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		case pickIrrelevant:
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonNoRelevanceEvidence)
 			otherRejection = true
 			continue
 		case pickMembershipUnproven:
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonNoRelevanceEvidence)
 			membershipRejected = true
 			continue // identity is real, but it was not explicitly enumerated as a member
 		}
@@ -85,13 +85,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 		if cand.InLibrary {
 			prop.Lineup = append(prop.Lineup, item)
-			traceGroundedDecision(trace, cand, DispositionSelected, "selected")
+			traceGroundedDecision(trace, cand, proposals.DispositionSelected, "selected")
 			continue
 		}
 		// Acquisition: re-validate it exists on TMDB (§8) and respect the cap.
 		if acqCount >= maxAcq {
 			prop.Alternates = append(prop.Alternates, item) // over-cap picks become alternates
-			traceGroundedDecision(trace, cand, DispositionAlternate, ReasonAcquisitionCap)
+			traceGroundedDecision(trace, cand, proposals.DispositionAlternate, proposals.ReasonAcquisitionCap)
 			continue
 		}
 		exists, err := s.validator.Exists(ctx, cand.MediaType, cand.TMDBID)
@@ -99,7 +99,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			return proposals.Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
 		}
 		if !exists {
-			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonValidationDropped)
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonValidationDropped)
 			otherRejection = true
 			continue // fabricated/withdrawn id → drop
 		}
@@ -113,7 +113,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			}
 		}
 		prop.Acquisitions = append(prop.Acquisitions, item)
-		traceGroundedDecision(trace, cand, DispositionSelected, "selected")
+		traceGroundedDecision(trace, cand, proposals.DispositionSelected, "selected")
 		acqCount++
 	}
 
@@ -153,7 +153,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	)
 	for _, refused := range prop.Refused {
 		if key, err := refused.Item.Key(); err == nil {
-			traceDecision(trace, proposals.DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
+			traceDecision(trace, proposals.DecisionCandidate{Key: string(key), Disposition: proposals.DispositionRefused, Reason: refused.Reason})
 		}
 	}
 	StampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
@@ -224,9 +224,9 @@ func traceDecision(trace *proposals.DecisionTrace, update proposals.DecisionCand
 			return
 		}
 	}
-	if len(trace.Candidates) >= DecisionTraceMaxCandidates {
+	if len(trace.Candidates) >= proposals.DecisionTraceMaxCandidates {
 		trace.Truncated = true
-		trace.RecordedTotal = min(trace.RecordedTotal+1, DecisionTraceMaxTotal)
+		trace.RecordedTotal = min(trace.RecordedTotal+1, proposals.DecisionTraceMaxTotal)
 		return
 	}
 	trace.Candidates = append(trace.Candidates, update)

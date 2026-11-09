@@ -154,11 +154,11 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing.T) {
 	t.Parallel()
 
-	private := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
-		Terminal: suggest.TerminalProviderFailure,
+	private := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
+		Terminal: proposals.TerminalProviderFailure,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
-			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
-	if err := suggest.ValidateDecisionTrace(private); err != nil {
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: proposals.DispositionSelected, Reason: "selected"}}}
+	if err := proposals.ValidateDecisionTrace(private); err != nil {
 		t.Fatalf("private trace must be valid: %v", err)
 	}
 	failure := &workflow.Failure{Code: workflow.FailureGenerationFailed, Reason: workflow.FailureReasonProviderUnavailable,
@@ -203,7 +203,7 @@ func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing
 		trace, ok := projected.(map[string]any)
 		// No candidate leaves the server; `candidates` is a required array, so it arrives empty.
 		candidates, isList := trace["candidates"].([]any)
-		if !ok || trace["terminal"] != suggest.TerminalProviderFailure || trace["truncated"] != true || trace["surfacedTotal"] != float64(65) || trace["recordedTotal"] != float64(65) || !isList || len(candidates) != 0 || len(trace) != 6 {
+		if !ok || trace["terminal"] != proposals.TerminalProviderFailure || trace["truncated"] != true || trace["surfacedTotal"] != float64(65) || trace["recordedTotal"] != float64(65) || !isList || len(candidates) != 0 || len(trace) != 6 {
 			t.Fatalf("public trace = %#v", projected)
 		}
 	}

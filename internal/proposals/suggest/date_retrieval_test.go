@@ -128,7 +128,7 @@ func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
 			if len(corpus.Discoveries()) != 1 || len(corpus.Searches()) != 1 {
 				t.Fatalf("expected discovery followed by membership lookup, discoveries=%v searches=%v", corpus.Discoveries(), corpus.Searches())
 			}
-			if !valid || len(candidates) != 0 || trace.Terminal != TerminalRetrievalFailure || !strings.Contains(result, failure.Error()) {
+			if !valid || len(candidates) != 0 || trace.Terminal != proposals.TerminalRetrievalFailure || !strings.Contains(result, failure.Error()) {
 				t.Fatalf("failure lost: result=%s candidates=%v trace=%+v valid=%v", result, candidates, trace, valid)
 			}
 			if trace.WindowsCompleted != 1 || trace.SourceQueriesDispatched != 1 {

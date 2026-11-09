@@ -8,7 +8,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -82,9 +81,9 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 
 	item := acqItem(300, "Much Better Fit", 0.95)
 	body := proposals.Proposal{Acquisitions: []proposals.ProposalItem{item}, Trace: proposals.DecisionTrace{
-		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
-			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: proposals.DispositionSelected, Reason: "selected"}},
 	}}
 	now := time.Now()
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}

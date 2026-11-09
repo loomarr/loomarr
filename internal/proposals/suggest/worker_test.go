@@ -778,7 +778,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			if err := json.Unmarshal([]byte(job.FailureTraceJSON), &trace); err != nil {
 				t.Fatalf("context failure trace = %q: %v", job.FailureTraceJSON, err)
 			}
-			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure {
+			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure {
 				t.Fatalf("context failure was not normalized: code=%q trace=%+v", job.FailureCode, trace)
 			}
 		})
@@ -1075,7 +1075,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	if err := json.Unmarshal([]byte(j.FailureTraceJSON), &trace); err != nil {
 		t.Fatalf("timeout failure trace = %q: %v", j.FailureTraceJSON, err)
 	}
-	if trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure || len(trace.Candidates) == 0 {
+	if trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure || len(trace.Candidates) == 0 {
 		t.Fatalf("timeout failure trace did not preserve bounded candidate facts: %+v", trace)
 	}
 }
