@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"cmp"
@@ -22,11 +22,11 @@ const defectJudgeRole = "defect_judge"
 
 const nanoUSDPerCent = 10_000_000
 
-// defectJudgeEndpoint is the vision model the defect judge would ask now (#2034): the vision rung's,
+// DefectJudgeEndpoint is the vision model the defect judge would ask now (#2034): the vision rung's,
 // resolved on every call so a settings change applies to the next look. It names the model the
 // endpoint actually serves, and decides "free" from the endpoint rather than the provider's name.
 // Vision switched off, or configured with nothing it can reach, is no judge.
-func (h *hotVisionProvider) defectJudgeEndpoint() (defectfloor.DefectJudgeEndpoint, error) {
+func (h *HotVision) DefectJudgeEndpoint() (defectfloor.DefectJudgeEndpoint, error) {
 	if !settings.FillerVisionEnabled.Get(h.set) {
 		return defectfloor.DefectJudgeEndpoint{}, defectfloor.ErrNoDefectJudge
 	}
@@ -47,30 +47,42 @@ func (h *hotVisionProvider) defectJudgeEndpoint() (defectfloor.DefectJudgeEndpoi
 	return e, nil
 }
 
-// fillerDefectJudgeLedger meters the judge's looks in the filler inference ledger: each look is
+// InferenceLedger is the slice of the filler store the judge's ledger writes through.
+type InferenceLedger interface {
+	ReserveInferenceEvaluation(ctx context.Context, evaluation records.InferenceEvaluation, budget records.InferenceBudget) (records.InferenceEvaluation, error)
+	SettleInferenceEvaluation(ctx context.Context, id string, settlement records.InferenceSettlement) (records.InferenceEvaluation, error)
+}
+
+// JudgeLedger meters the judge's looks in the filler inference ledger: each look is
 // reserved at the per-look ceiling under the daily ceiling, then settled at what it cost.
-type fillerDefectJudgeLedger struct {
-	st  records.Store
-	set resolved
+type JudgeLedger struct {
+	st    InferenceLedger
+	set   settings.Reader
+	newID func() string
+}
+
+// NewJudgeLedger returns the defect judge's ledger over st. newID mints each evaluation's id.
+func NewJudgeLedger(st InferenceLedger, set settings.Reader, newID func() string) JudgeLedger {
+	return JudgeLedger{st: st, set: set, newID: newID}
 }
 
 // lookNanoUSD is what one look reserves: nothing on an operator-run endpoint, which also passes
 // every ceiling, and the per-look ceiling on a hosted one.
-func (l fillerDefectJudgeLedger) lookNanoUSD(e defectfloor.DefectJudgeEndpoint) int64 {
+func (l JudgeLedger) lookNanoUSD(e defectfloor.DefectJudgeEndpoint) int64 {
 	if e.SelfHosted {
 		return 0
 	}
 	return int64(max(settings.FillerDefectsJudgeLookCents.Get(l.set), 0)) * nanoUSDPerCent
 }
 
-func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHash string, e defectfloor.DefectJudgeEndpoint, at time.Time) (string, bool, error) {
+func (l JudgeLedger) ReserveDefectJudge(ctx context.Context, clipHash string, e defectfloor.DefectJudgeEndpoint, at time.Time) (string, bool, error) {
 	look := l.lookNanoUSD(e)
 	if look == 0 && !e.SelfHosted {
 		return "", true, nil // a hosted look with no allowance waits
 	}
 	daily := int64(max(settings.FillerDefectsJudgeDailyCents.Get(l.set), 0)) * nanoUSDPerCent
 	ev, err := l.st.ReserveInferenceEvaluation(ctx, records.InferenceEvaluation{
-		ID: newID(), ClipHash: clipHash, Role: defectJudgeRole, Rung: "defects",
+		ID: l.newID(), ClipHash: clipHash, Role: defectJudgeRole, Rung: "defects",
 		RequestedProvider: e.Provider, RequestedModel: e.Model, Modalities: []string{"image", "text"},
 		ReservedNanoUSD: look,
 		Versions: records.InferenceVersions{
@@ -93,7 +105,7 @@ func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHas
 // SettleDefectJudge records what the look cost. A reported charge is recorded as charged, even on a
 // failed call. A hosted call that reported none counts at its reservation, failed or not: a
 // provider may bill a call that timed out, and the daily ceiling must not understate spend.
-func (l fillerDefectJudgeLedger) SettleDefectJudge(ctx context.Context, id string, e defectfloor.DefectJudgeEndpoint, a llm.Attribution, failed bool, at time.Time) error {
+func (l JudgeLedger) SettleDefectJudge(ctx context.Context, id string, e defectfloor.DefectJudgeEndpoint, a llm.Attribution, failed bool, at time.Time) error {
 	s := records.InferenceSettlement{
 		ResolvedProvider: a.ResolvedProvider, ResolvedModel: a.ResolvedModel,
 		Tokens: records.InferenceTokens{Prompt: int64(a.Tokens.Prompt), Completion: int64(a.Tokens.Completion),

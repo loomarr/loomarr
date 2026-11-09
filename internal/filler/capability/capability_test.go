@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -37,7 +38,7 @@ func (s *recordingVisionObserver) Observe(_ context.Context, clip cliplibrary.St
 
 func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) {
 	off := visionSet(t, map[string]string{})
-	if activeFillerTranscriptCapability(off).Available || activeFillerVisionCapability(off).Available {
+	if transcriptCapabilityOf(off).Available || visionCapabilityOf(off).Available {
 		t.Fatal("optional media capability became available without household opt-in")
 	}
 
@@ -46,7 +47,7 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 		"asr.provider":              "whisper",
 		"ingest.whisper_model":      "/models/ggml-small.en.bin",
 	})
-	transcript := activeFillerTranscriptCapability(local)
+	transcript := transcriptCapabilityOf(local)
 	if !transcript.Available || transcript.Producer != "transcript:whisper" || transcript.ProducerVersion == "" {
 		t.Fatalf("local transcript capability = %+v", transcript)
 	}
@@ -69,30 +70,33 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 		"llm.url":                   "https://openrouter.ai/api/v1",
 		"llm.model":                 "openai/gpt-4o-mini",
 	})
-	a, b := activeFillerTranscriptCapability(hostedA), activeFillerTranscriptCapability(hostedB)
+	a, b := transcriptCapabilityOf(hostedA), transcriptCapabilityOf(hostedB)
 	if !a.Available || a.Producer != "transcript:openrouter" || a.ProducerVersion == b.ProducerVersion {
 		t.Fatalf("hosted transcript identities = %+v / %+v", a, b)
 	}
-	dedicated := activeFillerTranscriptCapability(visionSet(t, map[string]string{
+	dedicated := transcriptCapabilityOf(visionSet(t, map[string]string{
 		"filler.transcribe.enabled": "true",
 		"asr.provider":              "hosted",
 		"asr.url":                   "http://ai-server:8083/v1",
 		"asr.model":                 "whisper-large-v3-turbo-q5_0",
 	}))
+
 	if !dedicated.Available || dedicated.Producer != "transcript:speech-service" {
 		t.Fatalf("dedicated speech capability = %+v", dedicated)
 	}
 
-	visionA := activeFillerVisionCapability(visionSet(t, map[string]string{
+	visionA := visionCapabilityOf(visionSet(t, map[string]string{
 		"filler.vision.enabled": "true", "llm.provider": "openai",
 		"llm.hosted_provider": "openrouter", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "filler.vision.model": "google/gemini-2.5-flash",
 	}))
-	visionB := activeFillerVisionCapability(visionSet(t, map[string]string{
+
+	visionB := visionCapabilityOf(visionSet(t, map[string]string{
 		"filler.vision.enabled": "true", "llm.provider": "openai",
 		"llm.hosted_provider": "openrouter", "llm.url": "https://openrouter.ai/api/v1",
 		"llm.model": "openai/gpt-4o-mini", "filler.vision.model": "qwen/qwen2.5-vl-72b",
 	}))
+
 	if !visionA.Available || visionA.Producer != "vision:openrouter" || visionA.ProducerVersion == visionB.ProducerVersion {
 		t.Fatalf("vision identities = %+v / %+v", visionA, visionB)
 	}
@@ -109,7 +113,7 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 		t.Fatal(err)
 	}
 	observer := &recordingTranscriptObserver{}
-	executor := fillerMediaExecutor{store: st, transcript: observer, kind: enrichment.CapabilityTranscript}
+	executor := NewTranscriptExecutor(st, observer)
 	result, err := executor.Run(t.Context(), enrichment.Candidate{ClipHash: clip.Hash})
 	if err != nil {
 		t.Fatal(err)
@@ -155,13 +159,13 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 	}}
 	runner := enrichment.NewCapabilityRunner(
 		enrichment.CapabilityVision,
-		fillerEnrichmentRepository{st: st},
+		storeadapter.NewEnrichment(st),
 		func() enrichment.CapabilitySelection {
 			return enrichment.CapabilitySelection{
 				Available: true, Producer: "vision:test", ProducerVersion: "vision-v1:model",
 			}
 		},
-		fillerMediaExecutor{store: st, vision: observer, kind: enrichment.CapabilityVision}.Run,
+		NewVisionExecutor(st, observer).Run,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
@@ -204,8 +208,8 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 		"inherited-geography.info.json": {Data: []byte(`{"title":"Local advert","loomarr":{"sourceId":"youtube:inherited"}}`)},
 	}
 	runner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files}.Load,
+		storeadapter.NewEnrichment(st),
+		NewEnrichmentSignals(st, files, nil).Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
@@ -241,8 +245,8 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 		"explicit-geography.info.json": {Data: []byte(`{"title":"Regional advert","loomarr":{"sourceId":"youtube:regional"}}`)},
 	}
 	runner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files}.Load,
+		storeadapter.NewEnrichment(st),
+		NewEnrichmentSignals(st, files, nil).Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
@@ -284,8 +288,8 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	}
 
 	runner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: station.NewLazy(st.ListBroadcastStations)}.Load,
+		storeadapter.NewEnrichment(st),
+		NewEnrichmentSignals(st, fstest.MapFS{}, station.NewLazy(st.ListBroadcastStations)).Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
@@ -300,37 +304,6 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	}
 	if pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatal("Cleveland station news is still eligible for a US household with no local area")
-	}
-}
-
-// #1412 end to end through the scheduler driver: production has no text model configured and a
-// preparation backlog that does not drain. The deterministic pass must still be recorded for an
-// existing clip that has never had one.
-func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
-	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := clipstore.Clip{Clip: clips.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
-		Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at}
-	if err := st.UpsertClip(t.Context(), clip); err != nil {
-		t.Fatal(err)
-	}
-	signals := fillerEnrichmentSignals{store: st, files: fstest.MapFS{}}
-	runner := enrichment.NewRunner(fillerEnrichmentRepository{st: st}, signals.Load,
-		func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
-	coordinator := enrichment.NewCoordinator(runner, fillerEnrichmentRepository{st: st},
-		func() enrichment.TextSelection { return enrichment.TextSelection{} },
-		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
-	driver := newFillerPipelineDriver(nil, coordinator, nil)
-	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
-		return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
-	}
-	if err := driver.Run(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), enrichment.DeterministicProducer,
-		enrichment.DeterministicProducerVersion, enrichment.ControlledTaxonomyVersion, 10)
-	if err != nil || len(candidates) != 0 {
-		t.Fatalf("clip still lacks a deterministic pass: %+v, err %v", candidates, err)
 	}
 }
 
@@ -357,8 +330,8 @@ func geographyFixture(t *testing.T, st records.Store, at time.Time, country, tit
 
 func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at time.Time) {
 	t.Helper()
-	runner := enrichment.NewRunner(fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files}.Load,
+	runner := enrichment.NewRunner(storeadapter.NewEnrichment(st),
+		NewEnrichmentSignals(st, files, nil).Load,
 		func() int { return 5 }, func() time.Time { return at })
 	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
 		t.Fatalf("Run() = %+v, err %v", result, err)

@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"context"
@@ -14,19 +14,22 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
-type fillerResearchSettingsAdapter struct {
+// WebSettings reads the web-search settings live and answers the Settings page's status and test
+// requests for them.
+type WebSettings struct {
 	store  records.FillerResearchStore
-	set    resolved
+	set    settings.Reader
 	client *http.Client
 	now    func() time.Time
 }
 
-func newFillerResearchSettingsAdapter(st records.FillerResearchStore, set resolved, recorder *metrics.Recorder) *fillerResearchSettingsAdapter {
-	return &fillerResearchSettingsAdapter{store: st, set: set,
+// NewWebSettings returns the web-search settings adapter over st and the live settings.
+func NewWebSettings(st records.FillerResearchStore, set settings.Reader, recorder *metrics.Recorder) *WebSettings {
+	return &WebSettings{store: st, set: set,
 		client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, recorder), now: time.Now}
 }
 
-func (a *fillerResearchSettingsAdapter) currentConfig() research.WebConfig {
+func (a *WebSettings) currentConfig() research.WebConfig {
 	return research.WebConfig{
 		Provider:     research.WebProvider(settings.FillerResearchWebProvider.Get(a.set)),
 		BraveAPIKey:  settings.FillerResearchBraveAPIKey.Get(a.set),
@@ -35,7 +38,7 @@ func (a *fillerResearchSettingsAdapter) currentConfig() research.WebConfig {
 	}
 }
 
-func (a *fillerResearchSettingsAdapter) Status(ctx context.Context) (research.WebStatus, error) {
+func (a *WebSettings) Status(ctx context.Context) (research.WebStatus, error) {
 	config := a.currentConfig()
 	now := a.now().UTC()
 	usage, err := a.store.FillerResearchWebUsage(ctx, now.Format("2006-01"))
@@ -45,7 +48,7 @@ func (a *fillerResearchSettingsAdapter) Status(ctx context.Context) (research.We
 	return research.Status(settings.FillerResearchEnabled.Get(a.set), config, usage, now), nil
 }
 
-func (a *fillerResearchSettingsAdapter) Test(ctx context.Context, proposed research.WebConfig) (research.WebStatus, bool, string, error) {
+func (a *WebSettings) Test(ctx context.Context, proposed research.WebConfig) (research.WebStatus, bool, string, error) {
 	current := a.currentConfig()
 	if proposed.Provider == current.Provider {
 		if proposed.Provider == research.WebProviderBrave && strings.TrimSpace(proposed.BraveAPIKey) == "" {
@@ -81,7 +84,7 @@ func (a *fillerResearchSettingsAdapter) Test(ctx context.Context, proposed resea
 	}
 }
 
-func (a *fillerResearchSettingsAdapter) statusFor(ctx context.Context, config research.WebConfig) (research.WebStatus, error) {
+func (a *WebSettings) statusFor(ctx context.Context, config research.WebConfig) (research.WebStatus, error) {
 	now := a.now().UTC()
 	usage, err := a.store.FillerResearchWebUsage(ctx, now.Format("2006-01"))
 	if err != nil {

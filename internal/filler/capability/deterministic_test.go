@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"testing"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -31,7 +32,7 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 		"tootsie.info.json": {Data: []byte(`{"title":"Tootsie Pop Classic Commercial","description":"The classic Tootsie Pop commercial. There are 3 versions.","upload_date":"20240215","loomarr":{"originalName":"tootsie-pop.mp4","sourceId":"classic"}}`)},
 	}
 	runner := enrichment.NewRunner(
-		fillerEnrichmentRepository{st: st}, fillerEnrichmentSignals{store: st, files: files}.Load,
+		storeadapter.NewEnrichment(st), NewEnrichmentSignals(st, files, nil).Load,
 		func() int { return 10 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())

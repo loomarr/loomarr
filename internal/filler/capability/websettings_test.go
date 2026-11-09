@@ -1,4 +1,4 @@
-package app
+package capability
 
 import (
 	"net/http"
@@ -31,7 +31,7 @@ func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecre
 		"filler.research.searxng_url":   server.URL,
 		"filler.research.monthly_limit": "2",
 	})
-	adapter := newFillerResearchSettingsAdapter(st, set, nil)
+	adapter := NewWebSettings(st, set, nil)
 	adapter.client = server.Client()
 	adapter.now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 
