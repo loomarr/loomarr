@@ -1,4 +1,4 @@
-package episodeevidence
+package inventory
 
 import (
 	"bytes"

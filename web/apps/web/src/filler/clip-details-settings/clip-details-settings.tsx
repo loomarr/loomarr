@@ -13,10 +13,12 @@ import {
   DialogTitle,
   Field,
 } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
+import { useAppForm } from "@/lib/app-form";
 
 type Provider = "brave" | "searxng";
 
@@ -49,10 +51,12 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   const patchSettings = settingsApi.useSettingsPatch();
   const status = unwrap(statusQuery.data, (body) => body);
   const [open, setOpen] = useState(false);
-  const [provider, setProvider] = useState<Provider>("brave");
-  const [apiKey, setAPIKey] = useState("");
-  const [endpoint, setEndpoint] = useState("");
   const [message, setMessage] = useState<string>();
+  const form = useAppForm({
+    defaultValues: { provider: "brave" as Provider, apiKey: "", endpoint: "" },
+    onSubmit: ({ value }) => testAndSave(value),
+  });
+  const provider = useStore(form.store, (state) => state.values.provider);
 
   const monthly = entries.find((entry) => entry.key === SettingKey.FillerResearchMonthlyLimit);
   const structuredSources = structuredSourceKeys
@@ -72,14 +76,24 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
 
   const openSetup = () => {
     const next = configured ? currentProvider : "brave";
-    setProvider(next);
-    setAPIKey("");
-    setEndpoint(next === "searxng" ? liveValue(SettingKey.FillerResearchSearxngURL) : "");
+    form.reset({
+      provider: next,
+      apiKey: "",
+      endpoint: next === "searxng" ? liveValue(SettingKey.FillerResearchSearxngURL) : "",
+    });
     setMessage(undefined);
     setOpen(true);
   };
 
-  const testAndSave = async () => {
+  const testAndSave = async ({
+    provider,
+    apiKey,
+    endpoint,
+  }: {
+    provider: Provider;
+    apiKey: string;
+    endpoint: string;
+  }) => {
     setMessage(undefined);
     try {
       const tested = await testProvider.mutateAsync({
@@ -315,7 +329,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   name="web-search-provider"
                   value="brave"
                   checked={provider === "brave"}
-                  onChange={() => setProvider("brave")}
+                  onChange={() => form.setFieldValue("provider", "brave")}
                 />
                 <span>
                   <span className="block text-sm font-medium">Brave Search</span>
@@ -330,7 +344,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     name="web-search-provider"
                     value="searxng"
                     checked={provider === "searxng"}
-                    onChange={() => setProvider("searxng")}
+                    onChange={() => form.setFieldValue("provider", "searxng")}
                   />
                   <span>
                     <span className="block text-sm font-medium">SearXNG</span>
@@ -343,32 +357,40 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
             </fieldset>
 
             {provider === "brave" ? (
-              <Field
-                autoCapitalize="none"
-                autoComplete="off"
-                autoCorrect={false}
-                id="filler-research-brave-key"
-                label="Brave Search API key"
-                onChangeText={setAPIKey}
-                placeholder={
-                  configured && currentProvider === "brave"
-                    ? "Leave blank to keep the saved key"
-                    : "Paste API key"
-                }
-                secureTextEntry
-                value={apiKey}
-              />
+              <form.Field name="apiKey">
+                {(field) => (
+                  <Field
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    id="filler-research-brave-key"
+                    label="Brave Search API key"
+                    onChangeText={field.handleChange}
+                    placeholder={
+                      configured && currentProvider === "brave"
+                        ? "Leave blank to keep the saved key"
+                        : "Paste API key"
+                    }
+                    secureTextEntry
+                    value={field.state.value}
+                  />
+                )}
+              </form.Field>
             ) : (
-              <Field
-                autoCapitalize="none"
-                autoCorrect={false}
-                id="filler-research-searxng-url"
-                keyboardType="url"
-                label="SearXNG address"
-                onChangeText={setEndpoint}
-                placeholder="https://search.example.com"
-                value={endpoint}
-              />
+              <form.Field name="endpoint">
+                {(field) => (
+                  <Field
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    id="filler-research-searxng-url"
+                    keyboardType="url"
+                    label="SearXNG address"
+                    onChangeText={field.handleChange}
+                    placeholder="https://search.example.com"
+                    value={field.state.value}
+                  />
+                )}
+              </form.Field>
             )}
 
             {message ? (
@@ -380,7 +402,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               <Action disabled={busy} onPress={() => setOpen(false)} variant="ghost">
                 Cancel
               </Action>
-              <Action disabled={busy} onPress={() => void testAndSave()}>
+              <Action disabled={busy} onPress={() => void form.handleSubmit()}>
                 {busy ? "Checking…" : "Test and add"}
               </Action>
             </div>

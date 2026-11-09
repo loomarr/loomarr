@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // LibraryProjector says how an inventory item is listed in the Library (#2151 decision 43): its
@@ -97,7 +97,7 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), it.Origin.Authority, it.Origin.Key,
 		it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page, it.Set.String(), at.UnixMilli(),
 		it.OriginalTitle, it.Overview, it.PremiereDate, it.Rating, it.Score, it.RuntimeMs,
-		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, it.SeriesID,
+		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, libraryLink(it.SeriesID),
 		it.From.Name, it.From.Year, it.From.Overview, it.From.Premiere, it.From.Rating, it.From.Score,
 		it.From.Runtime, it.Tagline, it.Trailer, it.Unnumbered); err != nil {
 		return fmt.Errorf("save library item: %w", err)

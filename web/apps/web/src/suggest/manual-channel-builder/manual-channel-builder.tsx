@@ -10,8 +10,10 @@ import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { Action, Badge, Field } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
+import { useStore } from "@tanstack/react-form";
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
@@ -56,10 +58,24 @@ const ManualChannelBuilder = ({
   className,
 }: ManualChannelBuilderProps) => {
   const fromIdea = initialIdea !== undefined;
-  const [name, setName] = useState(initialIdea?.name ?? "");
-  const [description, setDescription] = useState(initialIdea?.pitch ?? "");
+  const submit = discoveryApi.useSubmitManualChannel();
+  // The name, the description a template or idea fills in, and the one lineup the picks build.
+  const form = useAppForm({
+    defaultValues: {
+      name: initialIdea?.name ?? "",
+      description: initialIdea?.pitch ?? "",
+      lineup: initialIdea?.titles ?? ([] as ProposalItem[]),
+    },
+    onSubmit: ({ value }) => {
+      if (value.lineup.length > 0 && value.name.trim() !== "") {
+        submitLineup(onSubmitted);
+      }
+    },
+  });
+  const { name, description, lineup } = useStore(form.store, (state) => state.values);
+  const setLineup = (next: ProposalItem[] | ((prev: ProposalItem[]) => ProposalItem[])) =>
+    form.setFieldValue("lineup", next);
   const [templateId, setTemplateId] = useState<string>();
-  const [lineup, setLineup] = useState<ProposalItem[]>(initialIdea?.titles ?? []);
   const [activeFacetId, setActiveFacetId] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -74,7 +90,6 @@ const ManualChannelBuilder = ({
   );
   const candidates = unwrap(search.data, (body) => body.candidates) ?? [];
 
-  const submit = discoveryApi.useSubmitManualChannel();
   // "Keep building manually" hides the banner for the rest of this builder session, and with it
   // the polling.
   const [keepManual, setKeepManual] = useState(false);
@@ -91,8 +106,8 @@ const ManualChannelBuilder = ({
       return;
     }
     setTemplateId(id);
-    setName(template.label);
-    setDescription(template.description);
+    form.setFieldValue("name", template.label);
+    form.setFieldValue("description", template.description);
   };
 
   const addItem = (item: ProposalItem) => {
@@ -113,10 +128,6 @@ const ManualChannelBuilder = ({
         },
       },
     );
-  const continueToReview = () => {
-    if (!canContinue) return;
-    submitLineup(onSubmitted);
-  };
   // The picks go through the same grounded submit as "Continue to review", so AI starts from
   // the recorded lineup rather than from a copy of it. AI is asked about the description the
   // person wrote; the name stands in when there is none. The typed name rides along so the
@@ -161,14 +172,18 @@ const ManualChannelBuilder = ({
         />
       )}
 
-      <Field
-        autoCapitalize="words"
-        id="manual-channel-name"
-        label="Channel name"
-        onChangeText={setName}
-        placeholder="Name this channel"
-        value={name}
-      />
+      <form.Field name="name">
+        {(field) => (
+          <Field
+            autoCapitalize="words"
+            id="manual-channel-name"
+            label="Channel name"
+            onChangeText={field.handleChange}
+            placeholder="Name this channel"
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
 
       {!fromIdea && (
         <div>
@@ -353,7 +368,7 @@ const ManualChannelBuilder = ({
           <Action onPress={onCancel} variant="ghost">
             Cancel
           </Action>
-          <Action disabled={!canContinue || submit.isPending} onPress={continueToReview}>
+          <Action disabled={!canContinue || submit.isPending} onPress={() => void form.handleSubmit()}>
             Continue to review
           </Action>
         </div>

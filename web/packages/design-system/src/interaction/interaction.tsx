@@ -71,8 +71,8 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    * by Action's `children`; its own event handlers, `style` and `className` are preserved and
    * merged with Action's. Ignored on native, where there is no comparable host-element swap.
    *
-   * Composing this way loses the `Pressable` press-scale micro-interaction (there is no gesture
-   * responder to drive it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
+   * Composing this way loses the `Pressable` press dim (there is no gesture responder to drive
+   * it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
    * un-boxed renderer — this is for a plain `variant` button standing in for a link, not a tile.
    */
   render?: ReactElement<Record<string, unknown>>;
@@ -445,10 +445,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         style={(state) => [
           {
             ...boxStyle,
+            // A press dims; nothing scales (#2789: hover, focus and press are colour and border).
             opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-            transform: [
-              { scale: tv ? (state.pressed ? 0.98 : 1) : focused ? 1.025 : state.pressed ? 0.98 : 1 },
-            ],
           },
           typeof style === "function" ? style(state) : style,
         ]}
@@ -552,6 +550,13 @@ const Field = ({
   const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
   const generatedId = useId();
   const inputId = id ?? generatedId;
+  // The line under the input, error before help, is the input's accessible description. Ids derive
+  // from the input's, so two fields never share one.
+  const messageId = `${inputId}-${error ? "error" : "description"}`;
+  const hasMessage = Boolean(error || description);
+  // A caller's own aria-describedby (outside RN's TextInput types) stays, ahead of the message's.
+  const callerDescribedBy = (props as { "aria-describedby"?: string })["aria-describedby"];
+  const describedBy = [callerDescribedBy, messageId].filter(Boolean).join(" ");
   const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
@@ -575,6 +580,7 @@ const Field = ({
       <View position="relative" width="100%">
         <TextInput
           {...props}
+          {...(hasMessage ? ({ "aria-describedby": describedBy } as object) : {})}
           accessibilityLabel={accessibilityLabel ?? label}
           accessibilityState={{ disabled }}
           aria-disabled={disabled || undefined}
@@ -630,11 +636,11 @@ const Field = ({
         ) : null}
       </View>
       {error ? (
-        <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
+        <Text aria-live="polite" density={density} id={messageId} textRole="metadata" tone="danger">
           {error}
         </Text>
       ) : description ? (
-        <Text density={density} textRole="metadata">
+        <Text density={density} id={messageId} textRole="metadata">
           {description}
         </Text>
       ) : null}

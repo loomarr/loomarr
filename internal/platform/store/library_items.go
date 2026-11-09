@@ -423,8 +423,8 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 
 func (s *sqlStore) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
-		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
-		WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
+		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
+		FROM library_files WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
 		ORDER BY path`), id, id)
 	if err != nil {
 		return nil, fmt.Errorf("list library item files: %w", err)

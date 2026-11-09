@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -602,17 +601,17 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 // CollectionForMovie returns TMDB's authoritative belongs_to_collection reference
 // for one movie. A zero reference with no error means TMDB resolved the movie as
 // standalone; an error means membership is unknown.
-func (c *Client) CollectionForMovie(ctx context.Context, tmdbID int) (moviecollections.CollectionRef, error) {
+func (c *Client) CollectionForMovie(ctx context.Context, tmdbID int) (CollectionRef, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
-		return moviecollections.CollectionRef{}, err
+		return CollectionRef{}, err
 	}
 	return c.collectionForMovie(ctx, tmdbID)
 }
 
-func (c *Client) collectionForMovie(ctx context.Context, tmdbID int) (moviecollections.CollectionRef, error) {
+func (c *Client) collectionForMovie(ctx context.Context, tmdbID int) (CollectionRef, error) {
 	if tmdbID <= 0 {
-		return moviecollections.CollectionRef{}, nil
+		return CollectionRef{}, nil
 	}
 	var body struct {
 		BelongsToCollection *struct {
@@ -621,12 +620,12 @@ func (c *Client) collectionForMovie(ctx context.Context, tmdbID int) (moviecolle
 		} `json:"belongs_to_collection"`
 	}
 	if err := c.get(ctx, "/movie/"+strconv.Itoa(tmdbID), &body); err != nil {
-		return moviecollections.CollectionRef{}, err
+		return CollectionRef{}, err
 	}
 	if body.BelongsToCollection == nil {
-		return moviecollections.CollectionRef{}, nil
+		return CollectionRef{}, nil
 	}
-	return moviecollections.CollectionRef{
+	return CollectionRef{
 		TMDBID: body.BelongsToCollection.ID,
 		Name:   strings.TrimSpace(body.BelongsToCollection.Name),
 	}, nil
@@ -635,13 +634,13 @@ func (c *Client) collectionForMovie(ctx context.Context, tmdbID int) (moviecolle
 // MovieCollection returns the canonical collection name and its grounded movie
 // parts from GET /collection/{id}. Membership comes from TMDB's roster, never a
 // title-name heuristic or model output.
-func (c *Client) MovieCollection(ctx context.Context, collectionID int) (moviecollections.SourceCollection, error) {
+func (c *Client) MovieCollection(ctx context.Context, collectionID int) (SourceCollection, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {
-		return moviecollections.SourceCollection{}, err
+		return SourceCollection{}, err
 	}
 	if collectionID <= 0 {
-		return moviecollections.SourceCollection{}, fmt.Errorf("movie collection id must be positive")
+		return SourceCollection{}, fmt.Errorf("movie collection id must be positive")
 	}
 	var body struct {
 		ID    int           `json:"id"`
@@ -649,7 +648,7 @@ func (c *Client) MovieCollection(ctx context.Context, collectionID int) (movieco
 		Parts []multiResult `json:"parts"`
 	}
 	if err := c.get(ctx, "/collection/"+strconv.Itoa(collectionID), &body); err != nil {
-		return moviecollections.SourceCollection{}, err
+		return SourceCollection{}, err
 	}
 	sort.SliceStable(body.Parts, func(i, j int) bool {
 		left := strings.TrimSpace(body.Parts[i].ReleaseDate)
@@ -685,7 +684,7 @@ func (c *Client) MovieCollection(ctx context.Context, collectionID int) (movieco
 			RelevanceRank:    len(members) + 1,
 		})
 	}
-	return moviecollections.SourceCollection{
+	return SourceCollection{
 		TMDBID: body.ID, Name: strings.TrimSpace(body.Name), Members: members,
 	}, nil
 }

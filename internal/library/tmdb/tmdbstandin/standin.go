@@ -1,5 +1,5 @@
 // Package tmdbstandin is the one TMDB v3 stand-in: an in-memory catalogue served over the
-// endpoints internal/tmdb calls. Tests serve it through internal/testkit (testkit.NewTMDB), and
+// endpoints internal/library/tmdb calls. Tests serve it through internal/testkit (testkit.NewTMDB), and
 // the demo library serves it over its invented catalogue so a lane or demo backend grounds
 // suggestions offline (#1941, LOOMARR_TMDB_BASE_URL). One implementation, so the demo cannot
 // drift from what the tests pin.
@@ -265,7 +265,7 @@ func (c *Catalog) AddKeywordMovie(id int, name string, year int, genreIDs []int,
 	}
 }
 
-// Handler serves the TMDB v3 endpoints internal/tmdb calls, rooted at the base URL the client
+// Handler serves the TMDB v3 endpoints internal/library/tmdb calls, rooted at the base URL the client
 // is given (no /3 prefix of its own).
 func (c *Catalog) Handler() http.Handler {
 	mux := http.NewServeMux()

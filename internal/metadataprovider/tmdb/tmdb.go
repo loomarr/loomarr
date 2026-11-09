@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
+	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // Locale returns the installation's metadata language (such as "en-US") and certification country

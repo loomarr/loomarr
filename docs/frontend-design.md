@@ -146,6 +146,10 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   documented exception based on the supplied power-on mock: 340ms chroma segments at 40ms stagger
   and a 400ms word/tagline settle. The mock's broad broadcast roll is intentionally omitted after
   visual review because it cheapened the otherwise restrained identity motion.
+- **Three kinds of movement only (#2789):** the tune, sheets sliding in from their edge over 200ms,
+  and 120ms opacity fades. Hover, focus and press change colour or border, never position or size:
+  no scale, lift, nudge or bounce. `web/scripts/motion-rule.test.mjs` fails on a transform
+  transition anywhere else; its allowlist names the tune, the sheets and the launch identity.
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
 - Loading has four named jobs: compact inline activity, content skeleton, determinate progress, and
@@ -176,7 +180,7 @@ that disappears with the legacy Web consumers.
 
 **Layer 0 — tokens** (§2).
 **Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Dialog`, `Disclosure`, `Text`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
-**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
+**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
 

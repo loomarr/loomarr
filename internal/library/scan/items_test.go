@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 )

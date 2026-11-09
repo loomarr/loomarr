@@ -79,6 +79,15 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           onChangeText={() => undefined}
           value="http://loomarr.local"
         />
+        {/* The error takes the help line's place, and is the line the input is described by. */}
+        <Field
+          density={density}
+          description="Use the address shown by your Loomarr server."
+          error="Enter an HTTPS address."
+          label="Server address with help and error"
+          onChangeText={() => undefined}
+          value="http://loomarr.local"
+        />
         <Field density={density} disabled label="Managed server" value="https://living-room.local" />
         <Field
           density={density}

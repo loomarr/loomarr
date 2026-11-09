@@ -95,10 +95,8 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		if _, named := slices.BinarySearch(refs.Items, id); named {
 			continue
 		}
-		if err := exec("library candidates", `DELETE FROM library_candidates WHERE inventory_item_id = ?`, id); err != nil {
-			return 0, err
-		}
-		// Its artwork refs go with it (library_item_images cascades).
+		// Its candidates and artwork refs go with it (library_candidates and library_item_images
+		// cascade).
 		if err := exec("library items", `DELETE FROM library_items WHERE id = ?`, id); err != nil {
 			return 0, err
 		}

@@ -30,7 +30,17 @@ const Example = ({ onSubmit }: { onSubmit: (name: string) => void }) => {
   );
 };
 
+const FocusExample = () => {
+  const form = useAppForm({ defaultValues: { name: "" } });
+  return <form.AppField name="name">{(field) => <field.TextField autoFocus label="Name" />}</form.AppField>;
+};
+
 describe("useAppForm's TextField", () => {
+  it("takes focus on mount when asked to", () => {
+    render(<FocusExample />);
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveFocus();
+  });
+
   it("labels the input and submits what was typed", async () => {
     const onSubmit = vi.fn();
     render(<Example onSubmit={onSubmit} />);

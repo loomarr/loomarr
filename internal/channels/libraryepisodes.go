@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/episodeevidence"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -22,10 +22,10 @@ func LibraryEpisodeResolver(st store.LibraryEpisodeReader) EpisodeResolver {
 		}
 		out := make([]schedule.ResolvedProgram, 0, len(rows))
 		for _, r := range rows {
-			if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
+			if inventory.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
 				continue
 			}
-			evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
+			evidence := inventory.Sanitize(r.Score, r.Overview, r.Tags)
 			// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
 			airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
 			out = append(out, schedule.ResolvedProgram{

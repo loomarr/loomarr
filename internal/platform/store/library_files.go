@@ -66,9 +66,9 @@ type LibraryFileStore interface {
 	// header at this size and modification time and lists it with a title, so a file changed since
 	// is never answered from its old tracks.
 	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
-	// LibraryPlayingFile is the file a library item plays: its one source marked plays, while the
-	// scanner sees it present. ok is false for an id that is not a library item, or one with no
-	// present file.
+	// LibraryPlayingFile is the file a library item plays: its source marked plays, while the
+	// scanner sees it present, the default edition's when a movie plays one in each edition
+	// (decision 54). ok is false for an id that is not a library item, or one with no present file.
 	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
 	// LibraryPlayingVideo is the first video stream of the file a library item plays, as the
 	// scanner last read its header: Index, Codec, Width, Height, FrameRate, PixelFormat and
@@ -94,7 +94,7 @@ func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (strin
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
 		JOIN library_files f ON f.path = s.path
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
-		ORDER BY s.path LIMIT 1`), itemID).Scan(&path)
+		ORDER BY s.edition <> '', s.path LIMIT 1`), itemID).Scan(&path)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return "", false, nil
@@ -111,7 +111,7 @@ func (s *sqlStore) LibraryPlayingVideo(ctx context.Context, itemID string) (Libr
 		JOIN library_files f ON f.path = s.path
 		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = '' AND f.header = ?
-		ORDER BY s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
+		ORDER BY s.edition <> '', s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
 		&v.Index, &v.Codec, &v.Width, &v.Height, &v.FrameRate, &v.PixelFormat, &v.ColorTransfer)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -154,10 +154,19 @@ func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeByte
 	return tracks, true, nil
 }
 
+// libraryLink writes a link to another library_items row: NULL for "" (not known yet), which the
+// foreign key allows, since no row has "" as its id. Reads turn it back with COALESCE(col, ”).
+func libraryLink(id string) any {
+	if id == "" {
+		return nil
+	}
+	return id
+}
+
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
-		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
-		WHERE root = ? ORDER BY path`), root)
+		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
+		FROM library_files WHERE root = ? ORDER BY path`), root)
 	if err != nil {
 		return nil, fmt.Errorf("list library files: %w", err)
 	}
@@ -217,7 +226,7 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 			missing = f.MissingAt.UnixMilli()
 		}
 		if _, err := stmt.ExecContext(ctx, f.Path, f.Root, f.Size, f.ModifiedNs, f.Identity, f.Kind, header,
-			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, f.ItemID, f.SeriesID); err != nil {
+			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, libraryLink(f.ItemID), libraryLink(f.SeriesID)); err != nil {
 			return fmt.Errorf("save library file: %w", err)
 		}
 	}

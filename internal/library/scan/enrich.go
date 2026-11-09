@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // Enricher defaults (decision 20).

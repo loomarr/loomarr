@@ -3,9 +3,11 @@ import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAut
 import { formatRelative } from "@loomarr/core/format";
 import { Action } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
+import { useStore } from "@tanstack/react-form";
 import { type ComponentRef, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
+import { useAppForm } from "@/lib/app-form";
 import type { SourceActions } from "../use-source-actions";
 
 type DownloadIntervalUnit = "minutes" | "hours" | "days";
@@ -86,9 +88,14 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
     everySeconds: source.automaticDownloads?.everySeconds || 6 * 3600,
     maxPerCheck: source.automaticDownloads?.maxPerCheck ?? 10,
   }));
-  const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(saved.mode);
-  const [everySeconds, setEverySeconds] = useState(saved.everySeconds);
-  const [maxPerCheck, setMaxPerCheck] = useState(saved.maxPerCheck);
+  const form = useAppForm({
+    defaultValues: saved,
+    onSubmit: ({ value }) => save(value),
+  });
+  const { mode, everySeconds, maxPerCheck } = useStore(form.store, (state) => state.values);
+  const setMode = (next: SourceAutomaticDownloadsInputMode) => form.setFieldValue("mode", next);
+  const setEverySeconds = (next: number) => form.setFieldValue("everySeconds", next);
+  const setMaxPerCheck = (next: number) => form.setFieldValue("maxPerCheck", next);
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(
     downloadSchedulePreset(saved.everySeconds) === "custom",
   );
@@ -101,6 +108,34 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
   const interval = downloadIntervalParts(everySeconds);
   const draft: AutomaticDownloadsDraft = { mode, everySeconds, maxPerCheck };
   const changed = !sameDraft(draft, saved);
+
+  const save = ({ mode, everySeconds, maxPerCheck }: AutomaticDownloadsDraft) => {
+    setSaveError(undefined);
+    actions.updateSource(
+      source.id,
+      {
+        enabled: source.enabled,
+        automaticDownloads:
+          mode === SourceAutomaticDownloadsInputMode.custom
+            ? { mode: SourceAutomaticDownloadsInputMode.custom, everySeconds, maxPerCheck }
+            : { mode },
+      },
+      {
+        onSuccess: () => {
+          setSaved({ mode, everySeconds, maxPerCheck });
+          toast.success("Automatic downloads updated");
+          // Save turns off once nothing is left to save, so focus goes back to the form.
+          requestAnimationFrame(() =>
+            modeField.current?.querySelector<HTMLElement>("[aria-expanded]")?.focus(),
+          );
+        },
+        onError: (error) => {
+          setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again.");
+          requestAnimationFrame(() => saveButton.current?.focus());
+        },
+      },
+    );
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -193,33 +228,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         ref={saveButton}
         style={{ alignSelf: "flex-start" }}
         variant="outline"
-        onPress={() => {
-          setSaveError(undefined);
-          actions.updateSource(
-            source.id,
-            {
-              enabled: source.enabled,
-              automaticDownloads:
-                mode === SourceAutomaticDownloadsInputMode.custom
-                  ? { mode: SourceAutomaticDownloadsInputMode.custom, everySeconds, maxPerCheck }
-                  : { mode },
-            },
-            {
-              onSuccess: () => {
-                setSaved(draft);
-                toast.success("Automatic downloads updated");
-                // Save turns off once nothing is left to save, so focus goes back to the form.
-                requestAnimationFrame(() =>
-                  modeField.current?.querySelector<HTMLElement>("[aria-expanded]")?.focus(),
-                );
-              },
-              onError: (error) => {
-                setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again.");
-                requestAnimationFrame(() => saveButton.current?.focus());
-              },
-            },
-          );
-        }}
+        onPress={() => void form.handleSubmit()}
       >
         {actions.updatingSourceID === source.id ? "Saving…" : "Save automatic downloads"}
       </Action>
