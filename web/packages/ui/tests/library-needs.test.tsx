@@ -10,6 +10,7 @@ import {
   LibraryNeedsCards,
   LibraryNeedsStrip,
   type LibraryNeedsStripProps,
+  type LibraryOrderNeed,
   type LibraryProblem,
 } from "../index";
 
@@ -85,12 +86,83 @@ const problem = (id: string, over: Partial<LibraryProblem> = {}): LibraryProblem
   ...over,
 });
 
+// A show TMDB lists in several orders, the DVD one fitting the disk; and one TMDB lists one way,
+// a season on disk running past it.
+const tideFiles = [6, 7, 8, 9, 10].map((episode) => ({
+  path: `/media/tv/Tidewater/Tidewater.S02E${String(episode).padStart(2, "0")}.mkv`,
+  season: 2,
+  episode,
+}));
+const tidewater: LibraryOrderNeed = {
+  id: "90000831",
+  name: "Tidewater",
+  disk: [
+    { season: 1, episodes: 12 },
+    { season: 2, episodes: 14 },
+  ],
+  files: tideFiles,
+  choices: [
+    {
+      choice: "catalog",
+      seasons: [
+        { season: 0, episodes: 2 },
+        { season: 1, episodes: 13 },
+        { season: 2, episodes: 13 },
+      ],
+      episodes: 28,
+      fits: false,
+    },
+    {
+      choice: "order",
+      orderId: "90000799a",
+      kind: "dvd",
+      name: "DVD Order",
+      seasons: [
+        { season: 1, episodes: 12 },
+        { season: 2, episodes: 14 },
+      ],
+      episodes: 26,
+      fits: true,
+    },
+    {
+      choice: "order",
+      orderId: "90000799b",
+      kind: "absolute",
+      name: "Absolute",
+      seasons: [],
+      episodes: 26,
+      fits: false,
+    },
+  ],
+};
+const kestrel: LibraryOrderNeed = {
+  id: "90000832",
+  name: "Kestrel Bay",
+  disk: [
+    { season: 1, episodes: 10 },
+    { season: 2, episodes: 14 },
+  ],
+  files: [{ path: "/media/tv/Kestrel Bay/Kestrel.Bay.S02E14.mkv", season: 2, episode: 14 }],
+  choices: [
+    {
+      choice: "catalog",
+      seasons: [
+        { season: 1, episodes: 10 },
+        { season: 2, episodes: 13 },
+      ],
+      episodes: 23,
+      fits: false,
+    },
+  ],
+};
+
 const strip = (over: Partial<LibraryNeedsStripProps> = {}) => (
   <LibraryNeedsStrip
     needs={[]}
     onLink={vi.fn()}
     onOpenNeeds={vi.fn()}
     onOpenTitle={vi.fn()}
+    orders={[]}
     problems={[]}
     {...over}
   />
@@ -176,20 +248,114 @@ describe("LibraryNeedsStrip", () => {
     expect(onOpenNeeds).toHaveBeenCalled();
     cleanup();
   });
+
+  // The question has more than two answers, so the strip only opens Needs you.
+  it("asks about a show's episode order first, and opens Needs you", () => {
+    const onOpenNeeds = vi.fn();
+    const { host, button, cleanup } = mount(
+      strip({ needs: [need("90000811")], orders: [tidewater, kestrel], onOpenNeeds }),
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("Needs you (3)");
+    expect(text).toContain("Tidewater — which order are the episodes in?");
+    expect(text).toContain("Kestrel Bay — 1 episode keeps its file name");
+    expect(text.indexOf("Tidewater")).toBeLessThan(text.indexOf("Paper Kites"));
+    act(() => button("Choose").click());
+    expect(onOpenNeeds).toHaveBeenCalledTimes(1);
+    act(() => button("See why").click());
+    expect(onOpenNeeds).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
 });
 
 describe("LibraryNeedsCards", () => {
   const cards = (over: Partial<Parameters<typeof LibraryNeedsCards>[0]> = {}) => (
     <LibraryNeedsCards
       needs={[need("90000811")]}
+      onChooseOrder={vi.fn(() => Promise.resolve())}
       onIgnore={vi.fn(() => Promise.resolve())}
       onLink={vi.fn(() => Promise.resolve())}
       onOpenTitle={vi.fn()}
       onSearch={vi.fn(() => Promise.resolve([]))}
+      orders={[]}
       problems={[]}
       {...over}
     />
   );
+
+  it("asks which order a show's episodes are in, the one that fits chosen first", () => {
+    const onChooseOrder = vi.fn(() => Promise.resolve());
+    const { host, button, cleanup } = mount(cards({ orders: [tidewater], onChooseOrder }));
+    const text = host.textContent ?? "";
+    expect(text).toContain("Needs you (2)");
+    expect(text).toContain("Which order are your Tidewater episodes in?");
+    expect(text).toContain("Until you choose, 5 episodes use the name and number in their file.");
+    // Plain names by kind; specials don't count as a season.
+    expect(text).toContain("As first aired2 seasons · 28 episodes");
+    expect(text).toContain("DVD orderFits your files2 seasons · 26 episodes");
+    expect(text).toContain("One long run26 episodes, no seasons");
+    expect(text).toContain("Keep the file names");
+    const radios = Array.from(host.querySelectorAll('[role="radio"]'));
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "true", "false", "false"]);
+    // The title card below isn't primary: only the first card is.
+    act(() => button("Use this order").click());
+    expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "order", orderId: "90000799a" });
+    expect(host.textContent).toContain("Done — Tidewater uses DVD order.");
+    expect(host.textContent).toContain("5 episodes now have their names and details from TMDB.");
+    cleanup();
+  });
+
+  it("keeps the file names when the household says so", () => {
+    const onChooseOrder = vi.fn(() => Promise.resolve());
+    const { host, button, cleanup } = mount(cards({ needs: [], orders: [tidewater], onChooseOrder }));
+    const keep = Array.from(host.querySelectorAll('[role="radio"]')).find(
+      (r) => r.getAttribute("aria-label") === "Keep the file names",
+    );
+    act(() => keep?.click());
+    act(() => button("Keep the file names").click());
+    expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "files" });
+    expect(host.textContent).toContain("Done — Tidewater keeps the names in its files.");
+    expect(host.textContent).not.toContain("from TMDB");
+    cleanup();
+  });
+
+  it("lists the files that wait, numbered as they say, the first three then a count", () => {
+    const { host, cleanup } = mount(cards({ needs: [], orders: [tidewater] }));
+    expect(host.textContent).toContain("5 episodes");
+    act(() => host.querySelectorAll("[aria-expanded]")[0]?.click());
+    expect(host.textContent).toContain("S02E06 — Tidewater.S02E06.mkv");
+    expect(host.textContent).toContain("S02E08 — Tidewater.S02E08.mkv");
+    expect(host.textContent).not.toContain("S02E09 —");
+    expect(host.textContent).toContain("and 2 more");
+    cleanup();
+  });
+
+  // One order: nothing to choose. That's fine keeps the files' names; See the show opens it.
+  it("says where a show's one order doesn't line up", () => {
+    const onChooseOrder = vi.fn(() => Promise.resolve());
+    const onOpenTitle = vi.fn();
+    const { host, button, cleanup } = mount(
+      cards({ needs: [], orders: [kestrel], onChooseOrder, onOpenTitle }),
+    );
+    expect(host.textContent).toContain("Some Kestrel Bay episodes don't line up with TMDB");
+    expect(host.textContent).toContain(
+      "Season 2 on your disk has 14 episodes; TMDB lists 13. It still plays, named as it is in its file.",
+    );
+    expect(host.querySelectorAll('[role="radio"]')).toHaveLength(0);
+    act(() => button("See the show").click());
+    expect(onOpenTitle).toHaveBeenCalledWith("90000832");
+    act(() => button("That's fine").click());
+    expect(onChooseOrder).toHaveBeenCalledWith("90000832", { choice: "files" });
+    cleanup();
+  });
+
+  it("puts the order question back when the answer fails", async () => {
+    const onChooseOrder = vi.fn(() => Promise.reject(new Error("no")));
+    const { host, button, cleanup } = mount(cards({ needs: [], orders: [tidewater], onChooseOrder }));
+    await act(async () => button("Use this order").click());
+    expect(host.textContent).toContain("Which order are your Tidewater episodes in?");
+    cleanup();
+  });
 
   it("words what's wrong with a title that needs a look, and opens it", () => {
     const onOpenTitle = vi.fn();
