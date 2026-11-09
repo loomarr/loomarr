@@ -782,6 +782,7 @@ type Store interface {
 	LibraryProjection
 	LibraryCatalogStore
 	LibraryNeedsStore
+	LibraryEpisodeOrderStore
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryIDMapStore
