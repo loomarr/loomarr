@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -19,8 +19,8 @@ func (s *Handlers) attachTitleArt(ctx context.Context, rows ...[]GuideAiring) {
 	if s.store == nil || s.images == nil {
 		return
 	}
-	idOf := map[provision.Key]store.LibraryProviderID{}
-	ids := []store.LibraryProviderID{}
+	idOf := map[provision.Key]librarystore.LibraryProviderID{}
+	ids := []librarystore.LibraryProviderID{}
 	for _, airings := range rows {
 		for _, a := range airings {
 			if _, seen := idOf[a.titleKey]; seen || a.titleKey == "" {
@@ -30,7 +30,7 @@ func (s *Handlers) attachTitleArt(ctx context.Context, rows ...[]GuideAiring) {
 			if !ok {
 				continue
 			}
-			id := store.LibraryProviderID{Kind: string(mt), Namespace: namespace, Value: strconv.Itoa(n)}
+			id := librarystore.LibraryProviderID{Kind: string(mt), Namespace: namespace, Value: strconv.Itoa(n)}
 			idOf[a.titleKey] = id
 			ids = append(ids, id)
 		}

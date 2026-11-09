@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -47,11 +47,11 @@ type LibraryPeopleStore interface {
 	PruneLibraryPeople(ctx context.Context) (int, error)
 }
 
-func (s *sqlStore) DueLibraryFilmographies(ctx context.Context, due LibraryFilmographyDue) ([]LibraryPersonRef, error) {
+func (s *Store) DueLibraryFilmographies(ctx context.Context, due LibraryFilmographyDue) ([]LibraryPersonRef, error) {
 	if due.Limit <= 0 || due.Namespace == "" {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT p.id, p.namespace, p.external_id FROM library_people p
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT p.id, p.namespace, p.external_id FROM library_people p
 		WHERE p.namespace = ? AND p.external_id <> '' AND p.filmography_retry_at_ms <= ?
 		AND (p.filmography_at_ms = 0 OR p.filmography_at_ms < ?)
 		AND (EXISTS (SELECT 1 FROM library_credits c WHERE c.person_id = p.id
@@ -76,8 +76,8 @@ func (s *sqlStore) DueLibraryFilmographies(ctx context.Context, due LibraryFilmo
 	return out, nil
 }
 
-func (s *sqlStore) SaveLibraryFilmography(ctx context.Context, personID string, entries []LibraryFilmEntry, at time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) SaveLibraryFilmography(ctx context.Context, personID string, entries []LibraryFilmEntry, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save library filmography: %w", err)
 	}
@@ -102,16 +102,16 @@ func (s *sqlStore) SaveLibraryFilmography(ctx context.Context, personID string, 
 	return nil
 }
 
-func (s *sqlStore) FailLibraryFilmography(ctx context.Context, personID string, retryAt time.Time) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_people SET filmography_retry_at_ms = ? WHERE id = ?`),
+func (s *Store) FailLibraryFilmography(ctx context.Context, personID string, retryAt time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.ph(`UPDATE library_people SET filmography_retry_at_ms = ? WHERE id = ?`),
 		retryAt.UnixMilli(), personID); err != nil {
 		return fmt.Errorf("fail library filmography: %w", err)
 	}
 	return nil
 }
 
-func (s *sqlStore) PruneLibraryPeople(ctx context.Context) (int, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM library_people
+func (s *Store) PruneLibraryPeople(ctx context.Context) (int, error) {
+	res, err := s.h.ExecContext(ctx, `DELETE FROM library_people
 		WHERE NOT EXISTS (SELECT 1 FROM library_credits c WHERE c.person_id = library_people.id)`)
 	if err != nil {
 		return 0, fmt.Errorf("prune library people: %w", err)

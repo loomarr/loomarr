@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -16,7 +17,7 @@ import (
 func TestIDMapPairsByPathAndShowsThroughEpisodes(t *testing.T) {
 	pathMap := library.ParsePathMap("/srv/media=>/mnt/media")
 	at := time.Unix(1_800_000_000, 0)
-	files := []store.LibraryFile{
+	files := []librarystore.LibraryFile{
 		{Path: "/mnt/media/movies/a.mkv", ItemID: "lib-a"},
 		{Path: "/mnt/media/movies/a.4k.mkv", ItemID: "lib-a"},
 		{Path: "/mnt/media/movies/b.mkv", ItemID: "lib-b"},
@@ -76,10 +77,10 @@ func TestIDMapPairsByPathAndShowsThroughEpisodes(t *testing.T) {
 // discoveredRoots answers the roots and path map discovery would have recorded.
 type discoveredRoots struct {
 	IDMapStore
-	roots store.LibraryRoots
+	roots librarystore.LibraryRoots
 }
 
-func (d discoveredRoots) LibraryRoots(context.Context) (store.LibraryRoots, error) {
+func (d discoveredRoots) LibraryRoots(context.Context) (librarystore.LibraryRoots, error) {
 	return d.roots, nil
 }
 
@@ -88,15 +89,15 @@ func TestIDMapperReplacesTheMapAndKeepsItWhenTheServerFails(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_800_000_000, 0)
-	roots := discoveredRoots{IDMapStore: st, roots: store.LibraryRoots{
-		Roots: []store.LibraryRoot{{Path: "/mnt/media", InUse: true}},
-		Paths: []store.LibraryRootPath{{Authority: string(library.Emby), AuthorityPath: "/srv/media", RootPath: "/mnt/media"}},
+	roots := discoveredRoots{IDMapStore: st, roots: librarystore.LibraryRoots{
+		Roots: []librarystore.LibraryRoot{{Path: "/mnt/media", InUse: true}},
+		Paths: []librarystore.LibraryRootPath{{Authority: string(library.Emby), AuthorityPath: "/srv/media", RootPath: "/mnt/media"}},
 	}}
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{{ID: "lib-a", Kind: "movie", Name: "A"}}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "lib-a", Kind: "movie", Name: "A"}}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{{Path: "/mnt/media/a.mkv", Root: "/mnt/media", Size: 1,
-		ModifiedNs: 1, Identity: "d", Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "lib-a"}}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/mnt/media/a.mkv", Root: "/mnt/media", Size: 1,
+		ModifiedNs: 1, Identity: "d", Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "lib-a"}}); err != nil {
 		t.Fatal(err)
 	}
 	var fail error

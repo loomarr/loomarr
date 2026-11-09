@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -19,14 +20,14 @@ func TestReferenceRewriterRewritesWhatMapsAndImportsCollections(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_800_000_000, 0)
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "lib-film", Kind: "movie", Name: "Film"},
-		{ID: "lib-other", Kind: "movie", Name: "Other", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000103"}}},
+		{ID: "lib-other", Kind: "movie", Name: "Other", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000103"}}},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{{Path: "/m/other.mkv", Root: "/m", Size: 1, ModifiedNs: 1,
-		Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "lib-other"}}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/m/other.mkv", Root: "/m", Size: 1, ModifiedNs: 1,
+		Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "lib-other"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.ReplaceLibraryIDMap(ctx, []store.LibraryIDMapping{
@@ -77,7 +78,7 @@ func TestReferenceRewriterRewritesWhatMapsAndImportsCollections(t *testing.T) {
 	if err != nil || len(owned) != 2 {
 		t.Fatalf("household collections = %+v, %v; want the hand-made and the named one", owned, err)
 	}
-	byImport := map[string]store.LibraryCollection{}
+	byImport := map[string]librarystore.LibraryCollection{}
 	for _, c := range owned {
 		byImport[c.ImportedID] = c
 	}

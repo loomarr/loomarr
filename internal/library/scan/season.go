@@ -6,7 +6,7 @@ import (
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // byNumber describes an episode with no TVDB id by its series' catalog, in the order its files
@@ -37,12 +37,12 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	d := series.record.Descriptive
 	answer, answered := b.episodeOrder(ctx, s, series.catalog)
 	switch {
-	case answered && answer.Choice == store.OrderByFiles:
+	case answered && answer.Choice == librarystore.OrderByFiles:
 		return res
-	case answered && answer.Choice == store.OrderByOrder:
+	case answered && answer.Choice == librarystore.OrderByOrder:
 		res.catalog = orderKey(series.catalog, answer.OrderID)
 		return b.byEntry(ctx, s, in, res)
-	case answered && answer.Choice == store.OrderByCatalog:
+	case answered && answer.Choice == librarystore.OrderByCatalog:
 	case d == nil || d.Orders == nil:
 		return res
 	case !numberedLikeDisk(d, s.last):
@@ -50,7 +50,7 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		res.unnumbered = true
 		return res
 	}
-	res.catalog = store.LibraryCatalogKey{
+	res.catalog = librarystore.LibraryCatalogKey{
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
 	}
@@ -82,7 +82,7 @@ func (b *builder) byEntry(ctx context.Context, s *seriesSeen, in precedence.Inpu
 }
 
 // episodeOrder is the household's answer for which order a show's files follow, read once a pass.
-func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series store.LibraryCatalogKey) (store.LibraryEpisodeOrder, bool) {
+func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series librarystore.LibraryCatalogKey) (librarystore.LibraryEpisodeOrder, bool) {
 	s.orderOnce.Do(func() {
 		if b.im.Answers == nil {
 			return
@@ -99,14 +99,14 @@ func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series store.
 
 // wantOrders asks, once a pass, for the layout of each of a show's other episode orders, so Needs
 // you can say which one its files fit.
-func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series store.LibraryCatalogKey, orders []mp.EpisodeOrder) {
+func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series librarystore.LibraryCatalogKey, orders []mp.EpisodeOrder) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
 	if s.ordersWanted || b.im.Catalog == nil || len(orders) == 0 {
 		return
 	}
 	s.ordersWanted = true
-	keys := make([]store.LibraryCatalogKey, 0, len(orders))
+	keys := make([]librarystore.LibraryCatalogKey, 0, len(orders))
 	for _, o := range orders {
 		keys = append(keys, orderKey(series, o.ID))
 	}
@@ -116,7 +116,7 @@ func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series store.Li
 }
 
 // season is a series' cached season record, read once a pass however many of its episodes ask.
-func (b *builder) season(ctx context.Context, s *seriesSeen, key store.LibraryCatalogKey) (mp.Record, bool) {
+func (b *builder) season(ctx context.Context, s *seriesSeen, key librarystore.LibraryCatalogKey) (mp.Record, bool) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
 	if got, ok := s.seasons[key.ExternalID]; ok {

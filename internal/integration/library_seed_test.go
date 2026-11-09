@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // libraryMovie is one movie in Loomarr's own Library, as a scan would leave it: the titles the
@@ -35,17 +36,17 @@ var kidsCartoons = []libraryMovie{
 func seedLibraryMovies(t *testing.T, st store.Store, movies ...libraryMovie) {
 	t.Helper()
 	at := time.Unix(1_800_000_000, 0).UTC()
-	items := make([]store.LibraryItem, 0, len(movies))
-	files := make([]store.LibraryFile, 0, len(movies))
+	items := make([]librarystore.LibraryItem, 0, len(movies))
+	files := make([]librarystore.LibraryFile, 0, len(movies))
 	for _, m := range movies {
-		items = append(items, store.LibraryItem{
+		items = append(items, librarystore.LibraryItem{
 			ID: m.ID, Kind: "movie", Name: m.Name, Year: m.Year, Rating: m.Rating, Genres: m.Genres,
 			RuntimeMs: m.Runtime.Milliseconds(),
-			IDs:       []store.LibraryID{{Namespace: "tmdb", Value: strconv.Itoa(m.TMDBID)}},
+			IDs:       []librarystore.LibraryID{{Namespace: "tmdb", Value: strconv.Itoa(m.TMDBID)}},
 		})
-		files = append(files, store.LibraryFile{
+		files = append(files, librarystore.LibraryFile{
 			Path: "/movies/" + m.ID + ".mkv", Root: "/movies", Size: 1, ModifiedNs: 1, Kind: "movie",
-			Header: store.LibraryHeaderRead, SeenAt: at, ItemID: m.ID,
+			Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: m.ID,
 		})
 	}
 	ctx := context.Background()

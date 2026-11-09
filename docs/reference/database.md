@@ -309,7 +309,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the channel. Other tables point here. | `TEXT` · key |
-| `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from. Empty for a channel made by hand. No two channels share one. | `TEXT` |
 | `name` | The channel's display name. | `TEXT` |
 | `number` | The channel number, which is its position in the guide. Unique. | `INTEGER` |
 | `grp` | The group the channel is listed under in the guide. Empty for none. | `TEXT` |
@@ -328,6 +327,8 @@ One row per channel. A channel is created by approving a channel request or by h
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
+| `from_request` | Whether the channel was made from a member's request rather than by hand. Refine and auto-curate re-run that request; it outlives the job intent_ref names. | `BOOLEAN` |
+| `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
 
 ### channel_lineup
 
@@ -426,7 +427,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `workflow_version` | Which version of the job process ran it. 0 is a job from before per-attempt history was kept; 1 is the current process, which records each attempt in proposal_job_attempts. | `INTEGER` |
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
 | `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
-| `channel_id` | The existing channel a refine or re-curation job changes (channels.id). Empty for a job that creates a new channel. | `TEXT` |
+| `channel_id` | The existing channel a refine or re-curation job changes (channels.id); the job goes with that channel. Null for a job that creates a new channel. | `TEXT` · may be empty · → `channels.id` |
 
 ### proposal_job_attempts
 

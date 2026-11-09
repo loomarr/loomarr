@@ -20,7 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -325,7 +325,7 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 // lineup entry's content rating by the entry's Key, for the reconcile-time heal of unrated entries
 // (§389 amendment), from the Library's own title (#2151 step 16), so the rating is never a guess.
 type libraryRatings struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
@@ -401,22 +401,22 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 
 // ownMember reads a household collection's title as a search result, so its keys come from the
 // one derivation every title uses.
-func ownMember(m store.LibraryCollectionMember) library.SearchResult {
+func ownMember(m librarystore.LibraryCollectionMember) library.SearchResult {
 	r := library.SearchResult{MediaType: library.Movie}
 	if m.Kind == "series" {
 		r.MediaType = library.Series
 	}
 	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TVDB)))
+	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TVDB)))
 	return r
 }
 
 // ownCollections is the household's collections (#2151 step 12), as the collection scope reads
 // them.
 type ownCollections interface {
-	LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
-	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
+	LibraryCollectionMemberIDs(ctx context.Context) ([]librarystore.LibraryCollectionMember, error)
+	ListLibraryCollections(ctx context.Context) ([]librarystore.LibraryCollection, error)
 }
 
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections

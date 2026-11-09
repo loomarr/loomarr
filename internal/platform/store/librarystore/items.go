@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryItem is a movie, series or episode the scanner wrote (#2151 step 10, decisions 40–45).
@@ -280,27 +282,27 @@ type LibraryItemStore interface {
 	RemoveLibraryFile(ctx context.Context, path string, at time.Time) error
 }
 
-func (s *sqlStore) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {
+func (s *Store) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {
 	return s.resetFiles(ctx, `header = '`+LibraryHeaderPending+`'`,
 		`(inventory_item_id = ? OR inventory_series_id = ?) AND problem = ''`, id, id)
 }
 
-func (s *sqlStore) RemoveLibraryFile(ctx context.Context, path string, at time.Time) error {
+func (s *Store) RemoveLibraryFile(ctx context.Context, path string, at time.Time) error {
 	_, err := s.resetFiles(ctx, fmt.Sprintf("missing_at_ms = %d, held = FALSE", at.UnixMilli()), "path = ?", path)
 	return err
 }
 
-func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error {
+func (s *Store) SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error {
 	if len(items) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, it := range items {
-		if err := s.saveLibraryItem(ctx, tx, it, at); err != nil {
+		if err := SaveItemIn(ctx, s, tx, it, at); err != nil {
 			return err
 		}
 	}
@@ -346,7 +348,7 @@ var (
 // extraCopies is title i's files that no edition plays (decision 37), from its rows.
 const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 
-func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
 	where := []string{}
 	args := []any{}
 	switch q.Kind {
@@ -388,7 +390,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	query := `SELECT ` + itemColumns + from + order
 	if q.Limit > 0 {
 		// A page counts the whole list on its own; every item is its own count.
-		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
+		if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
 			return page, fmt.Errorf("count library items: %w", err)
 		}
 		query += ` LIMIT ? OFFSET ?`
@@ -405,8 +407,8 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	return page, nil
 }
 
-func (s *sqlStore) LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.number FROM channels c
+func (s *Store) LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.number FROM channels c
 		WHERE EXISTS (SELECT 1 FROM channel_lineup l JOIN titles t ON t.key = l.title_key
 			WHERE l.channel_id = c.id AND t.library_id = ?)
 		ORDER BY c.number, c.id`), id)
@@ -425,20 +427,20 @@ func (s *sqlStore) LibraryItemChannels(ctx context.Context, id string) ([]Librar
 	return out, rows.Err()
 }
 
-func (s *sqlStore) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
+func (s *Store) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
 	items, err := s.scanLibraryItems(ctx, `SELECT `+itemColumns+`
 		FROM library_items i WHERE i.id = ? AND `+itemListed, id)
 	if err != nil {
 		return LibraryItemSummary{}, err
 	}
 	if len(items) == 0 {
-		return LibraryItemSummary{}, ErrNotFound
+		return LibraryItemSummary{}, storedb.ErrNotFound
 	}
 	return items[0], nil
 }
 
-func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...any) ([]LibraryItemSummary, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
+func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any) ([]LibraryItemSummary, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list library items: %w", err)
 	}
@@ -461,8 +463,8 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 	return out, nil
 }
 
-func (s *sqlStore) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
+func (s *Store) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
 		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
 		FROM library_files WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
 		ORDER BY path`), id, id)

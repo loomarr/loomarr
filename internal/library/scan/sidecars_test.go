@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // An external track's name says its language and flags; a file that only shares the stem's
@@ -86,14 +86,14 @@ func TestAMovieKeepsItsSidecarTracksMarkersAndChapters(t *testing.T) {
 	if len(s.Streams) != 3 || !s.Streams[1].Commentary {
 		t.Fatalf("streams = %+v, want the file's two (audio commentary) and the subtitle file", s.Streams)
 	}
-	if got, want := s.Streams[2], (store.LibraryStream{Index: 2, Kind: "subtitle", Codec: "subrip",
+	if got, want := s.Streams[2], (librarystore.LibraryStream{Index: 2, Kind: "subtitle", Codec: "subrip",
 		Language: "es", LanguageName: "Spanish", HearingImpaired: true, ExternalRef: srt}); got != want {
 		t.Errorf("external stream = %+v, want %+v", got, want)
 	}
-	if want := []store.LibraryMarker{{StartMs: 5000, EndMs: 65000, Kind: "commercial"}}; !slices.Equal(s.Markers, want) {
+	if want := []librarystore.LibraryMarker{{StartMs: 5000, EndMs: 65000, Kind: "commercial"}}; !slices.Equal(s.Markers, want) {
 		t.Errorf("markers = %+v, want %+v", s.Markers, want)
 	}
-	if want := []store.LibraryChapter{{StartMs: 0, EndMs: 600_000, Title: "Opening"}, {StartMs: 600_000, EndMs: 1_320_000}}; !slices.Equal(s.Chapters, want) {
+	if want := []librarystore.LibraryChapter{{StartMs: 0, EndMs: 600_000, Title: "Opening"}, {StartMs: 600_000, EndMs: 1_320_000}}; !slices.Equal(s.Chapters, want) {
 		t.Errorf("chapters = %+v, want %+v", s.Chapters, want)
 	}
 }

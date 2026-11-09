@@ -1,13 +1,14 @@
-package store
+package librarystore
 
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryCollection is one of the household's own collections (#2151 decision 28): a name, a
@@ -59,8 +60,8 @@ type LibraryCollectionMember struct {
 	IDs []LibraryID
 }
 
-func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind, i.id
+func (s *Store) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT m.collection_id, i.kind, i.id
 		FROM library_collection_members m JOIN library_items i ON i.id = m.inventory_item_id
 		ORDER BY m.collection_id, m.position`)
 	if err != nil {
@@ -90,28 +91,28 @@ func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCol
 	return out, nil
 }
 
-func (s *sqlStore) ListLibraryCollections(ctx context.Context) ([]LibraryCollection, error) {
+func (s *Store) ListLibraryCollections(ctx context.Context) ([]LibraryCollection, error) {
 	return s.readLibraryCollections(ctx, "")
 }
 
-func (s *sqlStore) LibraryCollection(ctx context.Context, id string) (LibraryCollection, error) {
+func (s *Store) LibraryCollection(ctx context.Context, id string) (LibraryCollection, error) {
 	out, err := s.readLibraryCollections(ctx, id)
 	if err != nil {
 		return LibraryCollection{}, err
 	}
 	if len(out) == 0 {
-		return LibraryCollection{}, ErrNotFound
+		return LibraryCollection{}, storedb.ErrNotFound
 	}
 	return out[0], nil
 }
 
 // readLibraryCollections reads every collection, or the one with id when id is not "".
-func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]LibraryCollection, error) {
+func (s *Store) readLibraryCollections(ctx context.Context, id string) ([]LibraryCollection, error) {
 	where, args := "", []any{}
 	if id != "" {
 		where, args = " WHERE c.id = ?", []any{id}
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
 		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
 		ORDER BY `+s.lower("c.name")+`, c.id, m.position`), args...)
@@ -143,9 +144,9 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	return out, nil
 }
 
-func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) (string, error) {
+func (s *Store) CreateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) (string, error) {
 	id := strings.ToLower(rand.Text())
-	err := s.writeLibraryCollection(ctx, id, c, func(tx *sql.Tx) error {
+	err := s.writeLibraryCollection(ctx, id, c, func(tx storedb.Tx) error {
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collections (id, name, description, imported_from,
 			imported_id, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)`),
 			id, c.Name, c.Description, c.ImportedFrom, c.ImportedID, at.UnixMilli(), at.UnixMilli())
@@ -157,8 +158,8 @@ func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollect
 	return id, nil
 }
 
-func (s *sqlStore) UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error {
-	err := s.writeLibraryCollection(ctx, c.ID, c, func(tx *sql.Tx) error {
+func (s *Store) UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error {
+	err := s.writeLibraryCollection(ctx, c.ID, c, func(tx storedb.Tx) error {
 		res, err := tx.ExecContext(ctx, s.ph(`UPDATE library_collections SET name = ?, description = ?,
 			updated_at_ms = ? WHERE id = ?`), c.Name, c.Description, at.UnixMilli(), c.ID)
 		if err != nil {
@@ -167,7 +168,7 @@ func (s *sqlStore) UpdateLibraryCollection(ctx context.Context, c LibraryCollect
 		if n, err := res.RowsAffected(); err != nil {
 			return err
 		} else if n == 0 {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		return nil
 	})
@@ -179,11 +180,11 @@ func (s *sqlStore) UpdateLibraryCollection(ctx context.Context, c LibraryCollect
 
 // writeLibraryCollection runs row, which writes the collection's own row, then replaces its
 // members, in one transaction. A title listed twice keeps its first place.
-func (s *sqlStore) writeLibraryCollection(ctx context.Context, id string, c LibraryCollection, row func(*sql.Tx) error) error {
+func (s *Store) writeLibraryCollection(ctx context.Context, id string, c LibraryCollection, row func(storedb.Tx) error) error {
 	if strings.TrimSpace(c.Name) == "" {
 		return errors.New("a collection needs a name")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -217,15 +218,15 @@ func (s *sqlStore) writeLibraryCollection(ctx context.Context, id string, c Libr
 }
 
 // DeleteLibraryCollection deletes the collection row; its members go with it (ON DELETE CASCADE).
-func (s *sqlStore) DeleteLibraryCollection(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM library_collections WHERE id = ?`), id)
+func (s *Store) DeleteLibraryCollection(ctx context.Context, id string) error {
+	res, err := s.h.ExecContext(ctx, s.ph(`DELETE FROM library_collections WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete library collection: %w", err)
 	}
 	if n, err := res.RowsAffected(); err != nil {
 		return fmt.Errorf("delete library collection: %w", err)
 	} else if n == 0 {
-		return ErrNotFound
+		return storedb.ErrNotFound
 	}
 	return nil
 }

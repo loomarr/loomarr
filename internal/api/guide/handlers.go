@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -22,7 +23,7 @@ import (
 type Store interface {
 	store.ChannelStore
 	store.ClipStore
-	store.LibraryArtReader
+	librarystore.LibraryArtReader
 }
 
 // PlayoutGuide resolves the programmes airing on a channel across a window, with absolute

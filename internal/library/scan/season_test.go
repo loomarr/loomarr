@@ -8,7 +8,7 @@ import (
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A series' season posters reach its library art, each by its season, beside its own poster.
@@ -28,7 +28,7 @@ func TestASeriesListsItsSeasonPosters(t *testing.T) {
 	if !ok {
 		t.Fatal("the series is not listed")
 	}
-	want := []store.LibraryArt{
+	want := []librarystore.LibraryArt{
 		{Kind: mp.KindPoster, Ref: filepath.Join(show, "poster.jpg")},
 		{Kind: mp.KindSeasonPoster, Season: 0, Ref: filepath.Join(show, "season-specials-poster.jpg")},
 		{Kind: mp.KindSeasonPoster, Season: 1, Ref: filepath.Join(show, "season01-poster.jpg")},

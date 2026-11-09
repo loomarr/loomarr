@@ -116,7 +116,11 @@ func testProposalApprovalManualParticipatesInRequesterOrdering(t *testing.T, new
 			})
 		guardedDone <- err
 	}()
-	<-guardEntered
+	select {
+	case <-guardEntered:
+	case err := <-guardedDone:
+		t.Fatalf("guarded approval ended before its guard ran: %v", err)
+	}
 
 	manualStarted := make(chan struct{})
 	manualDone := make(chan error, 1)
@@ -159,7 +163,11 @@ func testProposalApprovalCanceledWaiterReleasesOrdering(t *testing.T, newStore N
 			})
 		holderDone <- err
 	}()
-	<-holderEntered
+	select {
+	case <-holderEntered:
+	case err := <-holderDone:
+		t.Fatalf("holding approval ended before its guard ran: %v", err)
+	}
 
 	waitCtx, cancel := context.WithCancel(ctx)
 	waiterStarted := make(chan struct{})
@@ -205,6 +213,7 @@ func testProposalApprovalCanceledWaiterReleasesOrdering(t *testing.T, newStore N
 func seedApprovalProposals(t *testing.T, s Store, now time.Time, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
+		mustOriginJobs(t, s, "job-"+id)
 		if err := s.CreateProposal(context.Background(), Proposal{
 			ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "member",
 			CreatedAt: now, UpdatedAt: now,

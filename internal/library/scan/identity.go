@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Manager is one arr that knows which files are which items: Sonarr or Radarr. A full pass lists it
@@ -67,7 +67,7 @@ func (idx managerIndex) knows(path string) bool {
 }
 
 // indexManagers lists every arr and keys its files by local path through the path map.
-func indexManagers(ctx context.Context, managers []Manager, paths []store.LibraryRootPath) (managerIndex, []error) {
+func indexManagers(ctx context.Context, managers []Manager, paths []librarystore.LibraryRootPath) (managerIndex, []error) {
 	idx := managerIndex{byPath: map[string]managed{}, complete: true}
 	var errs []error
 	for _, m := range managers {
@@ -161,7 +161,7 @@ func episodeOrder(rec mp.Record) int {
 
 // pathMapper translates one authority's paths to local ones by the longest matching path-map row.
 // A path no row covers translates to "".
-func pathMapper(authority string, paths []store.LibraryRootPath) func(string) string {
+func pathMapper(authority string, paths []librarystore.LibraryRootPath) func(string) string {
 	type row struct{ from, to string }
 	var rows []row
 	for _, p := range paths {

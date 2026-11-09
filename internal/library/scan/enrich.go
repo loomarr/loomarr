@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Enricher defaults (decision 20).
@@ -38,11 +38,11 @@ var catalogVersions = map[string]int{string(mp.KindMovie): 2, string(mp.KindSeri
 
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {
-	DueLibraryCatalog(ctx context.Context, due store.LibraryCatalogDue) ([]store.LibraryCatalogKey, error)
+	DueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) ([]librarystore.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
-	FailLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, retryAt time.Time) error
-	RewriteLibraryCatalogFiles(ctx context.Context, key store.LibraryCatalogKey) ([]store.LibraryFilePath, error)
+	SaveLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
+	FailLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, retryAt time.Time) error
+	RewriteLibraryCatalogFiles(ctx context.Context, key librarystore.LibraryCatalogKey) ([]librarystore.LibraryFilePath, error)
 }
 
 // Enricher fetches the catalog records the walk asked for (#2151, decision 20): titles new to the
@@ -94,7 +94,7 @@ func (e *Enricher) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	due, err := e.Store.DueLibraryCatalog(ctx, store.LibraryCatalogDue{
+	due, err := e.Store.DueLibraryCatalog(ctx, librarystore.LibraryCatalogDue{
 		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
 		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions, Language: e.language(),
 	})
@@ -132,7 +132,7 @@ func (e *Enricher) staleShare(total int) int {
 // Update fetches one title's record now, for "Update details" (decision 20), and writes its titles
 // again when it changed. ErrNoCatalog when the catalog is not configured; ErrCatalogUnreachable
 // when it failed, and the record is then tried again later as any failed fetch is.
-func (e *Enricher) Update(ctx context.Context, key store.LibraryCatalogKey) error {
+func (e *Enricher) Update(ctx context.Context, key librarystore.LibraryCatalogKey) error {
 	outcome, err := e.fetch(ctx, key, e.now())
 	switch {
 	case err != nil:
@@ -161,7 +161,7 @@ const (
 )
 
 // fetch fetches one key.
-func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
+func (e *Enricher) fetch(ctx context.Context, key librarystore.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
 	ref := mp.Ref{Kind: mp.Kind(key.Kind), ID: mp.ExternalID{Namespace: mp.Namespace(key.Provider), Value: key.ExternalID}}
 	rec, fetchErr := e.Provider.Fetch(ctx, ref)
 	record := ""

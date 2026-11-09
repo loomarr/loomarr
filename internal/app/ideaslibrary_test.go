@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 type fakeLibraryLister struct {
@@ -56,10 +56,10 @@ func TestLibraryIdeaItemsMapsKeysAndCaches(t *testing.T) {
 	}
 }
 
-type ideaFactsFake map[string]store.LibraryItemFacts
+type ideaFactsFake map[string]librarystore.LibraryItemFacts
 
-func (f ideaFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]store.LibraryItemFacts, error) {
-	out := map[string]store.LibraryItemFacts{}
+func (f ideaFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]librarystore.LibraryItemFacts, error) {
+	out := map[string]librarystore.LibraryItemFacts{}
 	for _, id := range ids {
 		if facts, ok := f[id]; ok {
 			out[id] = facts

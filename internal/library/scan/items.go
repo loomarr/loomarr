@@ -10,14 +10,14 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Items (#2151 step 10): the movies and series the scanner wrote, and one title's page.
 
 // ItemDetail is one title as its page shows it.
 type ItemDetail struct {
-	store.LibraryItemSummary
+	librarystore.LibraryItemSummary
 	// Facts is what the scanner resolved for it: overview, genres, rating, runtime.
 	Facts inventory.ItemFacts
 	// From is where its details came from.
@@ -29,12 +29,12 @@ type ItemDetail struct {
 	// Seasons is a series' episodes by season, in order; season 0 is the specials.
 	Seasons []Season
 	// Channels are the channels whose lineup holds it, by number.
-	Channels []store.LibraryItemChannel
+	Channels []librarystore.LibraryItemChannel
 }
 
 // ItemFile is one of a movie's files, with what its header says once read; zero until then.
 type ItemFile struct {
-	store.LibraryFile
+	librarystore.LibraryFile
 	LengthMillis int64
 	// Picture is its first video stream; nil for none.
 	Picture *Picture
@@ -100,7 +100,7 @@ type Picture struct {
 }
 
 // itemFile is f with what its header facts say.
-func itemFile(f store.LibraryFile, facts inventory.SourceFacts) ItemFile {
+func itemFile(f librarystore.LibraryFile, facts inventory.SourceFacts) ItemFile {
 	out := ItemFile{LibraryFile: f, LengthMillis: facts.DurationMillis}
 	var audio *inventory.Stream
 	for i, s := range facts.Streams {
@@ -144,7 +144,7 @@ type Episode struct {
 }
 
 // Items lists the movies and series with a present file.
-func (l *Library) Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error) {
+func (l *Library) Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error) {
 	return l.ItemStore.ListLibraryItems(ctx, q)
 }
 
@@ -198,7 +198,7 @@ const (
 )
 
 // DecidedBy is what decides which title m says an item is.
-func DecidedBy(m store.LibraryMatch) Decider {
+func DecidedBy(m librarystore.LibraryMatch) Decider {
 	switch mp.Basis(m.Basis) {
 	case mp.BasisManager:
 		return DecidedByApp
@@ -249,7 +249,7 @@ func (l *Library) CheckFiles(ctx context.Context, id string) error {
 }
 
 // pass asks the scanner for a pass over the folders holding files.
-func (l *Library) pass(files []store.LibraryFilePath) {
+func (l *Library) pass(files []librarystore.LibraryFilePath) {
 	if l.Scanner != nil {
 		rewriteFolders(files, l.Scanner.PassFolders)
 	}
@@ -257,7 +257,7 @@ func (l *Library) pass(files []store.LibraryFilePath) {
 
 // seasons groups a series' episode files by the episode item each was written as, and says where
 // most of the episode names came from.
-func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Season, mp.ID, error) {
+func (l *Library) seasons(ctx context.Context, files []librarystore.LibraryFile) ([]Season, mp.ID, error) {
 	ready := map[string]bool{}
 	var order []string
 	for _, f := range files {
@@ -265,7 +265,7 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 			order = append(order, f.ItemID)
 			ready[f.ItemID] = true
 		}
-		if f.Header == store.LibraryHeaderPending {
+		if f.Header == librarystore.LibraryHeaderPending {
 			ready[f.ItemID] = false
 		}
 	}

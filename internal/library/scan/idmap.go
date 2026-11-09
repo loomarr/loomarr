@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // IDMapInterval is how often the IDMapper pairs the media server's ids again. A pass lists the whole
@@ -21,8 +22,8 @@ const IDMapInterval = 6 * time.Hour
 // (#2151 step 15a), by file path through the derived path map, as the parity gate pairs them. A
 // series pairs through its episodes: the one show they were all written under. An id that does not
 // pair is kept with an empty ItemID and the reason. The result is ordered by media id.
-func IDMap(server []library.ServerFile, files []store.LibraryFile, pathMap library.PathMap) []store.LibraryIDMapping {
-	byPath := make(map[string]store.LibraryFile, len(files))
+func IDMap(server []library.ServerFile, files []librarystore.LibraryFile, pathMap library.PathMap) []store.LibraryIDMapping {
+	byPath := make(map[string]librarystore.LibraryFile, len(files))
 	for _, f := range files {
 		if f.MissingAt.IsZero() {
 			byPath[f.Path] = f
@@ -88,7 +89,7 @@ func IDMap(server []library.ServerFile, files []store.LibraryFile, pathMap libra
 }
 
 // pairedFile is the scanner's file for one media-server file, or why there is none.
-func pairedFile(s library.ServerFile, byPath map[string]store.LibraryFile, pathMap library.PathMap) (store.LibraryFile, string) {
+func pairedFile(s library.ServerFile, byPath map[string]librarystore.LibraryFile, pathMap library.PathMap) (librarystore.LibraryFile, string) {
 	local, mapped := pathMap.Apply(s.Path)
 	file, found := byPath[local]
 	switch {
@@ -166,7 +167,7 @@ func (m *IDMapper) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var files []store.LibraryFile
+	var files []librarystore.LibraryFile
 	for _, root := range roots {
 		rows, err := m.Store.LibraryFiles(ctx, root)
 		if err != nil {

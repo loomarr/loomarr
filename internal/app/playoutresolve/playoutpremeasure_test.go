@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/measure"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -33,13 +33,13 @@ func TestPlayoutResolver_PremeasureQueuesUnmeasuredLibraryFilesOnce(t *testing.T
 		t.Fatal(err)
 	}
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
-	if err := st.SaveLibraryItems(t.Context(), []store.LibraryItem{{ID: "m1", Kind: "movie", Name: "Short",
-		Sources: []store.LibrarySource{{Path: path, Plays: true}}}}, at); err != nil {
+	if err := st.SaveLibraryItems(t.Context(), []librarystore.LibraryItem{{ID: "m1", Kind: "movie", Name: "Short",
+		Sources: []librarystore.LibrarySource{{Path: path, Plays: true}}}}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(t.Context(), []store.LibraryFile{{Path: path, Root: filepath.Dir(path),
+	if err := st.SaveLibraryFiles(t.Context(), []librarystore.LibraryFile{{Path: path, Root: filepath.Dir(path),
 		Size: info.Size(), ModifiedNs: info.ModTime().UnixNano(), Identity: "digest", Kind: "movie",
-		Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
+		Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
 		t.Fatal(err)
 	}
 	worker := &submittedRefs{}

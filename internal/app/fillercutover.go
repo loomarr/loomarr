@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // fillerScanSourceAdapter bridges the store → cliplibrary.ScanSourceStore (§10 V38c).
@@ -53,7 +53,7 @@ func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]cliplib
 type fillerLibraryCutover struct {
 	st    records.FillerSourceStore
 	roots interface {
-		LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
+		LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
 	}
 	lib *library.Client
 	log *slog.Logger
