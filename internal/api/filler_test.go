@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -38,7 +39,7 @@ type fakeFiller struct {
 	fetchedSourceIDs []string
 	rewinds          []struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}
 	retries  []string
@@ -159,10 +160,10 @@ func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (s
 	}, nil
 }
 
-func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {
+func (f *fakeFiller) Rewind(_ context.Context, hash string, from pipelinestate.StageID, force bool) error {
 	f.rewinds = append(f.rewinds, struct {
 		hash  string
-		from  filler.StageID
+		from  pipelinestate.StageID
 		force bool
 	}{hash: hash, from: from, force: force})
 	return nil
@@ -765,7 +766,7 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	if admin.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin rewind → %d, want 204", admin.StatusCode)
 	}
-	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageVision || ff.rewinds[0].force {
+	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != pipelinestate.StageVision || ff.rewinds[0].force {
 		t.Errorf("rewinds = %+v, want stuck from vision without force", ff.rewinds)
 	}
 

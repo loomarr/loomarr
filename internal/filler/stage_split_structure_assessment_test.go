@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -47,7 +48,7 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
-	if err != nil || result.Verdict != filler.VerdictReview {
+	if err != nil || result.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 	stored, err := st.GetSplitProposal(t.Context(), proposal.ID)
@@ -203,7 +204,7 @@ func TestSplitStageAssessmentFailureHoldsProposalForReview(t *testing.T) {
 	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
-	if err != nil || result.Verdict != filler.VerdictReview {
+	if err != nil || result.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 	if strings.Contains(result.Note, "provider") || strings.Contains(result.Note, "/private/") {
@@ -238,7 +239,7 @@ func TestSplitStageAssessmentCancellationRemainsResumable(t *testing.T) {
 	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
-	if !errors.Is(err, context.Canceled) || result.Verdict == filler.VerdictReview {
+	if !errors.Is(err, context.Canceled) || result.Verdict == pipelinestate.VerdictReview {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 }
@@ -264,7 +265,7 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 		Decisioner: &capturedStructureDecisioner{artifact: artifact},
 	})
 	result, err := stage.Run(t.Context(), clip)
-	if err != nil || result.Verdict != filler.VerdictReview {
+	if err != nil || result.Verdict != pipelinestate.VerdictReview {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 	stored, err := st.GetSplitProposal(t.Context(), proposal.ID)

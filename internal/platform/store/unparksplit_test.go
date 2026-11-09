@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The 00050 data migration: compilations parked at `split` go back on the belt (§10 V54).
@@ -30,21 +30,21 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	now := time.Now().UTC().Truncate(time.Second)
-	rows := []filler.ClipPipeline{
+	rows := []pipelinestate.ClipPipeline{
 		// THE case: a reel refused by a gate that structurally could not pass.
-		{ClipHash: "h:parked-reel", Stage: filler.StageSplit, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview, Attempts: 3, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "h:parked-reel", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview, Attempts: 3, NextRun: now.Add(time.Hour), UpdatedAt: now},
 		// Mid-detection. Already claimable; the migration must not reset its attempts or clock.
-		{ClipHash: "h:detecting", Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "h:detecting", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
 		// ⚠ A GENUINE operator decision, at a different rung. `finish`+`review` means a human was
 		// asked to judge a clip and has not answered. Un-parking it would silently retract the
 		// question — the failure mode that makes a repair migration dangerous.
-		{ClipHash: "h:awaiting-human", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview, Attempts: 2, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "h:awaiting-human", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview, Attempts: 2, NextRun: now.Add(time.Hour), UpdatedAt: now},
 		// A rejected reel stays rejected: `rejected` is a fact about the file, not a lost gate.
-		{ClipHash: "h:rejected-reel", Stage: filler.StageSplit, Status: filler.StatusDone,
-			Disposition: filler.DispositionRejected, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "h:rejected-reel", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionRejected, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
 	}
 	for _, r := range rows {
 		if err := insertLegacyClipPipeline(ctx, s, r); err != nil {
@@ -65,7 +65,7 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	get := func(hash string) filler.ClipPipeline {
+	get := func(hash string) pipelinestate.ClipPipeline {
 		t.Helper()
 		row, ok, err := readClipPipelineRow(ctx, s, hash)
 		if err != nil || !ok {
@@ -75,7 +75,7 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 	}
 
 	parked := get("h:parked-reel")
-	if parked.Disposition != filler.DispositionRunning || parked.Status != filler.StatusQueued {
+	if parked.Disposition != pipelinestate.DispositionRunning || parked.Status != pipelinestate.StatusQueued {
 		t.Errorf("parked reel = %s/%s, want running/queued — it is unreachable otherwise",
 			parked.Disposition, parked.Status)
 	}
@@ -88,11 +88,11 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 	}
 
 	// ⚠ The assertions that matter more than the one above.
-	if h := get("h:awaiting-human"); h.Disposition != filler.DispositionReview {
+	if h := get("h:awaiting-human"); h.Disposition != pipelinestate.DispositionReview {
 		t.Errorf("a clip awaiting a HUMAN at %s was un-parked (%s) — the migration retracted a "+
 			"question an operator was asked", h.Stage, h.Disposition)
 	}
-	if r := get("h:rejected-reel"); r.Disposition != filler.DispositionRejected {
+	if r := get("h:rejected-reel"); r.Disposition != pipelinestate.DispositionRejected {
 		t.Errorf("a rejected reel was revived: %s", r.Disposition)
 	}
 	if d := get("h:detecting"); d.Attempts != 1 || d.NextRun.IsZero() {

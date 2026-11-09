@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -501,8 +502,8 @@ func discardNote(d splitDiscards) string {
 	}
 }
 
-func (s *SplitStage) ID() StageID     { return StageSplit }
-func (s *SplitStage) Cost() StageCost { return CostSplit }
+func (s *SplitStage) ID() pipelinestate.StageID { return pipelinestate.StageSplit }
+func (s *SplitStage) Cost() StageCost           { return CostSplit }
 
 // Applies to a composite, and nothing else.
 //
@@ -557,14 +558,14 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}
 		p = &prepared
 		if pending > 0 {
-			return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+			return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 				"prepared previews for %d of %d clips", len(p.Segments)-pending, len(p.Segments))}, nil
 		}
 	}
 	if p.StructureDecision == nil && rt.Decisioner != nil {
 		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, rt.Decisioner)
 		if errors.Is(assessErr, ErrProposalGone) {
-			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 		}
 		if assessErr != nil {
 			// An assessment outage or invalid runtime result says nothing about the source or
@@ -576,7 +577,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 				return StageResult{}, assessErr
 			}
 			return StageResult{
-				Verdict: VerdictReview,
+				Verdict: pipelinestate.VerdictReview,
 				Note:    "the complete-timeline assessment could not be completed; review the split proposal",
 			}, nil
 		}
@@ -608,7 +609,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if note == "" {
 			note = "no usable adverts remained"
 		}
-		return StageResult{Verdict: VerdictContinue, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictContinue, Note: note}, nil
 	}
 
 	// Ground the segments from their own frames BEFORE the gate reads them (§10 V54).
@@ -621,7 +622,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		case errors.Is(rerr, ErrProposalGone):
 			// Confirmed or rejected under us while we were grounding. Nothing to write and nothing
 			// to decide — the clip's disposition is already someone else's answer.
-			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 		case rerr != nil:
 			return StageResult{}, rerr
 		}
@@ -634,7 +635,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// pass achieved something (`Looked > 0`), which is what guarantees termination: every look
 	// marks a segment, so `Pending` strictly decreases and the reel reaches a verdict.
 	if pass.Pending > 0 && pass.Looked > 0 {
-		return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+		return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 			"looked at %d of %d cuts so far", len(p.Segments)-pass.Pending, len(p.Segments))}, nil
 	}
 
@@ -657,7 +658,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if len(part.Hold) > 0 {
 			if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 				if errors.Is(err, ErrProposalGone) {
-					return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+					return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 				}
 				return StageResult{}, err
 			}
@@ -666,7 +667,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if d := discardNote(discarded); d != "" {
 			note += "; " + d
 		}
-		return StageResult{Verdict: VerdictReview, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
 	}
 	if len(part.Confirm) == 0 {
 		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
@@ -686,11 +687,11 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// ConfirmSome; the all-held path previously returned before writing them anywhere.
 		if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 			if errors.Is(err, ErrProposalGone) {
-				return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
+				return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
 			}
 			return StageResult{}, err
 		}
-		return StageResult{Verdict: VerdictReview, Note: note}, nil
+		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
 	}
 
 	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the
@@ -710,7 +711,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		// someone reasons from when deciding whether a reel can be recovered.
 		return StageResult{}, err
 	}
-	reportProgress(ctx, StageSplit, 100)
+	reportProgress(ctx, pipelinestate.StageSplit, 100)
 
 	// ⚠ The segments are SPAWNED, so each one is enrolled at `probe` and runs the whole ladder for
 	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival. Before
@@ -729,13 +730,13 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// never be told the five exist.
 	if len(part.Hold) > 0 {
 		return StageResult{
-			Verdict: VerdictReview,
+			Verdict: pipelinestate.VerdictReview,
 			Spawned: spawned,
 			Note: fmt.Sprintf("%s; %s to review (%s)", note,
 				pluralizeCuts(len(part.Hold)), part.Verdict()),
 		}, nil
 	}
-	return StageResult{Verdict: VerdictContinue, Spawned: spawned, Note: note}, nil
+	return StageResult{Verdict: pipelinestate.VerdictContinue, Spawned: spawned, Note: note}, nil
 }
 
 func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []split.Segment) error {

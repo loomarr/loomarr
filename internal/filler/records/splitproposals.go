@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/screening"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
@@ -483,7 +484,7 @@ func (s *sqlStore) CompletePartialSplitConfirmation(ctx context.Context, complet
 		return filler.ErrProposalClaimed
 	}
 	for _, hash := range completion.ActivateHashes {
-		activated, err := s.advancePipelineTx(ctx, tx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
+		activated, err := s.advancePipelineTx(ctx, tx, hash, pipelinestate.DispositionReview, pipelinestate.DispositionRunning, completion.At)
 		if err != nil {
 			return fmt.Errorf("complete partial split confirmation %s activate child %s: %w", completion.Proposal.ID, hash, err)
 		}
@@ -607,7 +608,7 @@ func (s *sqlStore) CountReadySplitProposals(ctx context.Context) (int, error) {
 // syntaxes would make SQLite and Postgres capable of reporting different Incoming totals. It reads
 // the core's clips and pipeline tables and writes nothing.
 func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error) {
-	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
+	args := []any{true, false, string(pipelinestate.DispositionRunning), string(pipelinestate.DispositionReview)}
 	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
 		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
 		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`

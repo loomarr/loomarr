@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -77,7 +78,7 @@ func TestLanguageStage_KeepsALanguageAnyChannelAirs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := out.Verdict == filler.VerdictReject; got != tc.reject {
+		if got := out.Verdict == pipelinestate.VerdictReject; got != tc.reject {
 			t.Errorf("heard %s: rejected = %v, want %v (detail %q)", tc.heard, got, tc.reject, out.Detail)
 		}
 	}
@@ -99,7 +100,7 @@ func TestLanguageStage_AFailedChannelReadRetriesRatherThanSkipping(t *testing.T)
 	if err == nil {
 		t.Fatal("want the read failure surfaced so the runner retries")
 	}
-	if out.Verdict == filler.VerdictReject || det.calls != 0 || len(st.langs) != 0 {
+	if out.Verdict == pipelinestate.VerdictReject || det.calls != 0 || len(st.langs) != 0 {
 		t.Errorf("verdict=%v calls=%d recorded=%v, want nothing done without the wanted set",
 			out.Verdict, det.calls, st.langs)
 	}
@@ -134,7 +135,7 @@ func TestLanguageStage_RejectsAForeignClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictReject || out.Reason != filler.ReasonLanguage {
+	if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonLanguage {
 		t.Errorf("verdict=%v reason=%q, want the Spanish clip refused", out.Verdict, out.Reason)
 	}
 	// ⚠ The answer is recorded even though the clip is going away. Without it a re-scan that
@@ -158,7 +159,7 @@ func TestLanguageStage_KeepsASilentClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue {
+	if out.Verdict != pipelinestate.VerdictContinue {
 		t.Errorf("verdict = %v — a clip with no speech is not a foreign clip", out.Verdict)
 	}
 	// Recorded as `none`, so it is never re-checked.
@@ -182,7 +183,7 @@ func TestLanguageStage_ABackendFailureNeitherRecordsNorRejects(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error so the runner retries with backoff")
 	}
-	if out.Verdict == filler.VerdictReject {
+	if out.Verdict == pipelinestate.VerdictReject {
 		t.Error("refused the clip on a detector failure — a broken backend must not empty the catalog")
 	}
 	if len(st.langs) != 0 {
@@ -203,7 +204,7 @@ func TestLanguageStage_UndeterminedIsNotAVerdict(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error so the attempt is counted and eventually given up on")
 	}
-	if out.Verdict == filler.VerdictReject || len(st.langs) != 0 {
+	if out.Verdict == pipelinestate.VerdictReject || len(st.langs) != 0 {
 		t.Errorf("verdict=%v recorded=%v, want neither for an undetermined answer", out.Verdict, st.langs)
 	}
 }
@@ -216,7 +217,7 @@ func TestLanguageStage_KeepsAMatchingClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue {
+	if out.Verdict != pipelinestate.VerdictContinue {
 		t.Errorf("verdict = %v — this clip is in the expected language", out.Verdict)
 	}
 	if st.langs["a.mp4"] != "en" {
@@ -278,7 +279,7 @@ func TestLanguageStage_AFailedRecordIsNotAReject(t *testing.T) {
 	if err == nil {
 		t.Fatal("want the store failure surfaced")
 	}
-	if out.Verdict == filler.VerdictReject {
+	if out.Verdict == pipelinestate.VerdictReject {
 		t.Error("refused the clip although its language was never recorded")
 	}
 }

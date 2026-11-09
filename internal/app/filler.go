@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -147,7 +148,7 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 // (§10 V51b): `filler.ClipStore` for the runner, plus the probe and transcode rungs' writers.
 //
 // ⚠ The PIPELINE table itself needs no adapter — `store.Store` satisfies `filler.PipelineStore`
-// directly, because those five methods already speak `filler.ClipPipeline`. This adapter exists
+// directly, because those five methods already speak `pipelinestate.ClipPipeline`. This adapter exists
 // only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
 // adapter here performs.
 type fillerPipelineClipAdapter struct{ st records.Store }
@@ -640,7 +641,7 @@ func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash strin
 func (a fillerSplitStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
 	return a.st.SetClipTags(ctx, clipHash, leaves)
 }
-func (a fillerSplitStoreAdapter) UpsertClipPipeline(ctx context.Context, row filler.ClipPipeline) error {
+func (a fillerSplitStoreAdapter) UpsertClipPipeline(ctx context.Context, row pipelinestate.ClipPipeline) error {
 	return a.st.UpsertClipPipeline(ctx, row)
 }
 func (a fillerSplitStoreAdapter) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
@@ -826,7 +827,7 @@ type interactiveOperationWriter interface {
 }
 
 type fillerReadinessStore interface {
-	PipelineOverview(context.Context, time.Time) (filler.PipelineOverview, error)
+	PipelineOverview(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
 	ListAcquisitionRuns(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
 	AcquisitionRepairSummary(context.Context) (filler.AcquisitionRepairSummary, error)
 	CountReadySplitProposals(context.Context) (int, error)
@@ -921,7 +922,7 @@ func (a fillerServiceAdapter) Fetch(ctx context.Context, sourceID string) (fille
 	return a.autoFetch.Run(ctx)
 }
 
-func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error {
+func (a fillerServiceAdapter) Rewind(ctx context.Context, hash string, from pipelinestate.StageID, force bool) error {
 	if a.pipeline == nil {
 		return errors.New("filler pipeline is not configured")
 	}
@@ -1714,11 +1715,11 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]defect
 	if err != nil {
 		return nil, err
 	}
-	rows, err := a.st.ListClipPipelines(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}})
+	rows, err := a.st.ListClipPipelines(ctx, pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}})
 	if err != nil {
 		return nil, err
 	}
-	stage := make(map[string]filler.StageID, len(rows))
+	stage := make(map[string]pipelinestate.StageID, len(rows))
 	for _, r := range rows {
 		stage[r.ClipHash] = r.Stage
 	}

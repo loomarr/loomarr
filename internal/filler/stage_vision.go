@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -62,8 +63,8 @@ func NewVisionStage(tools MediaTools, provider llm.VisionProvider, store VisionC
 	return &VisionStage{tools: tools, provider: provider, store: store, clipDir: clipDir, enabled: enabled, now: now}
 }
 
-func (s *VisionStage) ID() StageID     { return StageVision }
-func (s *VisionStage) Cost() StageCost { return CostVision }
+func (s *VisionStage) ID() pipelinestate.StageID { return pipelinestate.StageVision }
+func (s *VisionStage) Cost() StageCost           { return CostVision }
 
 // Applies when vision is configured, on, and this clip still has a gap the frames might close.
 //
@@ -112,7 +113,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	if len(frames) == 0 {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
 	}
-	reportProgress(ctx, StageVision, NoMeasurement)
+	reportProgress(ctx, pipelinestate.StageVision, NoMeasurement)
 
 	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
@@ -137,7 +138,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
 	}
 
-	reportProgress(ctx, StageVision, 100)
+	reportProgress(ctx, pipelinestate.StageVision, 100)
 
 	updated := c
 	updated.VisibleText = v.VisibleText
@@ -159,10 +160,10 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "nothing on the frames could be grounded"},
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue, Note: "nothing on the frames could be grounded"},
 			VisionObservation{VisibleText: v.VisibleText, SuggestedEra: suggestedEra}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, VisionObservation{
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, VisionObservation{
 		Brand: v.Brand, VisibleText: v.VisibleText, Era: v.Era, SuggestedEra: suggestedEra,
 		Tags: append([]string(nil), v.Tags...),
 	}, nil

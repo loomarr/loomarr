@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -90,12 +91,12 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 	} {
 		putClip(t, st, clip)
 	}
-	for _, row := range []filler.ClipPipeline{
-		{ClipHash: "preparing", Stage: filler.StageTranscode, Status: filler.StatusRunning, Disposition: filler.DispositionRunning, UpdatedAt: now,
-			Stages: []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone, At: now.Add(-time.Minute)}}},
-		{ClipHash: "ready", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-time.Hour)},
-		{ClipHash: "old-ready", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-25 * time.Hour)},
-		{ClipHash: "audit-review", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReview, UpdatedAt: now.Add(-2 * time.Hour)},
+	for _, row := range []pipelinestate.ClipPipeline{
+		{ClipHash: "preparing", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning, Disposition: pipelinestate.DispositionRunning, UpdatedAt: now,
+			Stages: []pipelinestate.StageRecord{{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, At: now.Add(-time.Minute)}}},
+		{ClipHash: "ready", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady, UpdatedAt: now.Add(-time.Hour)},
+		{ClipHash: "old-ready", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady, UpdatedAt: now.Add(-25 * time.Hour)},
+		{ClipHash: "audit-review", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReview, UpdatedAt: now.Add(-2 * time.Hour)},
 	} {
 		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
 			t.Fatal(err)
@@ -132,13 +133,13 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 	srv, st, _ := newFillerServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	putClip(t, st, filler.Clip{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true})
-	if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-		ClipHash: "retrying", Stage: filler.StageTranscode, Status: filler.StatusRunning, Progress: 47,
-		Disposition: filler.DispositionRunning, Attempts: 2, UpdatedAt: now,
-		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, At: now.Add(-2 * time.Minute)},
-			{Stage: filler.StageTranscode, Status: filler.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
-			{Stage: filler.StageTranscode, Status: filler.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
+	if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+		ClipHash: "retrying", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning, Progress: 47,
+		Disposition: pipelinestate.DispositionRunning, Attempts: 2, UpdatedAt: now,
+		Stages: []pipelinestate.StageRecord{
+			{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, At: now.Add(-2 * time.Minute)},
+			{Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
+			{Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -182,11 +183,11 @@ func TestFillerIncoming_ShowsNextTryOnlyWhileTheCurrentStepWaitsForRetry(t *test
 	} {
 		putClip(t, st, clip)
 	}
-	for _, row := range []filler.ClipPipeline{
-		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now},
-		{ClipHash: "retrying", Stage: filler.StageVision, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now.Add(-time.Second)},
+	for _, row := range []pipelinestate.ClipPipeline{
+		{ClipHash: "active", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "retrying", Stage: pipelinestate.StageVision, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now.Add(-time.Second)},
 	} {
 		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
 			t.Fatal(err)
@@ -236,9 +237,9 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 			} {
 				putClip(t, st, clip)
 			}
-			for _, row := range []filler.ClipPipeline{
-				{ClipHash: "at-cutoff", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window)},
-				{ClipHash: "before-cutoff", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window - time.Second)},
+			for _, row := range []pipelinestate.ClipPipeline{
+				{ClipHash: "at-cutoff", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady, UpdatedAt: now.Add(-tc.window)},
+				{ClipHash: "before-cutoff", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady, UpdatedAt: now.Add(-tc.window - time.Second)},
 			} {
 				if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
 					t.Fatal(err)
@@ -266,9 +267,9 @@ func TestFillerIncoming_PagesPreparingWithTheSamePredicateAsItsTotal(t *testing.
 	for i := range 22 {
 		hash := fmt.Sprintf("preparing-%02d", i)
 		putClip(t, st, filler.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Clip %02d", i), Held: true})
-		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageTranscode, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
+		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+			ClipHash: hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
 		}); err != nil {
 			t.Fatal(err)
 		}

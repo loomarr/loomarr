@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
@@ -23,7 +24,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			SoftBudgetBytes: 20 << 30, HardReserveBytes: 10 << 30, AvailableBytes: 18 << 30,
 			Automatic: true,
 		},
-		Pipeline: filler.PipelineOverview{
+		Pipeline: pipelinestate.PipelineOverview{
 			Runnable: 2, NeedsDecision: 3, Ready: 9, Complete: 2, Rejected: 4, Recoverable: 1,
 		},
 		Pool: pod.PoolReport{

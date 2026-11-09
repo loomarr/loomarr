@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -19,7 +20,7 @@ import (
 
 func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t *testing.T) {
 	out, measurements, stored, childHash, err := runEvidenceBoundConditioning(t, 30_000)
-	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue || measurements != 2 || stored.oldHash != childHash {
 		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
 	}
 }
@@ -43,13 +44,13 @@ func TestTranscodeStage_ConditionedChildTakesTheMeasuredContainerLength(t *testi
 				t.Fatal(err)
 			}
 			if !tc.publishes {
-				if out.Verdict != VerdictReview || stored.oldHash != "" {
+				if out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
 					t.Fatalf("probed %d ms against a 30000 ms container = %+v, replaced=%q; want held for review",
 						tc.probedMs, out, stored.oldHash)
 				}
 				return
 			}
-			if out.Verdict != VerdictContinue || stored.clip.DurationMs != 30_000 {
+			if out.Verdict != pipelinestate.VerdictContinue || stored.clip.DurationMs != 30_000 {
 				t.Fatalf("probed %d ms = %+v, duration %d; want published at the measured 30000 ms",
 					tc.probedMs, out, stored.clip.DurationMs)
 			}
@@ -298,12 +299,12 @@ func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !tc.refused {
-				if out.Verdict != VerdictContinue {
+				if out.Verdict != pipelinestate.VerdictContinue {
 					t.Fatalf("correctable clip = %+v, want it to continue", out)
 				}
 				return
 			}
-			if out.Verdict != VerdictReject || out.Reason != ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
+			if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
 				t.Fatalf("too-quiet clip = %+v, want rejected too_quiet with its measurement", out)
 			}
 			if stored.oldHash != "" {
@@ -387,7 +388,7 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 		t.Fatal("legacy playback without evidence did not re-enter the rung")
 	}
 	out, err := stage.Run(context.Background(), clip)
-	if err != nil || out.Verdict != VerdictContinue {
+	if err != nil || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("backfill result = %+v, %v", out, err)
 	}
 	got, err := os.ReadFile(full)

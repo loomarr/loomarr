@@ -23,6 +23,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -191,28 +192,28 @@ type FillerSplitProposalStore interface {
 // core's store.ClipTx, inside the transition's transaction.
 type FillerPipelineStore interface {
 	// UpsertClipPipeline writes an ordinary runner transition.
-	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error
 	// RetryClipPipeline writes the recovery transition and, for an exhausted terminal failure,
 	// restores the catalog tombstone while holding the clip in the same transaction.
-	RetryClipPipeline(ctx context.Context, failed, retry filler.ClipPipeline, restore bool) error
+	RetryClipPipeline(ctx context.Context, failed, retry pipelinestate.ClipPipeline, restore bool) error
 	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
-	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
+	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
-	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
-	// PipelineOverview groups the durable state through filler.ClipPipeline.Lifecycle so API,
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)
+	// PipelineOverview groups the durable state through pipelinestate.ClipPipeline.Lifecycle so API,
 	// runner telemetry and persistence cannot acquire separate ownership predicates.
-	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
+	PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error)
 	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
-	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error)
 	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
 	// and limit, so a bounded page and its total cannot describe different populations.
-	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
+	CountClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) (int, error)
 	// ListPreparationWork joins bounded pipeline facts to only the clip duration needed for local
 	// progress calibration. It never exposes paths or descriptive media content.
-	ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error)
+	ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
 	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
