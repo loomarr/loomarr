@@ -90,8 +90,8 @@ const DiscoveryFeedbackControls = ({
             aria-pressed={selected === action}
             disabled={disabled}
             onPress={() => onSet(action)}
-            selected={selected === action}
-            tone="secondary"
+            // Flat until chosen, so four of them fit beside a title in a lineup row.
+            variant={selected === action ? "secondary" : "ghost"}
           >
             {compact && action === "less" ? "Less" : compact && action === "surprise" ? "Surprise" : label}
           </Action>
