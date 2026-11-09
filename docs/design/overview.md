@@ -163,7 +163,7 @@ served docs all derive from it, and hand-kept API docs are not allowed (decision
 (`make openapi-verify`).
 
 - **Every `/v1` route is a Huma operation**, including binary downloads, images, SSE, multipart and
-  redirects (`rawOp` in `internal/api/rawop.go`). That keeps one fail-closed authorization
+  redirects (`RawOp` in `internal/api/httpcore/rawop.go`). That keeps one fail-closed authorization
   middleware, CSRF and the router/exporter drift guard covering every route.
 - **Arrays are never nullable**, and `null` is not an empty list anywhere. `humaConfig` sets
   `DefaultArrayNullable = false`, and the API's one JSON encoder (`wireJSONFormat`, also behind
