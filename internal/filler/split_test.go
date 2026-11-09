@@ -274,10 +274,6 @@ func TestParseMMS(t *testing.T) {
 
 // --- names / transcripts -----------------------------------------------------
 
-// ⚠ `TestSanitizeClipName` was deleted with the function it covered (§10 V51a). A segment's
-// filename is its content hash now, so there is no display name to make filesystem-safe — the
-// name lives on the catalog row and is read by people, not by the filesystem.
-
 func TestSliceTranscript(t *testing.T) {
 	tr := []tools.TranscriptSegment{
 		{StartMs: 0, EndMs: 2000, Text: "first"},

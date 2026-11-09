@@ -25,9 +25,8 @@ import (
 // on-screen text the model says it read (an inferred brand is dropped), and records every read so
 // the rung completes. Its done record on the ladder is what stops a re-run paying twice.
 //
-// ⚠ **Ported from `visionjob_test.go` when V51b retired the sweep.** `BoundsOnePass` went with it —
-// the bound is `filler.pipeline.max_vision`, enforced by the runner and tested there. Everything
-// else survives, because the grounding rule is the part that matters and it did not change.
+// ⚠ The per-pass bound is `filler.pipeline.max_vision`, enforced by the runner and tested there;
+// the grounding rule is the part that matters, and it is tested here.
 
 // fakeVisionStore records what the rung wrote, without a database.
 type fakeVisionStore struct {
@@ -377,8 +376,8 @@ func TestVisionStage_GroundsEraOnlyWhenYearIsVisible(t *testing.T) {
 	}
 }
 
-// An out-of-enum category is dropped exactly as validateTags drops one (the enum check survives the
-// grounding generalisation).
+// An out-of-enum category is dropped exactly as the text tagger drops one (the enum check survives
+// the grounding generalisation).
 func TestVisionStage_DropsOutOfEnumCategory(t *testing.T) {
 	st := newFakeVisionStore()
 	prov := &scriptedProvider{answer: `{"visibleText":"insurance you can trust","brand":"","era":0,"category":"insurance"}`}

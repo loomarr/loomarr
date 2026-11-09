@@ -17,8 +17,8 @@ import (
 
 // The TRANSCRIBE stage (§10 V51b): what does the clip SAY?
 //
-// V44's `TranscribeJob` logic, unchanged — the same `MediaTools.Transcribe` seam, the same
-// thin-source selectivity, the same `TranscriptNone` sentinel. The sweep around it is gone.
+// It goes through the `MediaTools.Transcribe` seam, is selective about thin sources, and records
+// the `TranscriptNone` sentinel for a wordless clip.
 //
 // ⚠ **It runs before `tag`, and as a rung that ordering is now guaranteed rather than hoped for.**
 // The transcript is one of the text signals the tagger grounds against, so a tagger that runs

@@ -454,10 +454,9 @@ const boundaryScanChunkMs int64 = 10 * 60 * 1000
 
 // Propose detects cuts in one compilation clip and persists the resulting
 // proposal (§10). The catalog is untouched.
-// ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`. The
-// parameter was named `clipPath` until V43, a leftover from the pre-V38c identity, and that
-// naming is the exact class that shipped the V41 tagger bug (a path handed to a hash-keyed
-// call, failing silently). The API passes `clipID`; so does the scheduled runner.
+// ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`, and a path
+// handed to a hash-keyed call fails silently (the class that shipped the V41 tagger bug). The API
+// passes `clipID`; so does the scheduled runner.
 func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposal, error) {
 	var p *SplitProposal
 	pending, err := sp.store.ListSplitProposals(ctx)
@@ -618,29 +617,20 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	// land on Unsplittable, never on a guessed cut.
 	segs = sp.rescue(ctx, file, base, segs, floor)
 
-	// 4. RETIRED (§10 V51g): classify no longer runs here.
+	// 4. Split does not classify (§10 V51g).
 	//
-	// ⚠ **It was one LLM turn per segment, inside a bounded pass.** Measured on a 16m47s reel:
-	// 51 segments × 7.4s ≈ 377s — so the rung could never finish, threw its work away, and
-	// started over on the next tick.
+	// ⚠ **Classifying here would be one LLM turn per segment inside a bounded pass** — 51 segments
+	// × 7.4s ≈ 377s on a 16m47s reel, so the rung could never finish. It would also be worse
+	// duplicate work: `split.Segment.Transcript` is EMPTY unless `rescue` ran (and rescue only
+	// transcribes segments over ~120s), so `Classify` would see nothing but a generated name,
+	// `"… part 7"`, while every spawned segment runs `transcribe` → `tag` anyway with a real
+	// transcript.
 	//
-	// ⚠ The "budget of 120" this note used to cite was the CRON INTERVAL, not the ceiling. The
-	// real ceiling was River's inherited `JobTimeoutDefault` of **60s** until V54 gave jobs their
-	// own `Timeout` (§10, §18.1); the margin here was 6×, not 3×. Everything else in `Propose` totals ~40s
-	// (detect 4s, dedup 33s, cut 3s); this one step was the entire overrun.
-	//
-	// ⚠ And it was strictly WORSE duplicate work. It called the same `Classify` the `tag` rung
-	// calls, but with `split.Segment.Transcript` — EMPTY unless `rescue` ran, and rescue only
-	// transcribes segments over ~120s (none on that reel). So it classified 51 adverts from
-	// nothing but a generated name, `"… part 7"`, identical across segments bar the number. Then
-	// every spawned segment ran `transcribe` → `tag` and called the same function again, this time
-	// with a real transcript. The pipeline paid twice and kept the second answer.
-	//
-	// **Split does not classify.** V69's bounded display-name proposal is the narrow descriptive
-	// exception: it reuses exact-span vision/transcript evidence and carries no admission authority.
-	// Each segment is spawned as its own clip and runs the whole ladder for itself — one clip at a
-	// time, budget-bounded, resumable, and individually visible in Incoming. Classification still
-	// happens where the scheduler can hold it.
+	// V69's bounded display-name proposal is the narrow descriptive exception: it reuses exact-span
+	// vision/transcript evidence and carries no admission authority. Each segment is spawned as its
+	// own clip and runs the whole ladder for itself — one clip at a time, budget-bounded,
+	// resumable, and individually visible in Incoming. Classification happens where the scheduler
+	// can hold it.
 	//
 	// ⚠ The cost: the split-review screen shows cuts without tags. That is the right trade — that
 	// screen asks "are these the right cuts?", which an operator answers from the filmstrip and the
@@ -662,9 +652,9 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		return p, false, fmt.Errorf("assess source structure: %w", err)
 	}
 	// ⚠ The proposal carries the compilation's HASH, not its path. Confirm looks the clip back up
-	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
-	// that lookup never matched and no split could ever be committed. The file location Confirm
-	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
+	// with `GetClip`, which is hash-keyed — storing `clip.Path` here would make that lookup never
+	// match, so no split could ever be committed. The file location Confirm needs is derived from
+	// the hash, so there is one identity and nothing to disagree with it.
 	p.Segments = segs
 	p.Structure = &structure
 	p.Detection = nil
@@ -863,8 +853,8 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []split.
 // parameter was named `clipPath` and tested against `c.Path`, while the one call site passes the
 // compilation's HASH — so the guard never fired and every segment was compared against the very
 // file it was cut from. Any segment resembling its parent came back flagged `DupOf` the
-// compilation: noise in the review, counted by `segmentsNeedingAttention`, and enough to make
-// `AutoConfirmable` reject a perfectly good reel. It read as correct because the splitter's test
+// compilation: noise in the review, and enough to make `AutoConfirmable` reject a perfectly good
+// reel. It read as correct because the splitter's test
 // store keyed clips by path, so the fixture made `hash` and `path` the same string (§10 V51a).
 func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []split.Segment) {
 	catalog, err := sp.store.ListClips(ctx)
@@ -1180,11 +1170,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		}
 		spawned = append(spawned, c.hash)
 		nc := cliplibrary.StoreClip{UpdatedAt: now}
-		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
-		// so every segment used to insert with `hash=''` and each one overwrote the last — a
-		// 41-segment reel became ONE catalog row. Invisible to the splitter's own tests because
-		// their store keys its map on `Path`; the store conformance suite is where this class is
-		// pinned, and V51a adds the case.
+		// ⚠ **The identity must be set.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`, so a
+		// segment inserted with `hash=''` overwrites the last one — a 41-segment reel would become
+		// ONE catalog row. Invisible to the splitter's own tests because their store keys its map
+		// on `Path`; the store conformance suite pins this class.
 		nc.Hash = c.hash
 		nc.Path = c.path
 		nc.Name, nc.NameSource = c.segment.Name, segmentNameSource(c.segment.NameOrigin)
@@ -1306,7 +1295,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, err
 	}
 	// Renumber so the review's "#N" runs 1..n rather than showing gaps where the confirmed cuts
-	// used to be. Names are untouched: a reel confirmed over two sittings must not rename its
+	// were. Names are untouched: a reel confirmed over two sittings must not rename its
 	// remaining clips underneath the operator.
 	remaining := append([]split.Segment(nil), hold...)
 	for i := range remaining {
@@ -1426,9 +1415,9 @@ func appendUniqueStrings(existing []string, values ...string) []string {
 // inside the clip, start<end, ordered and non-overlapping.
 //
 // ⚠ The floor here is the COMPOSED one, so the manual path refuses what the scan boundary would
-// refuse. It used to be bare `MinSegmentMs` (3s), which let a hand-drawn 8s cut be written,
-// spawned, and then rejected `too_short` by the probe rung — a silent downstream loss the operator
-// never connected to their edit. Refusing it upfront is arguable; losing it quietly is not.
+// refuse. A bare `MinSegmentMs` (3s) would let a hand-drawn 8s cut be written, spawned, and then
+// rejected `too_short` by the probe rung — a silent downstream loss the operator would never
+// connect to their edit. Refusing it upfront is arguable; losing it quietly is not.
 func validateConfirmedSegments(segs []split.Segment, durationMs int64, floor segmentFloor) error {
 	sorted := append([]split.Segment(nil), segs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartMs < sorted[j].StartMs })

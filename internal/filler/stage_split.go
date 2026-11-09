@@ -18,10 +18,9 @@ import (
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.
 //
-// V43's `SplitRunner` logic, minus the sweep. Detection is `Splitter.Propose` and the gate is
-// `AutoConfirmable`, both unchanged — what moves is who decides a clip is a candidate (the probe
-// rung, which now sets `is_composite`) and what happens to the pieces (they are SPAWNED, so each
-// segment runs the whole ladder for itself instead of waiting for six cron jobs to notice it).
+// Detection is `Splitter.Propose` and the gate is `AutoConfirmable`. The probe rung decides a clip
+// is a candidate (it sets `is_composite`), and the pieces are SPAWNED, so each segment runs the
+// whole ladder for itself instead of waiting for cron jobs to notice it.
 //
 // ⚠ **`filler.autosplit.enabled` now defaults ON** (maintainer decision, V51b). The gate it turns
 // on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoSplitConfidence`
@@ -29,11 +28,9 @@ import (
 // `AutoSplitReject`'s reason recorded, so "why did this not auto-cut?" is answerable without
 // reading the log.
 //
-// ⚠ **The gate is PER SEGMENT since V54 — "the whole reel qualifies or none of it does" is
-// retired.** The confident cuts are filed and the doubtful ones stay behind in a shrunken
-// proposal, so a reel of 52 becomes 47 clips and 5 cuts to review. The old rule made the
-// operator's work never shrink: one doubtful segment sent all 52 back, and ~50 reels sat parked
-// with none ever confirmed.
+// ⚠ **The gate is PER SEGMENT (V54).** The confident cuts are filed and the doubtful ones stay
+// behind in a shrunken proposal, so a reel of 52 becomes 47 clips and 5 cuts to review; one
+// doubtful segment must not send all 52 back.
 
 // SplitStageStore is the slice of the store the split stage reads.
 //
@@ -112,10 +109,9 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 // WithSegmentVision attaches the split-time grounder that answers the auto-confirm gate (§10 V54).
 //
 // ⚠ **Without this, `filler.autosplit.enabled` is default-ON and cannot fire.** `AutoConfirmable`
-// refuses any segment with neither `Audience` nor `Category`; the text `classify` that used to fill
-// those fields was removed in V51g (it cost 3× the pass budget AND classified nothing but a
-// generated name), and nothing replaced it — so the gate has had no data source at all. Measured on
-// the maintainer's catalog: 45 compilations parked at `split`, none ever auto-confirmed.
+// refuses any segment with neither `Audience` nor `Category`, and the split-time grounder is the
+// only thing that fills them: text classification at split time was removed in V51g (§10) because
+// it cost 3× the pass budget and classified nothing but a generated name.
 //
 // ⚠ **It grounds from PIXELS, not from the segment's name, and that is the whole difference.** The
 // removed classifier read `"… part 7"` and grounded nothing, which is why speeding it up would not
@@ -174,10 +170,8 @@ type SegmentVision struct {
 	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
 	// stay inside its pass budget.
 	//
-	// ⚠ **A RATE, not a ceiling (V54).** This used to say a reel with more segments than the
-	// budget "simply does not auto-confirm" — true when the budget was indexed absolutely, and it
-	// meant reels of 82–303 segments could never be confirmed at all against a default of 60.
-	// Grounding now persists and resumes, so a large reel is judged over several passes; a segment
+	// ⚠ **A RATE, not a ceiling (V54).** Reels run to 82–303 segments against a default of 60, so
+	// grounding persists and resumes and a large reel is judged over several passes; a segment
 	// still ungrounded when the gate runs is held back on its own rather than sinking the reel.
 	Budget func() int
 }
@@ -528,11 +522,9 @@ func (s *SplitStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, 
 func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	// Already review-pending: re-detecting would replace a proposal an operator may be halfway
 	// through editing. ⚠ Keyed by HASH on both sides — the identity `Propose` takes.
-	// ⚠ An existing proposal is RE-GROUNDED, never re-detected. Until V54 this returned outright,
-	// which looked like "leave the operator's cut list alone" and was in fact a dead end: the row
-	// went to `review`, `ListPipelineWork` only claims `running`, and nothing ever reached that
-	// reel again. Every compilation detected before the grounder existed was therefore permanently
-	// ungroundable — measured as ~50 reels parked at `split`, none auto-confirmed, ever.
+	// ⚠ An existing proposal is RE-GROUNDED, never re-detected. Returning outright would look like
+	// "leave the operator's cut list alone" but is a dead end: the row goes to `review`,
+	// `ListPipelineWork` only claims `running`, and nothing would ever reach that reel again.
 	//
 	// Re-detection stays the operator's call (`POST /v1/filler/split`): a rung must not redraw a
 	// cut list a human may have open. Grounding is additive and touches no boundary.
@@ -645,8 +637,8 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 	// from a button an operator just pressed — a human is already present and about to review, so
 	// confirming under them would take the decision they came to make.
 	//
-	// ⚠ **PER SEGMENT since V54.** This used to be one verdict for the reel, so one doubtful cut
-	// in 52 sent all 52 back and the operator's work never shrank.
+	// ⚠ **PER SEGMENT (V54).** One doubtful cut in 52 must not send all 52 back, or the operator's
+	// work never shrinks.
 	legacy, part := s.splitPartitions(*p, rt.Materialization)
 	if rt.Shadow != nil {
 		if err := rt.Shadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
@@ -686,7 +678,7 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 		// Persist the per-segment reasons too. The ladder note explains the reel in aggregate, but
 		// the review screen has to tell the operator which cut needs classification, a grounded
 		// era, or a closer look at its boundary. Partial confirmation persists these through
-		// ConfirmSome; the all-held path previously returned before writing them anywhere.
+		// ConfirmSome; this all-held path writes them here.
 		if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 			if errors.Is(err, ErrProposalGone) {
 				return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
@@ -705,12 +697,10 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 		// auto-confirm degrades to the manual path rather than losing the detection work. Returned
 		// as an error so the runner retries with backoff.
 		//
-		// ⚠ This used to claim that "exhausting the retries leaves the reel in review". It does
-		// not: `split` is not in `fatalStages`, so `onFailure` resolves and the row STEPS ONWARD,
-		// through rungs the composite guard skips, landing at `complete`. The reel is still reviewable
-		// — its proposal is intact and Incoming lists it — but the pipeline row says finished, not
-		// waiting. Corrected rather than deleted because the wrong version is the kind of comment
-		// someone reasons from when deciding whether a reel can be recovered.
+		// ⚠ Exhausting the retries does NOT leave the pipeline row in review: `split` is not in
+		// `fatalStages`, so `onFailure` resolves and the row STEPS ONWARD, through rungs the
+		// composite guard skips, landing at `complete`. The reel is still reviewable — its proposal
+		// is intact and Incoming lists it — but the pipeline row says finished, not waiting.
 		return StageResult{}, err
 	}
 	pipelinestate.ReportProgress(ctx, pipelinestate.StageSplit, 100)

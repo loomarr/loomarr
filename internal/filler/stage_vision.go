@@ -289,8 +289,9 @@ func decodeVisionInt(raw json.RawMessage) int {
 	return value
 }
 
-// groundVisionTags is the grounding pass for the vision tier — validateTags, but the signal a tag
-// must appear in is the model's OWN visibleText rather than the clip's text signals (§10 V44).
+// groundVisionTags is the grounding pass for the vision tier: the same rule the text tagger applies
+// (a brand or year must appear in the signals it was read from), but the signal a tag must appear
+// in is the model's OWN visibleText rather than the clip's text signals (§10 V44).
 //
 // ⚠ **This is the era rule generalised to pixels, and it must not be weakened.** A vision model
 // that reports {brand:"Coca-Cola"} with a visibleText that never spells "Coca-Cola" has INFERRED
@@ -322,19 +323,18 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	}
 	// TAGS — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
 	//
-	// ⚠ **It used to require the word on the frame, and V54b removed that.** The condition was
-	// `strings.Contains(haystack, strings.ToLower(raw))`, applying the brand/era rule to a field
-	// that makes a different kind of claim. A brand or a year is a specific FACT, and asserting one
-	// the frame does not show is fabrication that is wrong in a checkable way. A category is a
-	// JUDGEMENT ABOUT IMAGERY — calling a toy advert `toys` because it shows toys is the reason a
-	// vision tier exists, and demanding the genre be printed on screen does not make the judgement
-	// honest, only rare.
+	// ⚠ **It does not have to appear on the frame (V54b).** The brand/era rule — the claim must be
+	// visible in `visibleText` — does not fit a field that makes a different kind of claim. A brand
+	// or a year is a specific FACT, and asserting one the frame does not show is fabrication that is
+	// wrong in a checkable way. A category is a JUDGEMENT ABOUT IMAGERY — calling a toy advert
+	// `toys` because it shows toys is the reason a vision tier exists, and demanding the genre be
+	// printed on screen does not make the judgement honest, only rare.
 	//
-	// ⚠ Measured 2026-08-13: on a 37-segment reel with a model answering correctly every time, the
-	// old condition admitted ZERO categories — `psa` was dropped against visibleText
-	// "WAGA-5/Fox Commercial Breaks (2/5/1995)", while `era` grounded from the same string because
-	// "1995" is in it. `segmentVerdict` refuses an untagged segment BEFORE it consults boundary
-	// confidence, so this one condition made split auto-confirm structurally impossible.
+	// ⚠ This matters for split auto-confirm: `segmentVerdict` refuses an untagged segment BEFORE it
+	// consults boundary confidence, so requiring the word on the frame would drop a correct `psa`
+	// against visibleText "WAGA-5/Fox Commercial Breaks (2/5/1995)" and make auto-confirm
+	// structurally impossible, while `era` still grounds from the same string because "1995" is in
+	// it.
 	//
 	// ⚠ The TAXONOMY is what keeps this grounded rather than open: an unresolvable category is
 	// still dropped, so the vocabulary is the constraint. Resolution still maps `burgers`→`fast_food`.

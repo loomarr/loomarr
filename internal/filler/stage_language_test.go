@@ -19,11 +19,8 @@ import (
 // The language rung (§10 V40's gate, V51b's stage). Its whole risk is that it REFUSES clips, so
 // most of these assert that it does not.
 //
-// ⚠ **Ported from `languagejob_test.go` when V51b retired the sweep, and two of the old cases went
-// with it rather than being rewritten.** `BoundsOnePass` tested the job's batch constant and
-// `SkipsClipsAlreadyChecked`'s work-list half tested its own filtering — both are the runner's
-// concerns now, and both are covered against the runner in `pipeline_test.go`. Keeping them here
-// as stage tests would have meant asserting behaviour this file no longer owns.
+// ⚠ The per-pass batch bound and the work-list filtering are the runner's concerns, not the
+// stage's, and are tested against the runner in `pipeline_test.go`.
 
 // fakeLangStore records what the rung wrote without a database.
 type fakeLangStore struct {
