@@ -18388,7 +18388,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: List media-server collections
+      summary: List the household's collections
       tags:
         - library
   /v1/library/hooks/{app}:

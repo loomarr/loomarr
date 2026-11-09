@@ -1,7 +1,9 @@
 # Library and inventory
 
 Formerly `design.md` §5 (media inventory, cached series episodes), §6 (Emby and Jellyfin) and §7.2
-(search). How Loomarr reads the household media server and what it keeps of it.
+(search). How Loomarr builds the household's Library from its own media folders (#2151): the
+scanner, the metadata providers and the inventory it keeps, and what it still asks the media
+server for.
 
 ## The media server contract
 
@@ -11,10 +13,10 @@ metadata come from the Library's own tables.
 
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Collections** (BoxSets) back `scope.collections`: `Collections()` lists them, and
-  `CollectionMembers(id)` returns members with full provider ids through `ParentId`. `ChildCount` is not
-  returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
-  tool-generated one-per-franchise groupings, so any picker must rank hand-made ones first.
+- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
+  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
+  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
+  ready-made sets.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`

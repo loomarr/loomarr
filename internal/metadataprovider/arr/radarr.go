@@ -34,7 +34,6 @@ func (*Radarr) Capabilities() mp.Capabilities {
 		Kinds:    []mp.Kind{mp.KindMovie},
 		Resolves: []mp.Resolvable{{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB}},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyTechnical, mp.FamilyArtwork},
-		Rate:     mp.RateHint{MaxConcurrent: 1, PreferList: true},
 	}
 }
 
