@@ -2,11 +2,14 @@ package scan
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 )
 
 // clock is a settable clock for the Tracker's rate baseline.
@@ -277,6 +280,35 @@ func TestEnricherReportsTheLookups(t *testing.T) {
 	// Nothing is left due: the step ended.
 	if h.im.Tracker.Active(StepLookingUp) {
 		t.Fatal("the lookups still run with nothing due")
+	}
+}
+
+// A catalog without a key, or one that can't be reached, moves nothing, so step 3 never shows:
+// it would otherwise sit at 0 of N for as long as the catalog is down.
+func TestEnricherShowsNoLookupsItCannotMake(t *testing.T) {
+	for name, err := range map[string]error{
+		"no key":      tmdb.ErrAPIKeyRequired,
+		"unreachable": errors.New("catalog down"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
+			h.file("Hotel (2014) {tmdb-90000202}/Hotel (2014) {tmdb-90000202}.mkv", 10)
+			h.run()
+
+			seen := recordSnapshots(h)
+			e := &Enricher{Store: h.st, Provider: &fakeCatalog{err: err}, Tracker: h.im.Tracker,
+				Sleep: func(context.Context, time.Duration) error { return nil }}
+			if err := e.Tick(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range seen() {
+				if s.Step == StepLookingUp {
+					t.Fatalf("the lookups were shown: %+v", s)
+				}
+			}
+		})
 	}
 }
 

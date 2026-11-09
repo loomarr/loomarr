@@ -48,6 +48,15 @@ type frameThrottle struct {
 	mu       sync.Mutex
 	last     time.Time
 	trailing bool
+	// sending orders the frames: each takes its snapshot and posts it in turn, so the last frame
+	// out carries the latest state even when a trailing frame races an urgent one.
+	sending sync.Mutex
+}
+
+func (t *frameThrottle) send() {
+	t.sending.Lock()
+	defer t.sending.Unlock()
+	t.publish()
 }
 
 func newFrameThrottle(gap time.Duration, publish func()) *frameThrottle {
@@ -65,7 +74,7 @@ func (t *frameThrottle) poke(urgent bool) {
 	case urgent || (!t.trailing && now.Sub(t.last) >= t.gap):
 		t.last = now
 		t.mu.Unlock()
-		t.publish()
+		t.send()
 	case t.trailing:
 		// The trailing frame already scheduled carries this change.
 		t.mu.Unlock()
@@ -82,5 +91,5 @@ func (t *frameThrottle) fire() {
 	t.mu.Lock()
 	t.trailing, t.last = false, t.now()
 	t.mu.Unlock()
-	t.publish()
+	t.send()
 }

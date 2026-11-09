@@ -33,14 +33,15 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	}
 	im.mu.Lock()
 	if im.reading {
+		// Counted under the pass lock, so the stage's Begin is never after a hand-off's Grow.
+		im.Tracker.Grow(StepReading, len(queue))
 		im.handoff = append(im.handoff, queue...)
 		im.mu.Unlock()
-		im.Tracker.Grow(StepReading, len(queue))
 		return nil
 	}
 	im.reading = true
-	im.mu.Unlock()
 	im.Tracker.Begin(StepReading, len(queue))
+	im.mu.Unlock()
 	// released is set when this stage stops taking files, after which the next pass may become a
 	// stage while this one's last reads finish.
 	released := false

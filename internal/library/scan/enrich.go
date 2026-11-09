@@ -93,7 +93,8 @@ func (e *Enricher) Run(ctx context.Context) {
 // Tick fetches what is due now. It stops early when the catalog cannot be reached at all.
 //
 // Fetching the titles new to the cache is step 3 of an import ("Looking up details"): it runs
-// from the tick that finds one due as new until the tick that finds none, and counts each fetched.
+// from the first one fetched until a tick finds none due as new or the catalog can't be reached,
+// and counts each fetched.
 // The share of old records refreshed each tick is not part of it.
 func (e *Enricher) Tick(ctx context.Context) error {
 	if e.Enabled != nil && !e.Enabled() {
@@ -106,9 +107,6 @@ func (e *Enricher) Tick(ctx context.Context) error {
 		return err
 	}
 	due := e.due(now)
-	if err := e.track(ctx, due); err != nil {
-		return err
-	}
 	due.New = enrichNewBatch
 	fresh, err := e.Store.DueLibraryCatalog(ctx, due)
 	if err != nil {
@@ -131,8 +129,10 @@ func (e *Enricher) Tick(ctx context.Context) error {
 				return err
 			}
 		}
+		var name string
 		if isNew[key] {
-			e.Tracker.Current(StepLookingUp, e.title(ctx, key))
+			name = e.title(ctx, key)
+			e.Tracker.Current(StepLookingUp, name)
 		}
 		outcome, err := e.fetch(ctx, key, now)
 		if err != nil {
@@ -144,13 +144,34 @@ func (e *Enricher) Tick(ctx context.Context) error {
 			e.Tracker.End(StepLookingUp)
 			return nil
 		case fetchFailed:
-			return e.track(ctx, e.due(e.now()))
+			// The catalog can't be reached: nothing is moving, so nothing is shown running.
+			e.Tracker.End(StepLookingUp)
+			return nil
 		}
 		if isNew[key] {
+			if err := e.begin(ctx, name); err != nil {
+				return err
+			}
 			e.Tracker.Advance(StepLookingUp, 1)
 		}
 	}
 	return e.track(ctx, e.due(e.now()))
+}
+
+// begin starts step 3 at the first title looked up (named first), counting it and what is left
+// due as new. The step starts only once a lookup succeeds, so a catalog without a key or out of
+// reach never shows it.
+func (e *Enricher) begin(ctx context.Context, first string) error {
+	if e.Tracker == nil || e.Tracker.Active(StepLookingUp) {
+		return nil
+	}
+	left, err := e.Store.CountDueLibraryCatalog(ctx, e.due(e.now()))
+	if err != nil {
+		return err
+	}
+	e.Tracker.Begin(StepLookingUp, left+1)
+	e.Tracker.Current(StepLookingUp, first)
+	return nil
 }
 
 // due is what is due at now, uncapped.
@@ -161,8 +182,8 @@ func (e *Enricher) due(now time.Time) librarystore.LibraryCatalogDue {
 	}
 }
 
-// track counts the titles due as new and tells the Tracker: step 3 begins when there are some,
-// grows as more become due while it runs, and ends when none are left.
+// track counts the titles due as new and tells a running step 3: it grows as more become due and
+// ends when none are left.
 func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue) error {
 	if e.Tracker == nil {
 		return nil
@@ -173,9 +194,7 @@ func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue
 		return err
 	case left == 0:
 		e.Tracker.End(StepLookingUp)
-	case !e.Tracker.Active(StepLookingUp):
-		e.Tracker.Begin(StepLookingUp, left)
-	default:
+	case e.Tracker.Active(StepLookingUp):
 		e.Tracker.Due(StepLookingUp, left)
 	}
 	return nil
