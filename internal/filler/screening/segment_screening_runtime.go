@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // SegmentScreeningMedia supplies an evaluator with the exact rendered-child artifacts named by
 // Subject. Paths are private runtime locators rather than authority: each evaluator must reopen
 // the artifact it uses and prove its bytes against Subject before returning a result.
 type SegmentScreeningMedia struct {
-	Subject          filler.SegmentScreeningSubject
-	Manifest         filler.MediaAssetManifest
+	Subject          asset.SegmentScreeningSubject
+	Manifest         asset.Manifest
 	SourceMasterPath string
 	EvidencePath     string
 	PlaybackPath     string
@@ -121,11 +121,11 @@ func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScree
 }
 
 func validateSegmentScreeningMedia(media SegmentScreeningMedia) error {
-	if err := filler.ValidateSegmentScreeningSubject(media.Subject); err != nil {
+	if err := asset.ValidateSegmentScreeningSubject(media.Subject); err != nil {
 		return fmt.Errorf("segment screening media subject: %w", err)
 	}
 	if err := media.Manifest.Validate(); err != nil ||
-		filler.MediaAssetManifestAuthoritySHA256(media.Manifest) != media.Subject.MediaManifestSHA256 ||
+		asset.ManifestAuthoritySHA256(media.Manifest) != media.Subject.MediaManifestSHA256 ||
 		media.Manifest.SourceMaster.SHA256 != media.Subject.SourceMasterSHA256 ||
 		media.Manifest.SourceMaster.Bytes != media.Subject.SourceMasterBytes || media.Manifest.Evidence == nil ||
 		media.Manifest.Evidence.Asset.SHA256 != media.Subject.EvidenceSHA256 ||

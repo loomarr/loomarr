@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -239,7 +240,7 @@ type fillerResearchSignals struct{ files fs.FS }
 
 func (l fillerResearchSignals) Load(_ context.Context, candidate research.Candidate) (research.Input, error) {
 	input := research.Input{Title: candidate.Name}
-	if metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path); ok {
+	if metadata, ok := asset.ReadSourceMetadataFS(l.files, candidate.Path); ok {
 		input.Title = metadata.Title
 		input.Description = metadata.Description
 		input.SourceURL = metadata.WebpageURL
@@ -285,7 +286,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.
 	signals := enrichment.Signals{ClipHash: candidate.ClipHash, Kind: candidate.Kind,
 		Title: candidate.Name, OriginalName: candidate.Name, Transcript: candidate.Transcript,
 		VisibleText: candidate.VisibleText, ObservedAt: observedAt}
-	metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path)
+	metadata, ok := asset.ReadSourceMetadataFS(l.files, candidate.Path)
 	if ok {
 		signals.Title = metadata.Title
 		signals.Description = metadata.Description

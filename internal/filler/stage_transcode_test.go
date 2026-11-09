@@ -144,7 +144,7 @@ func (s *transcodeStore) ReplaceClipIdentity(_ context.Context, oldHash string, 
 	return err
 }
 
-func (s *transcodeStore) CommitConditioningPublication(_ context.Context, publication ConditioningPublication, c StoreClip) error {
+func (s *transcodeStore) CommitConditioningPublication(_ context.Context, publication asset.ConditioningPublication, c StoreClip) error {
 	return s.ReplaceClipIdentity(context.Background(), publication.SourceHash, c)
 }
 
@@ -155,7 +155,7 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	sourceHash := writeContentAddressedClip(t, dir, []byte("reviewed child source"), ".mkv")
 	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
 	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
-	if err := WriteSidecarTags(sourceFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: sourceHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -270,7 +270,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 	childHash := writeContentAddressedClip(t, dir, childBytes, ".mkv")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -339,7 +339,7 @@ func TestTranscodeStage_HoldsWhenConditioningSourceOrParentBytesDoNotMatchCatalo
 			childHash := writeContentAddressedClip(t, dir, []byte("reviewed child"), ".mkv")
 			childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
 			childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-			if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}}, false); err != nil {
 				t.Fatal(err)
@@ -383,7 +383,7 @@ func TestTranscodeStage_PathReplacementDuringConditioningPublishesNothing(t *tes
 	childHash := writeContentAddressedClip(t, dir, []byte("reviewed child"), ".mkv")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -440,7 +440,7 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 			if parentHash == childHash {
 				t.Fatal("parent and child fixtures must have distinct catalog identities")
 			}
-			if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}}, false); err != nil {
 				t.Fatal(err)
@@ -498,13 +498,13 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	childHash := writeContentAddressedClip(t, dir, []byte("completed child mezzanine"), ".mp4")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
 	measurement := completeConditioningMeasurement(-23)
-	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+	if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 		OriginalName: "Completed child", Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &measurement.Quality,
-		ConditioningLineage: &ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 		},
-		Conditioning: &ConditioningEvidence{
+		Conditioning: &asset.ConditioningEvidence{
 			BeforeRewriteHash: childHash, AfterRewriteHash: childHash,
 			BeforeRewrite: measurement, AfterRewrite: measurement,
 			DerivedParentEdgesAfterRewrite: measurement.Cuts[0],
@@ -539,32 +539,32 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *testing.T) {
 	cases := []struct {
 		name   string
-		mutate func(*ConditioningLineage, *ConditioningEvidence, *MediaQuality, *StoreClip)
+		mutate func(*asset.ConditioningLineage, *asset.ConditioningEvidence, *MediaQuality, *StoreClip)
 	}{
-		{name: "empty intended interval", mutate: func(lineage *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "empty intended interval", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			lineage.IntendedEndMs = lineage.IntendedStartMs
 		}},
-		{name: "invalid structure decision identity", mutate: func(lineage *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "invalid structure decision identity", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			lineage.StructureDecisionSHA256 = "not-a-digest"
 		}},
-		{name: "parent is airable", mutate: func(_ *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, parent *StoreClip) {
+		{name: "parent is airable", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *MediaQuality, parent *StoreClip) {
 			parent.IsComposite = false
 		}},
-		{name: "media quality provenance missing", mutate: func(_ *ConditioningLineage, _ *ConditioningEvidence, quality *MediaQuality, _ *StoreClip) {
+		{name: "media quality provenance missing", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, quality *MediaQuality, _ *StoreClip) {
 			quality.Provenance = ""
 		}},
-		{name: "detector intervals are not normalized", mutate: func(_ *ConditioningLineage, evidence *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "detector intervals are not normalized", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			evidence.BeforeRewrite.Quality.Black = []Interval{{StartMs: 2_000, EndMs: 3_000}, {StartMs: 1_000, EndMs: 1_500}}
 		}},
-		{name: "stream index is reused across kinds", mutate: func(_ *ConditioningLineage, evidence *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "stream index is reused across kinds", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			evidence.BeforeRewrite.Streams[1].Index = 0
 			evidence.BeforeRewrite.Cuts[0].Streams[1].Index = 0
 		}},
-		{name: "before after identities differ", mutate: func(_ *ConditioningLineage, evidence *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "before after identities differ", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			evidence.AfterRewrite.Streams[1].Index = 2
 			evidence.AfterRewrite.Cuts[0].Streams[1].Index = 2
 		}},
-		{name: "before and after agree on interval different from lineage", mutate: func(lineage *ConditioningLineage, evidence *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+		{name: "before and after agree on interval different from lineage", mutate: func(lineage *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			lineage.IntendedStartMs, lineage.IntendedEndMs = 2_000, 32_000
 			evidence.BeforeRewrite.Cuts[0].Intended = Interval{StartMs: 1_000, EndMs: 31_000}
 			evidence.AfterRewrite.Cuts[0].Intended = Interval{StartMs: 1_000, EndMs: 31_000}
@@ -577,14 +577,14 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 			childHash := writeContentAddressedClip(t, dir, []byte("completed child"), ".mp4")
 			childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
-			lineage := ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000}
+			lineage := asset.ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000}
 			before := completeConditioningMeasurement(-28.4)
 			after := completeConditioningMeasurement(-23.1)
 			for i := range after.Cuts[0].Streams {
 				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
 				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
-			evidence := ConditioningEvidence{
+			evidence := asset.ConditioningEvidence{
 				BeforeRewriteHash: childHash, AfterRewriteHash: childHash,
 				BeforeRewrite: before, AfterRewrite: after,
 				DerivedParentEdgesAfterRewrite: before.Cuts[0],
@@ -592,7 +592,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			quality := after.Quality
 			parent := StoreClip{Clip: Clip{Hash: parentHash, Path: parentRel, IsComposite: true}}
 			tc.mutate(&lineage, &evidence, &quality, &parent)
-			if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+			if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 				Mezzanine:    tools.DefaultMezzanine().ID(),
 				MediaQuality: &quality, ConditioningLineage: &lineage, Conditioning: &evidence,
 			}, false); err != nil {
@@ -623,7 +623,7 @@ func TestReadConditioningSidecar_ReturnsRetryableErrorWhenPathBecomesDirectory(t
 	if err := os.WriteFile(media, []byte("child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(media, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: "child", ParentHash: "parent", IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -631,7 +631,7 @@ func TestReadConditioningSidecar_ReturnsRetryableErrorWhenPathBecomesDirectory(t
 	if _, present, err := readConditioningSidecar(media); err != nil || !present {
 		t.Fatalf("valid conditioning sidecar = present %v, err %v", present, err)
 	}
-	path := sidecarPathFor(media)
+	path := tools.SidecarPathFor(media)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
@@ -649,14 +649,14 @@ func TestTranscodeStage_MezzanineMarkerAloneCannotCertifyAChildRestart(t *testin
 	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 	childHash := writeContentAddressedClip(t, dir, []byte("marker-only child"), ".mp4")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
-	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+	if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 		Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		ConditioningLineage: &ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 		},
 	}, false); err != nil {
@@ -681,7 +681,7 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 	childHash := writeContentAddressedClip(t, dir, childBytes, ".mkv")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -724,8 +724,8 @@ func TestTranscodeStage_MissingParentHoldsBeforeMeasurement(t *testing.T) {
 	dir := t.TempDir()
 	childHash := writeContentAddressedClip(t, dir, []byte("child"), ".mkv")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
-	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-		ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: childHash, ParentHash: "missing-parent", IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 		},
 	}, false); err != nil {
@@ -757,7 +757,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			childHash := writeContentAddressedClip(t, dir, []byte("child"), ".mkv")
 			childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
 			childFull := filepath.Join(dir, filepath.FromSlash(childRel))
-			if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}}, false); err != nil {
 				t.Fatal(err)
@@ -766,7 +766,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeSidecar, err := os.ReadFile(sidecarPathFor(childFull))
+			beforeSidecar, err := os.ReadFile(tools.SidecarPathFor(childFull))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -834,7 +834,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 				t.Fatalf("%s cancellation result = %+v, stored=%q removed=%v err=%v", phase, got.out, stored.oldHash, removed, got.err)
 			}
 			afterMedia, mediaErr := os.ReadFile(childFull)
-			afterSidecar, sidecarErr := os.ReadFile(sidecarPathFor(childFull))
+			afterSidecar, sidecarErr := os.ReadFile(tools.SidecarPathFor(childFull))
 			if mediaErr != nil || sidecarErr != nil || !bytes.Equal(afterMedia, beforeMedia) || !bytes.Equal(afterSidecar, beforeSidecar) {
 				t.Fatalf("%s cancellation mutated source media or sidecar", phase)
 			}
@@ -848,8 +848,8 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 	childHash := writeContentAddressedClip(t, dir, []byte("reviewed stream-copy child"), ".mkv")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
-	lineage := &ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 10_000, IntendedEndMs: 40_000}
-	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+	lineage := &asset.ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 10_000, IntendedEndMs: 40_000}
+	if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 		OriginalName: "Reviewed advert", ConditioningLineage: lineage,
 	}, false); err != nil {
 		t.Fatal(err)
@@ -891,7 +891,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	if out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash == childHash || out.Clip.ParentHash != parentHash {
 		t.Fatalf("transcode result = %+v", out)
 	}
-	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if !ok || tags.Conditioning == nil {
 		t.Fatalf("replacement sidecar conditioning = %+v, ok=%v", tags.Conditioning, ok)
 	}
@@ -906,7 +906,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 			t.Fatalf("raw post-rewrite packet edges were overwritten by derived evidence: %+v", edge)
 		}
 	}
-	raw, err := os.ReadFile(sidecarPathFor(filepath.Join(dir, filepath.FromSlash(out.Clip.Path))))
+	raw, err := os.ReadFile(tools.SidecarPathFor(filepath.Join(dir, filepath.FromSlash(out.Clip.Path))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -941,8 +941,8 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 			childHash := writeContentAddressedClip(t, dir, []byte("reviewed stream-copy child"), ".mkv")
 			childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
-			lineage := &ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 10_000, IntendedEndMs: 40_000}
-			if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+			lineage := &asset.ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 10_000, IntendedEndMs: 40_000}
+			if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 				OriginalName: "Reviewed advert", ConditioningLineage: lineage,
 			}, false); err != nil {
 				t.Fatal(err)
@@ -987,7 +987,7 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			if tc.wantVerdict != pipelinestate.VerdictContinue {
 				return
 			}
-			tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+			tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 			if !ok || tags.MediaQuality == nil || tags.Conditioning == nil ||
 				!reflect.DeepEqual(*tags.MediaQuality, after.Quality) ||
 				!reflect.DeepEqual(tags.Conditioning.AfterRewrite.Quality, after.Quality) {
@@ -1034,34 +1034,34 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 		missing bool
 		corrupt bool
 		sparse  bool
-		mutate  func(string, *SidecarTags) []byte
+		mutate  func(string, *asset.SidecarTags) []byte
 	}{
-		{name: "missing sidecar", missing: true, mutate: func(_ string, _ *SidecarTags) []byte { return nil }},
-		{name: "top-level artifact", mutate: func(_ string, tags *SidecarTags) []byte {
+		{name: "missing sidecar", missing: true, mutate: func(_ string, _ *asset.SidecarTags) []byte { return nil }},
+		{name: "top-level artifact", mutate: func(_ string, tags *asset.SidecarTags) []byte {
 			tags.ConditioningLineage = nil
 			tags.Conditioning = nil
 			return nil
 		}},
-		{name: "different parent", mutate: func(_ string, tags *SidecarTags) []byte {
+		{name: "different parent", mutate: func(_ string, tags *asset.SidecarTags) []byte {
 			tags.ConditioningLineage.ParentHash = "other-parent"
 			return nil
 		}},
-		{name: "different reviewed child", mutate: func(_ string, tags *SidecarTags) []byte {
+		{name: "different reviewed child", mutate: func(_ string, tags *asset.SidecarTags) []byte {
 			tags.ConditioningLineage.ChildHash = "other-child"
 			return nil
 		}},
-		{name: "different interval", mutate: func(_ string, tags *SidecarTags) []byte { tags.ConditioningLineage.IntendedStartMs++; return nil }},
-		{name: "incomplete evidence", mutate: func(_ string, tags *SidecarTags) []byte {
+		{name: "different interval", mutate: func(_ string, tags *asset.SidecarTags) []byte { tags.ConditioningLineage.IntendedStartMs++; return nil }},
+		{name: "incomplete evidence", mutate: func(_ string, tags *asset.SidecarTags) []byte {
 			tags.Conditioning.AfterRewrite.Loudness.Available = false
 			return nil
 		}},
-		{name: "different evidence", mutate: func(_ string, tags *SidecarTags) []byte {
+		{name: "different evidence", mutate: func(_ string, tags *asset.SidecarTags) []byte {
 			tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS = -18
 			return nil
 		}},
-		{name: "corrupt sidecar", mutate: func(_ string, _ *SidecarTags) []byte { return []byte(`{"loomarr":`) }},
-		{name: "corrupt output bytes", corrupt: true, mutate: func(_ string, _ *SidecarTags) []byte { return nil }},
-		{name: "same sparse identity with different middle bytes", sparse: true, mutate: func(_ string, _ *SidecarTags) []byte { return nil }},
+		{name: "corrupt sidecar", mutate: func(_ string, _ *asset.SidecarTags) []byte { return []byte(`{"loomarr":`) }},
+		{name: "corrupt output bytes", corrupt: true, mutate: func(_ string, _ *asset.SidecarTags) []byte { return nil }},
+		{name: "same sparse identity with different middle bytes", sparse: true, mutate: func(_ string, _ *asset.SidecarTags) []byte { return nil }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1071,10 +1071,10 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 			sourceHash := writeContentAddressedClip(t, dir, []byte("reviewed child source"), ".mkv")
 			sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
 			sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
-			lineage := &ConditioningLineage{
+			lineage := &asset.ConditioningLineage{
 				ChildHash: sourceHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}
-			if err := WriteSidecarTags(sourceFull, SidecarTags{ConditioningLineage: lineage}, false); err != nil {
+			if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
 				t.Fatal(err)
 			}
 			outputBytes := []byte("same transformed bytes")
@@ -1091,10 +1091,10 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
 				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
-			existing := SidecarTags{
+			existing := asset.SidecarTags{
 				Mezzanine: tools.DefaultMezzanine().ID(), MediaQuality: &after.Quality,
 				ConditioningLineage: lineage,
-				Conditioning: &ConditioningEvidence{
+				Conditioning: &asset.ConditioningEvidence{
 					BeforeRewriteHash: sourceHash, AfterRewriteHash: outputHash,
 					BeforeRewrite: before, AfterRewrite: after,
 					DerivedParentEdgesAfterRewrite: before.Cuts[0],
@@ -1111,14 +1111,14 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 				}
 			}
 			if tc.missing {
-				if err := os.Remove(sidecarPathFor(outputFull)); err != nil && !os.IsNotExist(err) {
+				if err := os.Remove(tools.SidecarPathFor(outputFull)); err != nil && !os.IsNotExist(err) {
 					t.Fatal(err)
 				}
 			} else if raw != nil {
-				if err := os.WriteFile(sidecarPathFor(outputFull), raw, 0o600); err != nil {
+				if err := os.WriteFile(tools.SidecarPathFor(outputFull), raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := WriteSidecarTags(outputFull, existing, false); err != nil {
+			} else if err := asset.WriteSidecarTags(outputFull, existing, false); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1159,10 +1159,10 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	sourceHash := writeContentAddressedClip(t, dir, []byte("reviewed child source"), ".mkv")
 	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
 	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
-	lineage := &ConditioningLineage{
+	lineage := &asset.ConditioningLineage{
 		ChildHash: sourceHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}
-	if err := WriteSidecarTags(sourceFull, SidecarTags{ConditioningLineage: lineage}, false); err != nil {
+	if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
 		t.Fatal(err)
 	}
 	before := completeConditioningMeasurement(-28.4)
@@ -1199,7 +1199,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 		t.Fatalf("failed replacement removed source: %v", err)
 	}
 	outputHashPath := filepath.Join(dir, filepath.FromSlash(ClipRelPath(stored.clip.Hash, ".mp4")))
-	tags, ok := ReadSidecarTags(outputHashPath)
+	tags, ok := asset.ReadSidecarTags(outputHashPath)
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != sourceHash ||
 		tags.Conditioning.AfterRewriteHash != stored.clip.Hash {
 		t.Fatalf("recoverable published evidence = %+v, ok=%v", tags, ok)
@@ -1221,7 +1221,7 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 	sourceHash := writeContentAddressedClip(t, dir, []byte("duration-shift source"), ".mkv")
 	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
 	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
-	if err := WriteSidecarTags(sourceFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: sourceHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -1275,7 +1275,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	sourceHash := writeContentAddressedClip(t, dir, []byte("reviewed child source"), ".mkv")
 	sourceRel := filepath.ToSlash(ClipRelPath(sourceHash, ".mkv"))
 	sourceFull := filepath.Join(dir, filepath.FromSlash(sourceRel))
-	if err := WriteSidecarTags(sourceFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
+	if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: sourceHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -1314,7 +1314,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	if _, err := os.Stat(sourceFull); err != nil {
 		t.Fatalf("obsolete source was not preserved: %v", err)
 	}
-	tags, ok := ReadSidecarTags(sourceFull)
+	tags, ok := asset.ReadSidecarTags(sourceFull)
 	if !ok || tags.SupersededByHash != out.Clip.Hash {
 		t.Fatalf("obsolete source quarantine = %+v, ok=%v", tags, ok)
 	}
@@ -1382,7 +1382,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 		t.Errorf("old media still exists after durable replacement: %v", err)
 	}
 
-	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if !ok {
 		t.Fatal("transformed clip has no sidecar")
 	}
@@ -1448,7 +1448,7 @@ func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 	if string(got) != string(bytes) {
 		t.Fatalf("canonical media changed: %q", got)
 	}
-	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(rel)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(rel)))
 	if !ok || tags.Mezzanine != tools.DefaultMezzanine().ID() || tags.MediaQuality == nil {
 		t.Fatalf("canonical sidecar = %+v, ok=%v", tags, ok)
 	}
@@ -1528,7 +1528,7 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 	if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonBlackContent {
 		t.Fatalf("quality verdict = %v/%q (%s)", out.Verdict, out.Reason, out.Detail)
 	}
-	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
 	if !ok || tags.MediaQuality == nil || len(tags.MediaQuality.Black) != 1 {
 		t.Fatalf("sidecar quality evidence = %+v ok=%v", tags.MediaQuality, ok)
 	}
@@ -1541,7 +1541,7 @@ func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testi
 	hash := writeContentAddressedClip(t, dir, []byte("mezzanine"), ".mp4")
 	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
 	full := filepath.Join(dir, filepath.FromSlash(rel))
-	if err := WriteSidecarTags(full, SidecarTags{
+	if err := asset.WriteSidecarTags(full, asset.SidecarTags{
 		OriginalName: "Silent advert", Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &MediaQuality{DurationMs: 30_000, Silence: []Interval{{StartMs: 0, EndMs: 29_000}}},
 	}, false); err != nil {

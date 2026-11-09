@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 )
@@ -21,7 +21,7 @@ const (
 // SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its four-axis
 // aggregate. Concrete evaluators own their private raw-evidence settlement.
 type SegmentScreeningEvidenceRepository interface {
-	PutSegmentScreeningSubject(context.Context, filler.SegmentScreeningSubject) error
+	PutSegmentScreeningSubject(context.Context, asset.SegmentScreeningSubject) error
 	PutSegmentScreeningAxisEvidence(context.Context, RecordedSegmentScreeningAxisEvidence) error
 	PutSegmentScreeningEvidence(context.Context, SegmentScreeningEvidence) error
 }

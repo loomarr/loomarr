@@ -75,7 +75,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | --- |
 | `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
-| `filler` | `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
+| `filler` | `filler/asset`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
+| `filler/asset` | `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor` |
 | `filler/clips` | — |
 | `filler/language` | `media/bgexec`, `media/tools` |
 | `filler/pipelinestate` | — |

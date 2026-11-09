@@ -40,7 +40,7 @@ func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, o
 	return errors.New("injected conditioning transaction failure")
 }
 
-func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target filler.StoreClip) error {
+func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target filler.StoreClip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (fillerPipelineClipAdapter{st: s.st}).CommitConditioningPublication(ctx, publication, target); err != nil {
@@ -114,11 +114,11 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			lineage := &filler.ConditioningLineage{
+			lineage := &asset.ConditioningLineage{
 				ChildHash: sourceHash, ParentHash: parentHash,
 				IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}
-			if err := filler.WriteSidecarTags(sourceFull, filler.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
+			if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
 				t.Fatal(err)
 			}
 			now := time.Unix(1_900_634_000, 0).UTC()
@@ -169,7 +169,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				t.Fatalf("crash result = %+v, target=%+v, err=%v; want retryable infrastructure error", out, crashStore.target, err)
 			}
 			targetFull := filepath.Join(dir, filepath.FromSlash(crashStore.target.Path))
-			tags, ok := filler.ReadSidecarTags(targetFull)
+			tags, ok := asset.ReadSidecarTags(targetFull)
 			if !ok || tags.ConditioningPublication == nil {
 				t.Fatalf("crash lost pending publication evidence: %+v, ok=%v", tags, ok)
 			}
@@ -216,7 +216,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if _, err := st.GetClip(ctx, sourceHash); !errors.Is(err, store.ErrNotFound) {
 				t.Fatalf("source catalog identity survived recovery: %v", err)
 			}
-			committedTags, ok := filler.ReadSidecarTags(targetFull)
+			committedTags, ok := asset.ReadSidecarTags(targetFull)
 			if !ok || committedTags.ConditioningPublication != nil {
 				t.Fatalf("restart retained pending publication: %+v, ok=%v", committedTags.ConditioningPublication, ok)
 			}
@@ -359,7 +359,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		measured[0].IntendedCuts[0] != (tools.Interval{StartMs: 10_000, EndMs: 40_000}) {
 		t.Fatalf("conditioning requests = %+v", measured)
 	}
-	tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != beforeSourceHash ||
 		tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS != -28.4 ||
 		tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS != -23.1 ||

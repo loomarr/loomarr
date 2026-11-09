@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // foreignSidecar leaves at root/download.info.json a valid sidecar that belongs to ANOTHER
@@ -18,7 +19,7 @@ func foreignSidecar(t *testing.T, root string) []byte {
 	if err := os.WriteFile(other, []byte("someone else's bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(other, filler.SidecarTags{SourceID: "youtube:other", AcquisitionID: "acq-other"}, true); err != nil {
+	if err := asset.WriteSidecarTags(other, asset.SidecarTags{SourceID: "youtube:other", AcquisitionID: "acq-other"}, true); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(strings.TrimSuffix(other, ".mp4") + ".info.json")

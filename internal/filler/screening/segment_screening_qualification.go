@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 const (
@@ -98,7 +98,7 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 	}
 	suitability := &AirworthinessAxisEvidence{
 		SubjectSHA256: media.Subject.SHA256, Profile: profile,
-		Coverage: CoverageIncomplete, EvidenceSHA256: filler.ScreeningBytesSHA256(raw),
+		Coverage: CoverageIncomplete, EvidenceSHA256: asset.ScreeningBytesSHA256(raw),
 		Observations: []AirworthinessObservation{},
 	}
 	return NewSegmentScreeningAxisEvidence(media.Subject, e.profile, ScreenHold, reasonCode, suitability, raw, e.now())
@@ -147,9 +147,9 @@ func qualificationSegmentScreeningProfile(axis SegmentScreeningAxis, evidenceCon
 	profile := SegmentScreeningAxisProfile{
 		Axis:                 axis,
 		EvidenceContract:     evidenceContract,
-		PolicySHA256:         filler.ScreeningBytesSHA256([]byte("filler-segment-screening-qualification-policy-v1\x00" + string(axis))),
-		CertificationSHA256:  filler.ScreeningBytesSHA256([]byte("filler-segment-screening-certification-unavailable-v1\x00" + string(axis))),
-		ImplementationSHA256: filler.ScreeningBytesSHA256([]byte(implementationVersion + "\x00" + string(axis))),
+		PolicySHA256:         asset.ScreeningBytesSHA256([]byte("filler-segment-screening-qualification-policy-v1\x00" + string(axis))),
+		CertificationSHA256:  asset.ScreeningBytesSHA256([]byte("filler-segment-screening-certification-unavailable-v1\x00" + string(axis))),
+		ImplementationSHA256: asset.ScreeningBytesSHA256([]byte(implementationVersion + "\x00" + string(axis))),
 	}
 	if _, safety := airworthinessAxis(axis); safety {
 		profile.CertifiedSuitabilityFlags = []AirworthinessFlag{}

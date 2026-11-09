@@ -38,7 +38,7 @@ type TranscodeClipStore interface {
 	// CommitConditioningPublication atomically classifies and commits the exact owner-bound
 	// source/target catalog transition. It may adopt a held target reconstructed by Sync or
 	// recognize an already committed target after process loss; every other state fails closed.
-	CommitConditioningPublication(ctx context.Context, publication ConditioningPublication, target StoreClip) error
+	CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target StoreClip) error
 }
 
 // TranscodeStage owns retained-source resolution and verified derivative publication.
@@ -181,14 +181,14 @@ func (s *TranscodeStage) Applies(ctx context.Context, c StoreClip) (bool, string
 	if c.ParentHash != "" {
 		return true, ""
 	}
-	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.target().profile.ID() && tags.MediaQuality != nil {
+	if tags, ok := asset.ReadSidecarTags(full); ok && tags.Mezzanine == s.target().profile.ID() && tags.MediaQuality != nil {
 		// A clean report is finished work. An anomalous report must remain applicable so a
 		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
 		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == pipelinestate.VerdictContinue {
 			if s.evidenceTranscode != nil && (tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil) {
 				return true, ""
 			}
-			if s.evidenceTranscode != nil && tags.MediaAssets.validateReuseFiles(ctx, s.clipDir, c.Path, c.Hash) != nil {
+			if s.evidenceTranscode != nil && tags.MediaAssets.ValidateReuseFiles(ctx, s.clipDir, c.Path, c.Hash) != nil {
 				return true, ""
 			}
 			return false, "already encoded to the ingest profile"
@@ -223,8 +223,8 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		defer storageLease.Release()
 	}
 	enc := s.target()
-	tags, hasTags := ReadSidecarTags(oldFull)
-	sourceMaster, err := retainedSourceMaster(ctx, s.clipDir, oldFull, c.Hash, tags, storageWrites)
+	tags, hasTags := asset.ReadSidecarTags(oldFull)
+	sourceMaster, err := asset.RetainedSourceMaster(ctx, s.clipDir, oldFull, c.Hash, tags, storageWrites)
 	if err != nil {
 		if c.ParentHash != "" {
 			return conditioningReview(c, "source master could not be retained"), nil
@@ -262,10 +262,10 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	}
 	stageFull := filepath.Join(stageDir, c.Hash+".mp4")
 	_ = os.Remove(stageFull)
-	_ = os.Remove(sidecarPathFor(stageFull))
+	_ = os.Remove(tools.SidecarPathFor(stageFull))
 	defer func() {
 		_ = os.Remove(stageFull)
-		_ = os.Remove(sidecarPathFor(stageFull))
+		_ = os.Remove(tools.SidecarPathFor(stageFull))
 	}()
 
 	// Measure the input so the output can be checked against it. The probe rung has already run,
@@ -314,7 +314,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		// detector findings are the evidence encode's, from the same picture. A conditioned child
 		// still encodes, because its input is the conditioned cut, not the master.
 		quality = evidence.Quality
-		err = copyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
+		err = asset.CopyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
 		reportProgress(ctx, pipelinestate.StageTranscode, 90)
 	} else {
 		quality, err = s.transcode(transcodeCtx, req, func(pct int) {
@@ -343,7 +343,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	if job != nil && ctx.Err() != nil {
 		return conditioningReview(c, "conditioning transcode was cancelled"), nil
 	}
-	var conditioning *ConditioningEvidence
+	var conditioning *asset.ConditioningEvidence
 	if job != nil {
 		var note string
 		if conditioning, note = job.measureAfter(ctx, s.condition, c.Hash, stageFull); note != "" {
@@ -416,9 +416,9 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		conditioning.AfterRewriteHash = newHash
 	}
 	alreadyPublished := false
-	var publication *ConditioningPublication
+	var publication *asset.ConditioningPublication
 	if job != nil && newFull != oldFull {
-		publication = &ConditioningPublication{
+		publication = &asset.ConditioningPublication{
 			State: "pending", SourceHash: c.Hash, TargetHash: newHash,
 		}
 		owner := make([]byte, 16)
@@ -440,7 +440,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 				return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
 			}
 			if publication != nil {
-				existingTags, ok := ReadSidecarTags(newFull)
+				existingTags, ok := asset.ReadSidecarTags(newFull)
 				if !ok || !validConditioningPublication(existingTags.ConditioningPublication, c.Hash, newHash) {
 					return conditioningReview(c, "existing transformed artifact has no owned pending publication"), nil
 				}
@@ -484,9 +484,9 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	if err := copySidecarForTransform(oldFull, stageFull); err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: copy sidecar: %w", oldRel, err)
 	}
-	copied, _ := ReadSidecarTags(stageFull)
+	copied, _ := asset.ReadSidecarTags(stageFull)
 	tags = s.replacementSidecar(copied, c, enc.profile.ID(), &assets, quality, publication, conditioning)
-	if err := WriteSidecarTags(stageFull, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(stageFull, tags, false); err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: write replacement sidecar: %w", oldRel, err)
 	}
 	if job != nil && ctx.Err() != nil {
@@ -523,7 +523,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			return conditioningReview(c, "conditioning source sidecar is unavailable before re-key"), nil
 		}
 		sourceTags.SupersededByHash = newHash
-		if err := WriteSidecarTags(oldFull, sourceTags, false); err != nil {
+		if err := asset.WriteSidecarTags(oldFull, sourceTags, false); err != nil {
 			return StageResult{}, fmt.Errorf("quarantine conditioning source sidecar: %w", err)
 		}
 	}
@@ -562,7 +562,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue,
 				Note: "re-encoded, but the original file could not be deleted"}, nil
 		}
-		_ = os.Remove(sidecarPathFor(oldFull))
+		_ = os.Remove(tools.SidecarPathFor(oldFull))
 	}
 	if swap != nil {
 		swap.removeOldEvidence(s.clipDir, assets)
@@ -608,12 +608,12 @@ func (s *TranscodeStage) reserveStorage(ctx context.Context, c StoreClip, oldFul
 
 // reemitPersistedQuality answers for a clip this profile already encoded, from its inspection
 // report, building only an evidence derivative the clip predates.
-func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c StoreClip, oldFull, inputFull string, sourceMaster MediaAssetIdentity, tags SidecarTags, enc encodeTarget, storageWrites *storagegovernor.WriteTracker) (StageResult, error) {
+func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c StoreClip, oldFull, inputFull string, sourceMaster asset.Identity, tags asset.SidecarTags, enc encodeTarget, storageWrites *storagegovernor.WriteTracker) (StageResult, error) {
 	if s.evidenceTranscode == nil {
 		return mediaQualityResult(c, *tags.MediaQuality), nil
 	}
 	if tags.MediaAssets != nil && tags.MediaAssets.Evidence != nil {
-		if err := tags.MediaAssets.validateReuseFiles(ctx, s.clipDir, c.Path, c.Hash); err != nil {
+		if err := tags.MediaAssets.ValidateReuseFiles(ctx, s.clipDir, c.Path, c.Hash); err != nil {
 			return StageResult{}, fmt.Errorf("transcode %s: %w", c.Path, err)
 		}
 		return mediaQualityResult(c, *tags.MediaQuality), nil
@@ -626,11 +626,11 @@ func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c StoreClip
 	if err != nil {
 		return StageResult{}, fmt.Errorf("build evidence derivative for existing playback: %w", err)
 	}
-	tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster, Evidence: evidence}
-	if err := tags.MediaAssets.validate(); err != nil {
+	tags.MediaAssets = &asset.Manifest{Version: asset.ManifestVersion, SourceMaster: sourceMaster, Evidence: evidence}
+	if err := tags.MediaAssets.Validate(); err != nil {
 		return StageResult{}, err
 	}
-	if err := WriteSidecarTags(oldFull, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(oldFull, tags, false); err != nil {
 		return StageResult{}, fmt.Errorf("persist evidence derivative for existing playback: %w", err)
 	}
 	return mediaQualityResult(c, *tags.MediaQuality), nil
@@ -670,35 +670,35 @@ type stagedPlayback struct {
 	// profile is the playback profile the bytes were encoded to.
 	profile MezzanineProfile
 	// evidence is nil on the legacy single-derivative path, which records no playback lineage.
-	evidence *MediaDerivativeLineage
+	evidence *asset.DerivativeLineage
 	tool     tools.MediaToolIdentity
 	qc       tools.DerivativeQC
 }
 
 // mediaAssets is the manifest the transformed clip publishes with: the retained master, and with
 // media derivatives enabled, the evidence derivative and this playback encode's lineage.
-func (s *TranscodeStage) mediaAssets(sourceMaster MediaAssetIdentity, p stagedPlayback) (MediaAssetManifest, error) {
-	assets := MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster, Evidence: p.evidence}
+func (s *TranscodeStage) mediaAssets(sourceMaster asset.Identity, p stagedPlayback) (asset.Manifest, error) {
+	assets := asset.Manifest{Version: asset.ManifestVersion, SourceMaster: sourceMaster, Evidence: p.evidence}
 	if p.evidence == nil {
 		return assets, nil
 	}
 	recipe := tools.PlaybackDerivativeRecipe(p.profile, 0)
 	recipeDigest, err := recipe.Digest()
 	if err != nil {
-		return MediaAssetManifest{}, err
+		return asset.Manifest{}, err
 	}
 	digest, size, err := asset.FileSHA256(p.path)
 	if err != nil {
-		return MediaAssetManifest{}, fmt.Errorf("digest playback derivative: %w", err)
+		return asset.Manifest{}, fmt.Errorf("digest playback derivative: %w", err)
 	}
-	assets.Playback = &MediaDerivativeLineage{
-		Asset:       MediaAssetIdentity{Role: MediaAssetPlayback, SHA256: digest, Bytes: size, ClipHash: p.hash, Path: p.rel},
+	assets.Playback = &asset.DerivativeLineage{
+		Asset:       asset.Identity{Role: asset.RolePlayback, SHA256: digest, Bytes: size, ClipHash: p.hash, Path: p.rel},
 		InputSHA256: sourceMaster.SHA256, Recipe: recipe, RecipeSHA256: recipeDigest,
 		Tool: p.tool, DurationMs: p.out.DurationMs, Quality: p.quality, QC: p.qc,
 		InputProbe: p.in, OutputProbe: p.out,
 	}
-	if err := assets.validate(); err != nil {
-		return MediaAssetManifest{}, fmt.Errorf("build media asset manifest: %w", err)
+	if err := assets.Validate(); err != nil {
+		return asset.Manifest{}, fmt.Errorf("build media asset manifest: %w", err)
 	}
 	return assets, nil
 }
@@ -707,7 +707,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster MediaAssetIdentity, p stagedPl
 // clip's catalog facts so a rescan restores them, and this encode's evidence. Split children
 // historically had no sidecar; seeding OriginalName from the durable display name is what
 // prevents their next scan from presenting the old hash as the title.
-func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezzanine string, assets *MediaAssetManifest, quality MediaQuality, publication *ConditioningPublication, conditioning *ConditioningEvidence) SidecarTags {
+func (s *TranscodeStage) replacementSidecar(tags asset.SidecarTags, c StoreClip, mezzanine string, assets *asset.Manifest, quality MediaQuality, publication *asset.ConditioningPublication, conditioning *asset.ConditioningEvidence) asset.SidecarTags {
 	// A viewer-visible name the sidecar cannot rebuild goes beside the new bytes with its
 	// provenance, so the next scan does not demote it to the filename (#1988). A seeded
 	// originalName of unrecorded origin is marked so; an arrival filename is left as one.
@@ -734,51 +734,45 @@ func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezza
 	return tags
 }
 
-func validConditioningPublication(p *ConditioningPublication, sourceHash, targetHash string) bool {
+func validConditioningPublication(p *asset.ConditioningPublication, sourceHash, targetHash string) bool {
 	return p != nil && p.State == "pending" && len(p.Owner) == 32 &&
 		split.IsContentHash(p.SourceHash) && split.IsContentHash(p.TargetHash) &&
 		p.SourceHash == sourceHash && p.TargetHash == targetHash
 }
 
-func conditioningEvidenceMatchesLineage(e ConditioningEvidence, lineage ConditioningLineage) bool {
-	want := tools.Interval{StartMs: lineage.IntendedStartMs, EndMs: lineage.IntendedEndMs}
-	return len(e.BeforeRewrite.Cuts) > 0 && len(e.AfterRewrite.Cuts) > 0 &&
-		e.BeforeRewrite.Cuts[0].Intended == want && e.AfterRewrite.Cuts[0].Intended == want
-}
-
 // readConditioningSidecar distinguishes absent/corrupt ownership evidence from filesystem
 // failures. The former is a safe review outcome; the latter must escape so pipeline retry logic
 // does not mistake an unavailable filesystem for completed work.
-func readConditioningSidecar(path string) (SidecarTags, bool, error) {
-	raw, err := os.ReadFile(sidecarPathFor(path))
+func readConditioningSidecar(path string) (asset.SidecarTags, bool, error) {
+	raw, err := os.ReadFile(tools.SidecarPathFor(path))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return SidecarTags{}, false, nil
+			return asset.SidecarTags{}, false, nil
 		}
-		return SidecarTags{}, false, fmt.Errorf("read conditioning sidecar %s: %w", path, err)
+		return asset.SidecarTags{}, false, fmt.Errorf("read conditioning sidecar %s: %w", path, err)
 	}
-	tags, state, _ := decodeSidecarTags(raw)
-	if state != SidecarValid {
-		return SidecarTags{}, false, nil
+	tags, state, _ := asset.DecodeSidecarTags(raw)
+	if state != asset.SidecarValid {
+		return asset.SidecarTags{}, false, nil
 	}
 	return tags, true, nil
 }
 
-func clearConditioningPublication(targetFull string, publication *ConditioningPublication) error {
-	path := sidecarPathFor(targetFull)
+func clearConditioningPublication(targetFull string, publication *asset.ConditioningPublication) error {
+	path := tools.SidecarPathFor(targetFull)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read conditioned publication sidecar: %w", err)
 	}
-	committedTags, state, _ := decodeSidecarTags(raw)
-	if state != SidecarValid || !reflect.DeepEqual(committedTags.ConditioningPublication, publication) {
+	committedTags, state, _ := asset.DecodeSidecarTags(raw)
+	if state != asset.SidecarValid || !reflect.DeepEqual(committedTags.ConditioningPublication, publication) {
 		return ErrConditioningOwnershipMismatch
 	}
 	var doc map[string]any
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return ErrConditioningOwnershipMismatch
 	}
-	ours, ok := doc[loomarrKey].(map[string]any)
+	ours, ok := doc[asset.SidecarLoomarrKey()].(map[string]any)
 	if !ok {
 		return ErrConditioningOwnershipMismatch
 	}
@@ -813,38 +807,6 @@ func isConditioningCancellation(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash string) error {
-	if !split.IsContentHash(beforeHash) || !split.IsContentHash(afterHash) ||
-		e.BeforeRewriteHash != beforeHash || e.AfterRewriteHash != afterHash {
-		return fmt.Errorf("persisted conditioning artifact identities are invalid")
-	}
-	if err := tools.ValidateConditioningPair(e.BeforeRewrite, e.AfterRewrite); err != nil {
-		return err
-	}
-	derived, err := tools.DeriveConditioningParentEdges(e.BeforeRewrite, e.AfterRewrite)
-	if err != nil || len(derived.Streams) != len(e.DerivedParentEdgesAfterRewrite.Streams) {
-		return fmt.Errorf("persisted post-rewrite parent edges are invalid")
-	}
-	for i := range derived.Streams {
-		if derived.Streams[i] != e.DerivedParentEdgesAfterRewrite.Streams[i] {
-			return fmt.Errorf("persisted post-rewrite parent edges do not match measured timing")
-		}
-	}
-	return nil
-}
-
-func validConditioningLineage(lineage *ConditioningLineage, childParentHash string) bool {
-	if lineage == nil || !split.IsContentHash(lineage.ChildHash) || !split.IsContentHash(lineage.ParentHash) ||
-		lineage.ParentHash != childParentHash || lineage.IntendedStartMs < 0 || lineage.IntendedEndMs <= lineage.IntendedStartMs {
-		return false
-	}
-	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
-	role := split.SourceRole(lineage.ParentAssetRole)
-	decisionBound := lineage.StructureDecisionSHA256 == "" && lineage.StructureRole == "" ||
-		split.IsContentHash(lineage.StructureDecisionSHA256) && split.CertifiedFillerRole(lineage.StructureRole)
-	return decisionBound && (!assetBound || ((role == split.SourceEvidence || role == split.SourceLegacyPlayback) && split.IsContentHash(lineage.ParentAssetSHA256)))
-}
-
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
 	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
@@ -858,13 +820,13 @@ func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
 }
 
 func copySidecarForTransform(oldMedia, stagedMedia string) error {
-	from := sidecarPathFor(oldMedia)
+	from := tools.SidecarPathFor(oldMedia)
 	if _, err := os.Stat(from); errors.Is(err, os.ErrNotExist) {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	return copyFile(from, sidecarPathFor(stagedMedia))
+	return asset.CopyFile(from, tools.SidecarPathFor(stagedMedia))
 }
 
 // publishHiddenMediaPair links the final sidecar before atomically making the media name visible.
@@ -877,14 +839,14 @@ func publishHiddenMediaPair(stagedMedia, finalMedia string) error {
 		return err
 	}
 	if err := publishStagedMedia(stagedMedia, finalMedia); err != nil {
-		_ = os.Remove(sidecarPathFor(finalMedia))
+		_ = os.Remove(tools.SidecarPathFor(finalMedia))
 		return err
 	}
 	return nil
 }
 
 func prepareHiddenSidecar(stagedMedia, finalMedia string) error {
-	stagedSidecar, finalSidecar := sidecarPathFor(stagedMedia), sidecarPathFor(finalMedia)
+	stagedSidecar, finalSidecar := tools.SidecarPathFor(stagedMedia), tools.SidecarPathFor(finalMedia)
 	if err := os.Link(stagedSidecar, finalSidecar); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrExist) {
@@ -905,7 +867,7 @@ func publishStagedMedia(stagedMedia, finalMedia string) error {
 	if err := os.Link(stagedMedia, finalMedia); err != nil {
 		return err
 	}
-	stagedSidecar := sidecarPathFor(stagedMedia)
+	stagedSidecar := tools.SidecarPathFor(stagedMedia)
 	_ = os.Remove(stagedSidecar)
 	_ = os.Remove(stagedMedia)
 	return nil

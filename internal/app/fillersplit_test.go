@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -526,7 +527,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 		if _, err := os.Stat(filepath.Join(drop, s.Path)); err != nil {
 			t.Errorf("segment %q has a catalog row but no file: %v", s.Name, err)
 		}
-		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, s.Path))
+		tags, ok := asset.ReadSidecarTags(filepath.Join(drop, s.Path))
 		if !ok {
 			t.Fatalf("segment %q has no durable sidecar", s.Name)
 		}

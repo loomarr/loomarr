@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
@@ -173,5 +174,5 @@ func (s *TranscribeStage) sourceTextThin(c StoreClip) bool {
 	if s.drop == nil || c.Path == "" {
 		return true
 	}
-	return len([]rune(SidecarText(s.drop, c.Path))) < ThinSourceRunes
+	return len([]rune(asset.SidecarText(s.drop, c.Path))) < ThinSourceRunes
 }
