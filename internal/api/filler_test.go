@@ -188,13 +188,13 @@ func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 // Discover records the query so a test can prove the handler passes it through, and returns a
 // total LARGER than the item count — the real API pages, and a fake that returned len(items)
 // would let a handler reporting the page length pass.
-func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	f.discovered = append(f.discovered, query)
 	f.discoverLimit = limit
 	if f.discoverErr != nil {
 		return nil, 0, f.discoverErr
 	}
-	return []api.DiscoveredClip{
+	return []fillerapi.DiscoveredClip{
 		{ID: "cm-1993-4", Title: "Commercials 1993", Year: 1993, URL: "https://archive.org/details/cm-1993-4"},
 		{ID: "no-year-item", Title: "Untitled reel", URL: "https://archive.org/details/no-year-item"},
 	}, 54, nil
@@ -202,14 +202,14 @@ func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api
 
 // DiscoverCollection returns a DIFFERENT item set from Discover, deliberately: identical
 // fixtures would let a handler that called the wrong method pass every assertion.
-func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
+func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, limit int) ([]fillerapi.DiscoveredClip, int, error) {
 	f.collections = append(f.collections, ref)
 	f.collectionQueries = append(f.collectionQueries, query)
 	f.discoverLimit = limit
 	if f.discoverErr != nil {
 		return nil, 0, f.discoverErr
 	}
-	return []api.DiscoveredClip{
+	return []fillerapi.DiscoveredClip{
 		{ID: "pack-1", Title: "Starter reel", Year: 1985, URL: "https://archive.org/details/pack-1"},
 	}, 667, nil
 }
@@ -218,17 +218,17 @@ func (f *fakeFiller) DiscoverCollection(_ context.Context, ref, query string, li
 // never probed has no duration, and a fake that answered for everything would let a handler
 // (or a UI) that renders 0 as "0:00" pass — which is the whole failure this split-out route
 // exists around.
-func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
+func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[string]fillerapi.DiscoveredClipStats, error) {
 	f.enriched = append(f.enriched, ids...)
 	if f.enrichErr != nil {
 		return nil, f.enrichErr
 	}
-	out := map[string]api.DiscoveredClipStats{}
+	out := map[string]fillerapi.DiscoveredClipStats{}
 	for _, id := range ids {
 		if id == "unprobed" {
 			continue // absent, never zeroed
 		}
-		out[id] = api.DiscoveredClipStats{DurationMS: 91_090, Height: 960}
+		out[id] = fillerapi.DiscoveredClipStats{DurationMS: 91_090, Height: 960}
 	}
 	return out, nil
 }
@@ -298,7 +298,7 @@ type fakeSplitCall struct {
 
 func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	if f.splitUnavailable {
-		return "", api.ErrSplitUnavailable
+		return "", fillerapi.ErrSplitUnavailable
 	}
 	if f.splitNotFound {
 		return "", store.ErrNotFound
@@ -400,7 +400,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		t.Fatalf("list status = %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Clips []api.ClipDTO `json:"clips"`
+		Clips []fillerapi.ClipDTO `json:"clips"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -695,7 +695,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("geography patch → %d", resp.StatusCode)
 	}
-	var dto api.ClipDTO
+	var dto fillerapi.ClipDTO
 	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
 		t.Fatal(err)
 	}
@@ -1157,10 +1157,10 @@ func TestDiscoverFiller_UpstreamFailureIsABadGateway(t *testing.T) {
 
 // --- per-result stats, fetched on demand (V35) ---
 
-func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]api.DiscoveredClipStats {
+func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]fillerapi.DiscoveredClipStats {
 	t.Helper()
 	var body struct {
-		Stats map[string]api.DiscoveredClipStats `json:"stats"`
+		Stats map[string]fillerapi.DiscoveredClipStats `json:"stats"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -1404,7 +1404,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get split → %d", resp.StatusCode)
 	}
-	var got api.SplitReviewProposalDTO
+	var got fillerapi.SplitReviewProposalDTO
 	_ = json.NewDecoder(resp.Body).Decode(&got)
 	if got.ID != "sp_1" || len(got.Segments) != 2 {
 		t.Fatalf("proposal = %+v", got)

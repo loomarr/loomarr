@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -56,7 +56,7 @@ type bulkResultOutput struct {
 	}
 }
 
-func (s *Server) registerFillerBulk(api huma.API) {
+func (s *Handlers) registerFillerBulk(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-tag-filler", Method: http.MethodPost, Path: "/v1/filler/bulk/tag",
 		Summary: "Retag a selection of clips",
@@ -77,7 +77,7 @@ func (s *Server) registerFillerBulk(api huma.API) {
 	}, httpcore.RoleAdmin), s.bulkRemoveFiller)
 }
 
-func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bulkResultOutput, error) {
+func (s *Handlers) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bulkResultOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -165,7 +165,7 @@ type bulkRemoveFillerInput struct {
 	}
 }
 
-func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput) (*bulkResultOutput, error) {
+func (s *Handlers) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput) (*bulkResultOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -242,7 +242,7 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 // refusals with the same undo, and restore is one endpoint by the argument above — a restore that
 // un-removed a dismissed clip from the catalog while leaving Incoming calling it dismissed would be
 // the exact disagreement that argument exists to prevent. The transition is ClipPipeline.RestoreRefusal.
-func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
+func (s *Handlers) clearPipelineRejects(ctx context.Context, hashes []string) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
 		if err != nil || !found || !row.RestoreRefusal(time.Now().UTC()) {
@@ -268,7 +268,7 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 // Best-effort, matching `clearPipelineRejects`: the catalog half has already landed by the time
 // this runs and `removed_at`/`held` are what decide airability, so failing the request over the
 // bookkeeping half would report a failure for a decision that took effect.
-func (s *Server) settlePipeline(ctx context.Context, hashes []string, to pipelinestate.Disposition, from ...pipelinestate.Disposition) {
+func (s *Handlers) settlePipeline(ctx context.Context, hashes []string, to pipelinestate.Disposition, from ...pipelinestate.Disposition) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
 		if err != nil || !found || !row.SettleByOperator(to, time.Now().UTC(), from...) {

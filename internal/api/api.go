@@ -66,7 +66,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
-		intakeLanguages:  opts.IntakeLanguages,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
@@ -152,14 +151,17 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)
 	srv.registerLibrary(humaAPI)
-	srv.registerFiller(humaAPI)
 	srv.registerFillerSources(humaAPI)
-	srv.registerFillerIncoming(humaAPI)
-	srv.registerFillerBulk(humaAPI)
-	fillerapi.New(fillerapi.Deps{
-		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Filler: opts.Filler,
+	fillerDeps := fillerapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings, Filler: opts.Filler,
 		FillerLayout: opts.FillerLayout, FillerResearch: opts.FillerResearch, FillerDefects: opts.FillerDefects,
-	}).Register(humaAPI)
+		Channels: opts.Channels, Pods: opts.Pods, IntakeLanguages: opts.IntakeLanguages,
+		SourceProviders: opts.SourceProviders, PlaysCounted: opts.PlayoutResolver != nil, Now: opts.Now,
+	}
+	if opts.Images != nil {
+		fillerDeps.ImageRecords = srv.imageDTOsByHash
+	}
+	fillerapi.New(fillerDeps).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerDashboard(humaAPI)

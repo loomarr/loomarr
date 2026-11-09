@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type stationCache struct {
 	dir *station.Directory
 }
 
-func (s *Server) stationDirectory(ctx context.Context) (*station.Directory, error) {
+func (s *Handlers) stationDirectory(ctx context.Context) (*station.Directory, error) {
 	s.stations.mu.Lock()
 	defer s.stations.mu.Unlock()
 	if s.stations.dir == nil {
@@ -30,7 +30,7 @@ func (s *Server) stationDirectory(ctx context.Context) (*station.Directory, erro
 
 // labelStations is the directory for naming stations in a response. Without it a clip shows its
 // stored station id, so a failed read is logged rather than failing the request.
-func (s *Server) labelStations(ctx context.Context) *station.Directory {
+func (s *Handlers) labelStations(ctx context.Context) *station.Directory {
 	dir, err := s.stationDirectory(ctx)
 	if err != nil {
 		s.log.Warn("filler: station names unavailable; showing station ids", "err", err)

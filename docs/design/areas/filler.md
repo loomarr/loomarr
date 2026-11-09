@@ -36,17 +36,17 @@ One area of the [package map](../package-map.md#start-here).
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`filler/pipelinestate`** · 8 importers
+- **`filler/pipelinestate`** · 7 importers
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
 - **`filler/pod`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
 - **`filler/records`** · 4 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
-- **`filler/research`** · 6 importers · → `platform/llm`
+- **`filler/research`** · 5 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
 - **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/cliplibrary`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
-- **`filler/source`** · 7 importers
+- **`filler/source`** · 9 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
 - **`filler/source/archive`** · 1 importer · → `filler/fetch`, `filler/source`
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
@@ -66,5 +66,5 @@ One area of the [package map](../package-map.md#start-here).
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 - **`filler/structure/window/openrouter`** · 1 importer · → `filler/split`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `media/encode`, `platform/httpx`, `platform/openroutercatalog`, `platform/openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`filler/taxonomy`** · 6 importers
+- **`filler/taxonomy`** · 7 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.

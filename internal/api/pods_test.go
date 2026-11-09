@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -432,10 +433,10 @@ func TestPreviewPods_DoesNotShadowNowNext(t *testing.T) {
 
 // --- per-clip channel fit (§10, V35 item 1.7) ---
 
-func decodeFit(t *testing.T, resp *http.Response) []api.ChannelFitDTO {
+func decodeFit(t *testing.T, resp *http.Response) []fillerapi.ChannelFitDTO {
 	t.Helper()
 	var body struct {
-		Channels []api.ChannelFitDTO `json:"channels"`
+		Channels []fillerapi.ChannelFitDTO `json:"channels"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -468,7 +469,7 @@ func TestClipFit_AnswersForEveryChannel(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows, want one per channel", len(rows))
 	}
-	byID := map[string]api.ChannelFitDTO{}
+	byID := map[string]fillerapi.ChannelFitDTO{}
 	for _, r := range rows {
 		byID[r.ChannelID] = r
 	}

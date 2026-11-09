@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -54,7 +54,7 @@ type fillerPoolOutput struct {
 // Read-only and member-visible, matching the per-channel coverage route: it is a count of
 // material, strictly less information than the catalog listing any authenticated user can
 // already read.
-func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput, error) {
+func (s *Handlers) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput, error) {
 	if s.pods == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking catalog health.")
 	}

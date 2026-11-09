@@ -47,7 +47,7 @@ import (
 )
 
 type fillerBuild struct {
-	service  api.FillerService
+	service  fillerapi.Service
 	defects  *defectfloor.DefectReports
 	preview  api.PodPreviewer
 	taxonomy api.TaxonomyEditor

@@ -756,7 +756,7 @@ func (s *Server) sourceSuggestionDTO(source source.Suggestion, registered map[st
 	previewItems := make([]FillerSourcePreviewItemDTO, 0, len(source.PreviewItems))
 	for _, item := range source.PreviewItems {
 		previewItems = append(previewItems, FillerSourcePreviewItemDTO{
-			Title: item.Title, URL: item.URL, DurationMS: item.DurationMS, EmbedURL: s.embedURL(provider, item.URL),
+			Title: item.Title, URL: item.URL, DurationMS: item.DurationMS, EmbedURL: httpcore.EmbedURL(s.sourceProviders, provider, item.URL),
 		})
 	}
 	return FillerSourceSuggestionDTO{
@@ -1528,14 +1528,6 @@ func (s *Server) sourcePageURL(kind, uri string) string {
 	return ""
 }
 
-// embedURL is a player for an item of the provider's, or "" when the provider offers none.
-func (s *Server) embedURL(kind, itemURL string) string {
-	if linker, ok := s.sourceProviders.Linker(source.ID(kind)); ok {
-		return linker.EmbedURL(itemURL)
-	}
-	return ""
-}
-
 func (s *Server) sourceDetail(kind, uri string) string {
 	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok && p.Describe().SourceDetail != "" {
 		return p.Describe().SourceDetail
@@ -1580,7 +1572,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 			return nil, httpcore.Conflict("Already looking for clips", "This source is already being checked.")
 		}
 		if errors.Is(err, cliplibrary.ErrSourceDisabled) {
-			return nil, errSourceDisabled()
+			return nil, fillerapi.SourceDisabledError()
 		}
 		if errors.Is(err, acquisition.ErrFetchSourceNotFound) {
 			return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
@@ -1591,7 +1583,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	// Same reason as the sync route: a source the operator switched off is an answer, not a
 	// gateway failure. This is the "Fetch now" on the very row carrying the switch.
 	if errors.Is(err, cliplibrary.ErrSourceDisabled) {
-		return nil, errSourceDisabled()
+		return nil, fillerapi.SourceDisabledError()
 	}
 	if err != nil {
 		return nil, huma.Error502BadGateway("sync filler catalog", err)
@@ -1606,14 +1598,4 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	out.Body.Outcomes = fillerSourceCheckSummaryDTO(fetchResult.Outcomes)
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
 	return out, nil
-}
-
-// errSourceDisabled is the shared answer for "you switched this off".
-//
-// 409 rather than 502 or 501: the request is well-formed and the feature is present — the
-// install is simply in a state that refuses it, and the operator can change that state. The
-// detail names the exact switch, because "disabled" without a location is a dead end.
-func errSourceDisabled() huma.StatusError {
-	return httpcore.Conflict("The drop-folder is switched off",
-		"Loomarr isn't scanning the drop-folder because that source is turned off. Switch it back on under Filler → Sources, then sync again.")
 }

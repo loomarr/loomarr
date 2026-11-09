@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -32,7 +31,7 @@ import (
 // registerFiller mounts /v1/filler* (§7/§10). List is visible to any
 // authenticated user; tag edit, sync, and the AI-tagging job require admin
 // (filler ingestion is an admin concern, §7).
-func (s *Server) registerFiller(api huma.API) {
+func (s *Handlers) registerFiller(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
 		Summary: "List filler clips",
@@ -226,8 +225,8 @@ type rewindFillerClipInput struct {
 	}
 }
 
-func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput) (*struct{}, error) {
-	rewinder, ok := s.filler.(FillerRewinder)
+func (s *Handlers) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput) (*struct{}, error) {
+	rewinder, ok := s.filler.(Rewinder)
 	if !ok {
 		return nil, huma.Error501NotImplemented("the filler pipeline is not configured")
 	}
@@ -449,7 +448,7 @@ func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
 // playoutresolve.Resolver.airingFiller), and a Tunarr-backed install has none — its filler is aired by
 // Tunarr, which never reports back. Deriving it from the same field the program route checks
 // means the flag cannot drift from the behaviour it describes.
-func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
+func (s *Handlers) playsCounted() bool { return s.playsCountedOn }
 
 // clipPathByHash resolves a clip's content HASH (the wire identity, V45a) to its disk path (the disk
 // LOCATION, server-internal). The byte routes (thumb/media/hover) take the hash in the URL and need
@@ -457,7 +456,7 @@ func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
 // caller renders that as an ordinary 404, never an error (a missing clip and a missing thumbnail are
 // the same non-event to the client). ⚠ One store read per byte request: the tradeoff for a single
 // wire identity (V45a) — the path never crosses the API, so no slash-in-URL encoding hazard remains.
-func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool) {
+func (s *Handlers) clipPathByHash(ctx context.Context, hash string) (string, bool) {
 	if s.store == nil || hash == "" {
 		return "", false
 	}
@@ -476,8 +475,8 @@ func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool)
 // grid, and each tile has a still AND a hover loop, so a per-row lookup is two queries per tile:
 // a 200-clip page would be 400 round trips to render one screen. This is the same N+1 the channel
 // list already avoids, one surface over, and it matters more here because the page is bigger.
-func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip) func(string) *httpcore.ImageDTO {
-	if s.images == nil || len(clips) == 0 {
+func (s *Handlers) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip) func(string) *httpcore.ImageDTO {
+	if s.imageRecords == nil || len(clips) == 0 {
 		return nil
 	}
 	hashes := make([]string, 0, len(clips)*2)
@@ -632,7 +631,7 @@ type listFillerOutput struct {
 	}
 }
 
-func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
+func (s *Handlers) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
 	f := clipstore.ClipFilter{
 		Role:                clips.Role(in.Role),
 		Era:                 in.Era,
@@ -774,7 +773,7 @@ type ClipGeographyDTO struct {
 }
 type clipOutput struct{ Body ClipDTO }
 
-func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
+func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
 	now := time.Now()
 	var operatorLeaves []string
 	var operatorForest *taxonomy.Forest
@@ -933,7 +932,7 @@ type syncFillerOutput struct {
 	}
 }
 
-func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput, error) {
+func (s *Handlers) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput, error) {
 	if s.filler == nil || s.featureOff(ctx, "filler") {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
@@ -942,7 +941,7 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 	// 502 it reads "your media server is broken" — sending the operator to check a connection
 	// that is fine — when the true answer is a switch they flipped themselves, on this page.
 	if errors.Is(err, cliplibrary.ErrSourceDisabled) {
-		return nil, errSourceDisabled()
+		return nil, SourceDisabledError()
 	}
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't sync filler",
@@ -970,7 +969,7 @@ type ingestFillerOutput struct {
 // ingestFiller starts a download job and returns immediately. Downloads run for minutes
 // to hours, so the response carries a job id and progress arrives on the SSE bus — the
 // same contract as the §8.1 model pull.
-func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*ingestFillerOutput, error) {
+func (s *Handlers) ingestFiller(ctx context.Context, in *ingestFillerInput) (*ingestFillerOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
@@ -982,7 +981,7 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 		return nil, httpcore.Conflict("That provider is paused",
 			"Resume it under Filler → Sources before downloading from it.")
 	}
-	if errors.Is(err, fillerapi.ErrIngestUnavailable) {
+	if errors.Is(err, ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
 		// used to say "run the loomarr:filler image" — that variant no longer exists (the
 		// single image always ships the tooling, §16), so the remedy it named was a dead
@@ -1033,7 +1032,7 @@ type discoverFillerOutput struct {
 }
 
 // discoverFiller searches for clips the operator could add, downloading nothing.
-func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*discoverFillerOutput, error) {
+func (s *Handlers) discoverFiller(ctx context.Context, in *discoverFillerInput) (*discoverFillerOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
@@ -1076,14 +1075,14 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 		out.Body.Items = []DiscoveredClip{}
 	}
 	for i := range out.Body.Items {
-		out.Body.Items[i].EmbedURL = s.embedURL("archive", out.Body.Items[i].URL)
+		out.Body.Items[i].EmbedURL = httpcore.EmbedURL(s.sourceProviders, "archive", out.Body.Items[i].URL)
 	}
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
 	return out, nil
 }
 
-func (s *Server) requireFillerProvider(ctx context.Context, kind string) error {
+func (s *Handlers) requireFillerProvider(ctx context.Context, kind string) error {
 	if s.store == nil {
 		return huma.Error501NotImplemented("no store configured")
 	}
@@ -1136,7 +1135,7 @@ type discoverStatsOutput struct {
 // a page of 25, with a per-call median of 1.78s. Widening the fan-out makes it worse (12 and 25
 // concurrent both measured 25s against 6's 15.6s), so archive.org is throttling and the latency
 // is not ours to tune away. Asking only for rows a person is looking at is the fix.
-func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput) (*discoverStatsOutput, error) {
+func (s *Handlers) discoverFillerStats(ctx context.Context, in *discoverStatsInput) (*discoverStatsOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
@@ -1204,7 +1203,7 @@ type clipFitOutput struct {
 }
 
 // clipChannelFit answers "where does this clip land on each channel's ladder" (§10, V35 1.7).
-func (s *Server) clipChannelFit(ctx context.Context, in *clipFitInput) (*clipFitOutput, error) {
+func (s *Handlers) clipChannelFit(ctx context.Context, in *clipFitInput) (*clipFitOutput, error) {
 	if s.pods == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Set up commercials and filler before choosing which channels use a clip.")
@@ -1262,7 +1261,7 @@ type splitFillerOutput struct {
 // splitFiller starts detection on a compilation clip. It answers immediately:
 // a full-decode detection pass takes minutes, so the job id's progress rides
 // the SSE bus and the proposal is read back when the terminal frame lands.
-func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitFillerOutput, error) {
+func (s *Handlers) splitFiller(ctx context.Context, in *splitFillerInput) (*splitFillerOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before splitting a compilation.")
@@ -1320,7 +1319,7 @@ type getFillerSplitOutput struct {
 
 // getFillerSplit reads one proposal — the review surface's source of truth.
 // Read straight from the store, like list/patch: no service indirection needed.
-func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*getFillerSplitOutput, error) {
+func (s *Handlers) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*getFillerSplitOutput, error) {
 	p, err := s.store.GetSplitProposal(ctx, in.ProposalID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Split proposal not found",
@@ -1388,7 +1387,7 @@ type confirmFillerSplitOutput struct {
 // confirmFillerSplit commits the reviewed cut list. Synchronous: stream-copy
 // cuts seek rather than decode, so even twenty segments are seconds — the
 // minutes belong to detection, which already ran.
-func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitInput) (*confirmFillerSplitOutput, error) {
+func (s *Handlers) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitInput) (*confirmFillerSplitOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before confirming a split.")

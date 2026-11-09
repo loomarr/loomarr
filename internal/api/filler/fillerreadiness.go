@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -84,12 +83,12 @@ type FillerReadinessDTO struct {
 	ChannelID   string `json:"channelId,omitempty"`
 	ActionCount int    `json:"actionCount,omitempty"`
 
-	Fetch        fillerapi.FillerFetchStatusDTO `json:"fetch"`
-	Storage      FillerStorageStatusDTO         `json:"storage"`
-	Pipeline     PipelineOverviewDTO            `json:"pipeline"`
-	Pool         PoolDTO                        `json:"pool"`
-	Acquisitions []FillerAcquisitionRunDTO      `json:"acquisitions"`
-	Repairs      AcquisitionRepairSummaryDTO    `json:"repairs"`
+	Fetch        FillerFetchStatusDTO        `json:"fetch"`
+	Storage      FillerStorageStatusDTO      `json:"storage"`
+	Pipeline     PipelineOverviewDTO         `json:"pipeline"`
+	Pool         PoolDTO                     `json:"pool"`
+	Acquisitions []FillerAcquisitionRunDTO   `json:"acquisitions"`
+	Repairs      AcquisitionRepairSummaryDTO `json:"repairs"`
 }
 
 type FillerStorageStatusDTO struct {
@@ -138,7 +137,7 @@ type getFillerAcquisitionOutput struct {
 	Body FillerAcquisitionRunDTO
 }
 
-func (s *Server) getFillerAcquisition(ctx context.Context, in *getFillerAcquisitionInput) (*getFillerAcquisitionOutput, error) {
+func (s *Handlers) getFillerAcquisition(ctx context.Context, in *getFillerAcquisitionInput) (*getFillerAcquisitionOutput, error) {
 	run, err := s.store.GetAcquisitionRun(ctx, in.JobID, time.Now().UTC())
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, huma.Error404NotFound("Filler acquisition not found")
@@ -149,7 +148,7 @@ func (s *Server) getFillerAcquisition(ctx context.Context, in *getFillerAcquisit
 	return &getFillerAcquisitionOutput{Body: acquisitionRunDTO(run)}, nil
 }
 
-func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadinessOutput, error) {
+func (s *Handlers) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadinessOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking readiness.")
 	}
@@ -160,7 +159,7 @@ func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadi
 	return &fillerReadinessOutput{Body: fillerReadinessDTO(readiness)}, nil
 }
 
-func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (*fillerStorageCleanupPreviewOutput, error) {
+func (s *Handlers) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (*fillerStorageCleanupPreviewOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking storage.")
 	}
@@ -171,7 +170,7 @@ func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (
 	return &fillerStorageCleanupPreviewOutput{Body: fillerStorageCleanupPreviewDTO(preview)}, nil
 }
 
-func (s *Server) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*fillerStorageCleanupResultOutput, error) {
+func (s *Handlers) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*fillerStorageCleanupResultOutput, error) {
 	if s.filler == nil {
 		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before cleaning storage.")
 	}
@@ -199,7 +198,7 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 	return FillerReadinessDTO{
 		Ready: readiness.Ready, NextAction: string(readiness.Next),
 		ChannelID: readiness.ChannelID, ActionCount: readiness.Count,
-		Fetch: fillerapi.FillerFetchStatusDTO{
+		Fetch: FillerFetchStatusDTO{
 			Enabled: readiness.Fetch.Enabled, StoppedBy: readiness.Fetch.StoppedBy,
 			CatalogClips: readiness.Fetch.CatalogClips, MaxCatalog: readiness.Fetch.MaxCatalog,
 		},

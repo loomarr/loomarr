@@ -1,24 +1,26 @@
-// Package filler serves the filler routes under /v1/filler: the pull approval queue, the header's
-// watch status, clip-detail research status and the defect floor report.
+// Package filler serves the filler routes under /v1/filler: the clip catalog and its edits, the
+// Incoming queue, readiness and pool health, the pull approval queue, the header's watch status,
+// clip-detail research status and the defect floor report.
 package filler
 
 import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
@@ -30,22 +32,19 @@ import (
 // without the vendored binaries, or a path that is missing or not executable.
 var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
-// Store is the slice of the aggregate store these routes read and write.
+// Store is the slice of the filler store these routes read and write: the clip catalog, the
+// channel list a catalog change reconciles, and the filler persistence roles.
 type Store interface {
 	httpcore.UserLister
+	store.ChannelStore
+	store.ClipStore
 	records.FillerPullStore
 	records.FillerAcquisitionStore
 	records.FillerSplitProposalStore
 	records.FillerPipelineStore
 	records.FillerSourceStore
-	CountClips(ctx context.Context, filter clipstore.ClipFilter) (int, error)
-}
-
-// Ingester starts the download of an approved pull.
-type Ingester interface {
-	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
-	// inside the same transaction that queues it; it returns the job id.
-	IngestPull(ctx context.Context, pullID string, targets []acquisition.AcquisitionTarget, commit func(context.Context, acquisition.AcquisitionRun) error) (jobID string, err error)
+	records.FillerEnrichmentStore
+	records.FillerResearchStore
 }
 
 // ResearchService owns the operator-facing status and pre-save provider check for optional
@@ -56,47 +55,111 @@ type ResearchService interface {
 	Test(context.Context, research.WebConfig) (research.WebStatus, bool, string, error)
 }
 
-// Deps is what the filler routes need from the rest of the server. Every field is optional: a nil
-// service leaves its routes answering 501, as the API's nil-semantics describe.
+// ChannelReconciler converges a channel after the filler catalog changed under it. When the
+// implementation also offers ReconcileFillerChange, only the affected channels are rebuilt.
+type ChannelReconciler interface {
+	Reconcile(ctx context.Context, channelID string) error
+}
+
+// PodService answers the pool and per-clip channel-fit questions the Filler page asks of the pod
+// assembler (§12).
+type PodService interface {
+	// ClipFit reports how ONE clip relates to EVERY channel's selection (§10 V35 item 1.7).
+	ClipFit(ctx context.Context, clipPath string) (map[string]pod.Fit, error)
+	// Pool is catalog-wide filler health, the same per-channel numbers the channel route reports.
+	Pool(ctx context.Context) (pod.PoolReport, error)
+}
+
+// Deps is what the filler routes need from the rest of the server. Every field is optional: a
+// nil service leaves its routes answering 501, as the API's nil-semantics describe.
 type Deps struct {
 	Log   *slog.Logger
 	Store Store
 	// LiveSettings reads the home location the pull gate and the watch verdict judge sources by.
 	LiveSettings settings.Reader
-	// Filler starts approved pulls; its FetchStatus, when it has one, feeds the watch header.
-	Filler Ingester
+	// Settings gates the clip routes on the filler feature; nil reads as enabled.
+	Settings httpcore.FeatureGate
+	// Filler is the acquisition and readiness service. Its optional Rewinder and fetch-status
+	// capabilities are found by type assertion.
+	Filler Service
 	// FillerLayout is the clip folder topology this server generation runs on.
 	FillerLayout cliplibrary.Layout
 	// The Filler prefix matches the api.Options fields these are copied from.
 	FillerResearch ResearchService
 	FillerDefects  *defectfloor.DefectReports
+	// Channels reconciles the channels a catalog change touches.
+	Channels ChannelReconciler
+	// Pods answers pool health and per-clip channel fit.
+	Pods PodService
+	// ImageRecords resolves image hashes to their records in one deduplicated pass; nil leaves
+	// every artwork URL as it is.
+	ImageRecords func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
+	// IntakeLanguages reads the language the intake pipeline works in; nil reports none.
+	IntakeLanguages func(context.Context) (string, error)
+	// SourceProviders names every provider a filler source can use.
+	SourceProviders *source.Registry
+	// PlaysCounted is whether this install can observe a clip airing (internal playout).
+	PlaysCounted bool
+	// Now is the request clock; nil is time.Now.
+	Now func() time.Time
 }
 
 // Handlers serves the filler routes.
 type Handlers struct {
-	log            *slog.Logger
-	store          Store
-	liveSettings   settings.Reader
-	filler         Ingester
-	fillerLayout   cliplibrary.Layout
-	fillerResearch ResearchService
-	fillerDefects  *defectfloor.DefectReports
+	log             *slog.Logger
+	store           Store
+	liveSettings    settings.Reader
+	settings        httpcore.FeatureGate
+	filler          Service
+	fillerLayout    cliplibrary.Layout
+	fillerResearch  ResearchService
+	fillerDefects   *defectfloor.DefectReports
+	channels        ChannelReconciler
+	pods            PodService
+	imageRecords    func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
+	intakeLanguages func(context.Context) (string, error)
+	sourceProviders *source.Registry
+	playsCountedOn  bool
+	now             func() time.Time
+
+	// stations is the broadcast station directory, read once from the store (it changes only
+	// with a seed revision at boot).
+	stations stationCache
 }
 
 // New returns the filler handlers over d.
 func New(d Deps) *Handlers {
 	return &Handlers{
-		log: d.Log, store: d.Store, liveSettings: d.LiveSettings, filler: d.Filler,
+		log: d.Log, store: d.Store, liveSettings: d.LiveSettings, settings: d.Settings, filler: d.Filler,
 		fillerLayout: d.FillerLayout, fillerResearch: d.FillerResearch, fillerDefects: d.FillerDefects,
+		channels: d.Channels, pods: d.Pods, imageRecords: d.ImageRecords, intakeLanguages: d.IntakeLanguages,
+		sourceProviders: d.SourceProviders, playsCountedOn: d.PlaysCounted, now: d.Now,
 	}
 }
 
 // Register mounts every route this package serves.
 func (s *Handlers) Register(api huma.API) {
+	s.registerFiller(api)
+	s.registerFillerIncoming(api)
+	s.registerFillerBulk(api)
 	s.registerFillerPulls(api)
 	s.registerFillerWatch(api)
 	s.registerFillerResearch(api)
 	s.registerFillerDefects(api)
+}
+
+// featureOff reports whether a named feature (config-design §7) is configured-off right now. Safe
+// when settings is unset (unit tests): reports false so a wired dependency still serves.
+func (s *Handlers) featureOff(ctx context.Context, feature string) bool {
+	return s.settings != nil && !s.settings.Features(ctx)[feature]
+}
+
+// imageDTOsByHash resolves image hashes in one pass, or nothing without an image service.
+func (s *Handlers) imageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
+	if s.imageRecords == nil || len(hashes) == 0 {
+		return nil
+	}
+	return s.imageRecords(ctx, hashes)
 }
 
 // HomeGeography is the installation's home location as the filler sources and pulls judge it, or
@@ -119,6 +182,16 @@ func (s *Handlers) fillerHomeGeography() pod.Geography { return HomeGeography(s.
 // the watch header's preparing count both read it (#2733).
 func IncomingPreparingFilter() pipelinestate.PipelineFilter {
 	return pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}}
+}
+
+// SourceDisabledError is the shared answer for "you switched this off".
+//
+// 409 rather than 502 or 501: the request is well-formed and the feature is present — the
+// install is simply in a state that refuses it, and the operator can change that state. The
+// detail names the exact switch, because "disabled" without a location is a dead end.
+func SourceDisabledError() huma.StatusError {
+	return httpcore.Conflict("The drop-folder is switched off",
+		"Loomarr isn't scanning the drop-folder because that source is turned off. Switch it back on under Filler → Sources, then sync again.")
 }
 
 // OrPlaceholder is v, or placeholder when v is empty.
