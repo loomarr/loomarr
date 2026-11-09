@@ -20,6 +20,7 @@ type arrStub struct {
 	server      *httptest.Server
 	addBody     map[string]any // the last POST /api/v3/{kind} body
 	addStatus   int            // status to return from the add (default 201)
+	addResponse string         // body to return from the add (default {"id":90000042})
 	lookupID    int            // the arr's internal id returned by lookup (for queue matching)
 	deletedID   int            // the queue id DELETEd by Cancel, if any
 	queueForID  int            // a queue record's movieId/seriesId to expose
@@ -55,7 +56,11 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&s.addBody)
 			w.WriteHeader(s.addStatus)
-			_, _ = w.Write([]byte(`{"id":90000042}`))
+			body := s.addResponse
+			if body == "" {
+				body = `{"id":90000042}`
+			}
+			_, _ = w.Write([]byte(body))
 		}
 	})
 	if kind == "series" {
@@ -161,14 +166,56 @@ func TestArr_RequestSeries_RoutesToSonarrByTVDB(t *testing.T) {
 	}
 }
 
-func TestArr_RequestMovie_AlreadyAddedIsSuccess(t *testing.T) {
-	for _, code := range []int{http.StatusBadRequest, http.StatusConflict} {
-		stub := newArrStub(t, "movie")
-		stub.addStatus = code
-		a := arrFor("movie", stub.server.URL, "", "")
-		if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
-			t.Errorf("add status %d should be success (already added), got %v", code, err)
-		}
+func TestArr_Request_AlreadyAddedIsSuccess(t *testing.T) {
+	cases := []struct {
+		name, kind string
+		status     int
+		body       string
+	}{
+		{"conflict", "movie", http.StatusConflict, ""},
+		{"radarr exists validator", "movie", http.StatusBadRequest,
+			`[{"propertyName":"TmdbId","errorMessage":"This movie has already been added","errorCode":"MovieExistsValidator"}]`},
+		{"sonarr exists validator", "series", http.StatusBadRequest,
+			`[{"propertyName":"TvdbId","errorMessage":"This series has already been added","errorCode":"SeriesExistsValidator"}]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := newArrStub(t, tc.kind)
+			stub.addStatus = tc.status
+			stub.addResponse = tc.body
+			a := arrFor(tc.kind, stub.server.URL, "", "")
+			title := provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}
+			if tc.kind == "series" {
+				title = provision.Title{MediaType: provision.Series, TVDBID: 90081189, Name: "S"}
+			}
+			if err := a.Request(context.Background(), title); err != nil {
+				t.Errorf("already added should be success, got %v", err)
+			}
+		})
+	}
+}
+
+func TestArr_RequestMovie_OtherBadRequestFailsWithBody(t *testing.T) {
+	stub := newArrStub(t, "movie")
+	stub.addStatus = http.StatusBadRequest
+	stub.addResponse = `[{"propertyName":"RootFolderPath","errorMessage":"Path is not writable","errorCode":"PathExistsValidator"}]`
+	a := arrFor("movie", stub.server.URL, "", "")
+	err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"})
+	if err == nil {
+		t.Fatal("a 400 that is not already-exists must fail (record stays wanted)")
+	}
+	if !strings.Contains(err.Error(), "Path is not writable") {
+		t.Errorf("error should carry the arr's body, got %v", err)
+	}
+}
+
+func TestArr_RequestMovie_UnparseableBadRequestFails(t *testing.T) {
+	stub := newArrStub(t, "movie")
+	stub.addStatus = http.StatusBadRequest
+	stub.addResponse = "bad things"
+	a := arrFor("movie", stub.server.URL, "", "")
+	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err == nil {
+		t.Fatal("an unparseable 400 must fail")
 	}
 }
 

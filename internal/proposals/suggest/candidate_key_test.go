@@ -85,7 +85,7 @@ func TestNamesOnlyDirectFinalReceivesCatalogKey(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{
 		MediaType: provision.Series, TMDBID: 90021502, TVDBID: 90269680, Name: "Murmur Bay", Year: 2013, InLibrary: true,
 	}}}
-	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))
+	model := testkit.NewLLM(t, testkit.FinalResponse(`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))
 	proposal, err := New(model, titlesearch.New(nil, corpus), nil, 3).Suggest(context.Background(), proposals.Intent{Description: "mysteries"})
 	if err != nil {
 		t.Fatal(err)

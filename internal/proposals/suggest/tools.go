@@ -33,6 +33,9 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 	if tc.Name != catalogToolName {
 		return preparedToolCall{}, fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), proposals.DecisionTrace{}, false
 	}
+	if tc.ArgumentsError != "" {
+		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, tc.ArgumentsError), proposals.DecisionTrace{}, false
+	}
 	arguments := tc.Arguments
 	meaning, dateErr := validatedToolDateMeaning(intent, arguments)
 	if dateErr != nil {

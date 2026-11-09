@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,6 +104,10 @@ type PackagerHLS struct {
 	channels map[packagedKey]*packagedChannel
 	// premiumTakers is when each viewer (WithViewer) last requested a premium playlist (#1037).
 	premiumTakers map[string]time.Time
+
+	// speeds holds each running packager's latest item-encoder speed (a *atomic.Uint64 of float64
+	// bits, keyed by packagedKey), for SessionStat.Speed; removeLocked drops a stopped packager's.
+	speeds sync.Map
 
 	// observer and onChange see packagers start and stop. Both are set before the first tune.
 	observer SessionObserver
@@ -536,7 +541,7 @@ func (m *PackagerHLS) schedule(
 	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
-	ladder := &itemLadder{}
+	ladder := &itemLadder{speed: m.speedFor(key)}
 	tuneIn := true // the packager's first lookup; the schedule runs on one goroutine
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
@@ -695,6 +700,9 @@ const ladderResumeWait = 10 * time.Second
 // air, which outlives its encoder restarts (a new airing starts a new monitor). The schedule reads
 // it; the item encoder's progress goroutine feeds it.
 type itemLadder struct {
+	// speed is where every item encoder's reported realtime multiple lands (float64 bits), whether
+	// or not the host has a monitor; PackagerHLS.Stats reads it.
+	speed   *atomic.Uint64
 	mu      sync.Mutex
 	airing  string
 	monitor *RungMonitor
@@ -725,13 +733,17 @@ func (l *itemLadder) resume(airing string) (rung SoftwareRung, resumed, stepped 
 	return l.monitor.Rung(), true, stepped
 }
 
-// watch feeds an item encoder's samples to m and ends that encoder on a step. Samples from an
-// encoder of an airing no longer on air are ignored. Nil when there is no monitor (GPU hosts).
+// watch records an item encoder's speed, feeds its samples to m and ends that encoder on a step.
+// Samples from an encoder of an airing no longer on air are ignored by the monitor. m is nil on a
+// host with no monitor (GPU hosts): the encoder's progress is still read for its speed.
 func (l *itemLadder) watch(m *RungMonitor, log *slog.Logger, label string) func(SpeedSample) bool {
-	if m == nil {
-		return nil
-	}
 	return func(s SpeedSample) bool {
+		if l.speed != nil && s.Speed > 0 {
+			l.speed.Store(math.Float64bits(s.Speed))
+		}
+		if m == nil {
+			return false
+		}
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		if l.monitor != m || l.stepped {
@@ -876,6 +888,7 @@ func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 	if m.channels[key] == c {
 		delete(m.channels, key)
+		m.speeds.Delete(key)
 		m.observe(func(o SessionObserver) { o.PlayoutSessionActive(-1) })
 		m.changed()
 	}
@@ -1083,7 +1096,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 				return
 			}
 			cpu, _ := processCPUTime(pid)
-			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu}) {
+			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu, Speed: p.Speed}) {
 				cut.stop.Store(true)
 			}
 		})

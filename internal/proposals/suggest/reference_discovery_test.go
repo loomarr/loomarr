@@ -47,7 +47,7 @@ func TestSuggestDiscoversNamedBlockSourceOnce(t *testing.T) {
 			references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 				URL: "https://lineups.example/frozen-block", Title: "Synthetic block roster", Excerpt: "Marigold Protocol", TitleAnchors: []string{"Marigold Protocol"},
 			}}
-			model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
+			model := testkit.NewLLM(t, testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 			prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: request})
 			if err != nil || len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
 				t.Fatalf("proposal=%+v err=%v", prop, err)
@@ -73,7 +73,7 @@ func TestSuggestDiscoversAcronymSourceWithoutPhaseQualifier(t *testing.T) {
 					Excerpt: "Marigold Protocol", TitleAnchors: []string{"Marigold Protocol"},
 				},
 			}}
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 			)
@@ -142,7 +142,7 @@ func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
 			grandOak.Name, crumbStreet.Name,
 		},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"Friday Night","rationale":"Interpreting the named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		testkit.FinalResponse(`{"channelName":"Friday Night","rationale":"A verified named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[{"mediaType":"series","key":"series:tmdb:90001001","name":"Grand Oak Hotel","rationale":"A defining constituent.","confidence":0.98},{"mediaType":"series","key":"series:tmdb:90001002","name":"Crumb Street Bakery","rationale":"A defining constituent.","confidence":0.98}],"policy":{}}`),
 	)
@@ -176,7 +176,7 @@ func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing
 		URL: "https://lineups.example/qfun", Title: "QFUN", Excerpt: "A verified programming block.",
 		TitleAnchors: []string{"Grand Oak Hotel", "Penny the Pocket Witch"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"series","key":"series:tmdb:90001001","name":"Grand Oak Hotel"}
@@ -221,7 +221,7 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 		URL: "https://lineups.example/qfun", Title: "QFUN", Excerpt: "A verified programming block.",
 		TitleAnchors: []string{grandOak.Name, crumbStreet.Name, bowlingAlley.Name},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"series","key":"series:tmdb:90001001","name":"Grand Oak Hotel"},
@@ -273,7 +273,7 @@ func TestSuggestNamedSetExclusionDoesNotRemoveShorterRelatedTitle(t *testing.T) 
 		"LCU": {URL: "https://lineups.example/lcu", Title: "LCU", Excerpt: "Two reviewed members", TitleAnchors: []string{copperKnight.Name, copperKnight2.Name}},
 	}}
 	meaning := dateMeaningNone()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90001726"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
@@ -314,7 +314,7 @@ func TestSuggestNamedSourceCompletionRespectsKnownMovieReleaseRange(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 		testkit.FinalResponse(string(final)),
 	)
@@ -347,7 +347,7 @@ func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
 	unsolicited := testkit.ToolCallResponse("catalog_search", map[string]any{
 		"query": "Grand Oak Hotel", "dateMeaning": dateMeaningNone(),
 	})
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		unsolicited, unsolicited, unsolicited,
 	)
@@ -381,7 +381,7 @@ func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 		URL: "https://lineups.example/qfun", Title: "QFUN", Excerpt: "A verified programming block.",
 		TitleAnchors: []string{"Pinwheel Summer (TV series)"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"QFUN","rationale":"Interpreting the named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		testkit.FinalResponse(`{"channelName":"QFUN","rationale":"A verified named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[{"mediaType":"series","key":"series:tmdb:90001002","name":"Pinwheel Summer","rationale":"The source identifies the television series.","confidence":0.98}],"policy":{}}`),
 	)
@@ -410,7 +410,7 @@ func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
 		URL: "https://lineups.example/qfun", Title: "QFUN", Excerpt: "A verified programming block.",
 		TitleAnchors: []string{"Penny the Pocket Witch (1996 TV series)"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"series","key":"series:tmdb:90001002","name":"Penny the Pocket Witch"}
@@ -432,7 +432,7 @@ func TestSuggestMissingNamedSourceDoesNotPromoteModelMemory(t *testing.T) {
 	meaning := dateMeaningNone()
 	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	references := &testkit.ReferenceResolver{}
-	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
+	model := testkit.NewLLM(t, testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "QFUN block"})
 	if err == nil || len(prop.Lineup) != 0 || len(references.Discoveries()) != 1 {
 		t.Fatalf("proposal=%+v err=%v discovery=%v", prop, err, references.Discoveries())

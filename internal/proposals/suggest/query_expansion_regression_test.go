@@ -20,7 +20,7 @@ func TestSuggest_BlockEditorialEpochDoesNotRequireEpisodeDates(t *testing.T) {
 		URL: "https://example.test/development/block-epoch", Title: "Synthetic reference",
 		Excerpt: "One synthetic constituent", TitleAnchors: []string{"Marigold Protocol"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
@@ -38,7 +38,7 @@ func TestSuggest_BlockEpochDoesNotEraseSeparateDateRequirements(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
-			model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())))
+			model := testkit.NewLLM(t, testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())))
 			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), intent)
 			if err == nil || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 || len(corpus.Searches()) != 0 {
 				t.Fatalf("separate date requirement was erased: proposal=%+v err=%v", proposal, err)
@@ -64,7 +64,7 @@ func TestSuggest_NegatedLibraryOnlyDoesNotDropOutsideCandidates(t *testing.T) {
 			mock.AddSeries(90000002, missing.Name, 1996, []int{35}, "Synthetic sitcom")
 			validator := tmdb.NewWithBase(mock.URL, "fixture")
 			final := `{"picks":[{"mediaType":"series","key":"series:tmdb:90000001"},{"mediaType":"series","key":"series:tmdb:90000002"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)
@@ -97,7 +97,7 @@ func TestSuggest_LibraryOnlyDropsSourceCompletedAcquisitions(t *testing.T) {
 				Excerpt: "Two synthetic sitcoms", TitleAnchors: []string{owned.Name, missing.Name},
 			}}
 			final := `{"picks":[{"mediaType":"series","key":"series:tmdb:90000001"},{"mediaType":"series","key":"series:tmdb:90000002"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)

@@ -336,7 +336,12 @@ func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 func (s *Service) failWorkflow(ctx context.Context, work workflow.Work, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
 	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), persistedMessage(cause), traceJSON); err != nil {
-		s.log.Info("discarding stale or undurable Proposal Job failure",
+		if errors.Is(err, workflow.ErrStaleAttempt) {
+			s.log.Info("discarding stale Proposal Job failure",
+				"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
+			return
+		}
+		s.log.Error("Proposal Job failure not recorded",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 		return
 	}

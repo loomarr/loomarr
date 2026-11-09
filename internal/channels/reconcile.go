@@ -523,13 +523,6 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 		e.premeasureAhead(ctx, ch)
 	}
 
-	// Tell the UI the channel changed so it updates live (no manual refresh — the
-	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a
-	// latency concern, never a correctness one (GET /v1/channels is the truth on load).
-	if e.notify != nil {
-		e.notify.ChannelChanged(ch.ID, string(previousStatus), string(ch.Status))
-	}
-
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local
 	// Building marker changes the tuner list for either backend. Retry-carried flags,
 	// however, describe Tunarr effects and count only when the winning attempt is still
@@ -539,6 +532,15 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	if !playsInternally {
 		channelListChanged = channelListChanged || run.channelListChanged
 		channelAffecting = channelAffecting || run.channelAffecting
+	}
+
+	// Tell the UI the channel changed so it updates live (no manual refresh — the
+	// "self-maintaining" model, §9). Only a sweep that changed something emits: a status
+	// transition, a new desired lineup, or a Tunarr-side effect; a no-op sweep stays silent.
+	// Best-effort: nil notifier / a dropped frame is a latency concern, never a correctness
+	// one (GET /v1/channels is the truth on load).
+	if e.notify != nil && (previousStatus != ch.Status || channelListChanged || channelAffecting) {
+		e.notify.ChannelChanged(ch.ID, string(previousStatus), string(ch.Status))
 	}
 	if channelListChanged {
 		e.rescanTuner(ctx, channelID)

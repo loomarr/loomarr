@@ -1104,7 +1104,12 @@ func (sp *Splitter) cutConfirmedSegments(ctx context.Context, claim *splitClaim,
 	}
 	ext := filepath.Ext(source.Path)
 	parentPlayable := filepath.Join(sp.dropDir, filepath.FromSlash(clip.Path))
-	parentTags, _ := asset.ReadSidecarTags(parentPlayable)
+	// A damaged parent sidecar holds the confirm: absence is ordinary (zero tags), but cutting from
+	// unreadable provenance would publish children with no source or acquisition identity.
+	parentTags, parentSidecar := asset.ReadSidecarTagsState(parentPlayable)
+	if parentSidecar == asset.SidecarInvalid {
+		return nil, fmt.Errorf("split confirm: parent sidecar for %s is unreadable; held until it is repaired", clip.Path)
+	}
 
 	// Segments are cut inside a hidden directory on the filler filesystem. Same-filesystem staging
 	// makes final publication atomic, while ScanDir's dot-directory rule keeps partial bytes out of

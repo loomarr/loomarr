@@ -250,7 +250,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// FOUR real ids it saw + a policy that a kids-cartoon intent implies (TV-Y7
 	// ceiling). The model proposes the adult toon too — the ENFORCER must be what
 	// drops it, not the model's discretion.
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"query": "cartoon",
 			"dateMeaning": map[string]any{

@@ -131,12 +131,47 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	if tun.Pushes != 1 {
 		t.Errorf("idempotent reconcile re-pushed lineup: %d pushes (want 1)", tun.Pushes)
 	}
+	// Only the first sweep changed the channel; the idempotent second sweep emits nothing.
 	wantChanges := []recordedChannelChange{
 		{previousStatus: string(schedule.StatusBuilding), status: string(schedule.StatusLive)},
-		{previousStatus: string(schedule.StatusLive), status: string(schedule.StatusLive)},
 	}
 	if !slices.Equal(notifier.changes, wantChanges) {
 		t.Fatalf("channel change signals = %+v, want %+v", notifier.changes, wantChanges)
+	}
+}
+
+// A sweep that changes the desired lineup of an already-live channel still tells the UI, even
+// though the status stays live.
+func TestReconcile_LineupChangeOnALiveChannelEmitsAChannelFrame(t *testing.T) {
+	st := newStore(t)
+	tun := tunarrtest.NewTunarr()
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
+	notifier := &recordingChannelNotifier{}
+	e := newEngine(st, tun, avail, nil).WithNotifier(notifier)
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
+	ctx := context.Background()
+	if err := e.Reconcile(ctx, "c1"); err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err := st.GetChannel(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Lineup = append(ch.Lineup, entry("movie:tmdb:90000002", "B"))
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Reconcile(ctx, "c1"); err != nil {
+		t.Fatal(err)
+	}
+	live := string(schedule.StatusLive)
+	want := []recordedChannelChange{
+		{previousStatus: string(schedule.StatusBuilding), status: live},
+		{previousStatus: live, status: live},
+	}
+	if !slices.Equal(notifier.changes, want) {
+		t.Fatalf("channel change signals = %+v, want %+v", notifier.changes, want)
 	}
 }
 

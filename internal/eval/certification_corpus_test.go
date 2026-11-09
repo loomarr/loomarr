@@ -386,7 +386,7 @@ func TestCertificationRunnerConfigRequiresSnapshotIdentity(t *testing.T) {
 }
 
 func TestRunnerExecutesCertificationCaseAgainstPinnedCatalogFixture(t *testing.T) {
-	provider := testkit.NewLLM(
+	provider := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:10001","name":"Synthetic Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
@@ -458,7 +458,7 @@ func TestRunnerExecutesV6QualifierFamiliesThroughProductionSuggester(t *testing.
 				t.Fatalf("certification case %q is missing", tc.caseName)
 			}
 			tc.arguments["dateMeaning"] = map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
-			provider := testkit.NewLLM(
+			provider := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", tc.arguments),
 				testkit.FinalResponse(strings.TrimSuffix(tc.response, "}")+`,"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 			)

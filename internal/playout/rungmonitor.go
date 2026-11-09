@@ -95,6 +95,7 @@ type SpeedSample struct {
 	At      time.Time     // wall clock when the block arrived
 	OutTime time.Duration // Progress.OutTimeMS: media produced by this encoder process
 	CPU     time.Duration // this encoder process's CPU time; 0 when unknown
+	Speed   float64       // Progress.Speed: ffmpeg's own realtime multiple; 0 before it reports one
 }
 
 // RungDecision is what Observe asks of the caller.

@@ -53,6 +53,13 @@ type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
+	// ArgumentsError is set when the provider could not decode the model's arguments into an
+	// object (malformed JSON). Arguments is then empty, and the dispatcher must answer the model
+	// with this error instead of running the call as if it had sent no arguments.
+	//
+	// The tag keeps a call's serialized shape (and the frozen diagnostic hashes over it) unchanged
+	// when it decoded fine.
+	ArgumentsError string `json:",omitempty"`
 	// wireEnvelope preserves a provider transport shape without exposing it to tool dispatch.
 	wireEnvelope bool
 }

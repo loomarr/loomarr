@@ -117,8 +117,8 @@ func (a *Arr) endpointFor(t provision.Title) (arrEndpoint, error) {
 
 // Request implements Requester against Sonarr/Radarr (§6). It looks the title up on the arr
 // (to obtain the arr's own payload for the add), then POSTs it monitored + searching, with the
-// resolved quality profile + root folder. Idempotent: an already-added title (400/409) is
-// success, matching Seerr's 2xx-or-conflict rule.
+// resolved quality profile + root folder. Idempotent: an already-added title (409, or the arr's
+// already-exists validation 400) is success, matching Seerr's 2xx-or-conflict rule.
 func (a *Arr) Request(ctx context.Context, t provision.Title) error {
 	ep, err := a.endpointFor(t)
 	if err != nil {
@@ -161,12 +161,34 @@ func (a *Arr) Request(ctx context.Context, t provision.Title) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// 2xx accepted; 400/409 means already added (arr rejects the duplicate) — success per §6.
-	if (resp.StatusCode >= 200 && resp.StatusCode < 300) ||
-		resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusConflict {
+	// 2xx accepted; 409, or the arr's already-exists validation failure, means the title is
+	// already added — success per §6. Every other status, 400 included, is an error.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
-	return fmt.Errorf("arr add: unexpected status %d", resp.StatusCode)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode == http.StatusConflict ||
+		(resp.StatusCode == http.StatusBadRequest && isAlreadyAdded(body)) {
+		return nil
+	}
+	return fmt.Errorf("arr add: unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+}
+
+// isAlreadyAdded reports whether a 400 body is the arr's duplicate-title validation failure
+// (errorCode MovieExistsValidator on Radarr, SeriesExistsValidator on Sonarr).
+func isAlreadyAdded(body []byte) bool {
+	var failures []struct {
+		ErrorCode string `json:"errorCode"`
+	}
+	if err := json.Unmarshal(body, &failures); err != nil {
+		return false
+	}
+	for _, f := range failures {
+		if f.ErrorCode == "MovieExistsValidator" || f.ErrorCode == "SeriesExistsValidator" {
+			return true
+		}
+	}
+	return false
 }
 
 // lookup fetches the arr's object for a title (GET /api/v3/<kind>/lookup?term=<ns>:<id>),

@@ -2,6 +2,8 @@ package recurate
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -62,12 +64,15 @@ func NewRunner(st RunnerStore, r Refiner, log *slog.Logger) *Runner {
 
 // Run triggers a refresh refine for every eligible channel. Returns the number of channels
 // re-curation was kicked for (for the job's log/metrics). A single channel's failure is logged
-// and skipped — one bad channel must not stop the sweep (the §18.1 job-resilience contract).
+// and skipped — one bad channel must not stop the sweep (the §18.1 job-resilience contract). A
+// sweep that kicked nothing because every attempted channel failed returns those failures joined,
+// so the job reports a failed run rather than a clean zero.
 func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 	channels, err := r.store.ListChannels(ctx)
 	if err != nil {
 		return 0, err
 	}
+	var failures []error
 	for _, ch := range channels {
 		if !eligible(ch) {
 			continue
@@ -76,6 +81,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if berr != nil {
 			r.log.Warn("re-curation: could not check the channel's unfinished jobs; skipping",
 				"channel", ch.ID, "err", berr)
+			failures = append(failures, fmt.Errorf("channel %s: unfinished-job check: %w", ch.ID, berr))
 			continue
 		}
 		if busy {
@@ -90,14 +96,16 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if _, rerr := r.refiner.Recurate(ctx, ch.ID, intent); rerr != nil {
 			r.log.Warn("re-curation refine failed for a channel; skipping",
 				"channel", ch.ID, "err", rerr)
+			failures = append(failures, fmt.Errorf("channel %s: %w", ch.ID, rerr))
 			continue
 		}
 		kicked++
 	}
 	if kicked > 0 {
 		r.log.Info("re-curation kicked", "channels", kicked)
+		return kicked, nil
 	}
-	return kicked, nil
+	return 0, errors.Join(failures...)
 }
 
 // eligible reports whether a channel participates in scheduled re-curation (§8.2): it must be

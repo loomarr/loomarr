@@ -985,10 +985,7 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
 		{StartMs: 30000, EndMs: 61000, Title: "Brickle"},
 	}}
-	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["fast_food"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["toys"]}`),
-	)
+	llmMock := testkit.NewLLM(t) // chapters name the segments: any model call errors
 	drop := t.TempDir()
 	sp := newSplitter(st, tools, llmMock, drop)
 
@@ -1343,11 +1340,7 @@ func TestPropose_CoarseSplit(t *testing.T) {
 		blacks:   []tools.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 29800, EndMs: 30200}},
 		silences: []tools.Interval{{StartMs: 59900, EndMs: 60100}},
 	}
-	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["cars"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["cereal"]}`),
-	)
+	llmMock := testkit.NewLLM(t) // a coarse split names from the parent: any model call errors
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
 	p, err := sp.Propose(context.Background(), hash)
@@ -1392,17 +1385,12 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 			},
 		},
 	}
-	llmMock := testkit.NewLLM(
-		// 1: the rescue — three adverts, cut at 27.4s exactly (the measured cut).
+	llmMock := testkit.NewLLM(t,
+		// The rescue is the only model call: three adverts, cut at 27.4s exactly (the measured cut).
 		testkit.FinalResponse(`{"adverts":[
 			{"start":"00:00","end":"00:27","product":"Dustwick"},
 			{"start":"00:27","end":"00:54","product":"Drip Orbs"},
 			{"start":"00:54","end":"02:29","product":"amazing knife set"}]}`),
-		// 2-4: classify each rescued segment. The Drip Orbs era is grounded
-		// ("since 1987" IS in the transcript); the knife era is INVENTED.
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":1950,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -1445,9 +1433,8 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 			"0:121000": {{StartMs: 0, EndMs: 121000, Text: "The amazing knife slices, dices, and juliennes"}},
 		},
 	}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"adverts":[{"start":"00:00","end":"02:01","product":"amazing knife"}]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -1468,7 +1455,7 @@ func TestPropose_WhisperFailureMarksUnsplittable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/late-night.mp4", 149_000)
 	tools := &fakeTools{transcribeErr: fmt.Errorf("whisper not configured")}
-	sp := newSplitter(st, tools, testkit.NewLLM(), t.TempDir())
+	sp := newSplitter(st, tools, testkit.NewLLM(t), t.TempDir())
 
 	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
@@ -2038,6 +2025,48 @@ func TestConfirm_StopsAndPublishesNothingWhenSplitOutputExceedsReservation(t *te
 	}
 	if len(clips) != 1 {
 		t.Fatalf("catalog clips after overrun = %d, want only parent", len(clips))
+	}
+}
+
+// A parent whose sidecar is present but damaged holds the confirm: cutting children from it would
+// inherit empty source and acquisition ids, and the catalog would read them as hand-added media.
+// Nothing is cut or published, and the proposal stays for a retry once the sidecar is repaired.
+func TestConfirm_HoldsWhenTheParentSidecarIsInvalid(t *testing.T) {
+	st := newSplitMemStore()
+	parentHash := seedCompilation(st, "comps/damaged-sidecar.mp4", 60_000)
+	drop := t.TempDir()
+	parent := filepath.Join(drop, "comps", "damaged-sidecar.mp4")
+	if err := os.MkdirAll(filepath.Dir(parent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parent, []byte("compilation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
+	mediaTools := &fakeTools{chapters: []tools.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
+		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
+	}}
+	sp := newSplitter(st, mediaTools, nil, drop)
+	proposal, err := sp.Propose(context.Background(), parentHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tools.SidecarPathFor(parent), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sp.Confirm(context.Background(), proposal.ID, proposal.Segments); err == nil {
+		t.Fatal("Confirm succeeded from a parent with a damaged sidecar")
+	}
+	if len(mediaTools.cutCalls) != 0 {
+		t.Errorf("cuts made from a parent with a damaged sidecar: %v", mediaTools.cutCalls)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), proposal.ID); err != nil {
+		t.Errorf("the proposal was consumed despite the hold: %v", err)
+	}
+	if clips, err := st.ListClips(context.Background()); err != nil || len(clips) != 1 {
+		t.Errorf("catalog clips = %d, err %v, want only the parent", len(clips), err)
 	}
 }
 

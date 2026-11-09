@@ -316,7 +316,8 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 // A discovered title already in the library still comes back InLibrary=false here;
 // it merges to in-library IF the same run also keyword-surfaced it, and the
 // approve/schedule path re-checks library presence regardless. Returns an error
-// only on a real TMDB failure; a nil/unsupported tmdb yields no discovery results.
+// on a real TMDB failure or a failed library presence lookup; a nil/unsupported
+// tmdb yields no discovery results.
 func (c *Catalog) Discover(ctx context.Context, query DiscoveryQuery, limit int) ([]Candidate, error) {
 	if limit <= 0 {
 		limit = 20
@@ -333,7 +334,7 @@ func (c *Catalog) Discover(ctx context.Context, query DiscoveryQuery, limit int)
 	if err != nil {
 		return nil, err
 	}
-	return c.finishDiscovery(ctx, res, poolLimit, limit), nil
+	return c.finishDiscovery(ctx, res, poolLimit, limit)
 }
 
 // DiscoverUnion retrieves all supplied normalized discovery windows as one
@@ -384,11 +385,15 @@ func (c *Catalog) DiscoverUnion(ctx context.Context, queries []DiscoveryQuery) (
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	result.Candidates = c.finishDiscovery(ctx, candidates, poolLimit*len(queries), limit)
+	finished, err := c.finishDiscovery(ctx, candidates, poolLimit*len(queries), limit)
+	if err != nil {
+		return result, err
+	}
+	result.Candidates = finished
 	return result, nil
 }
 
-func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) []Candidate {
+func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) ([]Candidate, error) {
 	byKey := map[string]*Candidate{}
 	order := []string{}
 	for i, cand := range res {
@@ -405,8 +410,10 @@ func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimi
 		order = append(order, k)
 	}
 	out := dedupeAndOrderWithPolicy(byKey, order, poolLimit, c.blend)
-	c.backfillPresence(ctx, out)
-	return orderCandidatesWithPolicy(out, limit, c.blend)
+	if err := c.backfillPresence(ctx, out); err != nil {
+		return nil, err
+	}
+	return orderCandidatesWithPolicy(out, limit, c.blend), nil
 }
 
 // TMDBRecommender is the adjacency corpus: TMDB's behavioural "also watched" graph for
@@ -542,7 +549,9 @@ func (c *Catalog) Adjacent(
 	// Backfill on the extracted slice, then copy the results back: a title the library
 	// already owns must come back InLibrary (a lineup pick, not a needless acquisition),
 	// exactly as Discover does.
-	c.backfillPresence(ctx, cands)
+	if err := c.backfillPresence(ctx, cands); err != nil {
+		return nil, err
+	}
 	for i := range cands {
 		out[i].Candidate = cands[i]
 	}
@@ -551,23 +560,29 @@ func (c *Catalog) Adjacent(
 
 // backfillPresence marks discovered candidates the library already owns as
 // InLibrary (with their library item id), so a title you have becomes a lineup
-// pick rather than a needless acquisition (§8). Best-effort: a per-title lookup
-// error is skipped (the candidate stays not-in-library — the approve path re-
-// checks anyway), never failing discovery. No-op when no presence check is wired.
-func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
+// pick rather than a needless acquisition (§8). A lookup error stops the walk and
+// is returned, as is a done ctx: skipping the title would hand an owned title back
+// as an acquisition candidate. No-op when no presence check is wired.
+func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) error {
 	if c.presence == nil {
-		return
+		return nil
 	}
 	presence := c.presence()
 	if presence == nil {
-		return
+		return nil
 	}
 	for i := range cands {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if cands[i].InLibrary || cands[i].TMDBID == 0 {
 			continue // already known in-library, or no id to look up
 		}
 		p, present, err := presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
-		if err != nil || !present {
+		if err != nil {
+			return fmt.Errorf("catalog: library presence of tmdb %d: %w", cands[i].TMDBID, err)
+		}
+		if !present {
 			continue
 		}
 		cands[i].InLibrary = true
@@ -584,6 +599,7 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 			cands[i].Genres = p.Genres
 		}
 	}
+	return nil
 }
 
 // dedupeAndOrderWithPolicy flattens the merged candidate map into the deterministic
