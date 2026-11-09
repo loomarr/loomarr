@@ -196,10 +196,10 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
     <Stack gap="control">
       <Line>
         <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
-          Update details
+          {busy === "update" ? "Updating…" : "Update details"}
         </Action>
         <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
-          {checked ? "Checked just now" : "Check files again"}
+          {busy === "check" ? "Checking…" : checked ? "Checked just now" : "Check files again"}
         </Action>
         <Action onPress={() => setWrong(!wrong)} variant="ghost">
           Wrong title?
