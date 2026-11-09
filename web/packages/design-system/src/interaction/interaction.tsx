@@ -550,6 +550,13 @@ const Field = ({
   const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
   const generatedId = useId();
   const inputId = id ?? generatedId;
+  // The line under the input, error before help, is the input's accessible description. Ids derive
+  // from the input's, so two fields never share one.
+  const messageId = `${inputId}-${error ? "error" : "description"}`;
+  const hasMessage = Boolean(error || description);
+  // A caller's own aria-describedby (outside RN's TextInput types) stays, ahead of the message's.
+  const callerDescribedBy = (props as { "aria-describedby"?: string })["aria-describedby"];
+  const describedBy = [callerDescribedBy, messageId].filter(Boolean).join(" ");
   const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
@@ -573,6 +580,7 @@ const Field = ({
       <View position="relative" width="100%">
         <TextInput
           {...props}
+          {...(hasMessage ? ({ "aria-describedby": describedBy } as object) : {})}
           accessibilityLabel={accessibilityLabel ?? label}
           accessibilityState={{ disabled }}
           aria-disabled={disabled || undefined}
@@ -628,11 +636,11 @@ const Field = ({
         ) : null}
       </View>
       {error ? (
-        <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
+        <Text aria-live="polite" density={density} id={messageId} textRole="metadata" tone="danger">
           {error}
         </Text>
       ) : description ? (
-        <Text density={density} textRole="metadata">
+        <Text density={density} id={messageId} textRole="metadata">
           {description}
         </Text>
       ) : null}
