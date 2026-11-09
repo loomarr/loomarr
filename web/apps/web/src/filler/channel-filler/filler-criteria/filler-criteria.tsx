@@ -4,7 +4,7 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, CompactSelect, Text, Toggle } from "@loomarr/design-system";
+import { Action, Chip, CompactSelect, Text, Toggle } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YEAR_MAX, YEAR_MIN, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
@@ -447,22 +447,15 @@ const FillerCriteria = ({
               .map((c) => {
                 const on = categories.includes(c.slug);
                 return (
-                  <button
-                    key={c.slug}
-                    type="button"
+                  <Chip
                     disabled={disabled}
-                    aria-pressed={on}
-                    onClick={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
-                    className={cn(
-                      "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                      // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                      on
-                        ? "border-foreground bg-static-800 text-foreground font-semibold"
-                        : "border-border text-muted-foreground hover:border-input hover:text-foreground",
-                    )}
+                    key={c.slug}
+                    onPress={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
+                    selected={on}
+                    shape="pill"
                   >
                     {c.label}
-                  </button>
+                  </Chip>
                 );
               })}
           </div>

@@ -6,6 +6,7 @@ import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { SettingUnit } from "@loomarr/api/models/settingUnit";
 import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
 import {
+  Action,
   Badge,
   CompactSelect,
   Field,
@@ -477,16 +478,15 @@ const SettingField = ({
           <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
             {entry.preview ?? "stored"}
           </span>
-          <button
-            type="button"
-            onClick={() => {
+          <Action
+            onPress={() => {
               setReplacing(true);
               onChange("");
             }}
-            className="border-input hover:bg-accent cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors"
+            variant="outline"
           >
             Replace
-          </button>
+          </Action>
         </div>
       ) : (
         control()

@@ -231,8 +231,8 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 113,
-      "rawButton": 3
+      "tailwindClasses": 104,
+      "rawButton": 2
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 7
@@ -337,8 +337,8 @@
       "tailwindClasses": 42
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "tailwindClasses": 95,
-      "rawButton": 5
+      "tailwindClasses": 78,
+      "rawButton": 4
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
@@ -404,7 +404,7 @@
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "tailwindClasses": 76,
-      "rawButton": 2
+      "rawButton": 1
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 38
@@ -437,8 +437,7 @@
       "tailwindClasses": 59
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 208,
-      "rawButton": 1
+      "tailwindClasses": 202
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 71,

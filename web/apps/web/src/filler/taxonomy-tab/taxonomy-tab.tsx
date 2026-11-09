@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
 const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
@@ -114,17 +113,15 @@ const TaxonTree = ({
               </span>
             ) : null}
             <div className="min-w-0 flex-1">
-              <button
-                type="button"
+              <Action
                 disabled={!isAdmin}
-                className={cn(
-                  "text-left text-sm font-medium break-words",
-                  isAdmin && "hover:text-signal cursor-pointer",
-                )}
-                onClick={() => onEdit(taxon)}
+                layout="text"
+                onPress={() => onEdit(taxon)}
+                style={{ alignSelf: "flex-start" }}
+                variant="link"
               >
                 {taxon.label}
-              </button>
+              </Action>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
                 {resolverTermCount > 0 ? (
