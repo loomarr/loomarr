@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -61,7 +62,7 @@ func TestReferenceChannelJourneys(t *testing.T) {
 // approveReferenceJourney preserves the ordinary approval boundary for all reference
 // variants. It returns durable scheduling state, the production preview, and the
 // public Channel response so reconciliation notes cannot disappear at the API seam.
-func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore.Channel, []schedule.Slot, api.ChannelDTO) {
+func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore.Channel, []schedule.Slot, channelsapi.ChannelDTO) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -124,7 +125,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("read Channel: %d", response.StatusCode)
 	}
-	var public api.ChannelDTO
+	var public channelsapi.ChannelDTO
 	if err := json.NewDecoder(response.Body).Decode(&public); err != nil {
 		t.Fatal(err)
 	}

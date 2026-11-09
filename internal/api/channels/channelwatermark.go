@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ type uploadWatermarkOutput struct {
 	}
 }
 
-func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermarkInput) (*uploadWatermarkOutput, error) {
+func (s *Handlers) uploadChannelWatermark(ctx context.Context, in *uploadWatermarkInput) (*uploadWatermarkOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}

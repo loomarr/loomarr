@@ -14,6 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -59,8 +60,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
-		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
+		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
+		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
 		intakeLanguages:  opts.IntakeLanguages,
@@ -75,17 +76,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
-		webPushPublicKey:  opts.WebPushPublicKey,
-		backendCheckpoint: opts.BackendCheckpoint,
-		provision:         opts.Provision, guide: opts.Guide,
+		webPushPublicKey: opts.WebPushPublicKey,
+		provision:        opts.Provision, guide: opts.Guide,
 		liveSettings:      opts.LiveSettings,
 		libraryConfigured: opts.LibraryConfigured,
 		ready:             ready,
 		approver:          opts.Approver,
-		binder:            opts.Binder,
 		playoutObserver:   opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
-		watermarkPreview: opts.WatermarkPreview,
-		playoutSecret:    opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
+		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
 		playout:         opts.Playout,
 		playoutGuide:    opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
@@ -117,7 +115,17 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		SystemLLM: opts.SystemLLM, Restart: opts.Restart, RestartDrift: opts.RestartDrift,
 		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks,
 	}, false).Register(humaAPI)
-	srv.registerChannels(humaAPI)
+	channelDeps := channelsapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, BackendCheckpoint: opts.BackendCheckpoint,
+		Settings: opts.Settings, Suggest: opts.Suggest, Channels: opts.Channels, Binder: opts.Binder,
+		TunerRescanner: opts.TunerRescanner, Icons: opts.Icons, Playout: opts.Playout, Activity: opts.Activity,
+		Images: opts.Images, WatermarkPreview: opts.WatermarkPreview, Now: opts.Now,
+	}
+	if opts.Images != nil {
+		channelDeps.ImageRecords = srv.imageDTOsByHash
+	}
+	channelsapi.New(channelDeps).Register(humaAPI)
+	srv.registerChannelViews(humaAPI)
 	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
 	playoutapi.New(playoutapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings,

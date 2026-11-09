@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -56,17 +56,17 @@ func (c *channelWatermarks) withOriginals(imgs *images.Service) {
 }
 
 // Options is what the channel page's On-screen logo section shows beside the choices at now.
-func (c *channelWatermarks) Options(ctx context.Context, channelID string, now time.Time) (api.WatermarkOptions, error) {
+func (c *channelWatermarks) Options(ctx context.Context, channelID string, now time.Time) (channelsapi.WatermarkOptions, error) {
 	got, err := c.Service.Options(ctx, channelID, now)
 	if err != nil {
-		return api.WatermarkOptions{}, err
+		return channelsapi.WatermarkOptions{}, err
 	}
-	out := api.WatermarkOptions{AutoCallsign: got.AutoCallsign, Era: got.Era, EraPalette: got.EraPalette,
-		Holidays: []api.WatermarkHolidayOption{}}
+	out := channelsapi.WatermarkOptions{AutoCallsign: got.AutoCallsign, Era: got.Era, EraPalette: got.EraPalette,
+		Holidays: []channelsapi.WatermarkHolidayOption{}}
 	for _, h := range got.Holidays {
-		row := api.WatermarkHolidayOption{ID: h.ID, Name: h.Name, Start: h.Start, End: h.End, Active: h.Active, Picture: h.Picture}
+		row := channelsapi.WatermarkHolidayOption{ID: h.ID, Name: h.Name, Start: h.Start, End: h.End, Active: h.Active, Picture: h.Picture}
 		for _, p := range h.Pictures {
-			row.Pictures = append(row.Pictures, api.WatermarkPicture{ID: p.ID, Name: p.Name})
+			row.Pictures = append(row.Pictures, channelsapi.WatermarkPicture{ID: p.ID, Name: p.Name})
 		}
 		out.Holidays = append(out.Holidays, row)
 	}

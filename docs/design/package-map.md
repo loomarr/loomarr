@@ -73,7 +73,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `api/httpcore` | `channels/schedule`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
+| `api/httpcore` | `channels/schedule`, `media/images`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
 | `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
@@ -97,6 +97,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/creative` | — |
 | `media/defects` | — |
 | `media/encode` | `platform/config` |
+| `media/images` | `platform/httpx`, `platform/jobs`, `platform/settings`, `platform/store/activitystore` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `metadataprovider` | — |
 | `people/access` | `people/contact` |

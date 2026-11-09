@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -166,7 +167,7 @@ func TestChannelTimeline_BreakCarriesPodWithStills(t *testing.T) {
 		t.Fatalf("pod has %d entries, want 2", len(pod.Entries))
 	}
 
-	var still api.ImageDTO
+	var still httpcore.ImageDTO
 	raw, ok := pod.Entries[0]["thumbImage"]
 	if !ok {
 		t.Fatalf("entry with a still has no thumbImage on the wire: %v", pod.Entries[0])

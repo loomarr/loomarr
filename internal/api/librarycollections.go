@@ -250,7 +250,7 @@ func collectionNotFound() error {
 	return httpcore.Problem(http.StatusNotFound, "No such collection", "It may have been deleted.")
 }
 
-func collectionOf(c scan.Collection, posters map[string]*ImageDTO, uses map[string][]collectionChannelDTO) collectionDTO {
+func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses map[string][]collectionChannelDTO) collectionDTO {
 	out := collectionDTO{
 		ID: c.ID, Name: c.Name, Description: c.Description, ImportedFrom: c.ImportedFrom,
 		Titles: make([]libraryItemDTO, 0, len(c.Titles)),

@@ -56,7 +56,7 @@ type PodEntryDTO struct {
 	// ThumbImage is filled only by the Watch timeline (#2088): the preview playbar draws one tick
 	// per spot and lists each with its still. The Guide's pods leave it absent — its airing
 	// already carries one hover image, and a still per entry would swell its payload.
-	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The clip's still as an image-service record; absent when the clip has none (or for the fallback card)"`
+	ThumbImage *httpcore.ImageDTO `json:"thumbImage,omitempty" doc:"The clip's still as an image-service record; absent when the clip has none (or for the fallback card)"`
 }
 
 type previewPodsInput struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -42,8 +43,8 @@ func (s *Server) attachTitleArt(ctx context.Context, rows ...[]GuideAiring) {
 		s.log.Warn("guide: title art lookup failed", "err", err)
 		return
 	}
-	images := map[string]*ImageDTO{}
-	image := func(hash string) *ImageDTO {
+	images := map[string]*httpcore.ImageDTO{}
+	image := func(hash string) *httpcore.ImageDTO {
 		if hash == "" {
 			return nil
 		}

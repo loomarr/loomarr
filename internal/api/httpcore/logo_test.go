@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"fmt"
@@ -39,7 +39,7 @@ func TestImageHashFromLogo(t *testing.T) {
 		{"uppercase hex", "/v1/images/9F2B1C4E8A7D65039F2B1C4E8A7D65039F2B1C4E8A7D65039F2B1C4E8A7D6503", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := imageHashFromLogo(tc.logo); got != tc.want {
+			if got := ImageHashFromLogo(tc.logo); got != tc.want {
 				t.Errorf("imageHashFromLogo(%q) = %q, want %q", tc.logo, got, tc.want)
 			}
 		})
@@ -52,14 +52,14 @@ func TestBrowserLogoURLUsesThePageOriginForServiceImages(t *testing.T) {
 		return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
 	}
 
-	got := browserLogoURL("http://machine-client-only.invalid:8080/v1/images/"+hash+"/w500.jpg", pathFor)
+	got := BrowserLogoURL("http://machine-client-only.invalid:8080/v1/images/"+hash+"/w500.jpg", pathFor)
 	want := "/v1/images/" + hash + "/w500.jpg"
 	if got != want {
 		t.Errorf("browserLogoURL(service image) = %q, want %q", got, want)
 	}
 
 	external := "https://operator.example/icon.jpg"
-	if got := browserLogoURL(external, pathFor); got != external {
+	if got := BrowserLogoURL(external, pathFor); got != external {
 		t.Errorf("browserLogoURL(external image) = %q, want the operator URL preserved", got)
 	}
 }

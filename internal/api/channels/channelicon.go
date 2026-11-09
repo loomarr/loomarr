@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"bytes"
@@ -34,10 +34,6 @@ import (
 // maxIconBytes caps an upload at 2 MiB — a channel icon is a small poster/logo; this fences
 // a hostile or accidental large upload out of the DB blob without a config knob.
 const maxIconBytes = 2 << 20
-
-// channelLogoWidth is the rendition width stored on the channel — the top of the icon ladder
-// (images.RoleIcon.Widths() = 92, 185, 500). See channelLogoURL for why this rung and why JPEG.
-const channelLogoWidth = 500
 
 // ownerKindChannel is the image owner kind for a channel icon (channel_images). A Ref is what keeps the GC
 // from collecting the icon as an orphan while a channel still points at it (§22).
@@ -90,7 +86,7 @@ type uploadIconOutput struct {
 // operation the same rule applies from one place (titles.go), so keeping a second copy would
 // mean two implementations of one rule to keep in step — which is how backupHandler and
 // eventsHandler ended up disagreeing about nil authorizers.
-func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
+func (s *Handlers) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
@@ -189,8 +185,8 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 // hands it to Emby, which hands it to a television. WebP would be smaller and is ~97%
 // supported in BROWSERS, which is not the population fetching this. w500 is the top of the
 // icon ladder: small enough to be cheap, large enough not to look soft on a 4K guide grid.
-func (s *Server) channelLogoURL(hash string) string {
-	return s.images.URLFor(hash, channelLogoWidth, images.FormatJPEG)
+func (s *Handlers) channelLogoURL(hash string) string {
+	return s.images.URLFor(hash, httpcore.ChannelLogoWidth, images.FormatJPEG)
 }
 
 // iconContentType returns the media type from a byte-signature sniff

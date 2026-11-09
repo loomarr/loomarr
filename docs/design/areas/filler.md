@@ -34,11 +34,11 @@ One area of the [package map](../package-map.md#start-here).
   Merges copies of the same advert: it fingerprints the catalog's clips, picks the best copy of each, retires the inferior ones and re-points everything that referenced them.
 - **`filler/language`** · 6 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
-- **`filler/location`** · 2 importers
+- **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
 - **`filler/pipelinestate`** · 7 importers
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
-- **`filler/pod`** · 8 importers · → `channels/schedule`, `filler/clips`, `filler/language`
+- **`filler/pod`** · 9 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
 - **`filler/records`** · 3 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).

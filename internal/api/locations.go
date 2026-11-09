@@ -10,9 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/location"
-	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 const dbIPAttribution = "https://db-ip.com"
@@ -108,29 +106,6 @@ func (s *Server) locationResolve(_ context.Context, input *locationResolveInput)
 	out.Body.Location = locationDTOFrom(place)
 	out.Body.Location.Source = "device"
 	return out, nil
-}
-
-// validateChannelPlace rejects a channel place the location index does not hold as a city in the
-// channel's own country. The schedule package cannot read the index, so the write path checks it.
-func validateChannelPlace(policy schedule.ChannelPolicy) error {
-	if policy.Filler == nil || policy.Filler.Geography == nil {
-		return nil
-	}
-	geo := pod.Geography{Country: policy.Filler.Geography.Country, Place: policy.Filler.Geography.Place}.Normalize()
-	if geo.Place == "" {
-		return nil
-	}
-	if geo.Country == "" {
-		return httpcore.Unprocessable("Invalid location", "Choose the channel's country along with its city.")
-	}
-	index, err := location.Default()
-	if err != nil {
-		return httpcore.ServiceUnavailable("Location check unavailable", "The built-in location index couldn't be opened. Try again.")
-	}
-	if place, ok := index.Lookup(geo.Place); !ok || place.Country != geo.Country {
-		return httpcore.Unprocessable("Invalid location", "That city isn't one Loomarr knows in "+geo.Country+". Search for it again.")
-	}
-	return nil
 }
 
 func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {

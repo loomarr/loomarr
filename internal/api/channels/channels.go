@@ -1,4 +1,4 @@
-package api
+package channels
 
 import (
 	"context"
@@ -22,38 +22,16 @@ import (
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
 // summarized (counts) rather than dumped slot-by-slot on the channel resource;
-func (s *Server) registerChannels(api huma.API) {
+func (s *Handlers) registerChannels(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-channels", Method: http.MethodGet, Path: "/v1/channels",
 		Summary: "List channels", Tags: []string{"channels"},
 	}, httpcore.RoleMember), s.listChannels)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
-		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from the backend that streams that channel. Internal channels share Loomarr's playout timeline; Tunarr-backed channels use Tunarr's generated guide.",
-		Tags: []string{"channels"},
-	}, httpcore.RoleMember), s.channelsNowNext)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-channel", Method: http.MethodGet, Path: "/v1/channels/{id}",
 		Summary: "Get a channel definition + status", Tags: []string{"channels"},
 	}, httpcore.RoleMember), s.getChannel)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "channel-upcoming", Method: http.MethodGet, Path: "/v1/channels/{id}/upcoming",
-		Summary:     "What's on this channel now and next",
-		Description: "The program airing now (first) then the next few, in airtime order, from the backend that streams this channel (gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
-		Tags:        []string{"channels"},
-	}, httpcore.RoleMember), s.channelUpcoming)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "channel-timeline", Method: http.MethodGet, Path: "/v1/channels/{id}/timeline",
-		Summary: "The Watch player's schedule strip for one channel",
-		Description: "The current programme, the next few, and the commercial breaks between them, from " +
-			"internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. " +
-			"Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).",
-		Tags: []string{"channels"},
-	}, httpcore.RoleMember), s.channelTimeline)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
@@ -95,36 +73,6 @@ func (s *Server) registerChannels(api huma.API) {
 		Tags:         []string{"channels"},
 		MaxBodyBytes: maxIconBytes + 1024,
 	}, httpcore.RoleAdmin), s.uploadChannelWatermark)
-	s.registerWatermarkPreview(api)
-	s.registerWatermarkOptions(api)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
-		Summary:     "Preview the commercial pool this channel would get",
-		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
-		Tags:        []string{"channels", "filler"},
-	}, httpcore.RoleMember), s.previewChannelPods)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "channel-filler-coverage", Method: http.MethodGet, Path: "/v1/channels/{id}/filler/coverage",
-		Summary:     "How well the catalog covers this channel's breaks",
-		Description: "Which rung of the §10 fallback ladder this channel's breaks would draw from, and how much material each rung holds. Computed from the SAME ladder reconcile uses (internal/filler), through the same per-channel selection as the pod preview — so the meter and the pods cannot disagree. Read-only, so any authenticated user may call it. A rung the channel's policy skips is ABSENT rather than zero, and `total` is the widest rung rather than a sum (the rungs nest).",
-		Tags:        []string{"channels", "filler"},
-	}, httpcore.RoleMember), s.channelFillerCoverage)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "preview-channel-cycle", Method: http.MethodGet, Path: "/v1/channels/{id}/cycle",
-		Summary:     "Preview what airs at a chosen time (curation rules)",
-		Description: "The time-travel cycle preview (§8.1): what this channel would air at `at` (default now), and WHICH curation rule is active then. Runs the SAME pure lineup builder as reconcile — preview and reality cannot disagree — WITHOUT touching Tunarr or the store beyond a read. Makes first-match-by-priority rule resolution legible (\"at Saturday 9am, the Weekend TNG marathon rule is active\"). Read-only, so any authenticated user may call it; `at` may be past or future.",
-		Tags:        []string{"channels"},
-	}, httpcore.RoleMember), s.previewChannelCycle)
-
-	huma.Register(api, httpcore.WithRole(huma.Operation{
-		OperationID: "preview-draft-channel-pods", Method: http.MethodPost, Path: "/v1/channels/{id}/pods/preview",
-		Summary:     "Preview a draft filler selection without saving it",
-		Description: "Assembles the pool a DRAFT filler selection would produce, without persisting it (§10, §12) — the live sandbox on the channel's Filler section. Same assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what will air once applied. Admin-only (an authoring tool); applying is a normal PATCH of policy.filler.",
-		Tags:        []string{"channels", "filler"},
-	}, httpcore.RoleAdmin), s.previewDraftChannelPods)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-channel", Method: http.MethodPost, Path: "/v1/channels",
@@ -168,7 +116,7 @@ type listChannelsOutput struct {
 	}
 }
 
-func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOutput, error) {
+func (s *Handlers) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -195,7 +143,7 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	return out, nil
 }
 
-func (s *Server) getChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*channelOutput, error) {
+func (s *Handlers) getChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*channelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -219,7 +167,7 @@ type iconSuggestionsOutput struct {
 // channelIconSuggestions offers candidate icons drawn from the channel's OWN lineup
 // (§icon P2): a Star Trek channel's five series posters, rather than a generic
 // placeholder. Read-only — any authenticated user may call it, matching get-channel.
-func (s *Server) channelIconSuggestions(ctx context.Context, in *httpcore.ChannelIDInput) (*iconSuggestionsOutput, error) {
+func (s *Handlers) channelIconSuggestions(ctx context.Context, in *httpcore.ChannelIDInput) (*iconSuggestionsOutput, error) {
 	if s.icons == nil || s.unconfigured(settings.TMDBAPIKey) {
 		return nil, httpcore.NotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
 	}
@@ -279,7 +227,7 @@ type createChannelInput struct {
 	}
 }
 
-func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
+func (s *Handlers) createChannel(ctx context.Context, in *createChannelInput) (*channelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -333,7 +281,7 @@ type updateChannelInput struct {
 // preserves operator/proposal ownership: a client may set name/number/group/strategy/policy and
 // pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
-func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
+func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -376,7 +324,7 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
 		if err := in.Body.Policy.DateAliasConflict(); err != nil {
-			return ambiguousDatesError(err)
+			return httpcore.AmbiguousDatesError(err)
 		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		if verr := next.Validate(); verr != nil {
@@ -434,7 +382,7 @@ type refineChannelOutput struct {
 // it — approving it patches in place, no duplicate.
 // Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
 // grounded.
-func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
+func (s *Handlers) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
 	if s.suggest == nil {
 		return nil, httpcore.NotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to refine channels.")
 	}
@@ -497,7 +445,7 @@ func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
 
 type reconcileOutput struct{ Body ChannelDTO }
 
-func (s *Server) reconcileChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*reconcileOutput, error) {
+func (s *Handlers) reconcileChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*reconcileOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -527,7 +475,7 @@ type deleteChannelInput struct {
 }
 type deleteChannelOutput struct{}
 
-func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*deleteChannelOutput, error) {
+func (s *Handlers) deleteChannel(ctx context.Context, in *deleteChannelInput) (*deleteChannelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -582,7 +530,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 // Tunarr projections are intentionally untouched. §9 ownership preserves them across backend
 // transitions, and the v1 pause contract retains their last lineup; durable remote pause needs a
 // separate projection state rather than a one-shot best-effort clear.
-func (s *Server) applyInternalPlayoutLifecycle(
+func (s *Handlers) applyInternalPlayoutLifecycle(
 	ctx context.Context, channelID string, wasTransportPlayable, isTransportPlayable bool,
 ) {
 	if wasTransportPlayable == isTransportPlayable {

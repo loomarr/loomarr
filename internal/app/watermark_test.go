@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -67,7 +67,7 @@ func TestChannelWatermarks_OptionsAreTheAPIShape(t *testing.T) {
 	}
 	hw := got.Holidays[0]
 	if hw.ID != "halloween" || hw.Name != "Halloween" || hw.Start != "2026-10-01" || hw.End != "2026-10-31" || !hw.Active ||
-		hw.Picture != "ghost" || len(hw.Pictures) != 3 || hw.Pictures[0] != (api.WatermarkPicture{ID: "pumpkin", Name: "Pumpkin"}) {
+		hw.Picture != "ghost" || len(hw.Pictures) != 3 || hw.Pictures[0] != (channelsapi.WatermarkPicture{ID: "pumpkin", Name: "Pumpkin"}) {
 		t.Fatalf("halloween = %+v", hw)
 	}
 }

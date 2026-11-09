@@ -60,7 +60,7 @@ type IncomingStatusDTO struct {
 	Name        string                 `json:"name"`
 	From        string                 `json:"from,omitempty"`
 	DurationMs  int64                  `json:"durationMs"`
-	ThumbImage  *ImageDTO              `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
+	ThumbImage  *httpcore.ImageDTO     `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
 	StatusLabel string                 `json:"statusLabel"`
 	UpdatedAt   string                 `json:"updatedAt" doc:"RFC3339"`
 	Preparation IncomingPreparationDTO `json:"preparation"`
@@ -250,8 +250,8 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 	return group, nil
 }
 
-func incomingStatusDTO(clip clipstore.Clip, row pipelinestate.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
-	var thumb *ImageDTO
+func incomingStatusDTO(clip clipstore.Clip, row pipelinestate.ClipPipeline, label string, image func(string) *httpcore.ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
+	var thumb *httpcore.ImageDTO
 	if image != nil {
 		thumb = image(clip.Hash)
 	}
