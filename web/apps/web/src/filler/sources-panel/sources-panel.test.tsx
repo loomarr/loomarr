@@ -437,8 +437,8 @@ describe("SourcesPanel", () => {
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     const local = await screen.findByRole("region", { name: "Your files" });
-    await userEvent.click(await within(local).findByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Media library" }));
+    await userEvent.click(await within(local).findByRole("button", { name: /^Kind of source to add/ }));
+    await userEvent.click(await within(local).findByRole("radio", { name: "Media library" }));
     const library = await within(local).findByRole("textbox", { name: "Library name" });
     await userEvent.type(library, "Commercials");
     await userEvent.click(within(local).getByRole("button", { name: /add source/i }));
@@ -527,8 +527,8 @@ describe("SourcesPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Never download automatically" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     const save = screen.getByRole("button", { name: "Save automatic downloads" });
     await userEvent.click(save);
 
@@ -788,10 +788,10 @@ describe("SourcesPanel", () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Source check interval")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Use a different schedule" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Source check schedule" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Use a different schedule" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Source check schedule/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Clips per source check"), { target: { value: "3" } });
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
@@ -807,7 +807,7 @@ describe("SourcesPanel", () => {
     });
     // Saved, so Save has nothing left to do: focus goes back to the form rather than a dead button.
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: "Automatic downloads for this source" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: /^Automatic downloads for this source/ })).toHaveFocus(),
     );
     expect(screen.getByRole("button", { name: "Save automatic downloads" })).toBeDisabled();
   });

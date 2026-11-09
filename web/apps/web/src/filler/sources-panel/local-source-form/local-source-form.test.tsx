@@ -32,8 +32,8 @@ describe("LocalSourceForm", () => {
       expect.stringContaining("Commercials"),
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Folder" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Kind of source to add/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Folder" }));
 
     expect(screen.getByRole("textbox", { name: "Folder path" })).toHaveAttribute(
       "placeholder",
@@ -63,8 +63,8 @@ describe("LocalSourceForm", () => {
     );
     renderForm();
 
-    await userEvent.click(await screen.findByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Network share" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Kind of source to add/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Network share" }));
     expect(screen.getByRole("textbox", { name: "Share path" })).toHaveAttribute("placeholder", "//nas/ads");
   });
 
@@ -76,7 +76,7 @@ describe("LocalSourceForm", () => {
     );
     renderForm();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByRole("combobox", { name: "Kind of source to add" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Kind of source to add/ })).not.toBeInTheDocument();
   });
 
   it("sends the trimmed address with the chosen kind and clears the field", async () => {
