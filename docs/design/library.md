@@ -187,11 +187,13 @@ catalog record again.
 
 - **Discovered, then confirmed.** One pass asks the media server (`/Library/VirtualFolders`, video
   libraries only) and Sonarr and Radarr (`/api/v3/rootfolder`, whatever requester is chosen) for
-  their folders. Each folder maps to a local folder: the same path when Loomarr can open it, else
-  the `library.path_map` translation, else the one mount whose folder carries the same trailing
-  names. A root is always absolute; an ambiguous or missing folder stays unmapped. A discovered
-  folder waits for the maintainer's **Use this folder**; one typed by hand is in use at once and
-  must open. The pass runs when Settings → Library or the wizard first finds no folders, on Check
+  their folders. Each folder maps to a local folder: the `library.path_map` translation when Loomarr
+  can open it, else the same path, else the one mount whose folder carries the same trailing
+  names. The path map comes first because in Docker the media server's name for a folder (`/data/tv`)
+  can also exist in Loomarr's container as something else (Loomarr's data folder is `/data`). A root
+  is always absolute; an ambiguous or missing folder stays unmapped. A discovered folder waits for
+  the maintainer's **Use this folder**, which starts a pass; one typed by hand is in use at once
+  and must open. The pass runs when Settings → Library or the wizard first finds no folders, on Check
   again, and before a full scan when a connected arr has none of its folders recorded (an arr
   connected after the folders were set up).
 - **One path map.** `library_root_paths` holds every authority's name for every folder. A row the
