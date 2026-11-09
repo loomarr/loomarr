@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -25,7 +26,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -93,14 +93,12 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images         ImageService
-	events         EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown       <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
-	filler         FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	fillerResearch FillerResearchService
-	fillerDefects  *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods           PodPreviewer               // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy       TaxonomyEditor             // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	images   ImageService
+	events   EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler   FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods     PodPreviewer    // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy TaxonomyEditor  // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout cliplibrary.Layout
@@ -446,14 +444,6 @@ type FillerService interface {
 	ConfirmSplit(ctx context.Context, proposalID string, segments []split.Segment) error
 }
 
-// FillerResearchService owns the operator-facing status and pre-save provider check for optional
-// clip-detail research. Search results remain internal pipeline evidence; this seam intentionally
-// exposes no query or per-clip command.
-type FillerResearchService interface {
-	Status(context.Context) (research.WebStatus, error)
-	Test(context.Context, research.WebConfig) (research.WebStatus, bool, string, error)
-}
-
 // TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
 // atomic graph transaction; this seam adds an authoritative preview and post-commit channel
 // convergence without making HTTP handlers understand either implementation.
@@ -539,18 +529,9 @@ type DiscoveredClipStats struct {
 	Height int `json:"height,omitempty"`
 }
 
-// ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
-// a configuration error — no setting can assert that a binary executes — which is why the
-// API renders it as a distinct problem type rather than feature_not_configured.
-//
-// ⚠ This used to mean "you are on loomarr:latest, run loomarr:filler instead". The single
-// image always ships the tooling (§16), so it now means a DEGRADED install: a custom build
-// without the vendored binaries, or a path that is missing or not executable.
-var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
-
 // ErrSplitUnavailable reports that compilation splitting cannot run because the
 // filler drop-folder (filler.dir) is unset — clip paths are relative to it, so
-// without it there is nothing to cut. Unlike ErrIngestUnavailable this IS a
+// without it there is nothing to cut. Unlike filler.ErrIngestUnavailable this IS a
 // configuration remedy: Settings → Filler opens it (§10, V34).
 var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
 
@@ -927,7 +908,7 @@ type Options struct {
 	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler          FillerService              // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
-	FillerResearch  FillerResearchService      // optional structured-first web-search status and validation
+	FillerResearch  fillerapi.ResearchService  // optional structured-first web-search status and validation
 	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
 	Pods            PodPreviewer               // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor             // taxonomy impact + committed channel convergence

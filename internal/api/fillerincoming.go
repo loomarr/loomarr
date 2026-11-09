@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -156,18 +157,12 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	return out, nil
 }
 
-// incomingPreparingFilter is the one predicate for "getting ready": Incoming's Preparing group and
-// the watch header's preparing count both read it (#2733).
-func incomingPreparingFilter() pipelinestate.PipelineFilter {
-	return pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}}
-}
-
 func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingClipGroupDTO{}, err
 	}
-	filter := incomingPreparingFilter()
+	filter := fillerapi.IncomingPreparingFilter()
 	filter.BeforeUpdatedAt, filter.BeforeClipHash, filter.Limit = beforeAt, beforeID, incomingPageLimit+1
 	if ready {
 		filter.Dispositions = []pipelinestate.Disposition{pipelinestate.DispositionReady}

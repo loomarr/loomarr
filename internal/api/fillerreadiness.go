@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -83,12 +84,12 @@ type FillerReadinessDTO struct {
 	ChannelID   string `json:"channelId,omitempty"`
 	ActionCount int    `json:"actionCount,omitempty"`
 
-	Fetch        FillerFetchStatusDTO        `json:"fetch"`
-	Storage      FillerStorageStatusDTO      `json:"storage"`
-	Pipeline     PipelineOverviewDTO         `json:"pipeline"`
-	Pool         PoolDTO                     `json:"pool"`
-	Acquisitions []FillerAcquisitionRunDTO   `json:"acquisitions"`
-	Repairs      AcquisitionRepairSummaryDTO `json:"repairs"`
+	Fetch        fillerapi.FillerFetchStatusDTO `json:"fetch"`
+	Storage      FillerStorageStatusDTO         `json:"storage"`
+	Pipeline     PipelineOverviewDTO            `json:"pipeline"`
+	Pool         PoolDTO                        `json:"pool"`
+	Acquisitions []FillerAcquisitionRunDTO      `json:"acquisitions"`
+	Repairs      AcquisitionRepairSummaryDTO    `json:"repairs"`
 }
 
 type FillerStorageStatusDTO struct {
@@ -198,7 +199,7 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 	return FillerReadinessDTO{
 		Ready: readiness.Ready, NextAction: string(readiness.Next),
 		ChannelID: readiness.ChannelID, ActionCount: readiness.Count,
-		Fetch: FillerFetchStatusDTO{
+		Fetch: fillerapi.FillerFetchStatusDTO{
 			Enabled: readiness.Fetch.Enabled, StoppedBy: readiness.Fetch.StoppedBy,
 			CatalogClips: readiness.Fetch.CatalogClips, MaxCatalog: readiness.Fetch.MaxCatalog,
 		},

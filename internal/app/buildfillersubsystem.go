@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -50,7 +51,7 @@ type fillerBuild struct {
 	defects  *defectfloor.DefectReports
 	preview  api.PodPreviewer
 	taxonomy api.TaxonomyEditor
-	research api.FillerResearchService
+	research fillerapi.ResearchService
 	// providers is every provider a filler source can name; the API publishes it and the fetcher
 	// and the service adapter dispatch through it.
 	providers *source.Registry

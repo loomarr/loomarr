@@ -115,10 +115,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/rating` | — |
 | `platform/settings` | `library`, `platform/buildinfo`, `platform/config` |
 | `platform/storagegovernor` | — |
-| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
+| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
 | `platform/store/activitystore` | `platform/store/storedb` |
 | `platform/store/channeldatastore` | `platform/store/storedb`, `provision` |
 | `platform/store/channelstore` | `channels/schedule`, `platform/store/storedb` |
+| `platform/store/clipstore` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb` |
 | `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb` |
 | `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
 | `platform/store/storedb` | — |

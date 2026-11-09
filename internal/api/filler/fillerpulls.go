@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // Filler pulls — the approval gate for filler acquisition (§10 V35).
@@ -99,7 +98,7 @@ func pullToDTO(p acquisition.Pull) PullDTO {
 		rejected = append(rejected, PullRejectedCandidateDTO{
 			CandidateID: candidate.Identity.Token(), SourceID: candidate.Identity.SourceID,
 			Provider: candidate.Identity.Provider, RemoteID: candidate.Identity.RemoteID,
-			Name:        orPlaceholder(candidate.Title, candidate.Identity.RemoteID),
+			Name:        OrPlaceholder(candidate.Title, candidate.Identity.RemoteID),
 			Disposition: string(decision.Disposition), Detail: decision.Detail,
 		})
 	}
@@ -127,7 +126,7 @@ func applyPullNames(n httpcore.PersonNames, dto PullDTO) PullDTO {
 	return dto
 }
 
-func (s *Server) registerFillerPulls(api huma.API) {
+func (s *Handlers) registerFillerPulls(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-pulls", Method: http.MethodGet, Path: "/v1/filler/pulls",
 		Summary: "List pulls awaiting a decision",
@@ -176,7 +175,7 @@ type listFillerPullsOutput struct {
 	}
 }
 
-func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) (*listFillerPullsOutput, error) {
+func (s *Handlers) listFillerPulls(ctx context.Context, in *listFillerPullsInput) (*listFillerPullsOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -184,7 +183,7 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list pulls", err)
 	}
-	names, err := s.personNames(ctx)
+	names, err := httpcore.LoadPersonNames(ctx, s.store)
 	if err != nil {
 		return nil, err
 	}
@@ -195,15 +194,4 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	}
 	out.Body.Total = len(out.Body.Pulls)
 	return out, nil
-}
-
-func (s *Server) fillerHomeGeography() pod.Geography {
-	if s.liveSettings == nil {
-		return pod.Geography{}
-	}
-	return pod.Geography{
-		Country:  settings.FillerHomeCountry.Get(s.liveSettings),
-		Place:    settings.FillerHomePlace.Get(s.liveSettings),
-		Fallback: settings.FillerRegionFallback.Joined(s.liveSettings),
-	}.Normalize()
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
@@ -688,7 +689,7 @@ func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
 
 func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchErr = api.ErrIngestUnavailable
+	ff.fetchErr = fillerapi.ErrIngestUnavailable
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {

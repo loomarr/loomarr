@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -919,7 +920,7 @@ func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (acquisition.Fetc
 
 func (a fillerServiceAdapter) Fetch(ctx context.Context, sourceID string) (acquisition.FetchResult, error) {
 	if a.autoFetch == nil {
-		return acquisition.FetchResult{}, api.ErrIngestUnavailable
+		return acquisition.FetchResult{}, fillerapi.ErrIngestUnavailable
 	}
 	if sourceID != "" {
 		return a.autoFetch.RunSource(ctx, sourceID)
@@ -1009,7 +1010,7 @@ func (a fillerServiceAdapter) ingest(
 	commit func(context.Context, acquisition.AcquisitionRun) error,
 ) (string, error) {
 	if a.fetcher == nil {
-		return "", api.ErrIngestUnavailable
+		return "", fillerapi.ErrIngestUnavailable
 	}
 	if len(targets) == 0 {
 		return "", errors.New("filler acquisition requires at least one target")

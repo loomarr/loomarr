@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
@@ -59,13 +60,10 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerCollections(humaAPI)
 	srv.registerLibrary(humaAPI)
 	srv.registerFiller(humaAPI)
-	srv.registerFillerDefects(humaAPI)
 	srv.registerFillerSources(humaAPI)
-	srv.registerFillerWatch(humaAPI)
-	srv.registerFillerPulls(humaAPI)
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
-	srv.registerFillerResearch(humaAPI)
+	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerDiscoveryQuality(humaAPI)
