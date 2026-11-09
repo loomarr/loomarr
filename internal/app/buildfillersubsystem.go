@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -190,7 +191,7 @@ func buildFillerSubsystem(
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
 		defectFloor.CheckReplacement, interactiveLLM)
-	stations := &stationDirectory{list: st.ListBroadcastStations}
+	stations := station.NewLazy(st.ListBroadcastStations)
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichmentRunner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
@@ -262,7 +263,7 @@ func buildFillerSubsystem(
 				Now:    time.Now,
 			})
 			researcher := research.New(retriever, selection.Provider, selection.ProviderName,
-				selection.Model, time.Now).WithFallback(web).WithStations(stations.resolveDuring(log))
+				selection.Model, time.Now).WithFallback(web).WithStations(stations.ResolveDuring(log))
 			researchRunner = research.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
 				func() int {
@@ -275,12 +276,12 @@ func buildFillerSubsystem(
 				})
 		}
 	}
-	local := &localStations{stations: stations,
-		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
+	local := &station.LocalResolver{Stations: stations,
+		RadiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, Log: log}
 	// The places' policy: the household's geography, region fallback included, so a fallback
 	// country's national clips stay usable.
 	placePolicy := func() pod.Policy {
-		return pod.Policy{LocalStations: local.resolve, Geography: set.homeGeography()}
+		return pod.Policy{LocalStations: local.Resolve, Geography: set.homeGeography()}
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
@@ -351,7 +352,7 @@ func buildFillerSubsystem(
 			if near, err := nearbyPlaceStations(ctx, st, placePolicy()); err != nil {
 				log.Warn("filler auto-fetch: nearby stations unavailable; not searching for them", "err", err)
 			} else if len(near) > 0 {
-				if directory, err := stations.get(ctx); err != nil {
+				if directory, err := stations.Get(ctx); err != nil {
 					log.Warn("filler auto-fetch: broadcast stations unavailable; not searching for them", "err", err)
 				} else {
 					gaps.Stations = nearbyCallSigns(near, gaps.Eras, directory)

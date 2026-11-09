@@ -28,7 +28,7 @@ One area of the [package map](../package-map.md#start-here).
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`filler/language`** · 5 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
-- **`filler/location`** · 3 importers
+- **`filler/location`** · 2 importers
   Owns Loomarr's offline place search and location resolution.
 - **`filler/pipelinestate`** · 6 importers
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
@@ -36,7 +36,7 @@ One area of the [package map](../package-map.md#start-here).
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
 - **`filler/records`** · 3 importers · → `filler`, `filler/asset`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
-- **`filler/research`** · 4 importers · → `platform/llm`
+- **`filler/research`** · 5 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
 - **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
@@ -48,7 +48,7 @@ One area of the [package map](../package-map.md#start-here).
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
 - **`filler/split`** · 8 importers · → `filler/clips`, `filler/structure`, `media/tools`
   The filler source-structure planner and the split model it plans over: the exact source asset, the proposed segments, the detector checkpoint, and the deterministic reduction of independent observations into one complete-timeline assessment.
-- **`filler/station`** · 5 importers · → `filler/location`
+- **`filler/station`** · 5 importers · → `filler/location`, `filler/research`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`filler/structure`** · 7 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.

@@ -1,5 +1,5 @@
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { SearchResult } from "@loomarr/core/contracts";
+import { Dialog, DialogContent } from "@loomarr/design-system";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
@@ -25,9 +25,10 @@ import type { CommandPaletteProps } from "./command-palette.type";
 // makes the claim true rather than deleting it — unlike `RestartOverlay`, this one really is a
 // dialog: it owns a text input and demands a response.
 //
-// ⚠ Built on the Dialog PRIMITIVE, not the app's `DialogContent` wrapper. The wrapper centres a
-// padded `max-w-md` card and injects its own close button;
-// the palette is a top-anchored `max-w-xl` surface with no chrome of its own.
+// The design-system Dialog's `top` placement is this surface: near the top of the screen, no panel
+// or corner close of its own. Below `md` it is `fill`, full-screen search (#2751): opened from the
+// phone header's Search icon, it covers the page, the results take the height, and a Close button
+// stands in for the backdrop and the Escape key a phone doesn't have.
 //
 // ⚠ ESCAPE IS NOW THE DIALOG'S. `useCommandShortcut` used to bind it at the window, because
 // `SearchCommand` deliberately does not bind it by default — see that file's comment. The primitive
@@ -69,34 +70,19 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
   };
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        {/* The backdrop no longer needs to be a <button>. It was one so that dismissing by
-            pointer was a real control rather than a click handler on a div — an honest fix at the
-            time. The primitive now dismisses on an outside press AND on Escape, for every input
-            method, so a bespoke control would be a second way to do what the dialog already does. */}
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
-        {/* Below `md` it is full-screen search (#2751): opened from the phone header's Search
-            icon, it covers the page, the results take the height, and a Close button stands in for
-            the backdrop and the Escape key a phone doesn't have. */}
-        <DialogPrimitive.Popup
-          aria-label="Search Loomarr"
-          className={`fixed z-50 focus:outline-none ${
-            phoneWidth ? "inset-0" : "top-24 left-1/2 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2"
-          }`}
-        >
-          <SearchCommand
-            query={query}
-            onQueryChange={setQuery}
-            results={results}
-            loading={loading}
-            onSelect={go}
-            fill={phoneWidth}
-            onClose={phoneWidth ? () => setOpen(false) : undefined}
-          />
-        </DialogPrimitive.Popup>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent accessibilityLabel="Search Loomarr" placement={phoneWidth ? "fill" : "top"}>
+        <SearchCommand
+          query={query}
+          onQueryChange={setQuery}
+          results={results}
+          loading={loading}
+          onSelect={go}
+          fill={phoneWidth}
+          onClose={phoneWidth ? () => setOpen(false) : undefined}
+        />
+      </DialogContent>
+    </Dialog>
   );
 };
 

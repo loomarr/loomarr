@@ -39,7 +39,7 @@ func TestShippedCuratedStationsAreInTheShippedDirectory(t *testing.T) {
 
 type fixedDirectory struct{ *station.Directory }
 
-func (d fixedDirectory) get(context.Context) (*station.Directory, error) {
+func (d fixedDirectory) Get(context.Context) (*station.Directory, error) {
 	return d.Directory, nil
 }
 
