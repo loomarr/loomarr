@@ -145,10 +145,11 @@ const WallTile = ({
         position="absolute"
         right={0}
       >
-        <Text as="h3" numberOfLines={1} strong textRole={compact ? "label" : "cardTitle"}>
+        {/* Wraps rather than ellipsising (Home's wrap-not-truncate rule): the words grow up from the foot. */}
+        <Text as="h3" strong textRole={compact ? "label" : "cardTitle"}>
           {title}
         </Text>
-        <Text as="span" numberOfLines={1} textRole="caption" tone="secondary">
+        <Text as="span" textRole="caption" tone="secondary">
           {compact ? [channelName, detail].filter(Boolean).join(" · ") : detail}
         </Text>
       </Surface>
