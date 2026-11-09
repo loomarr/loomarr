@@ -216,7 +216,7 @@ var areas = []area{
 			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/httpcore", "app", "app/playoutresolve"},
+		Packages:       []string{"api", "api/httpcore", "api/people", "app", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

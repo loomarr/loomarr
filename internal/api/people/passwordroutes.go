@@ -1,9 +1,8 @@
-package api
+package people
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -30,7 +29,7 @@ import (
 // §19 negatives (part of the gate, not extras): a member gets 403 on both admin
 // routes, and the self route cannot be aimed at another user because it takes no
 // target id at all.
-func (s *Server) registerPasswords(api huma.API) {
+func (s *Handlers) registerPasswords(api huma.API) {
 	if s.passwords == nil && !s.schemaOnly {
 		return
 	}
@@ -56,7 +55,7 @@ func (s *Server) registerPasswords(api huma.API) {
 // below auth.MinPasswordLen. Each such route also declares minLength:"8" on its body field, so the
 // spec carries the bound to clients; TestPasswordRoutesDeclareTheMinimum pins those tags to it.
 func errPasswordTooShort() huma.StatusError {
-	return httpcore.Unprocessable("Password too short", fmt.Sprintf("Use at least %d characters.", auth.MinPasswordLen))
+	return httpcore.PasswordTooShort(auth.MinPasswordLen)
 }
 
 type changePasswordInput struct {
@@ -68,7 +67,7 @@ type changePasswordInput struct {
 	}
 }
 
-func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*struct{}, error) {
+func (s *Handlers) changePassword(ctx context.Context, in *changePasswordInput) (*struct{}, error) {
 	if s.passwords == nil {
 		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
@@ -106,7 +105,7 @@ type createLocalUserOutput struct {
 	Body userBody
 }
 
-func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) (*createLocalUserOutput, error) {
+func (s *Handlers) createLocalUser(ctx context.Context, in *createLocalUserInput) (*createLocalUserOutput, error) {
 	if s.passwords == nil {
 		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
@@ -137,7 +136,7 @@ type resetPasswordInput struct {
 	}
 }
 
-func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) (*struct{}, error) {
+func (s *Handlers) resetUserPassword(ctx context.Context, in *resetPasswordInput) (*struct{}, error) {
 	if s.passwords == nil {
 		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}

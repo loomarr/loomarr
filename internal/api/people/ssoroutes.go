@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -78,7 +78,7 @@ type SSOService interface {
 // ⚠ The nil guard admits schemaOnly so the routes still reach the spec when the exporter runs
 // without a provider wired. Dropping a route from openapi.yaml because a dependency happened to
 // be nil at export time has already happened in this package once (see export.go).
-func (s *Server) registerSSO(api huma.API) {
+func (s *Handlers) registerSSO(api huma.API) {
 	if s.sso == nil && !s.schemaOnly {
 		return
 	}
@@ -136,7 +136,7 @@ const ssoStateTTL = 10 * time.Minute
 // Scoped to /v1/auth/sso so it is never attached to ordinary app requests, and Secure follows
 // the same COOKIE_SECURE policy as the session cookie (§11) — a plain-HTTP LAN install must
 // still be able to sign in.
-func (s *Server) stateCookie(r *http.Request, state string, expires time.Time) http.Cookie {
+func (s *Handlers) stateCookie(r *http.Request, state string, expires time.Time) http.Cookie {
 	return s.origin.Cookie(r, ssoStateCookie, state, "/v1/auth/sso", http.SameSiteLaxMode, expires)
 }
 
@@ -145,14 +145,14 @@ func (s *Server) stateCookie(r *http.Request, state string, expires time.Time) h
 //
 // Attributes must MATCH the ones it was set with — a browser keys a cookie by name+domain+
 // path, so an expiry with the wrong Path deletes nothing and leaves the original in place.
-func (s *Server) clearStateCookie(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) clearStateCookie(w http.ResponseWriter, r *http.Request) {
 	cookie := s.stateCookie(r, "", time.Unix(0, 0))
 	cookie.MaxAge = -1
 	http.SetCookie(w, &cookie)
 }
 
 // ssoStart redirects to the provider.
-func (s *Server) ssoStart(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) ssoStart(w http.ResponseWriter, r *http.Request) {
 	// `next` is where to land after signing in, so a deep link survives the round trip.
 	// ⚠ Only a PATH is accepted. An absolute URL here would make this an open redirector:
 	// an attacker could send someone a Loomarr link that bounces them to a look-alike login
@@ -184,7 +184,7 @@ func (s *Server) ssoStart(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssoCallback completes the flow and lands the person in the app.
-func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	// A provider can refuse before we ever see a code (the person cancelled, or the client
@@ -268,7 +268,7 @@ func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 // ⚠ A reason CODE, never a message. Reflecting server text into a URL the browser renders is
 // how a redirect becomes a phishing surface; a fixed vocabulary the frontend owns cannot be
 // used to put an attacker's words on our login page.
-func (s *Server) redirectToLogin(w http.ResponseWriter, r *http.Request, reason string) {
+func (s *Handlers) redirectToLogin(w http.ResponseWriter, r *http.Request, reason string) {
 	http.Redirect(w, r, "/login?sso="+url.QueryEscape(reason), http.StatusFound)
 }
 
