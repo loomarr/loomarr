@@ -36,7 +36,7 @@ type ImageService interface {
 	Adopt(ctx context.Context, srcURL string, req images.IngestRequest) (images.Image, error)
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
-	SrcSet(hash string, role images.Role, f images.Format) string
+	SrcSet(hash string, role images.Role, f images.Format, sourceWidth int) string
 	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
 	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
 	// optimisation — see the method's own comment in internal/media/images.
@@ -232,10 +232,10 @@ func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.Im
 	avif := ""
 	if !rec.Animated {
 		if ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF); err == nil && ok {
-			avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF)
+			avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF, rec.Width)
 		}
 	}
-	webp := s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP)
+	webp := s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP, rec.Width)
 	if rec.Animated {
 		// One URL and its honest intrinsic width. The animated original is already card-sized and
 		// the service deliberately does not resize it; advertising the still-image ladder would
@@ -252,7 +252,7 @@ func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.Im
 		Animated:    rec.Animated,
 		SrcSetAVIF:  avif,
 		SrcSetWebP:  webp,
-		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidth(rec.Width), rec.Role.Fallback()),
+		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidthFor(rec.Width, rec.Width), rec.Role.Fallback()),
 	}
 }
 

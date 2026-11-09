@@ -198,7 +198,7 @@ var areas = []area{
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
-			"platform/llm", "platform/openroutercatalog", "platform/openroutermedia",
+			"platform/llm", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",
 			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
 		MayImport: map[string]string{
