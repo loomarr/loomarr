@@ -13,3 +13,8 @@ docs/contributing/playout-bench.md docs/engineering/playout-bench/ci  # future b
 
 # A retirement note: the package was deleted with the chain.
 docs/design/playout.md internal/playoutcert  # retired
+
+# Package names in the generated area docs are relative to internal/; `api` is also a top-level
+# directory (the OpenAPI spec), so `api/httpcore` reads as a repo-root path that does not exist.
+docs/design/areas/edge.md api/httpcore  # internal/api/httpcore, named relative to internal/
+docs/design/package-map.md api/httpcore  # internal/api/httpcore, named relative to internal/

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -18,7 +19,7 @@ func newDashboardServer(t *testing.T, sessions api.PlayoutObserver) *httptest.Se
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
+		Auth:            httpcore.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutObserver: sessions,
 	}))

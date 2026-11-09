@@ -212,9 +212,11 @@ var areas = []area{
 		Title: "Edge",
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
 			"is the composition root that builds every other area and hands them to it. " +
+			"`api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, " +
+			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "app", "app/playoutresolve"},
+		Packages:       []string{"api", "api/httpcore", "app", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -18,48 +19,48 @@ import (
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
 func (s *Server) registerUsers(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-users", Method: http.MethodGet, Path: "/v1/users",
 		Summary: "List users (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.listUsers)
+	}, httpcore.RoleAdmin), s.listUsers)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "patch-user", Method: http.MethodPatch, Path: "/v1/users/{id}",
 		Summary: "Update a user's role/quota/disabled (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.patchUser)
+	}, httpcore.RoleAdmin), s.patchUser)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
 		Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.syncUsers)
+	}, httpcore.RoleAdmin), s.syncUsers)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-user-sessions", Method: http.MethodGet, Path: "/v1/users/{id}/sessions",
 		Summary: "List a user's live sessions (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.listUserSessions)
+	}, httpcore.RoleAdmin), s.listUserSessions)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revoke-session", Method: http.MethodDelete, Path: "/v1/sessions/{hash}",
 		Summary: "Revoke one session (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.revokeSession)
+	}, httpcore.RoleAdmin), s.revokeSession)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "put-user-contact-address", Method: http.MethodPut, Path: "/v1/users/{id}/contact-address",
 		Summary: "Add or replace a user's contact email (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.putUserContactAddress)
+	}, httpcore.RoleAdmin), s.putUserContactAddress)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-user-contact-address", Method: http.MethodDelete, Path: "/v1/users/{id}/contact-address",
 		Summary: "Remove a user's contact email (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteUserContactAddress)
+	}, httpcore.RoleAdmin), s.deleteUserContactAddress)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-user-contact-replacement", Method: http.MethodDelete, Path: "/v1/users/{id}/contact-address/replacement",
 		Summary: "Cancel a pending contact-email replacement (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteUserContactReplacement)
+	}, httpcore.RoleAdmin), s.deleteUserContactReplacement)
 }
 
 type syncOutput struct {
@@ -70,7 +71,7 @@ type syncOutput struct {
 
 func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error) {
 	if s.userSync == nil || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Media server not connected",
+		return nil, httpcore.NotImplemented("Media server not connected",
 			"Connect a media server in Settings to sync imported users.")
 	}
 	n, err := s.userSync.Sync(ctx)
@@ -211,20 +212,20 @@ type putUserContactAddressInput struct {
 
 func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAddressInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Person not found", "That person doesn't exist — reload People and try again.")
+		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
 		return nil, err
 	}
 	email, normalized, err := contact.Normalize(in.Body.Email)
 	if err != nil {
-		return nil, errUnprocessable("Enter one email address", "Use one complete address such as person@example.com.")
+		return nil, httpcore.Unprocessable("Enter one email address", "Use one complete address such as person@example.com.")
 	}
 	err = s.store.PutPendingContactAddress(ctx, contact.Address{
 		OwnerKind: contact.OwnerUser, OwnerID: in.ID, Email: email, Normalized: normalized, Status: contact.StatusPending,
 		Provenance: contact.ProvenanceAdmin, CreatedAt: time.Now().UTC(),
 	})
 	if errors.Is(err, identitystore.ErrContactAddressConflict) {
-		return nil, errConflict("Email already in use", "Use an address that isn't attached to another person or pending replacement.")
+		return nil, httpcore.Conflict("Email already in use", "Use an address that isn't attached to another person or pending replacement.")
 	}
 	if err != nil {
 		return nil, err
@@ -234,7 +235,7 @@ func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAd
 
 func (s *Server) deleteUserContactAddress(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Person not found", "That person doesn't exist — reload People and try again.")
+		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -246,7 +247,7 @@ func (s *Server) deleteUserContactAddress(ctx context.Context, in *userContactID
 
 func (s *Server) deleteUserContactReplacement(ctx context.Context, in *userContactIDInput) (*struct{}, error) {
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Person not found", "That person doesn't exist — reload People and try again.")
+		return nil, httpcore.NotFound("Person not found", "That person doesn't exist — reload People and try again.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -288,7 +289,7 @@ type patchUserOutput struct{ Body userBody }
 func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserOutput, error) {
 	u, err := s.store.GetUser(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("User not found", "That user doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("User not found", "That user doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -347,10 +348,10 @@ type listUserSessionsOutput struct {
 
 func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput) (*listUserSessionsOutput, error) {
 	if s.sessions == nil {
-		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so live sessions can't be listed right now.")
+		return nil, httpcore.ServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so live sessions can't be listed right now.")
 	}
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("User not found", "That user doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("User not found", "That user doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -394,7 +395,7 @@ type revokeSessionInput struct {
 
 func (s *Server) revokeSession(ctx context.Context, in *revokeSessionInput) (*struct{}, error) {
 	if s.sessions == nil {
-		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so this session can't be revoked right now.")
+		return nil, httpcore.ServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so this session can't be revoked right now.")
 	}
 	// Deliberately idempotent: revoking an already-dead session is a success, not a 404.
 	// The list an admin is acting on can go stale between render and click (the session

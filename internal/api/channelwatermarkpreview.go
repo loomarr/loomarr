@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -48,7 +49,7 @@ const watermarkDrawableHeader = "X-Loomarr-Watermark-Drawable"
 // look, colour, holiday or picture fails huma's enum validation (422), a size outside 0-0.15 fails
 // its range (422), and a picture that is not one of the named holiday's own is refused here (422).
 func (s *Server) registerWatermarkPreview(api huma.API) {
-	rawInputOp(api, huma.Operation{
+	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "preview-channel-watermark", Method: http.MethodGet, Path: "/v1/channels/{id}/watermark/preview",
 		Summary: "Preview the channel's on-screen logo",
 		Description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: " +
@@ -58,7 +59,7 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 		Tags: []string{"channels"},
 		Responses: map[string]*huma.Response{"200": {Description: "The bug PNG",
 			Content: map[string]*huma.MediaType{"image/png": {}}}},
-	}, RoleAdmin, func(w http.ResponseWriter, r *http.Request, in *watermarkPreviewInput) {
+	}, httpcore.RoleAdmin, func(w http.ResponseWriter, r *http.Request, in *watermarkPreviewInput) {
 		if s.watermarkPreview == nil {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Preview unavailable", "This server has no logo renderer.")
 			return
@@ -145,18 +146,18 @@ type watermarkOptionsOutput struct {
 }
 
 func (s *Server) registerWatermarkOptions(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-channel-watermark-options", Method: http.MethodGet, Path: "/v1/channels/{id}/watermark/options",
 		Summary:     "On-screen logo options for a channel",
 		Description: "Admin only. The name the logo shows when none is set, the channel's era and its colours, and the holidays the logo follows: each one's dates, whether it is in effect today and its pictures.",
 		Tags:        []string{"channels"},
-	}, RoleAdmin), func(ctx context.Context, in *channelIDInput) (*watermarkOptionsOutput, error) {
+	}, httpcore.RoleAdmin), func(ctx context.Context, in *channelIDInput) (*watermarkOptionsOutput, error) {
 		if s.watermarkPreview == nil {
-			return nil, errNotImplemented("Logo options unavailable", "This server has no logo renderer.")
+			return nil, httpcore.NotImplemented("Logo options unavailable", "This server has no logo renderer.")
 		}
 		opts, err := s.watermarkPreview.Options(ctx, in.ID, s.clock())
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+			return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 		}
 		if err != nil {
 			return nil, err

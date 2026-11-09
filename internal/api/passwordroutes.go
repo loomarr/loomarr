@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -33,29 +34,29 @@ func (s *Server) registerPasswords(api huma.API) {
 	if s.passwords == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "change-password", Method: http.MethodPost, Path: "/v1/auth/password",
 		Summary: "Change your own password", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.changePassword)
+	}, httpcore.RoleMember), s.changePassword)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-local-user", Method: http.MethodPost, Path: "/v1/users",
 		Summary: "Create a local account (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.createLocalUser)
+	}, httpcore.RoleAdmin), s.createLocalUser)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "reset-user-password", Method: http.MethodPost, Path: "/v1/users/{id}/password",
 		Summary: "Reset a local user's password (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.resetUserPassword)
+	}, httpcore.RoleAdmin), s.resetUserPassword)
 }
 
 // errPasswordTooShort is the one refusal every password-setting route returns for a password
 // below auth.MinPasswordLen. Each such route also declares minLength:"8" on its body field, so the
 // spec carries the bound to clients; TestPasswordRoutesDeclareTheMinimum pins those tags to it.
 func errPasswordTooShort() huma.StatusError {
-	return errUnprocessable("Password too short", fmt.Sprintf("Use at least %d characters.", auth.MinPasswordLen))
+	return httpcore.Unprocessable("Password too short", fmt.Sprintf("Use at least %d characters.", auth.MinPasswordLen))
 }
 
 type changePasswordInput struct {
@@ -69,11 +70,11 @@ type changePasswordInput struct {
 
 func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*struct{}, error) {
 	if s.passwords == nil {
-		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
+		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
 	uid := userIDFromHuma(ctx)
 	if uid == "" {
-		return nil, errUnauthorized("Sign in required", "Sign in to change your password.")
+		return nil, httpcore.Unauthorized("Sign in required", "Sign in to change your password.")
 	}
 	err := s.passwords.ChangePassword(ctx, uid, in.Body.Current, in.Body.Next)
 	switch {
@@ -81,9 +82,9 @@ func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*
 		// Deliberately NOT "wrong password" vs "no such user" — the caller is
 		// authenticated, so the only useful distinction is whether the current
 		// password matched.
-		return nil, errUnauthorized("That didn't match", "Your current password isn't right. Try again.")
+		return nil, httpcore.Unauthorized("That didn't match", "Your current password isn't right. Try again.")
 	case errors.Is(err, auth.ErrNotLocalUser):
-		return nil, errConflict("Password lives elsewhere",
+		return nil, httpcore.Conflict("Password lives elsewhere",
 			"This account's password is owned by your media server. Change it there; the next successful sign-in refreshes Loomarr's offline verifier.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return nil, errPasswordTooShort()
@@ -107,7 +108,7 @@ type createLocalUserOutput struct {
 
 func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) (*createLocalUserOutput, error) {
 	if s.passwords == nil {
-		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
+		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
 	// Default to member: minting an admin should be a deliberate choice, not what
 	// happens when a field is omitted (§11 — roles gate real spending).
@@ -118,11 +119,11 @@ func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) 
 	u, err := s.passwords.CreateLocal(ctx, in.Body.Username, in.Body.Password, role, in.Body.Quota)
 	switch {
 	case errors.Is(err, auth.ErrDuplicateUsername):
-		return nil, errConflict("Name already taken", "Someone already signs in with that username. Pick another.")
+		return nil, httpcore.Conflict("Name already taken", "Someone already signs in with that username. Pick another.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return nil, errPasswordTooShort()
 	case errors.Is(err, auth.ErrInvalidBootstrap):
-		return nil, errUnprocessable("Details required", "Enter a username and a password.")
+		return nil, httpcore.Unprocessable("Details required", "Enter a username and a password.")
 	case err != nil:
 		return nil, err
 	}
@@ -138,14 +139,14 @@ type resetPasswordInput struct {
 
 func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) (*struct{}, error) {
 	if s.passwords == nil {
-		return nil, errNotImplemented("Not available", "Local account management isn't configured on this install.")
+		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
 	err := s.passwords.ResetPassword(ctx, in.ID, in.Body.Next)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return nil, errNotFound("No such user", "That account doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("No such user", "That account doesn't exist — it may have been removed.")
 	case errors.Is(err, auth.ErrNotLocalUser):
-		return nil, errConflict("Nothing to reset",
+		return nil, httpcore.Conflict("Nothing to reset",
 			"This account's password is owned by your media server and cannot be reset independently in Loomarr.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return nil, errPasswordTooShort()

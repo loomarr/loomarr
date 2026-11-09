@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -37,22 +38,22 @@ type uploadWatermarkOutput struct {
 
 func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermarkInput) (*uploadWatermarkOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 	file := in.RawBody.Data().File
 	data, err := io.ReadAll(io.LimitReader(file, maxIconBytes+1))
 	if err != nil {
-		return nil, errBadRequest("Couldn't read the image", "The upload was incomplete. Try again.")
+		return nil, httpcore.BadRequest("Couldn't read the image", "The upload was incomplete. Try again.")
 	}
 	if len(data) > maxIconBytes {
-		return nil, apiErr(http.StatusRequestEntityTooLarge, "Image too large", "Watermark images must be under 2 MB.")
+		return nil, httpcore.Problem(http.StatusRequestEntityTooLarge, "Image too large", "Watermark images must be under 2 MB.")
 	}
 	if !allowedWatermarkTypes[iconContentType("", data)] {
-		return nil, apiErr(http.StatusUnsupportedMediaType, "Unsupported image type",
+		return nil, httpcore.Problem(http.StatusUnsupportedMediaType, "Unsupported image type",
 			"Use a PNG or WebP with a transparent background.")
 	}
 	if s.images == nil {
-		return nil, apiErr(http.StatusServiceUnavailable, "Images aren't available",
+		return nil, httpcore.Problem(http.StatusServiceUnavailable, "Images aren't available",
 			"The image service isn't configured on this instance.")
 	}
 	img, err := s.images.Ingest(ctx, bytes.NewReader(data), images.IngestRequest{
@@ -60,7 +61,7 @@ func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermark
 		OwnerKind: ownerKindChannel, OwnerID: in.ID,
 	})
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the watermark",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the watermark",
 			"Something went wrong storing the image. Try again.", err)
 	}
 	// The same edit rules as a PATCH of the policy, so the new bug reaches playout on the

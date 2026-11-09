@@ -51,7 +51,7 @@ The ground everything else stands on: the store and its two databases, settings 
 
 ### [Edge](areas/edge.md)
 
-Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it. `app/playoutresolve` is the composition root's playout wiring: it reads the stores and settings that `playout` must not know about.
+Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it. `api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, request ids, roles and the route-role marker. `app/playoutresolve` is the composition root's playout wiring: it reads the stores and settings that `playout` must not know about.
 
 ### [Test support](areas/test.md)
 

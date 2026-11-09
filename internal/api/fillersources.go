@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -485,75 +486,75 @@ type queueFillerSourceItemOutput struct {
 // registerFillerSources mounts the sources read-model. Admin-only: it names filesystem paths
 // and library targets, which is infrastructure detail a member has no business reading.
 func (s *Server) registerFillerSources(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-sources", Method: http.MethodGet, Path: "/v1/filler/sources",
 		Summary: "Where the clip catalog comes from",
 		Description: "Admin only. Derived from the configured drop-folder and library scan plus live " +
 			"per-source clip counts — there is no sources table (§10). A source the install could use " +
 			"but has not configured is returned with configured:false rather than omitted.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerSources)
+	}, httpcore.RoleAdmin), s.listFillerSources)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "fetch-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources/fetch",
 		Summary: "Look for new clips in one source",
 		Description: "Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected " +
 			"source, then scans configured local sources. It retains provider/source enablement, geography, " +
 			"deduplication and safety limits; only timing is bypassed.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.fetchFillerSource)
+	}, httpcore.RoleAdmin), s.fetchFillerSource)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "queue-filler-source-item", Method: http.MethodPost, Path: "/v1/filler/sources/{id}/items",
 		Summary: "Add one clip found inside a source",
 		Description: "Admin only (§10). Queues one exact discovered item under its registered parent source. " +
 			"The server derives provider policy from the source; this never registers the item as another source.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.queueFillerSourceItem)
+	}, httpcore.RoleAdmin), s.queueFillerSourceItem)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "add-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources",
 		Summary: "Add a remote filler source",
 		Description: "Admin only (§10 V35/V38b/V67). Registers a verified Archive.org collection or YouTube channel/playlist for bounded scheduled " +
 			"acquisition. Registration itself only records the source; enabled remote sources are downloaded " +
 			"on their configured schedule, while composed multi-source pulls retain their approval gate.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.addFillerSource)
+	}, httpcore.RoleAdmin), s.addFillerSource)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-providers", Method: http.MethodGet, Path: "/v1/filler/providers",
 		Summary: "List the filler source providers",
 		Description: "Admin only. Every provider a filler source can name, in the order the source list shows " +
 			"them, with what each can do. The registry is the source of truth: a provider added to the " +
 			"server appears here with no client change.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerProviders)
+	}, httpcore.RoleAdmin), s.listFillerProviders)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "set-filler-provider-enabled", Method: http.MethodPatch, Path: "/v1/filler/providers/{kind}",
 		Summary: "Pause or resume a filler provider",
 		Description: "Admin only (§10 V51c). Changes provider policy without rewriting child source " +
 			"switches or removing clips already in the catalog.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.setFillerProviderEnabled)
+	}, httpcore.RoleAdmin), s.setFillerProviderEnabled)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "suggest-filler-sources", Method: http.MethodGet, Path: "/v1/filler/providers/{kind}/suggestions",
 		Summary: "Find a filler source",
 		Description: "Admin only (§10 V67). Searches one provider for source candidates without " +
 			"registering a source, downloading media, or granting background-work authority.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.suggestFillerSources)
+	}, httpcore.RoleAdmin), s.suggestFillerSources)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "resolve-filler-source", Method: http.MethodPost, Path: "/v1/filler/providers/{kind}/resolve",
 		Summary: "Check a filler source",
 		Description: "Admin only (§10 V67). Validates one exact provider URL or identifier and returns " +
 			"its canonical target without registering or downloading it.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.resolveFillerSource)
+	}, httpcore.RoleAdmin), s.resolveFillerSource)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "set-filler-source-enabled", Method: http.MethodPatch, Path: "/v1/filler/sources/{id}",
 		Summary: "Control source acquisition and fetch cadence",
 		Description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and " +
@@ -565,9 +566,9 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"accidentally reset the policy. Library sources became switchable in " +
 			"V38c, when §10 restored them to being scanned.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.setFillerSourceEnabled)
+	}, httpcore.RoleAdmin), s.setFillerSourceEnabled)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-filler-source", Method: http.MethodDelete, Path: "/v1/filler/sources/{id}",
 		Summary: "Forget a registered remote source",
 		Description: "Admin only (§10 V35). ⚠ Clips it already brought in are NOT deleted — they are real " +
@@ -575,7 +576,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"from is not a reason to throw it away. Only the registered remotes can be deleted; the derived " +
 			"folder and library rows describe configuration, which is changed in Settings.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.deleteFillerSource)
+	}, httpcore.RoleAdmin), s.deleteFillerSource)
 }
 
 func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSuggestionsInput) (*fillerSourceSuggestionsOutput, error) {
@@ -587,7 +588,7 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	}
 	query := strings.TrimSpace(in.Query)
 	if minimum := s.providerDescription(in.Kind).Find.MinQuery; len([]rune(query)) < minimum {
-		return nil, errUnprocessable("That search is too short", fmt.Sprintf("Type at least %d characters.", minimum))
+		return nil, httpcore.Unprocessable("That search is too short", fmt.Sprintf("Type at least %d characters.", minimum))
 	}
 	// An address is checked rather than searched for: it names one source, and a search for it
 	// would return whatever else happens to match.
@@ -610,7 +611,7 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	results, err := s.filler.SuggestSources(ctx, in.Kind, query, limit)
 	if err != nil {
 		if errors.Is(err, filler.ErrInvalidSourceReference) {
-			return nil, errUnprocessable("That search could not be used", err.Error())
+			return nil, httpcore.Unprocessable("That search could not be used", err.Error())
 		}
 		if down := s.providerDescription(in.Kind).SearchDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
 			return nil, huma.Error502BadGateway(down, err)
@@ -638,7 +639,7 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 	result, err := s.filler.ResolveSource(ctx, in.Kind, strings.TrimSpace(in.Body.Input))
 	if err != nil {
 		if errors.Is(err, filler.ErrInvalidSourceReference) {
-			return nil, errUnprocessable("That source could not be verified", err.Error())
+			return nil, httpcore.Unprocessable("That source could not be verified", err.Error())
 		}
 		if down := s.providerDescription(in.Kind).ResolveDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
 			return nil, huma.Error502BadGateway(down, err)
@@ -683,16 +684,16 @@ func (s *Server) requireFillerProviderEnabled(ctx context.Context, kind string) 
 			continue
 		}
 		if !provider.Enabled {
-			return errConflict("That source service is paused", "Turn it back on before searching or checking a source.")
+			return httpcore.Conflict("That source service is paused", "Turn it back on before searching or checking a source.")
 		}
 		return nil
 	}
-	return errUnprocessable("Unknown filler source service", "Choose "+s.discoverableLabels()+".")
+	return httpcore.Unprocessable("Unknown filler source service", "Choose "+s.discoverableLabels()+".")
 }
 
 func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourceItemInput) (*queueFillerSourceItemOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Enable filler before adding clips from a source.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler before adding clips from a source.")
 	}
 	sources, err := s.store.ListFillerSources(ctx)
 	if err != nil {
@@ -709,23 +710,23 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 		return nil, huma.Error404NotFound("Filler source not found")
 	}
 	if !s.sourceProviders.Fetched(source.ID(selected.Kind)) {
-		return nil, errUnprocessable("That source has no online catalog", "Choose an "+s.discoverableLabels()+" source.")
+		return nil, httpcore.Unprocessable("That source has no online catalog", "Choose an "+s.discoverableLabels()+" source.")
 	}
 	if !selected.Enabled {
-		return nil, errConflict("That source is paused", "Turn this source back on before adding a clip from it.")
+		return nil, httpcore.Conflict("That source is paused", "Turn this source back on before adding a clip from it.")
 	}
 	if !selected.ProviderEnabled {
-		return nil, errConflict("That source service is paused", "Turn it back on before adding a clip from it.")
+		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
 
 	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []source.Item{{
 		ID: in.Body.RemoteID, URL: in.Body.URL,
 	}})
 	if errors.Is(err, filler.ErrProviderPaused) {
-		return nil, errConflict("That source service is paused", "Turn it back on before adding a clip from it.")
+		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
 	if errors.Is(err, ErrIngestUnavailable) {
-		return nil, errConflict("Downloads aren't available here",
+		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
 	if err != nil {
@@ -842,7 +843,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		if problem.Title == "" {
 			problem = source.Problem{Title: "That kind of source can't be added", Detail: "Choose one of the source services listed."}
 		}
-		return nil, errBadRequest(problem.Title, problem.Detail)
+		return nil, httpcore.BadRequest(problem.Title, problem.Detail)
 	}
 	var resolvedTitle string
 	if _, discoverable := s.sourceProviders.Finder(source.ID(kind)); discoverable {
@@ -855,7 +856,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		resolved, err := s.filler.ResolveSource(ctx, kind, id)
 		if err != nil {
 			if errors.Is(err, filler.ErrInvalidSourceReference) {
-				return nil, errUnprocessable("That source could not be verified", err.Error())
+				return nil, httpcore.Unprocessable("That source could not be verified", err.Error())
 			}
 			return nil, huma.Error502BadGateway("verify source", err)
 		}
@@ -889,7 +890,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	src := records.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
 	src.Geography = pod.Geography{Country: in.Body.Country}.Normalize()
 	if err := src.Geography.Validate(); err != nil {
-		return nil, errUnprocessable("Invalid source geography", err.Error())
+		return nil, httpcore.Unprocessable("Invalid source geography", err.Error())
 	}
 	if err := s.store.UpsertFillerSource(ctx, src); err != nil {
 		return nil, huma.Error500InternalServerError("register filler source", err)
@@ -964,7 +965,7 @@ func (s *Server) setFillerProviderEnabled(ctx context.Context, in *setFillerProv
 	}
 	if err := s.store.SetFillerProviderEnabled(ctx, in.Kind, in.Body.Enabled); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Provider not found", "That filler provider isn't available on this install.")
+			return nil, httpcore.NotFound("Provider not found", "That filler provider isn't available on this install.")
 		}
 		return nil, huma.Error500InternalServerError("set filler provider enabled", err)
 	}
@@ -984,7 +985,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	// prefix test rather than a case per provider: the ids are namespaced precisely so a single
 	// guard covers every group that exists now and every one added later.
 	if isProviderID(in.ID) {
-		return nil, errConflict("That source has no switch",
+		return nil, httpcore.Conflict("That source has no switch",
 			"This row groups the sources you've added — switch them off individually.")
 	}
 	var every, maxPerRun *int
@@ -997,13 +998,13 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 			every = &never
 		case "custom":
 			if policy.EverySeconds < 60 || policy.MaxPerCheck < 1 {
-				return nil, errUnprocessable("Invalid automatic download policy",
+				return nil, httpcore.Unprocessable("Invalid automatic download policy",
 					"Choose an interval of at least one minute and at least one clip per check.")
 			}
 			everyValue, maxValue := policy.EverySeconds, policy.MaxPerCheck
 			every, maxPerRun = &everyValue, &maxValue
 		default:
-			return nil, errUnprocessable("Invalid automatic download policy",
+			return nil, httpcore.Unprocessable("Invalid automatic download policy",
 				"Choose defaults, custom, or never.")
 		}
 	}
@@ -1022,7 +1023,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		}
 		geography = pod.Geography{Country: in.Body.Geography.Country}.Normalize()
 		if err := geography.Validate(); err != nil {
-			return nil, errUnprocessable("Invalid source geography", err.Error())
+			return nil, httpcore.Unprocessable("Invalid source geography", err.Error())
 		}
 	}
 
@@ -1039,7 +1040,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 			auditActor(ctx))
 		for _, r := range results {
 			if r.Status == "pinned" {
-				return nil, errConflict("That switch is set by the environment",
+				return nil, httpcore.Conflict("That switch is set by the environment",
 					"FILLER_SOURCE_FOLDER_ENABLED is pinned in this deployment's configuration, so it can't be changed here.")
 			}
 			if r.Status != "saved" {
@@ -1074,7 +1075,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		}
 		if err := s.store.SetFillerSourceEnabled(ctx, in.ID, in.Body.Enabled); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+				return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
 			return nil, huma.Error500InternalServerError("set filler source enabled", err)
 		}
@@ -1084,7 +1085,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		}
 		if err := s.store.SetFillerSourceFetchPolicy(ctx, in.ID, every, maxPerRun); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+				return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
 			return nil, huma.Error500InternalServerError("set filler source fetch policy", err)
 		}
@@ -1109,7 +1110,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 func (s *Server) setSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
 	if err := s.store.SetFillerSourceGeography(ctx, id, geography); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+			return httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 		}
 		return huma.Error500InternalServerError("set filler source geography", err)
 	}
@@ -1129,7 +1130,7 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 	// have to mean deleting every collection beneath it — a bulk act an operator should perform
 	// deliberately, one row at a time, seeing exactly what goes.
 	if isProviderID(in.ID) {
-		return nil, errConflict("That source can't be removed here",
+		return nil, httpcore.Conflict("That source can't be removed here",
 			"This row groups the sources you've added — remove them individually.")
 	}
 	switch in.ID {
@@ -1142,12 +1143,12 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 		// ⚠ `remote` was in this list until V37 and is deliberately gone: it was the CONTAINER
 		// row that archive collections nested under, and the flat list has no container. Leaving
 		// it would guard an id nothing can produce, which reads as protection and is noise.
-		return nil, errConflict("That source can't be removed here",
+		return nil, httpcore.Conflict("That source can't be removed here",
 			"This row describes how Loomarr is configured. Change it in Settings instead.")
 	}
 	if err := s.store.DeleteFillerSource(ctx, in.ID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Source not found", "That source isn't registered — it may already have been removed.")
+			return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may already have been removed.")
 		}
 		return nil, huma.Error500InternalServerError("delete filler source", err)
 	}
@@ -1565,22 +1566,22 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 		return nil, huma.Error501NotImplemented("filler sync is not available on this instance")
 	}
 	if strings.TrimSpace(in.ID) == "" {
-		return nil, errUnprocessable("Choose a source", "Look for new clips from one source at a time.")
+		return nil, httpcore.Unprocessable("Choose a source", "Look for new clips from one source at a time.")
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {
 		if errors.Is(err, ErrIngestUnavailable) {
-			return nil, errConflict("Downloading isn't available on this install",
+			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}
 		if errors.Is(err, filler.ErrSourceCheckInProgress) {
-			return nil, errConflict("Already looking for clips", "This source is already being checked.")
+			return nil, httpcore.Conflict("Already looking for clips", "This source is already being checked.")
 		}
 		if errors.Is(err, filler.ErrSourceDisabled) {
 			return nil, errSourceDisabled()
 		}
 		if errors.Is(err, filler.ErrFetchSourceNotFound) {
-			return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+			return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 		}
 		return nil, huma.Error502BadGateway("fetch remote filler", err)
 	}
@@ -1618,6 +1619,6 @@ func orPlaceholder(v, placeholder string) string {
 // install is simply in a state that refuses it, and the operator can change that state. The
 // detail names the exact switch, because "disabled" without a location is a dead end.
 func errSourceDisabled() huma.StatusError {
-	return errConflict("The drop-folder is switched off",
+	return httpcore.Conflict("The drop-folder is switched off",
 		"Loomarr isn't scanning the drop-folder because that source is turned off. Switch it back on under Filler → Sources, then sync again.")
 }

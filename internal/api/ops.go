@@ -6,6 +6,7 @@ import (
 	"net/http/pprof"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // Operational endpoints (§7, §17, §18): liveness, readiness, Prometheus, the profiler, and the
@@ -77,7 +78,7 @@ func scrapeGuard(token string, next http.Handler) http.HandlerFunc {
 			return
 		}
 		h := r.Header.Get("Authorization")
-		if len(h) <= len(prefix) || h[:len(prefix)] != prefix || !constantEq(h[len(prefix):], token) {
+		if len(h) <= len(prefix) || h[:len(prefix)] != prefix || !httpcore.ConstantEq(h[len(prefix):], token) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="loomarr-metrics"`)
 			http.Error(w, "metrics require the scrape token as `Authorization: Bearer <token>`", http.StatusUnauthorized)
 			return
@@ -94,38 +95,38 @@ func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
 		metricsInner = s.metrics.Handler()
 	}
 	metricsHandler := scrapeGuard(metricsToken, metricsInner)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "healthz", Method: http.MethodGet, Path: "/v1/healthz",
 		Summary: "Liveness probe",
 		Description: "Public, no credential — the consumer is a container runtime, not a person. " +
 			"Answers 200 whenever the process is serving, regardless of whether its dependencies " +
 			"are healthy; that is what `readyz` is for. Also served at `/healthz`.",
 		Tags: []string{"ops"},
-	}, RolePublic), s.healthz)
+	}, httpcore.RolePublic), s.healthz)
 	opsAlias(api, "healthz", http.MethodGet, "/healthz", s.healthz)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "readyz", Method: http.MethodGet, Path: "/v1/readyz",
 		Summary: "Readiness probe",
 		Description: "Public, no credential. 200 when the store is up and migrations are applied, " +
 			"503 with a reason otherwise — a container started without DATABASE_URL is a SUPPORTED " +
 			"degraded mode, and this is how it explains itself. Also served at `/readyz`.",
 		Tags: []string{"ops"},
-	}, RolePublic), s.readyz)
+	}, httpcore.RolePublic), s.readyz)
 	opsAlias(api, "readyz", http.MethodGet, "/readyz", s.readyz)
 
 	// Prometheus exposition (§17, §18). A third-party http.Handler, so rawOp rather than a
 	// typed op — there is no Go type for the text exposition format, and inventing one to
 	// satisfy the spec would describe it worse than the media type does.
-	rawOp[struct{}](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[struct{}](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "metrics", Method: http.MethodGet, Path: "/v1/metrics",
 		Summary: "Prometheus metrics",
 		Description: "Requires the Prometheus scrape token as `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` — not a session or the API token. " +
 			"401 for a missing or wrong token; 403 when no token is configured (fail closed). Go runtime collectors " +
 			"plus Loomarr's §17 series. Also served at `/metrics`.",
 		Tags: []string{"ops"},
-	}, "Prometheus text exposition.", "text/plain"), RolePublic, metricsHandler.ServeHTTP)
-	rawOpAlias(api, "metrics", http.MethodGet, "/metrics", RolePublic, metricsHandler.ServeHTTP)
+	}, "Prometheus text exposition.", "text/plain"), httpcore.RolePublic, metricsHandler.ServeHTTP)
+	rawOpAlias(api, "metrics", http.MethodGet, "/metrics", httpcore.RolePublic, metricsHandler.ServeHTTP)
 
 	// The offline API reference (§7.1). Huma's built-in docs page loads Stoplight from a CDN,
 	// which breaks air-gapped LAN installs, so cfg.DocsPath is blanked and this serves a
@@ -135,13 +136,13 @@ func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
 	// (help.go). `/v1/docs/api` would have worked by ServeMux specificity while silently
 	// making a help doc slugged "api" unreachable, which is the kind of collision that is
 	// found months later by someone writing documentation.
-	rawOp[struct{}](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[struct{}](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "api-reference", Method: http.MethodGet, Path: "/v1/reference",
 		Summary:     "Interactive API reference",
 		Description: "Public. A self-contained page linking to the machine-readable spec; no CDN assets.",
 		Tags:        []string{"ops"},
-	}, "An HTML page.", "text/html"), RolePublic, docsHandler)
-	rawOpAlias(api, "api-reference", http.MethodGet, "/docs", RolePublic, docsHandler)
+	}, "An HTML page.", "text/html"), httpcore.RolePublic, httpcore.DocsHandler)
+	rawOpAlias(api, "api-reference", http.MethodGet, "/docs", httpcore.RolePublic, httpcore.DocsHandler)
 
 	if !pprofOn {
 		// ⚠ Not registering IS the gate, same posture as /v1/auth/dev-login: an install without
@@ -165,8 +166,8 @@ func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
 		// when a flag is set, so publishing it in the spec would advertise a surface most
 		// installs do not have. Registered by explicit path rather than by prefix so the set is
 		// exactly these six, and pprof.Index serves its own links off the trailing-slash route.
-		rawOp[struct{}](api, hiddenOp(p.id, http.MethodGet, "/v1"+p.path, "Go profiler"), RolePublic, p.h)
-		rawOpAlias(api, p.id, http.MethodGet, p.path, RolePublic, p.h)
+		httpcore.RawOp[struct{}](api, hiddenOp(p.id, http.MethodGet, "/v1"+p.path, "Go profiler"), httpcore.RolePublic, p.h)
+		rawOpAlias(api, p.id, http.MethodGet, p.path, httpcore.RolePublic, p.h)
 	}
 }
 
@@ -206,10 +207,10 @@ func hiddenOp(id, method, path, summary string) huma.Operation {
 // opsAlias registers a typed ops handler at its second, historical path, hidden from the spec
 // so the endpoint is listed once.
 func opsAlias[O any](api huma.API, id, method, path string, h func(context.Context, *struct{}) (*O, error)) {
-	huma.Register(api, withRole(hiddenOp(id+"-alias", method, path, "Alias of "+id), RolePublic), h)
+	huma.Register(api, httpcore.WithRole(hiddenOp(id+"-alias", method, path, "Alias of "+id), httpcore.RolePublic), h)
 }
 
 // rawOpAlias is the raw-handler equivalent.
-func rawOpAlias(api huma.API, id, method, path string, role Role, h func(http.ResponseWriter, *http.Request)) {
-	rawOp[struct{}](api, hiddenOp(id+"-alias", method, path, "Alias of "+id), role, h)
+func rawOpAlias(api huma.API, id, method, path string, role httpcore.Role, h func(http.ResponseWriter, *http.Request)) {
+	httpcore.RawOp[struct{}](api, hiddenOp(id+"-alias", method, path, "Alias of "+id), role, h)
 }

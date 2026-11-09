@@ -7,17 +7,18 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // registerSetup mounts /v1/setup/* (§7/§13). These power the operator wizard +
 // Settings troubleshooting; all are admin-only.
 func (s *Server) registerSetup(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setup-status", Method: http.MethodGet, Path: "/v1/setup/status",
 		Summary: "Connection checklist", Description: "Admin only. Per-integration pass/fail (§13).",
 		Tags: []string{"setup"},
-	}, RoleAdmin), s.setupStatus)
+	}, httpcore.RoleAdmin), s.setupStatus)
 
 	// Note: there is no standalone livetv-connect route. Live TV wiring is idempotent and
 	// fully derived from the selected playout backend and connection settings, so it auto-runs
@@ -25,23 +26,23 @@ func (s *Server) registerSetup(api huma.API) {
 	// (settings.go mutateLiveTVSettings) — a separate manual endpoint would be a redundant
 	// no-op. The wiring STATUS still surfaces via the `livetv` setup check above.
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "tunarr-connect", Method: http.MethodPost, Path: "/v1/setup/tunarr-connect",
 		Summary: "Wire the library as Tunarr's media source", Description: "Admin only. Ensures Tunarr's Emby/Jellyfin source (Loomarr's admin token) + enables/scans the movie/show libraries. One-time, idempotent (§6).",
 		Tags: []string{"setup"},
-	}, RoleAdmin), s.tunarrConnectHandler)
+	}, httpcore.RoleAdmin), s.tunarrConnectHandler)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "arrs-from-requester", Method: http.MethodPost, Path: "/v1/setup/arrs-from-requester",
 		Summary: "Fill in Sonarr and Radarr from the requester", Description: "Admin only. Reads the Sonarr and Radarr Seerr already uses and saves each one's address and key where Loomarr has none yet, trying Seerr's own address first and the one it shows people second. A connection already set is never changed (#2151).",
 		Tags: []string{"setup"},
-	}, RoleAdmin), s.arrsFromRequester)
+	}, httpcore.RoleAdmin), s.arrsFromRequester)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "livetv-reconnect", Method: http.MethodPost, Path: "/v1/setup/livetv-reconnect",
-		Summary: "Force-re-wire the Live TV tuner", Description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9). " + operatorAPI,
+		Summary: "Force-re-wire the Live TV tuner", Description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9). " + httpcore.OperatorAPI,
 		Tags: []string{"setup"},
-	}, RoleAdmin), s.livetvReconnectHandler)
+	}, httpcore.RoleAdmin), s.livetvReconnectHandler)
 }
 
 // SetupCheck is one integration's checklist result (§13).
@@ -212,13 +213,13 @@ type tunarrConnectOutput struct {
 // (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
 func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
 	if s.tunarrConnect == nil || s.unconfigured(settings.TunarrURL) || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Setup incomplete",
+		return nil, httpcore.NotImplemented("Setup incomplete",
 			"Connect Tunarr and your media server in Settings before wiring them together.",
 			"troubleshooting#tunarr")
 	}
 	sourceID, enabled, err := s.tunarrConnect.Connect(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't wire Tunarr",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't wire Tunarr",
 			"Loomarr couldn't set your media server up as Tunarr's source. Check that both are reachable and try again.", err)
 	}
 	out := &tunarrConnectOutput{}
@@ -237,12 +238,12 @@ type livetvReconnectOutput struct {
 // operation so a reconnect cannot interleave with a backend cutover on another replica.
 func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
 	if s.backendTransition == nil || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Live TV isn't set up",
+		return nil, httpcore.NotImplemented("Live TV isn't set up",
 			"Connect your media server and configure the selected playout backend before re-wiring the tuner.", "troubleshooting#livetv")
 	}
 	reset, err := s.backendTransition.Reconnect(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't re-wire the tuner",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't re-wire the tuner",
 			"Loomarr couldn't re-register the selected playout tuner in your media server. Check the media server and backend settings, then try again.", err)
 	}
 	out := &livetvReconnectOutput{}

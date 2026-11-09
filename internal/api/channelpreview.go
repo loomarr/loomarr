@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -101,10 +102,10 @@ type previewDraftPodsOutput struct {
 // would be worse than none.
 func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (*previewPodsOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -180,10 +181,10 @@ type channelCoverageOutput struct {
 // Read-only, so any authenticated user may call it — same as the pod preview it describes.
 func (s *Server) channelFillerCoverage(ctx context.Context, in *previewPodsInput) (*channelCoverageOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking a channel's coverage.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking a channel's coverage.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -369,13 +370,13 @@ const cyclePreviewSlotCap = 50
 // so any authenticated user may call it; the moment may be past or future.
 func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput) (*previewCycleOutput, error) {
 	if s.channels == nil {
-		return nil, errNotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview a channel's cycle.")
+		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview a channel's cycle.")
 	}
 	at := time.Time{} // zero ⇒ the engine uses "now"
 	if strings.TrimSpace(in.At) != "" {
 		t, err := time.Parse(time.RFC3339, in.At)
 		if err != nil {
-			return nil, errBadRequest("Invalid time", "`at` must be an RFC3339 timestamp like 2026-12-25T09:00:00Z.")
+			return nil, httpcore.BadRequest("Invalid time", "`at` must be an RFC3339 timestamp like 2026-12-25T09:00:00Z.")
 		}
 		at = t
 	}
@@ -390,7 +391,7 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	// (app/playoutresolve/cyclecache.go), which reaches the engine directly and never comes through here.
 	cycle, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, nil, nil)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -504,13 +505,13 @@ type previewDraftPodsInput struct {
 // will air once applied — only the (draft) selection differs.
 func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewDraftPodsOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
 	// ⚠ The channel is KEPT, not discarded (V51f): its `scope.dates` are what an unset filler era
 	// inherits, so a draft preview that dropped it previewed a different pool than reconcile built.
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -519,7 +520,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	if err := (schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
 		Filler: &in.Body.Filler, BreakDuration: in.Body.BreakDuration,
 	}}).Validate(); err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
+		return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}
 

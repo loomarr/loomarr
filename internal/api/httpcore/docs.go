@@ -1,8 +1,8 @@
-package api
+package httpcore
 
 import "net/http"
 
-// docsHandler serves the interactive API reference at /v1/reference (aliased at /docs) with NO
+// DocsHandler serves the interactive API reference at /v1/reference (aliased at /docs) with NO
 // external assets (§7.1 offline rule — Huma's default Stoplight page loads from a CDN, which
 // breaks air-gapped LAN installs). This is a minimal self-contained page that links to the
 // machine-readable spec; the full Vite SPA (Phase 13) embeds a richer viewer. Everything here
@@ -11,7 +11,7 @@ import "net/http"
 // ⚠ The spec links must track cfg.OpenAPIPath (huma.go). They are hardcoded here because the
 // page is a const, and they pointed at the old bare /openapi.json for exactly as long as it
 // took to notice — a reference page whose only two links 404 is worse than no page.
-func docsHandler(w http.ResponseWriter, r *http.Request) {
+func DocsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(docsHTML))
 }
