@@ -93,7 +93,7 @@ type openArchiveSearch struct {
 	}
 	policy   func() filler.Policy
 	stations interface {
-		get(context.Context) (*station.Directory, error)
+		Get(context.Context) (*station.Directory, error)
 	}
 	languages func(context.Context) (string, error)
 }
@@ -114,7 +114,7 @@ func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error)
 	if err != nil {
 		return filler.ListingGate{}, err
 	}
-	directory, err := o.stations.get(ctx)
+	directory, err := o.stations.Get(ctx)
 	if err != nil {
 		return filler.ListingGate{}, err
 	}

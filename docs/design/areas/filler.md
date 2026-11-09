@@ -26,11 +26,11 @@ One area of the [package map](../package-map.md#start-here).
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`filler/language`** · 4 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
-- **`filler/location`** · 3 importers
+- **`filler/location`** · 2 importers
   Owns Loomarr's offline place search and location resolution.
 - **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
-- **`filler/research`** · 4 importers · → `platform/llm`
+- **`filler/research`** · 5 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
 - **`filler/screening`** · 2 importers · → `filler`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
@@ -40,7 +40,7 @@ One area of the [package map](../package-map.md#start-here).
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`filler/source/youtube`** · 1 importer · → `filler`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`filler/station`** · 5 importers · → `filler/location`
+- **`filler/station`** · 5 importers · → `filler/location`, `filler/research`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`filler/structure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
