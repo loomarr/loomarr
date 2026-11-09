@@ -122,7 +122,7 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 		pool = append(pool, ic)
 	}
 	st := &identityMemStore{clips: pool, fingerprints: map[string]creative.Fingerprint{}, variants: map[string][]string{}}
-	res, err := NewCreativeIdentity(st, &identityTools{byHash: hashes}, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewJob(st, &identityTools{byHash: hashes}, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	tools := &identityTools{byHash: map[string]creative.Fingerprint{arrival.Hash: soap, cleanLow.Hash: cola, softHigh.Hash: cola,
 		blockyJuice.Hash: juice}}
 
-	res, err := NewCreativeIdentity(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewJob(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	}
 	fakeTools := &identityTools{byHash: map[string]creative.Fingerprint{sharp: spot, soft: spot, cutDown: cut}}
 
-	res, err := NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewJob(st, fakeTools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	// The next pass reuses every fingerprint and finds nothing new to do.
 	fakeTools.calls = 0
 	st.clips = st.clips[1:]
-	res, err = NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
+	res, err = NewJob(st, fakeTools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
 	if err != nil || fakeTools.calls != 0 || res.Merged != 0 || res.Linked != 0 {
 		t.Fatalf("second pass = %+v (decodes %d, err %v), want cached fingerprints and no merge", res, fakeTools.calls, err)
 	}

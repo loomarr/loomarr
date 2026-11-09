@@ -253,7 +253,7 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 
-// fillerIdentityStoreAdapter bridges the store → identity.IdentityStore (#2033). It translates the
+// fillerIdentityStoreAdapter bridges the store → identity.Store (#2033). It translates the
 // catalog listing, which carries admission time, and the merge record; the rest passes through.
 type fillerIdentityStoreAdapter struct{ records.Store }
 

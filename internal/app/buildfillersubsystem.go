@@ -303,7 +303,7 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return settings.FillerSplitReviewWindow.Get(set) }, time.Now, log,
 	)))
-	registry.Add(fillerIdentityJob(identity.NewCreativeIdentity(
+	registry.Add(fillerIdentityJob(identity.NewJob(
 		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no

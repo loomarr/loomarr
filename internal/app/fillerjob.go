@@ -206,7 +206,7 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) jobs.Job {
 // clips, folds every copy of an ad into its best copy, and links variants. Hourly, so a better
 // copy that becomes ready replaces the old one within the hour; a pass only decodes clips it has
 // never measured, bounded to well inside the long-queue ceiling.
-func fillerIdentityJob(ci *identity.CreativeIdentity) jobs.Job {
+func fillerIdentityJob(ci *identity.Job) jobs.Job {
 	return jobs.Job{
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-identity", Group: jobs.GroupFiller, Title: "Keep one copy of each ad",

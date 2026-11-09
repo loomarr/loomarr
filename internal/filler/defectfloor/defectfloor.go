@@ -326,7 +326,7 @@ func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, fi
 
 // retire records the copy's fingerprint when it has none (identity has not reached it yet), takes it off
 // the catalog, then deletes its own files. The durable write commits before any unlink, as in
-// CreativeIdentity.merge, so a failed unlink leaves only bytes, never a failing copy on air.
+// identity.Job.merge, so a failed unlink leaves only bytes, never a failing copy on air.
 func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]creative.Fingerprint, referenced map[string]int) (bool, error) {
 	full, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil {
