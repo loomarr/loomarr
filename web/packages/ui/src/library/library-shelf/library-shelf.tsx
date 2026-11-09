@@ -3,6 +3,7 @@ import { type ComponentProps, useState } from "react";
 import { Pressable } from "react-native";
 
 import { StatePanel } from "../../state-panel";
+import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { folderName, heldTitle, scanHeadline } from "../library-words";
 import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
@@ -149,17 +150,35 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
   );
 };
 
+// A row's first guess before it is measured: a poster's 2:3 box (the content width less the
+// control gaps, per column) over the inline gap, the caption's 56 px floor and the section gap.
+const estimateRowHeight = (width: number, columns: number) => {
+  const gutter = width >= 768 ? PAGE_GUTTER.wide : PAGE_GUTTER.phone;
+  const content = Math.min(1152, width - 2 * gutter);
+  const poster = (content - (columns - 1) * 12) / columns;
+  return Math.round(poster * 1.5 + 8 + 56 + 24);
+};
+
 // The grid as rows, each filled out with empty cells so the last row's posters keep their width.
-const Grid = ({ titles, onOpenTitle }: Pick<LibraryShelfProps, "titles" | "onOpenTitle">) => {
-  const columns = columnsFor(useWindowWidth());
+// LibraryGrid mounts only the rows near the screen.
+const Grid = ({
+  titles,
+  onOpenTitle,
+  onEndReached,
+}: Pick<LibraryShelfProps, "titles" | "onOpenTitle" | "onEndReached">) => {
+  const width = useWindowWidth();
+  const columns = columnsFor(width);
   const rows: LibraryShelfTitle[][] = [];
   for (let i = 0; i < titles.length; i += columns) rows.push(titles.slice(i, i + columns));
   const slots = Array.from({ length: columns }, (_, i) => `slot-${i}`);
   return (
-    <Stack aria-label="Titles" gap="section" role="list">
-      {rows.map((row) => (
+    <LibraryGrid
+      estimateRowHeight={estimateRowHeight(width, columns)}
+      label="Titles"
+      onEndReached={onEndReached}
+      renderRow={(row) => (
         // A row is layout only; the titles are the list's items.
-        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" key={row[0]?.id} role="none">
+        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
           {row.map((title) => (
             <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
               <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
@@ -169,8 +188,10 @@ const Grid = ({ titles, onOpenTitle }: Pick<LibraryShelfProps, "titles" | "onOpe
             <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
           ))}
         </Line>
-      ))}
-    </Stack>
+      )}
+      rowKey={(row, index) => row[0]?.id ?? `row-${index}`}
+      rows={rows}
+    />
   );
 };
 
@@ -194,6 +215,7 @@ const LibraryShelf = ({
   titles,
   loading,
   onOpenTitle,
+  onEndReached,
   needs,
   showTitles: showGrid = true,
   collections,
@@ -249,7 +271,7 @@ const LibraryShelf = ({
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
             <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
           ) : (
-            <Grid onOpenTitle={onOpenTitle} titles={titles} />
+            <Grid onEndReached={onEndReached} onOpenTitle={onOpenTitle} titles={titles} />
           )}
         </>
       )}

@@ -482,7 +482,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   window width. The filter and search live in the URL (`?kind=&q=`); the grid loads 60 titles at a
   time as it scrolls, and the `library_scan` and `library_titles` frames keep the line and the
   loaded titles current, so new titles appear and "Getting ready" clears on its own (decision
-  35). A title's page
+  35). **Grid:** a household's library is thousands of titles, so on the web only the rows near
+  the screen are mounted (`@tanstack/react-virtual`, `LibraryGrid` in `@loomarr/ui`). Each row is
+  measured once drawn, the poster's 2:3 box plus its caption, and the next page of 60 is asked
+  for once the last rows are mounted. The row holding keyboard focus stays mounted while it
+  scrolls away. Phone and TV use a FlatList of the same rows. A title's page
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's

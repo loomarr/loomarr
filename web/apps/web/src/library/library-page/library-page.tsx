@@ -14,7 +14,7 @@ import {
 } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useLibraryCollections } from "../use-library-collections";
@@ -122,20 +122,10 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     [items.data],
   );
 
-  // The next page loads as the end of the grid scrolls into view.
-  const end = useRef<HTMLDivElement>(null);
+  // The next page loads once the grid's last rows are on screen.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = items;
-  useEffect(() => {
-    const node = end.current;
-    if (!node || !hasNextPage) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !isFetchingNextPage) void fetchNextPage();
-      },
-      { rootMargin: "600px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const error = status.error ?? items.error;
@@ -204,6 +194,7 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
                 search: { kind: next === "all" ? undefined : next, q: settled || undefined },
               }))
         }
+        onEndReached={loadMore}
         onOpenSettings={() => void navigate({ to: "/settings/library" })}
         onOpenTitle={openTitle}
         onRescan={() => rescan.mutate()}
@@ -218,7 +209,6 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
         }}
         titles={titles}
       />
-      <div aria-hidden ref={end} />
     </>
   );
 };
