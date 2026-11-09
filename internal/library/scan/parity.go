@@ -239,8 +239,7 @@ func withoutNamespace(ids []inventory.ExternalID, ns mp.Namespace) []inventory.E
 func groundingIDs(ids []inventory.ExternalID) map[string]map[string]bool {
 	out := map[string]map[string]bool{}
 	for _, id := range ids {
-		switch ns := mp.Namespace(id.Namespace); ns {
-		case mp.NamespaceTMDB, mp.NamespaceTVDB, mp.NamespaceIMDB:
+		if mp.Namespace(id.Namespace).Grounds() {
 			if out[id.Namespace] == nil {
 				out[id.Namespace] = map[string]bool{}
 			}

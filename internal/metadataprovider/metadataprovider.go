@@ -124,6 +124,18 @@ const (
 	NamespaceSonarr Namespace = "sonarr"
 )
 
+// Grounds reports whether an id in n says which title an item is, in a namespace catalogs share
+// (TMDB, TVDB, IMDb): what grounds a title and what two catalogs can agree on. A collection's id,
+// a file path or an arr's own episode id does not. A namespace Loomarr bridges titles by is added
+// here, not where ids are read.
+func (n Namespace) Grounds() bool {
+	switch n {
+	case NamespaceTMDB, NamespaceTVDB, NamespaceIMDB:
+		return true
+	}
+	return false
+}
+
 // ExternalID is one grounded identity of an item in a namespace.
 type ExternalID struct {
 	Namespace Namespace
