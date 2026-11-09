@@ -90,7 +90,6 @@ type Server struct {
 	libraryRoots LibraryRootService
 	// libraryHooks backs /v1/library/hooks/* (#2151 decision 10); nil ⇒ those routes 409.
 	libraryHooks LibraryHookService
-	ideaLibrary  IdeaLibrary
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
@@ -155,10 +154,6 @@ type Server struct {
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
-	// approver is the one proposal -> titles + channel gate shared with every
-	// automatic approval path (§7/§8). The API owns authorization and presentation;
-	// the coordinator owns the indivisible domain transition.
-	approver ProposalApprover
 	// liveSettings answers a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
 	// a route gates on the CURRENT config (a saved connection enables it with no
@@ -800,6 +795,14 @@ type ChannelService interface {
 	Calendar() schedule.Calendar
 }
 
+// clock is the request clock: Options.Now in tests, time.Now otherwise.
+func (s *Server) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
 // holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
 func (s *Server) holidayCalendar() schedule.Calendar {
 	if s.channels == nil {
@@ -914,7 +917,7 @@ type Options struct {
 	Collections      CollectionService             // /v1/library/collections (§2.2); nil ⇒ route 501
 	LibraryRoots     LibraryRootService            // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
 	LibraryHooks     LibraryHookService            // /v1/library/hooks/* (#2151); nil ⇒ 409
-	IdeaLibrary      IdeaLibrary                   // /v1/discovery/ideas (#1665); nil ⇒ route 501
+	IdeaLibrary      channelsapi.IdeaLibrary       ///v1/discovery/ideas (#1665); nil ⇒ route 501
 	Icons            channelsapi.IconService       ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an

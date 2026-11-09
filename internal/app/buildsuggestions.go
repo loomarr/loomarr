@@ -43,7 +43,7 @@ type suggestionBuild struct {
 	search           api.SearchService
 	movieCollections api.MovieCollectionService
 	collections      api.CollectionService
-	ideaLibrary      api.IdeaLibrary
+	ideaLibrary      channelsapi.IdeaLibrary
 	systemLLM        system.SystemLLMService
 	icons            channelsapi.IconService
 	images           *images.Service

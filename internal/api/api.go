@@ -20,6 +20,7 @@ import (
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
@@ -71,7 +72,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		clientCrashes:     opts.ClientCrashes,
 		startupReports:    opts.StartupReports,
 		now:               opts.Now,
-		ideaLibrary:       opts.IdeaLibrary,
 		viewing:           viewing.New(),
 		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
@@ -81,7 +81,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		liveSettings:      opts.LiveSettings,
 		libraryConfigured: opts.LibraryConfigured,
 		ready:             ready,
-		approver:          opts.Approver,
 		playoutObserver:   opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
 		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
@@ -120,6 +119,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Settings: opts.Settings, Suggest: opts.Suggest, Channels: opts.Channels, Binder: opts.Binder,
 		TunerRescanner: opts.TunerRescanner, Icons: opts.Icons, Playout: opts.Playout, Activity: opts.Activity,
 		Images: opts.Images, WatermarkPreview: opts.WatermarkPreview, Now: opts.Now,
+		IdeaLibrary: opts.IdeaLibrary, Approver: opts.Approver, Viewing: srv.viewing,
+		Calendar: func() schedule.Calendar { return srv.holidayCalendar() },
 	}
 	if opts.Images != nil {
 		channelDeps.ImageRecords = srv.imageDTOsByHash
@@ -146,9 +147,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Holidays: func() holidayvocab.Vocabulary { return srv.holidayCalendar().Vocab() },
 	}).Register(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
-	srv.registerMyChannels(humaAPI)
-	srv.registerChannelIdeas(humaAPI)
-	srv.registerHouseholdViewing(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)
