@@ -58,6 +58,9 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 		}) {
 		t.Fatalf("order needs = %+v, want Harbor Show with 2 unnumbered episodes and their files, seasons running to 3 and 1", needs)
 	}
+	if n, err := st.LibraryOrderNeedCount(ctx); err != nil || n != 1 {
+		t.Fatalf("order need count = %d, %v; want the one show listed", n, err)
+	}
 
 	if _, ok, err := st.LibraryEpisodeOrderFor(ctx, show); err != nil || ok {
 		t.Fatalf("answer before any = %v, %v; want none", ok, err)
