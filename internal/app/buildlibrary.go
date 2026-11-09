@@ -52,9 +52,9 @@ type libraryStore interface {
 // libraryBuild is what Settings → Library needs beyond the store and settings.
 type libraryBuild struct {
 	lib *library.Client
-	// budget is playout's admission ledger; header reads wait while it holds a session. Nil
+	// watched reports whether a viewer is fetching a channel; header reads wait while one is. Nil
 	// without internal playout, when nothing on this box needs the disks first.
-	budget *playout.ResourceBudget
+	watched func() bool
 	// ffmpegPath locates ffprobe, the header reader's fallback.
 	ffmpegPath string
 	// images keeps the titles' posters; nil keeps none.
@@ -66,9 +66,11 @@ type libraryBuild struct {
 	// notify tells the operators about offline folders and delayed changes; nil tells no one.
 	notify libraryNotifier
 	// tmdb is the catalog the titles' details come from; nil fetches none.
-	tmdb  *tmdb.Client
-	log   *slog.Logger
-	owner *generationLifecycle
+	tmdb *tmdb.Client
+	// frames publishes the import's progress and title changes live; nil publishes none.
+	frames libraryFrames
+	log    *slog.Logger
+	owner  *generationLifecycle
 }
 
 // libraryNotifier is productNotificationCoordinator's library half (#2151 decision 32).
@@ -133,11 +135,15 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		provider = mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
 		keys = provider.Capabilities().Resolves
 	}
+	// One Tracker records the whole import: the walk and header reads here, the lookups below.
+	tracker, titlesChanged := libraryFramesFor(deps.frames)
 	im := &scan.Importer{
-		Store:     st,
-		Inventory: inv,
-		Disk:      scan.OSDisk{},
-		Managers:  func() []scan.Manager { return managers },
+		Tracker:       tracker,
+		TitlesChanged: titlesChanged,
+		Store:         st,
+		Inventory:     inv,
+		Disk:          scan.OSDisk{},
+		Managers:      func() []scan.Manager { return managers },
 		Discover: func(ctx context.Context) error {
 			_, _, err := roots.Discover(ctx)
 			return err
@@ -154,9 +160,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Now:      time.Now,
 		Log:      deps.log,
 	}
-	if deps.budget != nil {
-		im.Busy = func() bool { return deps.budget.Sessions() > 0 }
-	}
+	im.Busy = deps.watched
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}
@@ -175,10 +179,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		hooks.Degraded = deps.notify.LibraryChangesDegraded
 		notice := &scan.NeedsNotice{
 			Store: st, Notify: deps.notify.LibraryNeedsYou, Enabled: im.Enabled, Log: deps.log,
-			Settled: func() bool {
-				p := im.Progress()
-				return p.Stage == scan.StageIdle && !p.CompletedAt.IsZero()
-			},
+			Settled: im.Settled,
 		}
 		deps.owner.goRunAfterBuild(notice.Run)
 	}
@@ -197,7 +198,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 				}
 				return language
 			},
-			Enabled: im.Enabled, Log: deps.log,
+			Enabled: im.Enabled, Log: deps.log, Tracker: tracker,
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher

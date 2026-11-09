@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"syscall"
@@ -32,30 +33,31 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	}
 	im.mu.Lock()
 	if im.reading {
+		// Counted under the pass lock, so the stage's Begin is never after a hand-off's Grow.
+		im.Tracker.Grow(StepReading, len(queue))
 		im.handoff = append(im.handoff, queue...)
-		im.progress.HeadersAll += len(queue)
 		im.mu.Unlock()
 		return nil
 	}
 	im.reading = true
-	im.progress.Stage, im.progress.HeadersAll, im.progress.HeadersDone = StageReading, len(queue), 0
+	im.Tracker.Begin(StepReading, len(queue))
 	im.mu.Unlock()
 	// released is set when this stage stops taking files, after which the next pass may become a
 	// stage while this one's last reads finish.
 	released := false
-	defer im.setProgress(func(p *Progress) {
+	defer func() {
+		im.mu.Lock()
 		if !released {
 			// Ended early (a share fault, the kill switch, an error): the files handed to it stay
 			// pending, and the next walk over them queues them again.
 			im.reading, im.handoff = false, nil
 		}
-		if !im.reading {
-			p.Waiting = false
-			if p.Stage == StageReading {
-				p.Stage = StageIdle
-			}
+		ended := !im.reading
+		im.mu.Unlock()
+		if ended {
+			im.Tracker.End(StepReading)
 		}
-	})
+	}()
 	im.prioritize(ctx, queue)
 
 	// staged is every file this stage has queued. A file handed over again is read again only when
@@ -74,15 +76,17 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 				im.mu.Unlock()
 				return pending{}, false
 			}
+			dropped := 0
 			for _, job := range more {
 				if staged[job.file.Path] && im.touched[job.file.Path] != job.gen {
-					im.progress.HeadersAll--
+					dropped++
 					continue
 				}
 				staged[job.file.Path] = true
 				queue = append(queue, job)
 			}
 			im.mu.Unlock()
+			im.Tracker.Grow(StepReading, -dropped)
 			im.prioritize(ctx, queue)
 		}
 		job := queue[0]
@@ -111,6 +115,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		go func() {
 			defer wg.Done()
 			for job := range work {
+				im.Tracker.Current(StepReading, filepath.Base(job.file.Path))
 				row, err := im.readOne(ctx, job)
 				mu.Lock()
 				switch {
@@ -122,7 +127,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 					flush(false)
 				}
 				mu.Unlock()
-				im.setProgress(func(p *Progress) { p.HeadersDone++ })
+				im.Tracker.Advance(StepReading, 1)
 			}
 		}()
 	}
@@ -217,7 +222,12 @@ func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	return im.Store.SaveLibraryFiles(ctx, rows)
+	if err := im.Store.SaveLibraryFiles(ctx, rows); err != nil {
+		return err
+	}
+	// The files read are what makes their titles ready.
+	im.titlesChanged()
+	return nil
 }
 
 // touch notes the files an import wrote. It is kept for every import, not only while a stage runs:
@@ -262,7 +272,7 @@ func (im *Importer) waitForHeadroom(ctx context.Context) error {
 		poll = 5 * time.Second
 	}
 	for im.Busy() {
-		im.setProgress(func(p *Progress) { p.Waiting = true })
+		im.Tracker.Pause(StepReading, true)
 		t := time.NewTimer(poll)
 		select {
 		case <-ctx.Done():
@@ -271,7 +281,7 @@ func (im *Importer) waitForHeadroom(ctx context.Context) error {
 		case <-t.C:
 		}
 	}
-	im.setProgress(func(p *Progress) { p.Waiting = false })
+	im.Tracker.Pause(StepReading, false)
 	return ctx.Err()
 }
 

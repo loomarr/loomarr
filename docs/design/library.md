@@ -187,11 +187,13 @@ catalog record again.
 
 - **Discovered, then confirmed.** One pass asks the media server (`/Library/VirtualFolders`, video
   libraries only) and Sonarr and Radarr (`/api/v3/rootfolder`, whatever requester is chosen) for
-  their folders. Each folder maps to a local folder: the same path when Loomarr can open it, else
-  the `library.path_map` translation, else the one mount whose folder carries the same trailing
-  names. A root is always absolute; an ambiguous or missing folder stays unmapped. A discovered
-  folder waits for the maintainer's **Use this folder**; one typed by hand is in use at once and
-  must open. The pass runs when Settings → Library or the wizard first finds no folders, on Check
+  their folders. Each folder maps to a local folder: the `library.path_map` translation when Loomarr
+  can open it, else the same path, else the one mount whose folder carries the same trailing
+  names. The path map comes first because in Docker the media server's name for a folder (`/data/tv`)
+  can also exist in Loomarr's container as something else (Loomarr's data folder is `/data`). A root
+  is always absolute; an ambiguous or missing folder stays unmapped. A discovered folder waits for
+  the maintainer's **Use this folder**, which starts a pass; one typed by hand is in use at once
+  and must open. The pass runs when Settings → Library or the wizard first finds no folders, on Check
   again, and before a full scan when a connected arr has none of its folders recorded (an arr
   connected after the folders were set up).
 - **One path map.** `library_root_paths` holds every authority's name for every folder. A row the
@@ -248,11 +250,20 @@ step 5). Nothing reads the scanner's origins until the cutover.
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` makes one when the app starts, hourly, and on
-  `POST /v1/library/scan`; `library.scanner.enabled` (on by default) stops passes, folder passes
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used or
+  added, and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and Jellyfin).
+  A pass is *asked* when Scan now, Refresh everything or using or adding a folder started it, or
+  it is the start-up pass of a library with no files yet (its first import); an unasked pass with
+  nothing to read or look up is *quiet*, and shows only "Checking your folders…".
+  `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
+  and marks every fetched catalog row due, then starts a pass: each file is written again from its
+  name and its apps, each title looked up again, and the headers already read are kept, so nothing
+  stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
   and header reads. Sonarr and Radarr are its managers when connected; one with no connection
   manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
-  uses, and wait while playout's admission budget holds any session, copies included. A root
+  uses, and wait while someone is watching: a channel packager whose playlist a viewer fetched
+  within the last 10 s, copies included. A neighbour warm nobody joined, or a packager airing
+  slate to nobody in its grace, does not hold them. A root
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
@@ -262,6 +273,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
   layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
   stays until another server's layout turns up.
+- **Progress.** One `scan.Tracker` records an import as three steps, each with its own count:
+  1 *Looking through your folders* (the walk; its total is the top-level entries of every walked
+  root, listed once at the start of the pass, and it names the folder it lists, "TV / Night Ferry /
+  Season 2"), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
+  file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
+  fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
+  and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
+  shows the earliest one running. Each step's time left is remaining × elapsed ÷ done since its
+  rate baseline, sent only once it has run 30 s and done 2%, never while paused, and the baseline
+  restarts when a pause for watching ends. Folder passes show only the header reads they queue.
+  `GET /v1/library/status` carries it as `scan` (`step`, `stepNumber`, `done`, `total`, `current`,
+  `etaSeconds`, `paused`, `quiet`), and the admin-only `library_scan` SSE frame carries the same,
+  whole and latest-wins: at most once a second while a step runs, at once when the step shown or
+  its pause changes, and once when everything is idle. The empty `library_titles` frame says the
+  titles changed (an item written, a header read, files marked gone), at most once every 2 s with
+  a trailing frame, and the Library page, a title's page, Ready so far and Needs you refetch on
+  it. Nothing in the web app polls while an import runs; the GETs stay the truth on load and
+  reconnect.
   External subtitle and audio files beside a video (`<name>.en.forced.srt`, `<name>.fr.mka`,
   decision 61) join its sidecars the same way and are never opened. Their names give the
   language (the first word that names one) and the flags `forced`, `default`, `sdh`/`cc`/`hi`
@@ -446,12 +475,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   title, and the API leaves it out until its bytes are here.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
-  line from `GET /v1/library/status`: caught up, adding with a bar, paused, a held removal or an
-  offline folder with Check again, or dead air before any folder is chosen. Below it are All ·
-  Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by window width. The filter and
-  search live in the URL (`?kind=&q=`); the grid loads 60 titles at a time as it scrolls, and
-  while the scanner is busy the status and the loaded titles refetch every 5 s, so "Getting
-  ready" clears on its own (decision 35, until a `library` SSE frame exists). A title's page
+  line from `GET /v1/library/status`: caught up, adding with its step, share and time left
+  ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
+  quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
+  is chosen. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
+  window width. The filter and search live in the URL (`?kind=&q=`); the grid loads 60 titles at a
+  time as it scrolls, and the `library_scan` and `library_titles` frames keep the line and the
+  loaded titles current, so new titles appear and "Getting ready" clears on its own (decision
+  35). A title's page
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's

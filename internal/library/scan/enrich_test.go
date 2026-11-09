@@ -509,3 +509,54 @@ func (c *countingCatalog) LibraryCatalogRecord(ctx context.Context, key librarys
 	c.reads[key.String()]++
 	return c.CatalogStore.LibraryCatalogRecord(ctx, key)
 }
+
+// Refresh everything writes every file again on the pass it asks for, so a sidecar added since is
+// read, without opening any file's bytes again; every record is due for the enricher. The title
+// stays ready throughout.
+func TestRefreshEverythingWritesEveryFileAgain(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
+	h.file("Hotel (2014) {tmdb-90000202}/Hotel (2014) {tmdb-90000202}.mkv", 10)
+	h.run()
+	applied, reads := h.inv.applied.Load(), h.reads.Load()
+	if reads != 2 {
+		t.Fatalf("header reads = %d, want 2", reads)
+	}
+
+	h.run()
+	if h.inv.applied.Load() != applied {
+		t.Fatal("an unchanged library was written again without being asked")
+	}
+
+	lib := &Library{ItemStore: h.st, NeedStore: h.st, Scanner: NewScanner(h.im, 0)}
+	if err := lib.RefreshEverything(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-lib.Scanner.trigger:
+	default:
+		t.Fatal("Refresh everything did not ask for a pass")
+	}
+	h.run()
+	if got := h.inv.applied.Load() - applied; got != 2 {
+		t.Fatalf("written again = %d, want both files", got)
+	}
+	if h.reads.Load() != reads {
+		t.Fatalf("header reads = %d, want none on a refresh", h.reads.Load()-reads)
+	}
+	page, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
+	if err != nil || len(page.Items) != 2 {
+		t.Fatalf("items = %+v, %v", page.Items, err)
+	}
+	for _, it := range page.Items {
+		if it.Pending != 0 {
+			t.Errorf("%s stopped being ready after the refresh: %d files pending", it.Name, it.Pending)
+		}
+	}
+
+	h.enable.Store(false)
+	if err := lib.RefreshEverything(ctx); !errors.Is(err, ErrScannerOff) {
+		t.Fatalf("scanner off = %v, want ErrScannerOff", err)
+	}
+}

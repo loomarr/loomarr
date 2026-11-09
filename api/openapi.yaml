@@ -7257,38 +7257,105 @@ components:
         arrIncomplete:
           description: Sonarr or Radarr didn't answer the last scan
           type: boolean
+        current:
+          description: "What the step is on now: a folder, a file or a title; absent when unknown or paused"
+          type: string
+        done:
+          description: "How much of the step is done: top-level folder entries, files or titles"
+          format: int64
+          type: integer
         enabled:
           description: "library.scanner.enabled: false stops every scan"
           type: boolean
-        headersDone:
-          description: Files read so far in this scan
+        etaSeconds:
+          description: Seconds the step has left; absent until it can be told, and while paused
           format: int64
-          type: integer
-        headersTotal:
-          description: Files this scan reads
-          format: int64
+          minimum: 0
           type: integer
         lastScanAt:
           description: When the last scan finished; absent before the first
           format: date-time
           type: string
         paused:
-          description: Reading waits while someone is watching
+          description: The step waits while someone is watching
           type: boolean
-        stage:
-          description: "walking: listing folders; reading: reading new files"
+        quiet:
+          description: "A pass nobody asked for, with nothing to read or look up: shown as one small line"
+          type: boolean
+        step:
+          description: "The earliest step running: walking looks through the folders, reading reads each new file, lookingUp looks up each new title's details; idle when none runs"
           enum:
             - idle
             - walking
             - reading
+            - lookingUp
           type: string
+        stepNumber:
+          description: The step's number, 1 to 3; 0 when idle
+          format: int64
+          maximum: 3
+          minimum: 0
+          type: integer
+        total:
+          description: How much the step has to do; 0 while it is still being counted
+          format: int64
+          type: integer
       required:
         - enabled
-        - stage
-        - headersDone
-        - headersTotal
-        - paused
         - arrIncomplete
+        - step
+        - stepNumber
+        - done
+        - total
+        - paused
+        - quiet
+      type: object
+    LibraryScanEvent:
+      additionalProperties: false
+      properties:
+        current:
+          description: "What the step is on now: a folder, a file or a title; absent when unknown or paused"
+          type: string
+        done:
+          description: "How much of the step is done: top-level folder entries, files or titles"
+          format: int64
+          type: integer
+        etaSeconds:
+          description: Seconds the step has left; absent until it can be told, and while paused
+          format: int64
+          minimum: 0
+          type: integer
+        paused:
+          description: The step waits while someone is watching
+          type: boolean
+        quiet:
+          description: "A pass nobody asked for, with nothing to read or look up: shown as one small line"
+          type: boolean
+        step:
+          description: "The earliest step running: walking looks through the folders, reading reads each new file, lookingUp looks up each new title's details; idle when none runs"
+          enum:
+            - idle
+            - walking
+            - reading
+            - lookingUp
+          type: string
+        stepNumber:
+          description: The step's number, 1 to 3; 0 when idle
+          format: int64
+          maximum: 3
+          minimum: 0
+          type: integer
+        total:
+          description: How much the step has to do; 0 while it is still being counted
+          format: int64
+          type: integer
+      required:
+        - step
+        - stepNumber
+        - done
+        - total
+        - paused
+        - quiet
       type: object
     LibrarySearchHitDTO:
       additionalProperties: false
@@ -7440,6 +7507,9 @@ components:
         language:
           description: ISO 639 code; absent when the file doesn't say
           type: string
+      type: object
+    LibraryTitlesEvent:
+      additionalProperties: false
       type: object
     LineupContext:
       additionalProperties: false
@@ -16272,6 +16342,42 @@ paths:
                       type: object
                     - properties:
                         data:
+                          $ref: "#/components/schemas/LibraryScanEvent"
+                        event:
+                          const: library_scan
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event library_scan
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/LibraryTitlesEvent"
+                        event:
+                          const: library_titles
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event library_titles
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/LLMPullEvent"
                         event:
                           const: llm_pull
@@ -18787,6 +18893,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Map another app's folder to a folder here
+      tags:
+        - library
+  /v1/library/refresh:
+    post:
+      description: Writes every file again on a scan started now, and fetches every title's catalog record again in the background. Titles keep playing meanwhile. 409 when the scanner is turned off.
+      operationId: refreshLibrary
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Refresh everything in the library
       tags:
         - library
   /v1/library/roots:

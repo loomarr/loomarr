@@ -43,66 +43,8 @@ type settingsAdapter struct {
 	tests map[string]func(ctx context.Context) (bool, string)
 }
 
-// storePersister adapts store.Store to settings.Persister (the PATCH write path).
-type storePersister struct {
-	st         store.Store
-	protection *secretprotection.Manager
-}
-
-func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBatch) error {
-	if p.protection != nil {
-		if err := p.protection.Refresh(ctx); err != nil {
-			return err
-		}
-	}
-	storeBatch := store.SettingBatch{
-		Upserts:   make([]store.SettingMutation, 0, len(batch.Upserts)),
-		Deletes:   append([]string(nil), batch.Deletes...),
-		UpdatedBy: batch.UpdatedBy,
-		UpdatedAt: batch.UpdatedAt,
-	}
-	for _, row := range batch.Upserts {
-		value := row.Value
-		if p.protection != nil && protectedsettings.IsProtected(settings.NewRegistry(), row.Key) {
-			var err error
-			value, err = p.protection.Seal(protectedsettings.Record(row.Key), []byte(value))
-			if err != nil {
-				return err
-			}
-		}
-		storeBatch.Upserts = append(storeBatch.Upserts, store.SettingMutation{
-			Key: row.Key, Value: value,
-		})
-	}
-	return p.st.ApplySettingBatch(ctx, storeBatch)
-}
-
-// SetEnvOverride satisfies settings.EnvOverrideSetter (§3.1). Kept on the same adapter as
-// the value writes but routed to a DIFFERENT store method, because the two must not share
-// an UPSERT: a save that also wrote the claim would re-lock a key on the operator's next
-// edit (pinned by the store conformance suite).
-func (p storePersister) SetEnvOverride(ctx context.Context, key string, on bool, seed, by string) error {
-	return p.st.SetSettingEnvOverride(ctx, key, on, seed, by)
-}
-
-// storeAuditLister adapts store.ListSettings to settings.AuditLister (the audit
-// metadata List attaches per key).
-type storeAuditLister struct{ st store.Store }
-
-func (a storeAuditLister) Audit(ctx context.Context) (map[string]settings.AuditRow, error) {
-	rows, err := a.st.ListSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]settings.AuditRow, len(rows))
-	for _, r := range rows {
-		out[r.Key] = settings.AuditRow{UpdatedBy: r.UpdatedBy, UpdatedAt: r.UpdatedAt}
-	}
-	return out, nil
-}
-
 func (a settingsAdapter) List(ctx context.Context) []setupapi.SettingEntry {
-	entries := a.svc.List(ctx, storeAuditLister{st: a.store})
+	entries := a.svc.List(ctx, protectedsettings.NewAuditLister(a.store))
 	out := make([]setupapi.SettingEntry, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, toAPIEntry(e))
@@ -111,7 +53,7 @@ func (a settingsAdapter) List(ctx context.Context) []setupapi.SettingEntry {
 }
 
 func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, updatedBy string) []setupapi.SettingResult {
-	results, err := a.svc.Patch(ctx, storePersister{st: a.store, protection: a.protection}, edits, updatedBy)
+	results, err := a.svc.Patch(ctx, protectedsettings.NewPersister(a.store, a.protection), edits, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
@@ -140,7 +82,7 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 // Clear is the explicit unset (config-design §8) — the only way to drop a secret,
 // since an empty-string PATCH on one is rejected as replace-only (§9).
 func (a settingsAdapter) Clear(ctx context.Context, key string) setupapi.SettingResult {
-	res, err := a.svc.Clear(ctx, storePersister{st: a.store, protection: a.protection}, key)
+	res, err := a.svc.Clear(ctx, protectedsettings.NewPersister(a.store, a.protection), key)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
@@ -158,7 +100,7 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) setupapi.Setting
 
 // SetEnvOverride is §3.1's unlock: claim a key for the app, or hand it back.
 func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) setupapi.SettingResult {
-	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store, protection: a.protection}, key, on, updatedBy)
+	st, err := a.svc.SetEnvOverride(ctx, protectedsettings.NewPersister(a.store, a.protection), key, on, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}

@@ -42,7 +42,26 @@ const TV: LibraryFolder = {
 };
 const MOVIES: LibraryFolder = { ...TV, path: "/media/movies", inUse: true, readable: false, foundIn: [] };
 const TV_IN_USE: LibraryFolder = { ...TV, inUse: true };
-const IDLE: LibraryScan = { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false };
+const IDLE: LibraryScan = {
+  enabled: true,
+  step: "idle",
+  stepNumber: 0,
+  done: 0,
+  total: 0,
+  paused: false,
+  quiet: false,
+};
+const WALKING: LibraryScan = {
+  ...IDLE,
+  step: "walking",
+  stepNumber: 1,
+  done: 112,
+  total: 533,
+  current: "TV / Night Ferry / Season 2",
+  etaSeconds: 540,
+};
+const READING: LibraryScan = { ...IDLE, step: "reading", stepNumber: 2, done: 25, total: 100 };
+const twirls = (host: Host) => host.querySelectorAll('[data-testid="library-twirl"]').length;
 
 const render = (overrides: Partial<LibrarySettingsProps>) => {
   const props: LibrarySettingsProps = {
@@ -58,6 +77,7 @@ const render = (overrides: Partial<LibrarySettingsProps>) => {
     checking: false,
     onCheckAgain: vi.fn(),
     onRescan: vi.fn(),
+    onRefreshEverything: vi.fn(),
     onConfirmRemoval: vi.fn(),
     onUseFolder: vi.fn(),
     onAddFolder: vi.fn(async () => "Loomarr can't open that folder"),
@@ -138,22 +158,94 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("shows the import's progress, and pauses it in plain words", () => {
-    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
-    const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading });
-    expect(adding.host.textContent).toContain("Adding your media");
-    expect(adding.host.textContent).toContain("Titles appear as they're ready.");
-    expect(adding.host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
-    adding.cleanup();
+  it("shows step 1: the folders looked through, the time left and the folder it's in", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
+    expect(host.textContent).toContain("Adding your media");
+    expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
+    expect(host.textContent).toContain("About 9 minutes left in this step");
+    expect(host.textContent).toContain("TV / Night Ferry / Season 2");
+    expect(host.textContent).not.toContain("Titles appear as they're ready.");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
+    expect(twirls(host)).toBe(1);
+    cleanup();
+  });
 
-    const paused = render({ health: "ok", folders: [TV_IN_USE], scan: { ...reading, paused: true } });
-    expect(paused.host.textContent).toContain("Paused while someone is watching");
-    expect(paused.host.textContent).toContain("Picks up again when everyone's done watching.");
+  it("shows step 2 with the file it reads, and says it is still working out the time", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...READING, current: "Night Ferry S02E03.mkv" },
+    });
+    expect(host.textContent).toContain("Step 2 of 3 · Reading each file · 25 of 100");
+    expect(host.textContent).toContain("Working out how long this takes…");
+    expect(host.textContent).toContain("Night Ferry S02E03.mkv");
+    expect(host.textContent).toContain("Titles appear as they're ready.");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
+    cleanup();
+  });
+
+  it("shows step 3, the last, with its time left and the title it looks up", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: {
+        ...IDLE,
+        step: "lookingUp",
+        stepNumber: 3,
+        done: 40,
+        total: 80,
+        etaSeconds: 150,
+        current: "Paper Kites (2019)",
+      },
+    });
+    expect(host.textContent).toContain("Step 3 of 3 · Looking up details · 40 of 80");
+    expect(host.textContent).toContain("About 3 minutes left");
+    expect(host.textContent).not.toContain("in this step");
+    expect(host.textContent).toContain("Paper Kites (2019)");
+    // Looking up details never holds up a scan.
+    expect(host.textContent).toContain("Scan now");
+    cleanup();
+  });
+
+  it("pauses in plain words, with a still dot and no time or current line", () => {
+    const paused = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...READING, paused: true, current: "Night Ferry S02E03.mkv", etaSeconds: 60 },
+    });
+    const text = paused.host.textContent;
+    expect(text).toContain("Paused while someone is watching");
+    expect(text).toContain("Step 2 of 3 · Reading each file · 25 of 100");
+    expect(text).toContain("Picks up again when everyone's done watching.");
+    expect(text).not.toContain("left");
+    expect(text).not.toContain("Working out");
+    expect(text).not.toContain("Night Ferry S02E03.mkv");
+    expect(twirls(paused.host)).toBe(0);
     paused.cleanup();
   });
 
+  it("says only that it's checking the folders on a quiet pass", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...WALKING, quiet: true },
+    });
+    expect(host.textContent).toContain("Checking your folders…");
+    expect(host.textContent).not.toContain("Adding your media");
+    expect(host.textContent).not.toContain("Step 1 of 3");
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(twirls(host)).toBe(1);
+    cleanup();
+  });
+
+  it("keeps the still dot when nothing runs", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    expect(twirls(host)).toBe(0);
+    cleanup();
+  });
+
   it("shows the first five titles ready so far while the import runs, and none while paused", () => {
-    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
+    const reading = READING;
     const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
       (name, i) => ({ id: `9000095${i}`, name }),
     );
@@ -175,6 +267,37 @@ describe("LibrarySettings", () => {
     });
     expect(paused.host.textContent).not.toContain("Ready so far");
     paused.cleanup();
+  });
+
+  it("scans now, and refreshes everything only once asked", () => {
+    const { host, props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    act(() => button("Scan now").click());
+    expect(props.onRescan).toHaveBeenCalled();
+
+    // The confirm may draw outside the host, so look through the whole page.
+    const page = (globalThis as unknown as { document: { body: Host } }).document.body;
+    const buttons = (name: string) =>
+      Array.from(page.querySelectorAll('[role="button"], button')).filter(
+        (n) => n.textContent?.trim() === name,
+      );
+    expect(host.textContent).not.toContain("Refresh every title?");
+    act(() => button("Refresh everything").click());
+    expect(page.textContent).toContain("Refresh every title?");
+    act(() => buttons("Not now")[0]?.click());
+    expect(props.onRefreshEverything).not.toHaveBeenCalled();
+
+    act(() => button("Refresh everything").click());
+    const confirm = buttons("Refresh everything");
+    act(() => confirm[confirm.length - 1]?.click());
+    expect(props.onRefreshEverything).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("says a scan is running and offers no second one", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
+    expect(host.textContent).toContain("Scanning…");
+    expect(host.textContent).not.toContain("Scan now");
+    cleanup();
   });
 
   it("holds a removal until the maintainer answers", () => {

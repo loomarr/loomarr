@@ -84,7 +84,7 @@ const PlayerDetails = ({ density, onCopy, rows }: PlayerDetailsProps) => (
           <Text
             density={density}
             style={{ flexShrink: 1, textAlign: "right" }}
-            textRole="captionMono"
+            textRole="mono"
             tone="primary"
           >
             {row.value}

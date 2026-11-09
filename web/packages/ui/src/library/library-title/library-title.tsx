@@ -2,7 +2,7 @@ import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
 import { ChannelIdentity } from "../../identity";
-import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { lengthPhrase, TechnicalDetails } from "../technical-details";
 import type {
@@ -80,9 +80,12 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
               ) : null}
             </Stack>
             {episode.ready ? null : (
-              <Text textRole="compact" tone="secondary">
-                Getting ready
-              </Text>
+              <Line alignSelf="center" flexWrap="nowrap">
+                <Twirl />
+                <Text textRole="compact" tone="secondary">
+                  Getting ready
+                </Text>
+              </Line>
             )}
           </Line>
         ))}

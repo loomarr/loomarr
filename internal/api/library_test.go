@@ -202,7 +202,7 @@ func TestLibraryRoots_HandEditsAndAccess(t *testing.T) {
 type libraryScanStatus struct {
 	Scan struct {
 		Enabled    bool       `json:"enabled"`
-		Stage      string     `json:"stage"`
+		Step       string     `json:"step"`
 		LastScanAt *time.Time `json:"lastScanAt"`
 	} `json:"scan"`
 	Files int `json:"files"`
@@ -250,7 +250,7 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
-	if !st.Scan.Enabled || st.Scan.Stage != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 {
+	if !st.Scan.Enabled || st.Scan.Step != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 {
 		t.Fatalf("after first scan %+v", st)
 	}
 

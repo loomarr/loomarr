@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -49,6 +50,7 @@ type channelBuild struct {
 	playout                playoutapi.Playout
 	playoutResolverService playoutapi.PlayoutResolver
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
+	watched                func() bool             // a viewer is fetching a channel; nil without the packager
 	playoutGuide           playoutapi.PlayoutGuide
 	playoutResolver        *playoutresolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
@@ -134,6 +136,8 @@ func buildChannels(
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
+	// Whether a viewer is watching a channel; the library's header reads wait while one is.
+	var watched func() bool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -252,11 +256,11 @@ func buildChannels(
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{titles: st})
+		channelEngine.WithRatings(resolvers.NewRatings(st))
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{own: st, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(resolvers.NewBoxSets(st, 15*time.Minute))
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)
@@ -298,6 +302,7 @@ func buildChannels(
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
 		playoutGuideSvc = playoutBuilt.guide
 		resourceBudget = playoutBuilt.budget
+		watched = playoutBuilt.watched
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := settings.ChannelReconcileEvery.Get(set)
@@ -325,6 +330,7 @@ func buildChannels(
 		playoutCapability:      playoutCapability,
 		playout:                playoutSvc,
 		playoutResolverService: playoutResolverSvc, resourceBudget: resourceBudget,
+		watched:      watched,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,

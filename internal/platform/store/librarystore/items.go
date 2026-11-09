@@ -280,6 +280,29 @@ type LibraryItemStore interface {
 	// RemoveLibraryFile marks a present file missing at `at`, unheld: one Loomarr moved away
 	// itself, which no removal guard needs to confirm. A file not present is left alone.
 	RemoveLibraryFile(ctx context.Context, path string, at time.Time) error
+	// RefreshLibrary is "Refresh everything": every present file is written again on the next
+	// pass, and every fetched catalog record is due again (DueLibraryCatalog). Headers and records
+	// stay readable meanwhile, so no title stops playing.
+	RefreshLibrary(ctx context.Context) error
+}
+
+func (s *Store) RefreshLibrary(ctx context.Context) error {
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("refresh library: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `UPDATE library_files SET identity = '' WHERE missing_at_ms = 0`); err != nil {
+		return fmt.Errorf("refresh library files: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE library_catalog SET version = %d WHERE fetched_at_ms > 0`,
+		catalogRefresh)); err != nil {
+		return fmt.Errorf("refresh library catalog: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("refresh library: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {

@@ -37,7 +37,7 @@ const render = (overrides: Partial<LibraryWizardStepProps>) => {
       { authority: "emby", authorityPath: "/data/tv", localPath: "/media/tv", byHand: false },
       { authority: "sonarr", authorityPath: "/tv", localPath: "/media/tv", byHand: false },
     ],
-    scan: { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false },
+    scan: { enabled: true, step: "idle", stepNumber: 0, done: 0, total: 0, paused: false, quiet: false },
     checking: false,
     onCheckAgain: vi.fn(),
     onUseFolder: vi.fn(),
@@ -84,9 +84,23 @@ describe("LibraryWizardStep", () => {
   it("shows the import going once a folder is in use, and doesn't hold the step for it", () => {
     const { host, cleanup } = render({
       folders: [{ ...TV, inUse: true }],
-      scan: { enabled: true, stage: "reading", headersDone: 25, headersTotal: 100, paused: false },
+      scan: {
+        enabled: true,
+        step: "reading",
+        stepNumber: 2,
+        done: 25,
+        total: 100,
+        current: "Night Ferry S02E03.mkv",
+        paused: false,
+        quiet: false,
+      },
     });
     expect(host.textContent).toContain("Adding your media");
+    // The same block as Settings → Library.
+    expect(host.textContent).toContain("Step 2 of 3 · Reading each file · 25 of 100");
+    expect(host.textContent).toContain("Working out how long this takes…");
+    expect(host.textContent).toContain("Night Ferry S02E03.mkv");
+    expect(host.querySelectorAll('[data-testid="library-twirl"]').length).toBe(1);
     expect(host.textContent).toContain("You can carry on — titles appear as they're ready.");
     expect(host.textContent).not.toContain("Make them available to Loomarr");
     cleanup();
