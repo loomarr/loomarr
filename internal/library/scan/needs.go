@@ -51,15 +51,23 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	return out, nil
 }
 
-// NeedCount is everything Needs you holds, the titles to answer and the titles that need a look:
-// the Needs you heading and the nav badge are one number.
+// NeedCount is everything Needs you holds, the titles to answer, the shows whose episode order to
+// say and the titles that need a look: the Needs you heading and the nav badge are one number.
 func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	needs, err := l.NeedStore.LibraryNeeds(ctx)
 	if err != nil {
 		return 0, err
 	}
+	orders := 0
+	if l.Orders != nil {
+		waiting, err := l.Orders.LibraryOrderNeeds(ctx)
+		if err != nil {
+			return 0, err
+		}
+		orders = len(waiting)
+	}
 	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
-	return len(needs) + problems.Total, err
+	return len(needs) + orders + problems.Total, err
 }
 
 // Link answers a title: it is the catalog title id. Its files are written again with the link.
