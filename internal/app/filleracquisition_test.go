@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -76,7 +77,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (tools.Probed, error) {
 		return tools.Probed{DurationMs: 30_000}, nil
 	}}
-	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
+	syncer := filler.NewSyncer(source, storeadapter.NewSync(st), layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
@@ -154,7 +155,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (tools.Probed, error) {
 		return tools.Probed{DurationMs: 30_000}, nil
 	}}
-	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
+	syncer := filler.NewSyncer(source, storeadapter.NewSync(st), layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
@@ -332,7 +333,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	source := cliplibrary.DirSource{Layout: layout, Probe: func(context.Context, string) (tools.Probed, error) {
 		return tools.Probed{DurationMs: 30_000}, nil
 	}}
-	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
+	syncer := filler.NewSyncer(source, storeadapter.NewSync(st), layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)

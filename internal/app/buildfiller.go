@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -108,7 +109,7 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 		configured: func() bool { return settings.TunarrURL.Get(set) != "" },
 	}
 
-	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
+	syncer := filler.NewSyncer(src, storeadapter.NewSync(st), layout, time.Now, log).
 		WithEnabled(func() bool { return settings.FillerSourceFolderEnabled.Get(set) }).
 		WithAcquisitionManifests(st).
 		WithStorageGovernor(governor).
@@ -173,7 +174,7 @@ func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	tools := buildFillerMediaTools(set, recorder)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, wake), tools, splitProvider, dir,
 		func() time.Duration { return settings.FillerMinDuration.Get(set) }, newID, time.Now, log).
 		WithStorageGovernor(governor)
 	if imageService != nil {
@@ -331,12 +332,12 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	if screeningErr != nil {
 		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
 	}
-	transcribeStage := filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
+	transcribeStage := filler.NewTranscribeStage(fillerTools, storeadapter.NewTranscribe(st), clipDir, fillerDrop,
 		func() bool { return settings.FillerTranscribeEnabled.Get(set) }, time.Now)
-	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
+	visionStage := filler.NewVisionStage(fillerTools, visionProvider, storeadapter.NewVision(st), clipDir,
 		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		storeadapter.NewPipelineClips(st), cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		clipDir, tools.DefaultMezzanine(),
 		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
@@ -353,10 +354,10 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
 		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
 		WithEncodeHost(encodeHost).
-		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
+		WithAiringReplacement(storeadapter.NewPipelineClips(st), checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
-			cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), fillerPipelineClipAdapter{st}, clipDir,
+			cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), storeadapter.NewPipelineClips(st), clipDir,
 			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
 			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,
@@ -365,8 +366,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
 		screening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
-		defectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
-		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
+		defectfloor.NewDefectsStage(storeadapter.NewDefects(st)),
+		filler.NewLanguageStage(langDetect, storeadapter.NewLanguage(st), clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
 		filler.NewFinishStage(),
@@ -438,7 +439,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
 		// invites someone to "fix" its order.
-		splitStage := filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st: st, wake: wake}).
+		splitStage := filler.NewSplitStage(splitter, storeadapter.NewSplit(st, wake)).
 			WithLogger(log).
 			WithAutoConfirm(*autoSplitPolicy, minClipDuration).
 			// The split-time grounder (§10 V54). Without it the auto-confirm gate has no data
@@ -451,7 +452,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			WithSegmentVision(&filler.SegmentVision{
 				Tools:    fillerTools,
 				Provider: visionProvider,
-				Taxa:     fillerVisionStoreAdapter{st},
+				Taxa:     storeadapter.NewVision(st),
 				ClipDir:  clipDir,
 				Budget: func() int {
 					if !settings.FillerVisionEnabled.Get(set) {
@@ -466,7 +467,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		splitStage.WithStructureRuntime(structureRuntime.Current)
 		pipelineStages = append(pipelineStages, splitStage)
 	}
-	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
+	fillerPipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), pipelineStages,
 		filler.Budget{
 			MaxClips: func() int { return settings.FillerPipelineMaxClips.Get(set) },
 			// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
@@ -478,9 +479,9 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			MaxSplits:     func() int { return settings.FillerPipelineMaxSplits.Get(set) },
 		},
 		emitter.FillerClipStage, time.Now, log).
-		WithRewind(fillerRewindAdapter{st}, clipDir).
+		WithRewind(storeadapter.NewRewind(st), clipDir).
 		// Idle passes move the airing library onto the current encode profile (#2121).
-		WithLibraryReencode(transcodeStage, fillerAiringClipsAdapter{st})
+		WithLibraryReencode(transcodeStage, storeadapter.NewAiringClips(st))
 	if headroom != nil {
 		// Media rungs yield to live playback instead of competing with it for CPU (#1512 G5).
 		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())
@@ -536,7 +537,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
 	local := &station.LocalResolver{Stations: station.NewLazy(list),
 		RadiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, Log: log}
-	podAdapter := pod.NewAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() pod.Policy {
+	podAdapter := pod.NewAdapter(storeadapter.NewCatalog(st), clipExposureAdapter{st}, func() pod.Policy {
 		return pod.Policy{
 			Geography:       set.homeGeography(),
 			Language:        settings.FillerLanguage.Get(set),
