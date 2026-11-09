@@ -258,7 +258,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
   and header reads. Sonarr and Radarr are its managers when connected; one with no connection
   manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
-  uses, and wait while playout's admission budget holds any session, copies included. A root
+  uses, and wait while someone is watching: a channel packager whose playlist a viewer fetched
+  within the last 10 s, copies included. A neighbour warm nobody joined, or a packager airing
+  slate to nobody in its grace, does not hold them. A root
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding

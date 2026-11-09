@@ -64,6 +64,29 @@ func victimRank(channels map[packagedKey]*packagedChannel, key packagedKey, c *p
 	}
 }
 
+// Watched reports whether any packager has a viewer: a playlist request in flight or one within
+// watchedWithin. A neighbour warm no viewer joined, a packager airing to nobody in its grace, and
+// one left behind by a viewer who gave up are not watched, so work that yields to viewers (the
+// library's header reads) does not wait on them.
+func (m *PackagerHLS) Watched() bool {
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.channels {
+		if watchedNow(c, now) {
+			return true
+		}
+	}
+	return false
+}
+
+func watchedNow(c *packagedChannel, now time.Time) bool {
+	if c.speculative {
+		return false
+	}
+	return c.viewers > 0 || !c.idleSince.IsZero() && now.Sub(c.idleSince) < watchedWithin
+}
+
 // pickIdleVictim is the packager a tune evicts next, if any, among those ranked at most maxRank:
 // the lowest rank first, and within a rank the oldest idle first.
 func pickIdleVictim(channels map[packagedKey]*packagedChannel, now time.Time, maxRank int) (packagedKey, *packagedChannel, bool) {

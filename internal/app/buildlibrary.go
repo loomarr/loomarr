@@ -52,9 +52,9 @@ type libraryStore interface {
 // libraryBuild is what Settings → Library needs beyond the store and settings.
 type libraryBuild struct {
 	lib *library.Client
-	// budget is playout's admission ledger; header reads wait while it holds a session. Nil
+	// watched reports whether a viewer is fetching a channel; header reads wait while one is. Nil
 	// without internal playout, when nothing on this box needs the disks first.
-	budget *playout.ResourceBudget
+	watched func() bool
 	// ffmpegPath locates ffprobe, the header reader's fallback.
 	ffmpegPath string
 	// images keeps the titles' posters; nil keeps none.
@@ -154,9 +154,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Now:      time.Now,
 		Log:      deps.log,
 	}
-	if deps.budget != nil {
-		im.Busy = func() bool { return deps.budget.Sessions() > 0 }
-	}
+	im.Busy = deps.watched
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}

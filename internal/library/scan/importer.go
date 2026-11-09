@@ -89,7 +89,7 @@ type Importer struct {
 	Resolver *precedence.Resolver
 	// Header reads one file's container header.
 	Header func(ctx context.Context, path string) (header.Header, error)
-	// Busy reports whether a playout session is live; header reads wait while it is.
+	// Busy reports whether someone is watching a channel; header reads wait while they are.
 	Busy func() bool
 	// Enabled is the kill switch, library.scanner.enabled.
 	Enabled func() bool

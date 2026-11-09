@@ -113,6 +113,31 @@ func TestPickIdleVictim_Order(t *testing.T) {
 	}
 }
 
+// #2151: header reads waited behind a packager airing slate to nobody. A packager counts as watched
+// only while a viewer's playlist fetch is in flight or within watchedWithin of one.
+func TestPackagerHLS_WatchedOnlyWhileAViewerFetches(t *testing.T) {
+	base := func(ch string) packagedKey { return packagedKey{channel: ch, format: FormatBaseline} }
+	cases := []struct {
+		name string
+		c    *packagedChannel
+		want bool
+	}{
+		{"fetching now", &packagedChannel{viewers: 1}, true},
+		{"between polls", &packagedChannel{idleSince: time.Now().Add(-2 * time.Second)}, true},
+		{"no fetch since", &packagedChannel{idleSince: time.Now().Add(-watchedWithin - time.Second)}, false},
+		{"a warm nobody joined", &packagedChannel{speculative: true, viewers: 1}, false},
+	}
+	for _, tc := range cases {
+		m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{base("ch"): tc.c}}
+		if got := m.Watched(); got != tc.want {
+			t.Errorf("%s: Watched() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if (&PackagerHLS{channels: map[packagedKey]*packagedChannel{}}).Watched() {
+		t.Error("Watched() with no packager running = true, want false")
+	}
+}
+
 // A premium variant is not kept running for a channel with no premium viewer (#1780): its grace is
 // at most watchedWithin, while a baseline keeps the full grace that absorbs surfing. A premium a
 // neighbour warm last held is adjacent to its viewer and keeps the baseline's grace (#1037).
