@@ -1,4 +1,4 @@
-import { Surface, semanticColors, Text } from "@loomarr/design-system";
+import { decadeFill, Surface, semanticColors, Text } from "@loomarr/design-system";
 import { cloneElement, type ReactElement } from "react";
 
 import type { WallTileProps } from "./wall-tile.type";
@@ -6,25 +6,28 @@ import type { WallTileProps } from "./wall-tile.type";
 // The foot of the tile: dark enough under the words for any still.
 const SCRIM = `linear-gradient(0deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.4) 55%, rgba(11, 12, 14, 0))`;
 
-// The channel number on a neutral block. #2767 gives it the channel's decade colour.
-const NumberBlock = ({ number }: { number: string }) => (
-  <Surface
-    alignItems="center"
-    backgroundColor="artworkScrimStrong"
-    borderRadius={2}
-    borderWidth={1}
-    borderColor="borderDecorative"
-    flexShrink={0}
-    height={24}
-    justifyContent="center"
-    minWidth={32}
-    paddingHorizontal={6}
-  >
-    <Text strong textRole="data">
-      {number}
-    </Text>
-  </Surface>
-);
+// The channel number on its block: the channel's decade colour (#2767), or neutral without one.
+const NumberBlock = ({ decade, number }: { decade: number | undefined; number: string }) => {
+  const fill = decadeFill(decade);
+  return (
+    <Surface
+      alignItems="center"
+      backgroundColor={fill ?? "artworkScrimStrong"}
+      borderRadius={2}
+      borderWidth={1}
+      borderColor={fill ?? "borderDecorative"}
+      flexShrink={0}
+      height={24}
+      justifyContent="center"
+      minWidth={32}
+      paddingHorizontal={6}
+    >
+      <Text strong textRole="data" {...(fill ? { tone: "onDecade" as const } : {})}>
+        {number}
+      </Text>
+    </Surface>
+  );
+};
 
 // WallTile — one channel on Home's wall (#2764, Direction mock "Channel wall"): a 16:9 picture with
 // the channel number and name along the top, what is on and a thin progress line along the foot. The
@@ -34,6 +37,7 @@ const WallTile = ({
   art,
   channelName,
   compact = false,
+  decade,
   dim = false,
   detail,
   last = false,
@@ -113,7 +117,7 @@ const WallTile = ({
         right={0}
         top={0}
       >
-        <NumberBlock number={number} />
+        <NumberBlock decade={decade} number={number} />
         {!compact && (
           <Text as="span" numberOfLines={1} strong textRole="label">
             {channelName}

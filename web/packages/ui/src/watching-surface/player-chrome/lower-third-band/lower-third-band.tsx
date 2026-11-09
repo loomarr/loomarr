@@ -1,4 +1,4 @@
-import { type Density, playerChrome, Text } from "@loomarr/design-system";
+import { type Density, decadeFillColor, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
 import { panelGlass, webOnly } from "../glass";
@@ -20,6 +20,9 @@ interface LowerThirdBandProps {
 
 const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: LowerThirdBandProps) => {
   const compact = density === "touch";
+  // The block takes the channel's decade colour, flat (#2767); amber without one.
+  const decadeColor = decadeFillColor(band.decade);
+  const blockTone = decadeColor ? "onDecade" : "inverse";
   const identity = [`CH ${band.channelNumber}`, band.channelName, ident ? band.station : undefined]
     .filter(Boolean)
     .join(" · ");
@@ -41,19 +44,21 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
         importantForAccessibility="no-hide-descendants"
         style={{
           alignItems: "center",
-          backgroundColor: playerChrome.signal,
+          backgroundColor: decadeColor ?? playerChrome.signal,
           borderBottomLeftRadius: 8,
           borderTopLeftRadius: 8,
           justifyContent: "center",
           paddingVertical: 6,
           width: ident ? (compact ? 64 : 96) : compact ? 48 : 64,
           ...webOnly({
-            backgroundImage: `linear-gradient(180deg, ${playerChrome.signal}, ${playerChrome.signalDeep})`,
+            backgroundImage: decadeColor
+              ? "none"
+              : `linear-gradient(180deg, ${playerChrome.signal}, ${playerChrome.signalDeep})`,
             boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 0 rgba(0, 0, 0, 0.15)",
           }),
         }}
       >
-        <Text density={density} shout textRole="guideIdent" tone="inverse" tracking={0.2}>
+        <Text density={density} shout textRole="guideIdent" tone={blockTone} tracking={0.2}>
           CH
         </Text>
         <Text
@@ -61,7 +66,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           textRole={
             ident ? (compact ? "channelNumber" : "display") : compact ? "guideNumber" : "channelNumber"
           }
-          tone="inverse"
+          tone={blockTone}
         >
           {band.channelNumber}
         </Text>

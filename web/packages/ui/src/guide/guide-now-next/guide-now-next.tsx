@@ -7,6 +7,7 @@ import {
 import { ProgressTrack, Surface, semanticRadius, Text } from "@loomarr/design-system";
 import { Pressable, ScrollView, View } from "react-native";
 
+import { GuideNumberBlock } from "../guide-number-block";
 import type { GuideNowNextProps, GuidePhoneHeaderProps } from "./guide-now-next.type";
 
 // GuideNowNext — the phone guide (#2766, the Direction mock's variant C): one row per channel
@@ -91,9 +92,7 @@ const NowNextItem = ({
         paddingVertical={10}
       >
         <View style={{ alignItems: "baseline", flexDirection: "row", gap: 6 }}>
-          <Text density="touch" textRole="cardChannelNumber" tone="secondary">
-            {String(number)}
-          </Text>
+          <GuideNumberBlock decade={channel.source.decade} number={number} />
           <Text density="touch" numberOfLines={1} style={{ flex: 1 }} textRole="cardLabel" tone="secondary">
             {name}
           </Text>

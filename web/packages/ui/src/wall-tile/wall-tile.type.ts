@@ -7,6 +7,8 @@ interface WallTileProps {
   channelName: string;
   /** The compact tile for a phone's two columns: smaller text, no channel name on the top row. */
   compact?: boolean;
+  /** The channel's era decade from the API (1980 for the 1980s): it colours the number block. Absent is neutral. */
+  decade?: number;
   /** The channel has nothing to air yet (building, paused, waiting for titles): the picture is dimmed. */
   dim?: boolean;
   /** The channel the viewer tuned last: a ring and a pill ("You were here", "Last" when compact). */

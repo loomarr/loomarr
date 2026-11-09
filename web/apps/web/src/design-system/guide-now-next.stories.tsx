@@ -75,6 +75,21 @@ type Story = StoryObj<typeof meta>;
 
 const Evening: Story = {};
 
+// Each channel's number block in its decade colour (#2767): the 1990s, 1980s and 1970s, and a
+// channel with no single-decade era, which stays clear.
+const decadeLayout = layoutGuide(
+  {
+    ...evening,
+    channels: evening.channels.map((c, i) => {
+      const decade = [1990, 1980, 1970, undefined][i];
+      return decade === undefined ? c : { ...c, decade };
+    }),
+  },
+  now,
+);
+const Decades: Story = { args: { layout: decadeLayout } };
+const DecadesLight: Story = { args: { layout: decadeLayout }, globals: { theme: "light" } };
+
 const VIEWS = [
   { label: "Now & next", value: "list" },
   { label: "Full grid", value: "grid" },
@@ -104,4 +119,4 @@ const WithHeader: Story = {
 };
 
 export default meta;
-export { Evening, WithHeader };
+export { Decades, DecadesLight, Evening, WithHeader };

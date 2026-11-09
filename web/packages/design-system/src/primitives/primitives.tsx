@@ -142,6 +142,7 @@ type TextTone =
   | "inverse"
   | "live"
   | "muted"
+  | "onDecade"
   | "primary"
   | "secondary"
   | "signal"
@@ -231,6 +232,8 @@ const textTones = {
   inverse: "contentInverse",
   live: "stateLive",
   muted: "contentMuted",
+  // A channel number on its decade's fill (#2767).
+  onDecade: "decadeInk",
   primary: "contentPrimary",
   secondary: "contentSecondary",
   signal: "actionPrimary",

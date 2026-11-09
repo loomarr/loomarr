@@ -145,10 +145,12 @@ export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
-export type { Density, FontFamilyRole, TextRole } from "./src/tokens";
+export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
   brandContract,
+  decadeFill,
+  decadeFillColor,
   iconography,
   nativeFontFace,
   playerChrome,

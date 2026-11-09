@@ -187,6 +187,22 @@ const DownloadingChannel: Story = {
   },
 };
 
+// The rail's 4px bar in each channel's decade colour (#2767, the mock's `tint=era`): the 1980s,
+// 1990s and 1970s, and a channel with no single-decade era, whose bar stays clear. The number
+// stays neutral.
+const decadeLayout = layoutGuide(
+  {
+    ...evening,
+    channels: evening.channels.map((c, i) => {
+      const decade = [1980, 1990, 1970, undefined][i];
+      return decade === undefined ? c : { ...c, decade };
+    }),
+  },
+  now,
+);
+const Decades: Story = { args: { layout: decadeLayout } };
+const DecadesLight: Story = { args: { layout: decadeLayout }, globals: { theme: "light" } };
+
 const viewportTall: Story["decorators"] = [
   (Story) => (
     <div style={{ display: "flex", flexDirection: "column", height: 720 }}>
@@ -245,4 +261,4 @@ const JumpToAFarChannel: Story = {
 };
 
 export default meta;
-export { DownloadingChannel, Evening, HundredChannels, JumpToAFarChannel, Keyboard };
+export { Decades, DecadesLight, DownloadingChannel, Evening, HundredChannels, JumpToAFarChannel, Keyboard };
