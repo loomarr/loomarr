@@ -1,18 +1,12 @@
 // Package fetch downloads filler clips into the drop-folder (design §10, §16).
 //
 // It runs IN THE CORE, and the tooling it shells out to ships in the single image (§16) —
-// so the `ingest` feature gate now reports a DEGRADED install (a binary that will not run)
-// rather than an opt-in an operator has to take. ⚠ This doc used to describe both a
-// `loomarr-ingest` sidecar and a `loomarr:filler` image variant (retired-ok);
-// §10 records why each was
-// reversed, and neither exists.
+// so the `ingest` feature gate reports a DEGRADED install (a binary that will not run) rather
+// than an opt-in an operator has to take. There is no ingest sidecar and no filler image variant;
+// §10 records why each was reversed.
 //
-// ⚠ Named clipfetch, NOT ingest — but the reason has itself been retired-ok. This doc said
-// "because internal/ingest is the Sonarr/Radarr WEBHOOK handler"; there is no internal/ingest
-// package and there is no inbound arr hook (acquisition state comes from polling — see
-// internal/provisionbackstop). The name still earns its keep, for a smaller reason: `ingest` is what
-// §10 calls the CLIP pipeline in internal/filler, so a package named ingest here would collide
-// with that one autocomplete apart.
+// ⚠ Named clipfetch, NOT ingest, because `ingest` is what §10 calls the CLIP pipeline in
+// internal/filler, so a package named ingest here would collide with that one autocomplete apart.
 //
 // The orchestration here is testable with fake downloaders; the real yt-dlp exec +
 // Archive HTTP live behind the Downloader interface, so unit tests never touch the
