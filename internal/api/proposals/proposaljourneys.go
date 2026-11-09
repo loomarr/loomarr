@@ -1,4 +1,4 @@
-package api
+package proposals
 
 import (
 	"context"
@@ -103,7 +103,7 @@ type ProposalJourneyChannelDTO struct {
 	Status string `json:"status" enum:"building,live,empty,drifted,detached,paused"`
 }
 
-func (s *Server) registerProposalJourneys(api huma.API) {
+func (s *Handlers) registerProposalJourneys(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-proposal-jobs", Method: http.MethodGet, Path: "/v1/proposal-jobs",
 		Summary:     "List authoritative First-channel Journeys",
@@ -135,7 +135,7 @@ type proposalJourneyListOutput struct {
 	}
 }
 
-func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyListInput) (*proposalJourneyListOutput, error) {
+func (s *Handlers) listProposalJourneys(ctx context.Context, in *proposalJourneyListInput) (*proposalJourneyListOutput, error) {
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
@@ -188,14 +188,14 @@ type reviseProposalJourneyOutput struct {
 	}
 }
 
-func (s *Server) reviseProposalJourney(
+func (s *Handlers) reviseProposalJourney(
 	ctx context.Context,
 	in *reviseProposalJourneyInput,
 ) (*reviseProposalJourneyOutput, error) {
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	if err := s.suggestionConfigurationError(ctx); err != nil {
+	if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
 		return nil, err
 	}
 	if err := checkDescription(in.Body.Description); err != nil {
@@ -226,7 +226,7 @@ func (s *Server) reviseProposalJourney(
 	return out, nil
 }
 
-func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInput) (*proposalJourneyOutput, error) {
+func (s *Handlers) getProposalJourney(ctx context.Context, in *proposalJourneyInput) (*proposalJourneyOutput, error) {
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
@@ -260,7 +260,7 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 
 // journeyPersonNames resolves approver ids to names for a Journey. A server wired without a store
 // (the workflow fakes in tests) has no people to name, so every approver reads as unknown.
-func (s *Server) journeyPersonNames(ctx context.Context) (personNames, error) {
+func (s *Handlers) journeyPersonNames(ctx context.Context) (personNames, error) {
 	if s.store == nil {
 		return personNames{}, nil
 	}
@@ -307,7 +307,7 @@ func proposalJourneyFailureDTO(failure *workflow.Failure) *ProposalJourneyFailur
 }
 
 // journeyProgress attaches the live snapshot to a generating Journey only.
-func (s *Server) journeyProgress(journey workflow.Journey) *ProposalJourneyProgressDTO {
+func (s *Handlers) journeyProgress(journey workflow.Journey) *ProposalJourneyProgressDTO {
 	if s.proposalProgress == nil || journey.Milestone != workflow.MilestoneGenerating {
 		return nil
 	}

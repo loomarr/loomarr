@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -62,7 +63,7 @@ func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposa
 
 type proposalHarnessConfig struct {
 	Settings        api.SettingsService
-	DecisionQuality api.ProposalDecisionQuality
+	DecisionQuality proposalsapi.ProposalDecisionQuality
 }
 
 // proposalHarness hides the fixed proposal-route assembly behind the common API
@@ -350,7 +351,7 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
 	}
-	var got api.ProposalDTO
+	var got proposalsapi.ProposalDTO
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +372,7 @@ func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
 	}
-	var got api.ProposalDTO
+	var got proposalsapi.ProposalDTO
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}

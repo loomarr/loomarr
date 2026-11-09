@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 )
 
@@ -49,12 +50,11 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerProgramming(humaAPI)
 	srv.registerHolidays(humaAPI)
 	srv.registerSetup(humaAPI)
-	srv.registerProposals(humaAPI)
+	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerMyChannels(humaAPI)
 	srv.registerChannelIdeas(humaAPI)
 	srv.registerHouseholdViewing(humaAPI)
-	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)

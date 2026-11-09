@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -67,7 +68,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
 	playoutGuideSvc := deps.channels.playoutGuide
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
-	var proposalOutlook api.ProposalOutlook
+	var proposalOutlook proposalsapi.ProposalOutlook
 	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
 		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
 			return catalog.LibraryOwnership{Titles: st}

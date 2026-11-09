@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -35,8 +36,8 @@ import (
 
 type suggestionBuild struct {
 	suggest          api.SuggestService
-	progress         api.ProposalProgress // the same *suggest.Service, read for live generation progress
-	workflow         api.ProposalWorkflow
+	progress         proposalsapi.ProposalProgress // the same *suggest.Service, read for live generation progress
+	workflow         proposalsapi.ProposalWorkflow
 	durableWorkflow  *workflow.Workflow
 	search           api.SearchService
 	movieCollections api.MovieCollectionService

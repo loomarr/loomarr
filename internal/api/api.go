@@ -17,9 +17,11 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/web"
@@ -58,7 +60,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
+		suggest: opts.Suggest, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
 		intakeLanguages:  opts.IntakeLanguages,
@@ -73,15 +75,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
-		webPushPublicKey:      opts.WebPushPublicKey,
-		proposalNotifications: opts.ProposalNotifications,
-		decisionQuality:       opts.DecisionQuality,
-		backendCheckpoint:     opts.BackendCheckpoint,
-		provision:             opts.Provision, guide: opts.Guide,
+		webPushPublicKey:  opts.WebPushPublicKey,
+		backendCheckpoint: opts.BackendCheckpoint,
+		provision:         opts.Provision, guide: opts.Guide,
 		liveSettings:      opts.LiveSettings,
 		libraryConfigured: opts.LibraryConfigured,
 		ready:             ready,
-		proposalOutlook:   opts.ProposalOutlook,
 		approver:          opts.Approver,
 		binder:            opts.Binder,
 		playoutObserver:   opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
@@ -132,12 +131,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerProgramming(humaAPI)
 	srv.registerHolidays(humaAPI)
 	srv.registerSetup(humaAPI)
-	srv.registerProposals(humaAPI)
+	proposalsapi.New(proposalsapi.Deps{
+		Store: opts.Store, Suggest: opts.Suggest, Approver: opts.Approver, ProposalOutlook: opts.ProposalOutlook,
+		ProposalWorkflow: opts.ProposalWorkflow, ProposalProgress: opts.ProposalProgress, Settings: opts.Settings,
+		Activity: opts.Activity, DecisionQuality: opts.DecisionQuality, ProposalNotifications: opts.ProposalNotifications,
+		Holidays: func() holidayvocab.Vocabulary { return srv.holidayCalendar().Vocab() },
+	}).Register(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerMyChannels(humaAPI)
 	srv.registerChannelIdeas(humaAPI)
 	srv.registerHouseholdViewing(humaAPI)
-	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)

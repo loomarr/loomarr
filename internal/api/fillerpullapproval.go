@@ -206,9 +206,9 @@ func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFill
 		if err != nil {
 			// A per-id failure is DATA, not a request failure: the ones that worked are already
 			// durable, so 500ing the whole call would hide successful approvals behind an error.
-			status, retryable := bulkFailure(err)
+			status, retryable := httpcore.BulkFailure(err)
 			out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{
-				ID: id, OK: false, Error: humaErrMessage(err), Status: status, Retryable: retryable,
+				ID: id, OK: false, Error: httpcore.ErrMessage(err), Status: status, Retryable: retryable,
 			})
 			continue
 		}
