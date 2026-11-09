@@ -226,10 +226,14 @@ describe("LibrarySettings", () => {
   it("saves a path-map change once when Enter is followed by leaving the field", () => {
     const { host, props, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
     const input = host.querySelector('input[aria-label="Sonarr /tv maps to"]') as El;
+    const dom = globalThis as unknown as {
+      KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => Event;
+      FocusEvent: new (type: string, init: { bubbles: boolean }) => Event;
+    };
     const enter = () =>
       act(() => {
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        input.dispatchEvent(new dom.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        input.dispatchEvent(new dom.FocusEvent("focusout", { bubbles: true }));
       });
     type(input, "/srv/tv");
     enter();
