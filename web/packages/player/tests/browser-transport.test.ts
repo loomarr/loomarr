@@ -19,7 +19,12 @@ interface FakeHls {
   config: { autoStartLoad?: boolean; enableWorker?: boolean };
   currentLevel: number;
   destroy: Mocked;
-  levels: { attrs: { CODECS?: string }; height: number; videoRange: string }[];
+  levels: {
+    attrs: { CODECS?: string; "FRAME-RATE"?: string };
+    bitrate?: number;
+    height: number;
+    videoRange: string;
+  }[];
   liveSyncPosition: number | null;
   loadLevel: number;
   loadSource: Mocked;
