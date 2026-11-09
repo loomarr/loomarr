@@ -1,7 +1,7 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Icon, icons, Text } from "@loomarr/design-system";
+import { Action, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
@@ -74,14 +74,15 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
             >
               <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${labelOfKey(key)}`}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => commit(series.filter((k) => k !== key))}
+              <Action
+                compact
+                icon="close"
+                layout="icon"
+                onPress={() => commit(series.filter((k) => k !== key))}
+                variant="ghost"
               >
-                <Icon decorative glyph={icons.close} size="compact" tone="inherit" />
-              </button>
+                {`Remove ${labelOfKey(key)}`}
+              </Action>
             </li>
           ))}
         </ul>

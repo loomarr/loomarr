@@ -6,6 +6,7 @@ import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnos
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
 import {
   Action,
+  Chip,
   CompactSelect,
   Field,
   Icon,
@@ -486,34 +487,33 @@ const ApplicationDiagnostics = ({
         <legend className="sr-only">Severity filters</legend>
         {(
           [
-            ["all", events.length, "text-foreground", "bg-muted", "All", "Show every severity"],
-            ["error", counts.error, "text-onair", "bg-onair-tint-15", "error", "Show only errors"],
-            ["warn", counts.warn, "text-caution", "bg-caution-tint-15", "warning", "Show only warnings"],
-            ["info", counts.info, "text-lock", "bg-lock-tint-15", "info", "Show informational logs"],
+            ["all", events.length, "muted", "All", "Show every severity"],
+            ["error", counts.error, "danger", "error", "Show only errors"],
+            ["warn", counts.warn, "warning", "warning", "Show only warnings"],
+            ["info", counts.info, "success", "info", "Show informational logs"],
           ] as const
-        ).map(([level, count, color, fill, label, hint]) => (
+        ).map(([level, count, tone, label, hint]) => (
           <Tooltip key={level} content={hint}>
-            <button
-              type="button"
-              className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:bg-muted/30 hover:border-current"}`}
-              aria-pressed={filters.level === level}
-              onClick={() => updateFilters({ ...filters, level })}
+            <Chip
+              onPress={() => updateFilters({ ...filters, level })}
+              selected={filters.level === level}
+              shape="pill"
+              tone={tone}
             >
               {label === "All"
                 ? `${label} ${count}`
                 : `${count} ${label}${label === "info" || count === 1 ? "" : "s"}`}
-            </button>
+            </Chip>
           </Tooltip>
         ))}
         {counts.debug > 0 && (
-          <button
-            type="button"
-            className={`text-muted-foreground cursor-pointer rounded-full border px-2.5 py-1 font-medium ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
-            aria-pressed={filters.level === "debug"}
-            onClick={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+          <Chip
+            onPress={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
+            selected={filters.level === "debug"}
+            shape="pill"
           >
-            {counts.debug} debug
-          </button>
+            {`${counts.debug} debug`}
+          </Chip>
         )}
         {downloadState === "failed" && (
           <span className="text-onair inline-flex items-center gap-1">

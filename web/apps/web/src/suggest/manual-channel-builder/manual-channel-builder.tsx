@@ -8,7 +8,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Badge, Field, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, ChoiceCard, Field, Icon, icons } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
@@ -190,22 +190,13 @@ const ManualChannelBuilder = ({
           <ul className="mt-2 flex flex-col gap-2">
             {CHANNEL_TEMPLATES.map((template) => (
               <li key={template.id}>
-                <button
-                  type="button"
-                  onClick={() => applyTemplate(template.id)}
-                  className={cn(
-                    "border-border bg-card hover:border-suggest flex w-full items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
-                    templateId === template.id && "border-suggest bg-suggest-tint-15",
-                  )}
-                >
-                  <span className="mt-0.5 flex">
-                    <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{template.label}</span>
-                    <span className="text-muted-foreground block text-sm">{template.description}</span>
-                  </span>
-                </button>
+                <ChoiceCard
+                  description={template.description}
+                  leading={<Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />}
+                  onPress={() => applyTemplate(template.id)}
+                  selected={templateId === template.id}
+                  title={template.label}
+                />
               </li>
             ))}
           </ul>
@@ -220,18 +211,15 @@ const ManualChannelBuilder = ({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {facets.map((idea: ChannelIdeaDTO) => (
-              <button
-                key={idea.id}
-                type="button"
-                onClick={() => setActiveFacetId((current) => (current === idea.id ? undefined : idea.id))}
-                className={cn(
-                  "border-border bg-card hover:border-tune flex min-w-[150px] flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
-                  activeFacetId === idea.id && "border-tune bg-tune-tint-15",
-                )}
-              >
-                <span className="text-sm font-medium">{idea.name}</span>
-                <span className="text-muted-foreground text-xs">{ideaReason(idea, false, Date.now())}</span>
-              </button>
+              <div key={idea.id} className="min-w-[150px]">
+                <ChoiceCard
+                  accent="info"
+                  description={ideaReason(idea, false, Date.now())}
+                  onPress={() => setActiveFacetId((current) => (current === idea.id ? undefined : idea.id))}
+                  selected={activeFacetId === idea.id}
+                  title={idea.name}
+                />
+              </div>
             ))}
           </div>
           {activeFacet && (

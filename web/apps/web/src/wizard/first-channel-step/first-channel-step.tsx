@@ -1,5 +1,5 @@
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, ActivityIndicator, Icon, icons } from "@loomarr/design-system";
+import { Action, ActivityIndicator, ChoiceCard, Icon, icons } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useCompleteSetup } from "../use-complete-setup";
@@ -48,26 +48,19 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
       <ul className="flex flex-col gap-2">
         {CHANNEL_TEMPLATES.map((t) => (
           <li key={t.id}>
-            <button
-              type="button"
+            <ChoiceCard
+              description={t.description}
               disabled={complete.isPending}
-              onClick={() => start(t.id)}
-              className="border-border bg-card hover:border-suggest flex w-full cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors disabled:opacity-50"
-            >
-              {complete.isPending && chosen === t.id ? (
-                <span className="mt-0.5 flex">
+              leading={
+                complete.isPending && chosen === t.id ? (
                   <ActivityIndicator decorative size="compact" tone="suggest" />
-                </span>
-              ) : (
-                <span className="mt-0.5 flex">
+                ) : (
                   <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
-                </span>
-              )}
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">{t.label}</span>
-                <span className="text-muted-foreground block text-sm">{t.description}</span>
-              </span>
-            </button>
+                )
+              }
+              onPress={() => start(t.id)}
+              title={t.label}
+            />
           </li>
         ))}
       </ul>

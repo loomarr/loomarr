@@ -59,7 +59,8 @@ describe("AppShell", () => {
 
   // One focus style across the app: the amber ring the design system's controls draw. A rail
   // control with no focus classes falls back to the browser's white rectangular outline (#2780).
-  it("draws the amber focus ring on every rail control", async () => {
+  // The rail's Sign out is a design-system Action, which draws its own amber focus border.
+  it("draws the amber focus ring on every plain rail control", async () => {
     render(
       <RouterHarness
         content={
@@ -75,7 +76,6 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: "Guide" }),
       screen.getByRole("link", { name: /About/ }),
       screen.getByRole("link", { name: /Your account/ }),
-      screen.getByRole("button", { name: "Sign out" }),
     ];
     for (const control of rail) {
       expect(control).toHaveClass(

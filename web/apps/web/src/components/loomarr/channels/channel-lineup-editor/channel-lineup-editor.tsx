@@ -18,7 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, Chip, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -295,23 +295,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               ["year", "Year"],
             ] as const
           ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setSort(value)}
-              aria-pressed={sort === value}
-              // 23 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
-              data-touch-target
-              className={cn(
-                "text-2xs cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
-                // Pressed is neutral (#1909 Q2), like the Guide's span picker.
-                sort === value
-                  ? "border-foreground bg-static-800 text-foreground font-semibold"
-                  : "border-border text-static-400 hover:border-static-400",
-              )}
-            >
+            <Chip key={value} mono onPress={() => setSort(value)} selected={sort === value}>
               {label}
-            </button>
+            </Chip>
           ))}
           {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
         </div>

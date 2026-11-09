@@ -1,4 +1,4 @@
-import { Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -273,17 +273,9 @@ const AppShell = ({
           </Link>
           {onLogout && (
             <Tooltip content="Sign out">
-              <button
-                type="button"
-                onClick={onLogout}
-                aria-label="Sign out"
-                className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors",
-                  FOCUS_RING,
-                )}
-              >
-                <Icon decorative glyph={icons.signOut} size="compact" tone="inherit" />
-              </button>
+              <Action compact icon="signOut" layout="icon" onPress={onLogout} variant="ghost">
+                Sign out
+              </Action>
             </Tooltip>
           )}
         </div>

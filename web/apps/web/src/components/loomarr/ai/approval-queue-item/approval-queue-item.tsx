@@ -292,17 +292,15 @@ const ApprovalQueueItem = ({
 
       {hasPicks && (
         <div className="border-border border-t pt-2">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-            // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-            onClick={() => setOpen((v) => !v)}
+          <Action
             aria-expanded={open}
+            icon={open ? "showLess" : "showMore"}
+            onPress={() => setOpen((v) => !v)}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
-            <Icon decorative glyph={open ? icons.showLess : icons.showMore} size="compact" tone="inherit" />
             {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
-          </button>
+          </Action>
           {open &&
             // With an edit handler the disclosure IS the edit surface (V25b) — the same list,
             // with drop/add/note. Without one it stays read-only, so every other caller and the
