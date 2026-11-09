@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -88,7 +89,7 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	if err := validateMediaAssetIdentity(derivative.Asset, role, tree); err != nil {
 		return err
 	}
-	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
+	if derivative.InputSHA256 != inputSHA256 || !split.IsContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
 		return fmt.Errorf("%s derivative lineage is incomplete", role)
 	}
 	wantRecipeRole := tools.DerivativeEvidence
@@ -171,7 +172,7 @@ func validateMediaAssetFile(ctx context.Context, clipDir string, asset MediaAsse
 	resolvedFull, fileErr := filepath.EvalSymlinks(full)
 	resolvedInfo, statErr := os.Stat(resolvedFull)
 	if rootErr != nil || fileErr != nil || statErr != nil || !os.SameFile(info, resolvedInfo) ||
-		resolvedFull == resolvedRoot || !pathContains(resolvedRoot, resolvedFull) {
+		resolvedFull == resolvedRoot || !split.PathContains(resolvedRoot, resolvedFull) {
 		return fmt.Errorf("%s derivative path escapes the filler root", role)
 	}
 	digest, size, err := FileSHA256(resolvedFull)
@@ -186,21 +187,21 @@ func validateMediaAssetFile(ctx context.Context, clipDir string, asset MediaAsse
 }
 
 func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, tree string) error {
-	if asset.Role != role || !isContentHash(asset.SHA256) || !isContentHash(asset.ClipHash) || asset.Bytes <= 0 {
+	if asset.Role != role || !split.IsContentHash(asset.SHA256) || !split.IsContentHash(asset.ClipHash) || asset.Bytes <= 0 {
 		return fmt.Errorf("%s media asset identity is invalid", role)
 	}
 	clean := filepath.Clean(filepath.FromSlash(asset.Path))
-	if filepath.IsAbs(clean) || !manifestRelativePath(clean) {
+	if filepath.IsAbs(clean) || !split.IsRelativePath(clean) {
 		return fmt.Errorf("%s media asset path is outside the filler root", role)
 	}
 	if tree == "" {
-		if pathContains(MediaAssetRootName, clean) {
+		if split.PathContains(MediaAssetRootName, clean) {
 			return fmt.Errorf("%s media asset path is hidden rather than playable", role)
 		}
 		return nil
 	}
 	wantPrefix := filepath.Join(MediaAssetRootName, tree)
-	if clean == wantPrefix || !pathContains(wantPrefix, clean) {
+	if clean == wantPrefix || !split.PathContains(wantPrefix, clean) {
 		return fmt.Errorf("%s media asset path is outside its hidden tree", role)
 	}
 	return nil
@@ -213,11 +214,11 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
-	if clipDir == "" || !filepath.IsAbs(clipDir) || !filepath.IsAbs(sourcePath) || !isContentHash(clipHash) {
+	if clipDir == "" || !filepath.IsAbs(clipDir) || !filepath.IsAbs(sourcePath) || !split.IsContentHash(clipHash) {
 		return MediaAssetIdentity{}, errors.New("preserve source master: absolute roots and a content hash are required")
 	}
 	rel, err := filepath.Rel(clipDir, sourcePath)
-	if err != nil || !manifestRelativePath(rel) {
+	if err != nil || !split.IsRelativePath(rel) {
 		return MediaAssetIdentity{}, errors.New("preserve source master: source is outside the filler root")
 	}
 	info, err := os.Lstat(sourcePath)

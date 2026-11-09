@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // Layout is the immutable filesystem topology for one application generation.
@@ -58,7 +60,7 @@ func NewLayout(root, watch string) (Layout, error) {
 	if err := existingDirectory("watch", watchDir); err != nil {
 		return Layout{}, err
 	}
-	if pathContains(watchDir, clipDir) {
+	if split.PathContains(watchDir, clipDir) {
 		return Layout{}, fmt.Errorf("filler layout: watch folder %q must not contain clip folder %q", watchDir, clipDir)
 	}
 	// Filesystem aliases can spell the same unsafe topology with unrelated path strings: symlinks,
@@ -117,17 +119,6 @@ func existingDirectory(kind, path string) error {
 		return nil
 	}
 	return fmt.Errorf("filler layout: stat %s folder %q: %w", kind, path, err)
-}
-
-// pathContains reports whether child is parent itself or lies beneath it. A watch folder with
-// that relationship to the clip root would walk already-filed clips as arrivals; duplicate
-// handling would then remove each file because its computed destination is itself.
-func pathContains(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil || filepath.IsAbs(rel) {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // sameFileContains catches aliases that pathname comparison cannot reveal, notably Linux bind
@@ -229,7 +220,7 @@ func (l Layout) intakeSource(path string) (string, error) {
 		return "", err
 	}
 	for _, clip := range []string{l.configuredClipDir, l.clipDir} {
-		if clip != "" && (pathContains(clean, clip) || pathContains(clip, clean)) {
+		if clip != "" && (split.PathContains(clean, clip) || split.PathContains(clip, clean)) {
 			return "", fmt.Errorf("filler layout: source folder %q overlaps clip folder %q", clean, clip)
 		}
 	}
@@ -249,7 +240,7 @@ func (l Layout) intakeSource(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if l.clipDir != "" && (pathContains(resolved, l.clipDir) || pathContains(l.clipDir, resolved)) {
+	if l.clipDir != "" && (split.PathContains(resolved, l.clipDir) || split.PathContains(l.clipDir, resolved)) {
 		return "", fmt.Errorf("filler layout: resolved source folder %q overlaps clip folder %q", resolved, l.clipDir)
 	}
 	return resolved, nil

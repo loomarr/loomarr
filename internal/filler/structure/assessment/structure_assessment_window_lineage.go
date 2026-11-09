@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -110,7 +111,7 @@ func validateStructureAssessmentWindowLineage(plan window.Plan, lineage Structur
 }
 
 func structureAssessmentWindowSourceMatchesPlan(source StructureAssessmentMediaSourceIdentity, plan window.Plan) bool {
-	return (source.Role == filler.SplitSourceEvidence || source.Role == filler.SplitSourceLegacyPlayback) &&
+	return (source.Role == split.SourceEvidence || source.Role == split.SourceLegacyPlayback) &&
 		filler.IsContentHash(source.ClipHash) && source.SHA256 == plan.Source.SHA256 &&
 		source.Bytes == plan.Source.Bytes && source.DurationMS == plan.Source.DurationMS
 }

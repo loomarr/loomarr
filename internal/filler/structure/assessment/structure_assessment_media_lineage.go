@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 )
 
@@ -21,11 +22,11 @@ const (
 // StructureAssessmentMediaSourceIdentity deliberately excludes a pathname. A retained path is a
 // location at which bytes may be found; it is not part of the decision authority.
 type StructureAssessmentMediaSourceIdentity struct {
-	Role       filler.SplitSourceRole `json:"role"`
-	SHA256     string                 `json:"sha256"`
-	Bytes      int64                  `json:"bytes"`
-	ClipHash   string                 `json:"clipHash"`
-	DurationMS int64                  `json:"durationMs"`
+	Role       split.SourceRole `json:"role"`
+	SHA256     string           `json:"sha256"`
+	Bytes      int64            `json:"bytes"`
+	ClipHash   string           `json:"clipHash"`
+	DurationMS int64            `json:"durationMs"`
 }
 
 // StructureAssessmentMediaDerivative identifies one complete normalized output without naming
@@ -36,7 +37,7 @@ type StructureAssessmentMediaDerivative struct {
 	DurationMS int64  `json:"durationMs"`
 }
 
-func structureAssessmentSourceIdentity(source filler.SplitSourceAsset) StructureAssessmentMediaSourceIdentity {
+func structureAssessmentSourceIdentity(source split.SourceAsset) StructureAssessmentMediaSourceIdentity {
 	return StructureAssessmentMediaSourceIdentity{
 		Role: source.Role, SHA256: source.SHA256, Bytes: source.Bytes,
 		ClipHash: source.ClipHash, DurationMS: source.DurationMs,

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -22,7 +22,7 @@ type fillerSplitArtworkAdapter struct {
 func (a fillerSplitArtworkAdapter) IngestSplitArtwork(
 	ctx context.Context,
 	proposalID string,
-	segment filler.SplitSegment,
+	segment split.Segment,
 	jpeg []byte,
 ) (string, error) {
 	meta, err := json.Marshal(map[string]any{

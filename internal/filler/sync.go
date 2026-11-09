@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -956,7 +957,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 // replacement before the stale links are removed, so interruption can only leave a duplicate.
 func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
 	stem := strings.TrimSuffix(filepath.Base(filepath.FromSlash(rc.Path)), filepath.Ext(rc.Path))
-	if !isContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
+	if !split.IsContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
 		return rc, false, nil
 	}
 	ext := filepath.Ext(rc.Path)
@@ -1103,27 +1104,11 @@ func isHashDisplayName(value string) bool {
 	return isOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
 }
 
-func isContentHash(value string) bool {
-	return len(value) == 64 && isLowerHex(value)
-}
-
 // IsContentHash reports whether value is a 64-character lowercase hex content hash.
-func IsContentHash(value string) bool { return isContentHash(value) }
+func IsContentHash(value string) bool { return split.IsContentHash(value) }
 
 func isOpaqueHash(value string) bool {
-	return (len(value) == 40 || len(value) == 64) && isLowerHex(value)
-}
-
-func isLowerHex(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if !strings.ContainsRune("0123456789abcdef", r) {
-			return false
-		}
-	}
-	return true
+	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
 }
 
 // serverFieldsUnchanged reports whether the SCAN-owned fields match (so a re-sync is a no-op

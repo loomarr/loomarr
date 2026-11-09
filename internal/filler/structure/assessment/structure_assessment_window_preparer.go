@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -17,7 +18,7 @@ import (
 
 // PrepareWindows renders and verifies every normalized interval in one immutable plan. It returns
 // no usable authority unless the complete ordered media set validates.
-func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Context, input filler.StructureAssessmentSource, plan window.Plan) (StructureAssessmentWindowMediaSet, error) {
+func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Context, input split.AssessmentSource, plan window.Plan) (StructureAssessmentWindowMediaSet, error) {
 	if p == nil || p.run == nil || p.decode == nil {
 		return StructureAssessmentWindowMediaSet{}, errors.New("structure assessment window preparer is unavailable")
 	}

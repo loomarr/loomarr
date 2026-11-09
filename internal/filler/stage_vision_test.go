@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -418,9 +419,9 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 	if tools.spanCalls != 1 || tools.calls != 0 {
 		t.Fatalf("KeyframesIn calls = %d, whole-clip calls = %d; want the measured span once", tools.spanCalls, tools.calls)
 	}
-	if tools.spanStart != 0 || tools.spanEnd != clip.DurationMs || tools.spanCount != filler.VisionKeyframes {
+	if tools.spanStart != 0 || tools.spanEnd != clip.DurationMs || tools.spanCount != split.VisionKeyframes {
 		t.Fatalf("semantic span = %d..%d x%d, want 0..%d x%d",
-			tools.spanStart, tools.spanEnd, tools.spanCount, clip.DurationMs, filler.VisionKeyframes)
+			tools.spanStart, tools.spanEnd, tools.spanCount, clip.DurationMs, split.VisionKeyframes)
 	}
 }
 

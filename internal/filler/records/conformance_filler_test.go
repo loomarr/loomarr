@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
@@ -2029,7 +2030,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	proposal := filler.SplitProposal{
 		ID: "atomic-proposal", ClipHash: parent.Hash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "first"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "first"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2149,7 +2150,7 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 			}
 			proposal := filler.SplitProposal{
 				ID: "review-proposal", ClipHash: parent.Hash, CreatedAt: now,
-				Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+				Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
 			}
 			if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 				t.Fatal(err)
@@ -2214,7 +2215,7 @@ func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc
 	}
 	proposal := filler.SplitProposal{
 		ID: "filed-proposal", ClipHash: parent.Hash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2245,7 +2246,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	now := time.Unix(1_901_000_000, 0).UTC()
 	proposal := filler.SplitProposal{
 		ID: "claim-proposal", ClipHash: "claim-parent", CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "one"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "one"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2259,7 +2260,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	}
 
 	changed := proposal
-	changed.Segments = []filler.SplitSegment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
+	changed.Segments = []split.Segment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
 	changed.Spawned = []string{"claim-child"}
 	childPipeline := filler.ClipPipeline{
 		ClipHash: "claim-child", Stage: filler.StageProbe, Status: filler.StatusQueued,
@@ -3701,43 +3702,43 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
+	source := split.SourceAsset{
+		Role: split.SourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
 		ClipHash: strings.Repeat("b", 64), Path: ".loomarr-media/evidence/aa/bb/evidence.mp4", DurationMs: 149_000,
 	}
-	assessed, err := filler.AssessSourceStructure(filler.SourceStructureInput{
+	assessed, err := split.Assess(split.Input{
 		Source: source, AssessedAt: now,
-		Observations: []filler.StructureObservation{
-			{ID: "black", Kind: filler.ObservationBlackInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("c", 64)},
-			{ID: "silence", Kind: filler.ObservationSilenceInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("d", 64)},
-			{ID: "role-left", Kind: filler.ObservationOCRLogoChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("e", 64)},
-			{ID: "role-right", Kind: filler.ObservationTranscriptChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("f", 64)},
+		Observations: []split.Observation{
+			{ID: "black", Kind: split.ObservationBlackInterval, Effect: split.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("c", 64)},
+			{ID: "silence", Kind: split.ObservationSilenceInterval, Effect: split.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("d", 64)},
+			{ID: "role-left", Kind: split.ObservationOCRLogoChange, Effect: split.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("e", 64)},
+			{ID: "role-right", Kind: split.ObservationTranscriptChange, Effect: split.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("f", 64)},
 		},
-		RoleClaims: []filler.StructureRoleClaim{
-			{StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial, EvidenceIDs: []string{"role-left"}, Reason: "commercial evidence"},
-			{StartMs: 30_000, EndMs: 149_000, Role: filler.SegmentRolePromo, EvidenceIDs: []string{"role-right"}, Reason: "promo evidence"},
+		RoleClaims: []split.RoleClaim{
+			{StartMs: 0, EndMs: 30_000, Role: split.RoleCommercial, EvidenceIDs: []string{"role-left"}, Reason: "commercial evidence"},
+			{StartMs: 30_000, EndMs: 149_000, Role: split.RolePromo, EvidenceIDs: []string{"role-right"}, Reason: "promo evidence"},
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	roleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
-		Source: source, StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial,
+	roleEvidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
+		Source: source, StartMs: 0, EndMs: 30_000, Role: split.RoleCommercial,
 		Reason: "product offer and closing brand card", Frames: [][]byte{[]byte("opening"), []byte("closing")},
 		PromptVersion: "filler-vision-grounding-v2", Prompt: "bounded segment prompt", Response: `{"role":"commercial"}`,
 		RequestedProvider: "ollama", ResolvedProvider: "ollama", RequestedModel: "vision", ResolvedModel: "vision@sha256:fixture",
-		Modalities: []string{"image", "text"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 20, Completion: 5, Image: 2},
+		Modalities: []string{"image", "text"}, Tokens: split.RoleTokenUsage{Prompt: 20, Completion: 5, Image: 2},
 		LatencyMs: 100, Attempts: 1, AssessedAt: now,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	videoRoleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
-		Source: source, StartMs: 30_000, EndMs: 61_000, Role: filler.SegmentRolePromo,
+	videoRoleEvidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
+		Source: source, StartMs: 30_000, EndMs: 61_000, Role: split.RolePromo,
 		Reason: "complete sequence promotes a programme", Video: []byte("bounded-video-derivative"),
 		PromptVersion: "filler-segment-video-role-v1", Prompt: "bounded video prompt", Response: `{"role":"promo"}`,
 		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video", ResolvedModel: "video",
-		Modalities: []string{"audio", "text", "video"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 30, Completion: 5, Video: 4, Audio: 2},
+		Modalities: []string{"audio", "text", "video"}, Tokens: split.RoleTokenUsage{Prompt: 30, Completion: 5, Video: 4, Audio: 2},
 		LatencyMs: 200, Attempts: 1, GenerationID: "video-generation", AssessedAt: now,
 	})
 	if err != nil {
@@ -3781,7 +3782,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		ArtworkPrepared:    true,
 		LanguagePreference: "en",
 		LanguageExclusions: []filler.SplitLanguageExclusion{{StartMs: 149_000, EndMs: 179_000, Name: "Polish advert", DetectedLanguage: "pl", ExpectedLanguage: "en", Reason: filler.SplitExclusionLanguageMismatch}},
-		Segments: []filler.SplitSegment{
+		Segments: []split.Segment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true, ArtworkChecked: true, ArtworkImageHash: "preview-one"},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence, ArtworkChecked: true},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageReason: filler.SplitLanguageFailed, LanguageNote: "Language could not be checked"},
@@ -3822,7 +3823,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	draft := filler.SplitProposal{
 		ID: "sp_draft", ClipHash: clipHashFor("comps/long.mp4"), CreatedAt: now.Add(time.Minute),
 		Language: &filler.SplitLanguageProgress{Want: "en", Next: 1},
-		Detection: &filler.SplitDetectionProgress{
+		Detection: &split.DetectionProgress{
 			ScannedThroughMs: 600_000,
 			Black:            []filler.Interval{{StartMs: 29_900, EndMs: 30_100}},
 			ChapterEdges:     []int64{0, 30_000, 33_000, 600_000},
@@ -3844,7 +3845,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// cut-lists for one file is a review bug, not a choice. The NEW id answers the old
 	// one's GET with ErrNotFound.
 	p2 := filler.SplitProposal{ID: "sp_2", ClipHash: p.ClipHash, CreatedAt: now.Add(time.Hour),
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
 	if err := s.UpsertSplitProposal(ctx, p2); err != nil {
 		t.Fatal(err)
 	}
@@ -3882,7 +3883,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
 	p3 := filler.SplitProposal{
 		ID: "sp_3", ClipHash: "h:comps/1991.mp4", CreatedAt: now,
-		Segments: []filler.SplitSegment{
+		Segments: []split.Segment{
 			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one"},
 			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two"},
 		},
@@ -3894,7 +3895,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// 1. The grounding fields round-trip — including `Looked`, which is what distinguishes
 	// "looked at and found nothing" from "not reached yet". Inferring it from Category/Era would
 	// make a resumable budget retry the ungroundable segments forever.
-	grounded := []filler.SplitSegment{
+	grounded := []split.Segment{
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
 		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
 	}
@@ -3955,7 +3956,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	seg := []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}}
+	seg := []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000}}
 	for id, hash := range map[string]string{"sp_keep": keeper.Hash, "sp_orphan": orphan.Hash} {
 		if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 			ID: id, ClipHash: hash, CreatedAt: now, Segments: seg,
@@ -5106,13 +5107,13 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 		ID: "sp-draft", ClipHash: "draft-reel", CreatedAt: time.Now().UTC(),
-		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+		Detection: &split.DetectionProgress{ScannedThroughMs: 600_000},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 		ID: "sp-ready", ClipHash: "ready-reel", CreatedAt: time.Now().UTC(),
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000}},
 	}); err != nil {
 		t.Fatal(err)
 	}

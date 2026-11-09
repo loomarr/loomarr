@@ -19,6 +19,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -107,7 +108,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	}
 	// Detection produced the candidate; the reviewed operator edit trims its transition tail to the
 	// measured content interval used by this fixture. No chapter is supplied to Propose.
-	reviewed := append([]filler.SplitSegment(nil), proposal.Segments[0])
+	reviewed := append([]split.Segment(nil), proposal.Segments[0])
 	reviewed[0].EndMs = reviewedEnd
 	childHashes, err := splitter.Confirm(ctx, proposal.ID, reviewed)
 	if err != nil || len(childHashes) != 1 {

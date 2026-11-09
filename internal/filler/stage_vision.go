@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -104,7 +105,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	forest := taxonomy.New(taxa)
 
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
-	frames, err := s.tools.VisionKeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
+	frames, err := s.tools.VisionKeyframesIn(ctx, file, 0, c.DurationMs, split.VisionKeyframes)
 	if err != nil {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
 	}
@@ -191,12 +192,6 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	}
 	return result, nil
 }
-
-// VisionKeyframes is how many stills one pass samples per clip (§10 V44). A commercial's brand
-// card, its B&W transfer, and its end slate can each fall in a different part of the runtime, so
-// one frame is not enough signal. These are bounded near-full-resolution semantic frames, not the
-// 320px UI preview: early, middle, late, and closing-card windows remain a small fixed request.
-const VisionKeyframes = 4
 
 const visionPromptVersion = "filler-vision-grounding-v2"
 const splitVisionPromptVersion = "filler-split-vision-grounding-v3"

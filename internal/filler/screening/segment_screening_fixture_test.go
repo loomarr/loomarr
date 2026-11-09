@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
@@ -50,8 +51,8 @@ func screeningChildTagsFixture(t *testing.T) filler.SidecarTags {
 	manifest := screeningSubjectManifest(t)
 	lineage := filler.ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: strings.Repeat("7", 64),
-		ParentAssetRole: string(filler.SplitSourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
-		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: filler.SegmentRoleCommercial,
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
+		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: split.RoleCommercial,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)

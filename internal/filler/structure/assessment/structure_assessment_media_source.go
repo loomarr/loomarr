@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -22,7 +23,7 @@ type preparedStructureAssessmentSource struct {
 
 // prepareSource snapshots and verifies the complete source once before any assessment derivative
 // is rendered. Callers own removal of SnapshotPath.
-func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Context, input filler.StructureAssessmentSource) (preparedStructureAssessmentSource, error) {
+func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Context, input split.AssessmentSource) (preparedStructureAssessmentSource, error) {
 	if p == nil || p.probe == nil || p.identify == nil || p.snapshot == nil {
 		return preparedStructureAssessmentSource{}, errors.New("structure assessment media preparer is unavailable")
 	}
