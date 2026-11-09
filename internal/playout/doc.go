@@ -55,7 +55,7 @@
 // ladder, session/viewer bookkeeping, cycle arithmetic, and XMLTV rendering. It knows nothing
 // about stores, media servers, settings, or HTTP handlers.
 //
-// The WIRING lives in internal/app (playoutadapter.go) and internal/api. That split is why this
+// The WIRING lives in internal/app/playoutresolve and internal/api. That split is why this
 // package can be tested without a database or a network, and it is worth preserving: the moment
 // playout can reach a store, "what is on now" grows a second answer.
 //

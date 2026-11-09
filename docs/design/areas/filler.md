@@ -8,13 +8,13 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **media** · 15 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **media** · 17 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **platform** · 15 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
 - **channels** · 1 import — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
-- **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/langcode`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 11 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filler/clips`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
@@ -24,6 +24,8 @@ One area of the [package map](../package-map.md#start-here).
   Owns progressive descriptive understanding for filler clips.
 - **`filler/fetch`** · 3 importers · → `filler`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
+- **`filler/language`** · 4 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
+  Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
 - **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`

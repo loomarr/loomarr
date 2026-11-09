@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -46,14 +47,14 @@ type channelBuild struct {
 	playoutResolverService api.PlayoutResolver
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
 	playoutGuide           api.PlayoutGuide
-	playoutResolver        *playoutResolver
+	playoutResolver        *playoutresolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
 	channelNumbers         approval.NumberSource
 }
 
 func buildChannels(
 	rootCtx context.Context, st store.Store, set resolved, ov Overrides,
-	owner *generationLifecycle, capturePlayoutResolver func(*playoutResolver),
+	owner *generationLifecycle, capturePlayoutResolver func(*playoutresolve.Resolver),
 	libraryClient *library.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
@@ -130,14 +131,14 @@ func buildChannels(
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
-	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
+	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
 	var playoutGuideSvc api.PlayoutGuide
 	// Declared out here so the pod assembler can be attached further down: the resolver is
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
-	var playoutRes *playoutResolver
+	var playoutRes *playoutresolve.Resolver
 	var setResidentVRAM func(func(context.Context) (float64, string))
 	// Which channel numbers Tunarr already uses (§9 V54). Function scope for the same reason as
 	// `residentVRAM` above: it is SET where the programmer is built, and READ far below where the
@@ -201,7 +202,7 @@ func buildChannels(
 		// Give the scheduler a resolver so program slots carry the Library's runtime before the
 		// Tunarr push, and an episode resolver so a series entry expands into the Library's
 		// episodes (§9, #2151 step 16).
-		meta := itemMetadata{facts: st}
+		meta := playoutresolve.ItemMetadata{Facts: st}
 		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, channels.LibraryEpisodeResolver(st))
 		// Bulk duration resolution, so a cycle layout costs ONE Library read instead of one per
 		// movie (§9 N+1).
@@ -238,11 +239,11 @@ func buildChannels(
 			// Mid-roll breaks at measured scene fades (§10). The resolver is built after the
 			// engine (below), so this reads it at pass time; nil until then means none.
 			NaturalBreaks: func(ctx context.Context) schedule.NaturalBreakSource {
-				return playoutRes.naturalBreakSource(ctx)
+				return playoutRes.NaturalBreakSource(ctx)
 			},
 			// Measure ahead (#1518): the next two days' programmes go to the one measure worker.
 			Premeasure: func(ctx context.Context, libraryItemIDs []string) {
-				playoutRes.premeasure(ctx, libraryItemIDs)
+				playoutRes.Premeasure(ctx, libraryItemIDs)
 			},
 		}, time.Now, log).WithMetrics(metricRecorder).WithQualityRecorder(quality.NewSchedulingRecorder(st, log))
 		// Heal an entry that reached the scheduler unrated once its title is in the

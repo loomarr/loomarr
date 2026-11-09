@@ -272,7 +272,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   a commercial seen on any channel rests on every channel. One row per watched airing
   (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
   day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when
-  a viewer receives the clip's segments (`playoutResolver.RecordAiringServed`, called once per item
+  a viewer receives the clip's segments (`playoutresolve.Resolver.RecordAiringServed`, called once per item
   from the packager's segment serve path), keyed by scheduled start, so tune-ins and rebuilds cannot
   inflate it; resolving the airing is a read, so preview, reconcile, the guide and the Watch
   pickers' `/tracks` never write it. Programme airing history is written at the same point.
@@ -331,7 +331,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `language`.
 - **Intake follows the channels (#2030 decision 13).** The language rung and the splitter's
   per-segment check admit the union of the channels' commercial languages
-  (`filler.IntakeLanguages`), read live: adding a channel in a new language admits it with no
+  (`language.IntakeSet` in `internal/filler/language`), read live: adding a channel in a new language admits it with no
   settings change, and removing the last such channel stops new admissions without touching clips
   already catalogued. A detached channel does not count; a paused one does. A channel with no
   language at all turns the gate off. A split proposal snapshots the set, and review offers a

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -217,7 +219,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmp
 }
 
 // intakeLanguages is the language gate's wanted set, read live (#2030 decision 13): the union of
-// the channels' commercial languages (filler.IntakeLanguages). A detached channel no longer airs,
+// the channels' commercial languages (language.IntakeSet). A detached channel no longer airs,
 // so it no longer counts; a paused one resumes with its language, so it does.
 func intakeLanguages(st interface {
 	ListChannels(context.Context) ([]store.Channel, error)
@@ -238,7 +240,7 @@ func intakeLanguages(st interface {
 			}
 			own = append(own, lang)
 		}
-		return filler.IntakeLanguages(settings.FillerLanguage.Get(set), own), nil
+		return language.IntakeSet(settings.FillerLanguage.Get(set), own), nil
 	}
 }
 
@@ -265,12 +267,12 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck,
+	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
 	interactiveLLM *llm.InteractiveGate) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
 	encodeHost := func() encode.HostProfile {
-		return playoutRes.fileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
+		return playoutRes.FileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
 	}
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
@@ -281,12 +283,12 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	// HTTP client with a key. The wanted languages and the reject rule still hot-apply; changing
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
 	wantLanguages := intakeLanguages(st, set)
-	var langDetect filler.LanguageDetector
+	var langDetect language.Detector
 	if settings.ASRProvider.Get(set) == "hosted" {
 		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint
 		// should not need a second chat model that happens to accept audio just to answer the same
 		// question. The closures keep URL, model and credential changes live between clips.
-		langDetect = filler.NewHostedLanguage(
+		langDetect = language.NewHosted(
 			func() tools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
 			func() string { return settings.ASRModel.Get(set) },
 			settings.PlayoutFFmpegPath.Get(set), "")
@@ -295,7 +297,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		// `ggml-small.en.bin` — an ENGLISH-ONLY build that does not identify languages at all,
 		// so pointing this at it would answer "en" for every clip on earth and the gate would
 		// silently never reject anything.
-		langDetect = filler.NewWhisperLanguage(
+		langDetect = language.NewWhisper(
 			settings.IngestWhisperPath.Get(set), settings.FillerLanguageModel.Get(set),
 			settings.PlayoutFFmpegPath.Get(set), "")
 	}

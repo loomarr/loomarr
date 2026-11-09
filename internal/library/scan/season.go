@@ -75,7 +75,7 @@ type cachedSeason struct {
 // episode on disk in each season, does: it knows no other ordering, and each of those seasons
 // holds exactly that many episodes there. A record that does not say is not trusted.
 func numberedLikeDisk(d *mp.Descriptive, last map[int]int) bool {
-	if d == nil || d.Orderings == nil || *d.Orderings != 0 || len(last) == 0 {
+	if d == nil || d.Orders == nil || len(d.Orders) != 0 || len(last) == 0 {
 		return false
 	}
 	size := make(map[int]int, len(d.Seasons))

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -36,7 +37,7 @@ type playoutBuild struct {
 	service           api.Playout
 	resolverService   api.PlayoutResolver
 	guide             api.PlayoutGuide
-	resolver          *playoutResolver
+	resolver          *playoutresolve.Resolver
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
 	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
@@ -48,7 +49,7 @@ type playoutDeps struct {
 	store                 store.Store
 	settings              resolved
 	owner                 *generationLifecycle
-	captureResolver       func(*playoutResolver)
+	captureResolver       func(*playoutresolve.Resolver)
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
@@ -84,7 +85,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
 	var playoutGuideSvc api.PlayoutGuide
-	var playoutRes *playoutResolver
+	var playoutRes *playoutresolve.Resolver
 	var backendController *backendtransition.Controller
 	var residentVRAM func(context.Context) (float64, string)
 	// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
@@ -97,7 +98,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
 	// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
 	//   1. MEASURED capacity — what Detect's lazy encoder trial found this box sustains
-	//      (playoutRes.maxChannels). The source of truth for "how many encodes fit"; until the first
+	//      (playoutRes.MaxChannels). The source of truth for "how many encodes fit"; until the first
 	//      trial completes, EffectiveCapacity deliberately permits one conservative transcode.
 	//   2. OPERATOR SAFETY CAP — playout.max_channels, applied as a HARD CAP (min): an operator may
 	//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
@@ -117,7 +118,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	playoutBudget := func() int {
 		measured := 0
 		if playoutRes != nil {
-			measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
+			measured = playoutRes.MaxChannels() // published once by the lazy Detect trial
 		}
 		return effectivePlayoutCapacity(measured)
 	}
@@ -125,13 +126,13 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// prepared pool. Its facts are re-read per admission: the cgroup quota or CPU count, the CPU
 	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
 	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
-		hardware := playoutRes != nil && playoutRes.detectReady.Load() &&
-			!encode.IsSoftware(playoutRes.publishedEncoder())
+		hardware := playoutRes != nil && playoutRes.DetectReady() &&
+			!encode.IsSoftware(playoutRes.PublishedEncoder())
 		var costs *playout.MeasuredCosts
 		if playoutRes != nil {
 			enc := encode.Encoder(settings.PlayoutEncoder.Get(set))
 			if enc == "" {
-				enc = playoutRes.publishedEncoder()
+				enc = playoutRes.PublishedEncoder()
 			}
 			costs = playoutRes.CostsFor(enc)
 		}
@@ -171,53 +172,52 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 				"dir", legacyPrepared, "err", err)
 		}
 	})
-	playoutRes = &playoutResolver{
-		engine: channelEngine, now: time.Now,
-		metrics:       deps.metrics,
-		detectContext: rootCtx,
+	playoutRes = playoutresolve.New(playoutresolve.Config{
+		Engine: channelEngine, Now: time.Now,
+		Metrics:       deps.metrics,
+		DetectContext: rootCtx,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
-		titles: st,
+		Titles: st,
 		// Same store, narrowed to the one write the resolver legitimately makes: counting
 		// a filler clip as having aired (V28).
-		clipPlays: st,
+		ClipPlays: st,
 		// Airing history (§5, programming-design §3.1): the same store, narrowed to the one
 		// write. Recording what actually aired is what lets placement prefer titles that
 		// have NOT been on recently — the memory the scheduler previously lacked.
-		airings: st,
-		// The arranged-cycle cache and the channel read it fingerprints (cyclecache.go): the
+		Airings: st,
+		// The arranged-cycle cache's channel read (playoutresolve's cyclecache.go): the
 		// guide re-arranges every channel on every poll, which profiled as 53% of the
 		// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
 		// cache bug degrades a grid rather than a broadcast.
-		channels: st,
+		Channels: st,
 		// The store, narrowed to the single derived-column write ComputeChannelCodec makes
 		// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
-		codecs: st,
+		Codecs: st,
 		// The Library's tracks for a file the scanner read: audio selection's first answer.
-		libraryAudio: st,
-		libraryFile:  st,
-		libraryVideo: st,
-		itemFacts:    st,
-		cycles:       newCycleCache(time.Now),
-		tier:         func() string { return settings.PlayoutQualityTier.Get(set) },
-		encoder:      func() string { return settings.PlayoutEncoder.Get(set) },
+		LibraryAudio: st,
+		LibraryFile:  st,
+		LibraryVideo: st,
+		ItemFacts:    st,
+		Tier:         func() string { return settings.PlayoutQualityTier.Get(set) },
+		Encoder:      func() string { return settings.PlayoutEncoder.Get(set) },
 		// The operator's HDR curve: the probe measures it and the budget prices HDR by it.
-		toneCurve: func() string { return settings.PlayoutToneCurve.Get(set) },
-		// fillerDir belongs to the immutable generation layout. Changing storage roots
-		// is applied only after the generation drains and rebuilds (§10); `pods` is
-		// assigned after the pod adapter is built further down.
-		fillerDir: fillerLayout.ClipDir(),
+		ToneCurve: func() string { return settings.PlayoutToneCurve.Get(set) },
+		// FillerDir belongs to the immutable generation layout. Changing storage roots
+		// is applied only after the generation drains and rebuilds (§10); the pod assembler
+		// is attached (SetPods) after the pod adapter is built further down.
+		FillerDir: fillerLayout.ClipDir(),
 		// The capability probe runs lazily on the first program that needs it, when
 		// playout.encoder is unset — so a box with a working GPU uses it instead of
 		// silently falling back to software.
-		ffmpegPath:     func() string { return settings.PlayoutFFmpegPath.Get(set) },
-		capabilityRoot: func() string { return stateDir },
+		FFmpegPath:     func() string { return settings.PlayoutFFmpegPath.Get(set) },
+		CapabilityRoot: func() string { return stateDir },
 		// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
 		// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
 		// so playout picks NVENC on an NVIDIA card rather than young cross-vendor Vulkan. Called
 		// once, lazily, inside the memoised capability probe; "" (unknown GPU) is a fine default.
 		// Bound the external identity command because this cheap check can run on the first tune.
-		gpuName: func() string {
+		GPUName: func() string {
 			ctx, cancel := context.WithTimeout(rootCtx, playoutGPUIdentityTimeout)
 			defer cancel()
 			return llm.GPUName(ctx)
@@ -225,22 +225,21 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// Preferred audio language (§9.1), read live so a Settings change applies to the
 		// next programme rather than the next restart. The prober derives ffprobe from the
 		// ffmpeg path — the two ship together, so an operator who moved one moved both.
-		audioLanguage:      func() string { return settings.PlayoutAudioLanguage.Get(set) },
-		inventory:          inventory.New(st),
-		probeSource:        playout.FFprobeSourceNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
-		probeTracks:        playout.FFprobeTracksNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
-		probeFormat:        playout.FFprobeFormatNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
-		processDiagnostics: deps.processDiagnostics,
-		log:                log,
-	}
+		AudioLanguage:      func() string { return settings.PlayoutAudioLanguage.Get(set) },
+		Inventory:          inventory.New(st),
+		ProbeSource:        playout.FFprobeSourceNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		ProbeTracks:        playout.FFprobeTracksNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		ProbeFormat:        playout.FFprobeFormatNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		ProcessDiagnostics: deps.processDiagnostics,
+		Log:                log,
+	})
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
 	// the app's lifetime; sources are read directly through the path map, never through Emby.
 	ffmpegBin := settings.PlayoutFFmpegPath.Get(set)
-	measurer := playoutRes.newMeasurer(
+	measurer := playoutRes.NewMeasurer(
 		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
-	playoutRes.measurer = measurer
-	playoutRes.analyses = st
+	playoutRes.SetMeasurer(measurer, st)
 	go measurer.Run(rootCtx)
 	playoutResolverSvc = playoutRes
 
@@ -285,15 +284,15 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// The capacity probe (#1512 G5/G11) runs at boot, off the critical path: until it publishes, the
 	// budget keeps the whole-stream measurement. Its tone-map self-check reports to Current Health.
 	if deps.capacityProbe {
-		playoutRes.onTonemap = func(check playout.TonemapCheck) {
-			if obs, ok := tonemapObservation(check); ok {
+		playoutRes.SetTonemapObserver(func(check playout.TonemapCheck) {
+			if obs, ok := playoutresolve.TonemapObservation(check); ok {
 				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
 			}
-		}
+		})
 		deps.startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped,
 			"checked by Current Health once the capacity probe finishes", "/settings/system/playback", "")
 		// Background work: the probe yields to a viewer the moment a live transcode is admitted.
-		owner.goRun(func(ctx context.Context) { playoutRes.probeCapacity(ctx, resourceBudget) })
+		owner.goRun(func(ctx context.Context) { playoutRes.ProbeCapacity(ctx, resourceBudget) })
 	} else {
 		deps.startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped,
 			"capacity probe disabled", "", "")
@@ -319,14 +318,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// `ffmpeg -filters` probes, ~0.2 s of the first tune after a restart): idle channels start no
 	// FFmpeg, and those probes are FFmpeg runs.
 	tonemap, gpuFilters := playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set))
-	if pk, perr := playout.NewPackagerHLS(packagerSource{
-		res:     playoutRes,
-		tonemap: tonemap,
-		gpu:     gpuFilters,
+	if pk, perr := playout.NewPackagerHLS(playoutresolve.PackagerSource{
+		Res:     playoutRes,
+		Tonemap: tonemap,
+		GPU:     gpuFilters,
 		// Filler loudness (#1512 G6), read live so a changed target applies at the next clip.
-		targetLUFS: func() string { return settings.FillerTargetLufs.Get(set) },
-		watermark:  deps.watermarks.For,
-		log:        log,
+		TargetLUFS: func() string { return settings.FillerTargetLufs.Get(set) },
+		Watermark:  deps.watermarks.For,
+		Log:        log,
 	}, settings.PlayoutFFmpegPath.Get(set), settings.PlayoutHLSDir.Get(set), playout.DefaultGrace, log); perr != nil {
 		log.Warn("internal playout: channel packager unavailable — live playout disabled", "err", perr)
 	} else {

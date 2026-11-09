@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -37,7 +38,7 @@ type ListingGate struct {
 	// Station returns the call sign of the nearby station the title names, held on the title's
 	// date. False when the title names none, or a station outside every place's radius.
 	Station func(title string) (callSign string, ok bool)
-	// Languages are the languages the channels air (IntakeLanguages). Empty airs every language.
+	// Languages are the languages the channels air (language.IntakeSet). Empty airs every language.
 	Languages string
 }
 
@@ -61,7 +62,7 @@ func (g ListingGate) Admit(ref source.Item, eras []EraRange) (callSign, refused 
 	if unsafeListing(title) {
 		return "", ListingUnsafe
 	}
-	if foreignListing(title, LanguageList(g.Languages)) {
+	if foreignListing(title, language.SplitSet(g.Languages)) {
 		return "", ListingLanguage
 	}
 	years := listingYears.FindAllString(title, -1)

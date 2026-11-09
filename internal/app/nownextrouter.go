@@ -73,7 +73,7 @@ type tunarrGuideReader interface {
 	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]api.NowNextEntry, error)
 }
 
-// broadcastReader is the resolver slice the router needs — satisfied by *playoutResolver.
+// broadcastReader is the resolver slice the router needs — satisfied by *playoutresolve.Resolver.
 type broadcastReader interface {
 	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
 }

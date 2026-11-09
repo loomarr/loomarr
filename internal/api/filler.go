@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -437,7 +438,7 @@ func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
 // playsCounted reports whether THIS install can observe a filler clip airing.
 //
 // It is exactly "does internal playout run here": the resolver is what records a play (see
-// playoutadapter.airingFiller), and a Tunarr-backed install has none — its filler is aired by
+// playoutresolve.Resolver.airingFiller), and a Tunarr-backed install has none — its filler is aired by
 // Tunarr, which never reports back. Deriving it from the same field the program route checks
 // means the flag cannot drift from the behaviour it describes.
 func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
@@ -1348,8 +1349,8 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 	}
 	return &getFillerSplitOutput{Body: SplitReviewProposalDTO{
 		ID: p.ID, ClipHash: p.ClipHash, CreatedAt: p.CreatedAt, Segments: segments,
-		CheckedLanguages:   filler.LanguageList(p.LanguagePreference),
-		CurrentLanguages:   filler.LanguageList(current),
+		CheckedLanguages:   language.SplitSet(p.LanguagePreference),
+		CurrentLanguages:   language.SplitSet(current),
 		LanguageExclusions: p.LanguageExclusions,
 	}}, nil
 }

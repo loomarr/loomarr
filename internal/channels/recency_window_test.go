@@ -86,7 +86,7 @@ func reconcileDesired(t *testing.T, e *channels.Engine, st store.Store, id strin
 	return ch
 }
 
-// tuneIn does what playoutResolver.AiringAt does when a viewer tunes in: resolve the programme on
+// tuneIn does what playoutresolve.Resolver.AiringAt does when a viewer tunes in: resolve the programme on
 // air from the accepted cycle and record its airing, stamped with the programme's start.
 func tuneIn(t *testing.T, st store.Store, ch store.Channel, now time.Time) playout.Airing {
 	t.Helper()

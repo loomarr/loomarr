@@ -5,19 +5,18 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/language"
 )
 
 // The LANGUAGE stage (§10 V51b): what language is the speech in, and does some channel air it
 // (#2030 decision 13)?
 //
-// The logic is V40's `LanguageJob` unchanged — same detector seam, same `LanguageSpan` window,
-// same `LanguageRejects` verdict. What changes is everything around it: the job's own work list,
-// its own batch constant and its own tombstone call are gone, because the runner owns all three.
+// The decision is the language package's: its detector seam, its `language.Span` window and its
+// `language.Rejects` verdict. The runner owns the work list, the batching and the tombstones.
 //
-// ⚠ **The window V40 documented is now closed, and that is the point of moving it.** The job ran
-// on a timer *after* a clip was already catalogued, so a foreign clip could air once before the
-// gate reached it — an accepted cost of not blocking the scan. As a rung it runs before the clip
-// becomes Ready, so there is no window at all.
+// ⚠ It is a rung, so it runs before the clip becomes Ready: a foreign clip never airs before the
+// gate has heard it.
 
 // LanguageClipStore is the slice of the store the language stage writes through.
 type LanguageClipStore interface {
@@ -28,10 +27,10 @@ type LanguageClipStore interface {
 
 // LanguageStage hears a clip and refuses the ones speaking the wrong language.
 type LanguageStage struct {
-	detector LanguageDetector
+	detector language.Detector
 	store    LanguageClipStore
 	clipDir  string
-	// want is the set of languages filler may be in (IntakeLanguages), read live so a new channel
+	// want is the set of languages filler may be in (language.IntakeSet), read live so a new channel
 	// or a settings change applies on the next pass. Empty ⇒ the gate is off and the stage does not
 	// apply. It reads the channels, so it can fail.
 	want func(context.Context) (string, error)
@@ -40,7 +39,7 @@ type LanguageStage struct {
 
 // NewLanguageStage builds the stage. A nil detector or an empty `want` makes it permanently
 // inapplicable, so an install that has not opted in pays nothing and its ladder says why.
-func NewLanguageStage(detector LanguageDetector, store LanguageClipStore, clipDir string, want func(context.Context) (string, error), now func() time.Time) *LanguageStage {
+func NewLanguageStage(detector language.Detector, store LanguageClipStore, clipDir string, want func(context.Context) (string, error), now func() time.Time) *LanguageStage {
 	if now == nil {
 		now = time.Now
 	}
@@ -87,7 +86,7 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 			return StageResult{}, fmt.Errorf("read the channels' commercial languages: %w", err)
 		}
 	}
-	start, end := LanguageSpan(c.DurationMs)
+	start, end := language.Span(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 
 	detected, err := s.detector.DetectLanguage(ctx, file, start, end)
@@ -99,7 +98,7 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 	}
 	reportProgress(ctx, StageLanguage, 100)
 
-	if detected == LangUndetermined {
+	if detected == language.Undetermined {
 		// ⚠ **The backend ran and could not tell — treated as a failure so the retry ladder
 		// applies, which is a deliberate change from V40's forever-retry.** The old job left
 		// `language` empty and re-asked on every tick, so an install with `want` set and no
@@ -123,14 +122,14 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 	updated := c
 	updated.Language = detected
 
-	if detected == LangNone {
+	if detected == language.None {
 		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "no speech to judge"}, nil
 	}
-	if LanguageRejects(detected, want) {
+	if language.Rejects(detected, want) {
 		return StageResult{
 			Clip: updated, Verdict: VerdictReject, Reason: ReasonLanguage,
 			Detail: fmt.Sprintf("heard %s; the channels air %s",
-				NormalizeLanguage(detected), languageNames(want)),
+				language.Normalize(detected), language.Names(want)),
 		}, nil
 	}
 	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil

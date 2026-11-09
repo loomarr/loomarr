@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
@@ -90,9 +91,7 @@ func buildSuggestions(
 	result.imageFetcher = registerImageJobs(
 		rootCtx, registry, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
 	)
-	result.timelineThumbs = newTimelineThumbs(rootCtx, timelineThumbResolver{
-		tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher,
-	}, log)
+	result.timelineThumbs = playoutresolve.NewTimelineThumbs(rootCtx, tmdbClient, result.images, result.imageFetcher, log)
 	if engine, ok := channelService.(*channels.Engine); ok {
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}

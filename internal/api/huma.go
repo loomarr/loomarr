@@ -1112,7 +1112,7 @@ type Options struct {
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout
 	// IntakeLanguages is the languages intake admits now, the channels' commercial languages
-	// (filler.IntakeLanguages), read live. Split review compares a proposal with it; nil reports none.
+	// (language.IntakeSet), read live. Split review compares a proposal with it; nil reports none.
 	IntakeLanguages func(context.Context) (string, error)
 	SystemLLM       SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper

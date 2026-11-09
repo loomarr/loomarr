@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
@@ -301,7 +302,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 		if err != nil {
 			return header.Header{}, err
 		}
-		facts := inventoryFactsOf(observed)
+		facts := playoutresolve.InventoryFactsOf(observed)
 		return header.Header{
 			Container: facts.Container, DurationMillis: facts.DurationMillis, Bitrate: facts.Bitrate,
 			Streams: facts.Streams,

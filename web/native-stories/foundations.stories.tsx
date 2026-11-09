@@ -1,6 +1,7 @@
 import {
   ActivityIndicator,
   BrandLockup,
+  LoadingStrip,
   Screen,
   SignalLoader,
   Skeleton,
@@ -24,6 +25,7 @@ const Foundations = ({
         <Text density={density} textRole="title">
           Loading vocabulary
         </Text>
+        <LoadingStrip accessibilityLabel="Loading channels" density={density} reducedMotion={reducedMotion} />
         <ActivityIndicator
           accessibilityLabel="Refreshing guide"
           reducedMotion={reducedMotion}

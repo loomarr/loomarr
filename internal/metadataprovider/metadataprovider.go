@@ -58,6 +58,10 @@ const (
 	// KindSeason is one season of a series in a catalog's numbering. Its record's Children are the
 	// season's episodes, numbered; it is fetched by "<series id>/<season>".
 	KindSeason Kind = "season"
+	// KindEpisodeOrder is one of a series' other episode orders (an EpisodeOrder), fetched by its
+	// id. Its record's Children are the order's episodes numbered as the order numbers them, and
+	// its Descriptive.Seasons are the order's seasons and their sizes.
+	KindEpisodeOrder Kind = "episode_order"
 )
 
 // Family is a group of fields that share one precedence rule.

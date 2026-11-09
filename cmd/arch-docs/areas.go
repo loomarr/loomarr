@@ -149,7 +149,7 @@ var areas = []area{
 			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
 			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
-			"filler/source/youtube", "filler/location",
+			"filler/source/youtube", "filler/location", "filler/language",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -210,8 +210,10 @@ var areas = []area{
 		Name:  "edge",
 		Title: "Edge",
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
-			"is the composition root that builds every other area and hands them to it.",
-		Packages:       []string{"api", "app"},
+			"is the composition root that builds every other area and hands them to it. " +
+			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
+			"settings that `playout` must not know about.",
+		Packages:       []string{"api", "app", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{
@@ -226,7 +228,8 @@ var areas = []area{
 			"testkit", "testkit/execfixture", "testkit/httpfixture",
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
-			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "platform/store/storetest",
+			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
+			"platform/store/storetest",
 			"demolibrary", "tmdb/tmdbstandin", "integration", "eval",
 		},
 		ImportsAnyArea: true,
