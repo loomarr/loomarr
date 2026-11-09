@@ -13,10 +13,9 @@ import {
   Field,
   Tooltip,
 } from "@loomarr/design-system";
-import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { ChevronRight, Pencil } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
@@ -300,31 +299,28 @@ const SplitReviewEditor = ({
             </DialogHeader>
             <div className="flex flex-col gap-5 p-6">
               <div className="flex items-center justify-between gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                <Action
+                  accessibilityLabel="Previous clip"
                   disabled={selectedIndex === 0}
-                  onClick={() => setSelectedKey(draft[selectedIndex - 1]?.key)}
-                  aria-label="Previous clip"
+                  icon="earlier"
+                  onPress={() => setSelectedKey(draft[selectedIndex - 1]?.key)}
+                  variant="outline"
                 >
-                  <ChevronLeft aria-hidden />
                   Previous
-                </Button>
+                </Action>
                 <span className="text-muted-foreground font-mono text-xs tabular-nums">
                   {selectedIndex + 1} / {draft.length}
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                <Action
+                  accessibilityLabel="Next clip"
                   disabled={selectedIndex === draft.length - 1}
-                  onClick={() => setSelectedKey(draft[selectedIndex + 1]?.key)}
-                  aria-label="Next clip"
+                  icon="later"
+                  iconPlacement="end"
+                  onPress={() => setSelectedKey(draft[selectedIndex + 1]?.key)}
+                  variant="outline"
                 >
                   Next
-                  <ChevronRight aria-hidden />
-                </Button>
+                </Action>
               </div>
 
               <SegmentInspector
