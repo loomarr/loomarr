@@ -53,40 +53,9 @@ var ErrConditionedClipMismatch = clipstore.ErrConditionedClipMismatch
 // It is clipstore.ErrTaxonConflict, the same value under a second name.
 var ErrTaxonConflict = clipstore.ErrTaxonConflict
 
-// ErrProposalNotSubmitted reports a terminal proposal decision that lost the
-// submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
-// the proposal exists, but another decision already won.
-var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
-
-// ErrProposalSuperseded reports an approval candidate whose job already has an
-// approved proposal created at the same time or later. Same-second ties fail closed:
-// proposal timestamps are stored at second resolution, so guessing an order could
-// roll a channel back to content the operator reviewed earlier.
-var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
-
-// ErrProposalNotRevisable reports a request to revise anything except the newest
-// submitted proposal on a terminal suggestion job. A revision is a compare-and-swap
-// over the review the operator actually saw; stale, decided, and active copies fail.
-var ErrProposalNotRevisable = errors.New("store: proposal is not revisable")
-
-// ErrProposalRevisionActive keeps the approval gate closed while a replacement is
-// generating. A failed replacement returns the job to a terminal state and the
-// prior submitted proposal becomes approvable again.
-var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
-
-// ErrJobNotRunning reports a generation completion that lost the running -> done
-// compare-and-swap. The proposal insert shares that transaction, so this error
-// guarantees that no orphan proposal was persisted.
-var ErrJobNotRunning = errors.New("store: suggestion job is not running")
-
 // ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
 // with different facts.
 var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
-
-// ErrJobOwnershipMismatch reports a result whose proposal requester differs
-// from the requester persisted on its job. It prevents a worker/store wiring
-// mistake from moving generated content across user audit lifecycles.
-var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.

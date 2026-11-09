@@ -42,6 +42,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -225,7 +226,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
 	// pair left no proposal_job_attempts row, so the workflow's own invariant check
 	// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
-	if err := st.CreateSuggestionResult(ctx, store.Job{
+	if err := st.CreateSuggestionResult(ctx, proposalstore.Job{
 		ID:         jobID,
 		Kind:       "suggest",
 		Status:     "done",
@@ -234,7 +235,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedBy:  adminID,
 		CreatedAt:  now,
 		UpdatedAt:  now,
-	}, store.Proposal{
+	}, proposalstore.Proposal{
 		ID:        propID,
 		JobID:     jobID,
 		Status:    "submitted",

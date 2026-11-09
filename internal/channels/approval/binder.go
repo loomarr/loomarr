@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -36,8 +37,8 @@ type Store interface {
 	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
-	GetJob(ctx context.Context, id string) (store.Job, error)
-	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
+	GetJob(ctx context.Context, id string) (proposalstore.Job, error)
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (proposalstore.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -134,7 +135,7 @@ func NewChannelID() string { return newChannelID() }
 // method does not query "newest approved" by job: before the approval transaction
 // commits, the candidate is necessarily not visible through that query, and resolving
 // again could pair the candidate's audit identity with another proposal's content.
-func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
+func (b *Binder) PlanApprovedChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	if p.Status != "approved" {
 		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
 	}
@@ -144,7 +145,7 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (cha
 // PlanSubmittedChannel derives an unsaved channel for a pending proposal outlook.
 // It shares approval planning while preserving the submitted status and performs
 // no writes or post-commit work. Callers first use accept.PrepareApproval.
-func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
+func (b *Binder) PlanSubmittedChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	if p.Status != "submitted" {
 		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
 	}
@@ -154,7 +155,7 @@ func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (ch
 // planChannel is the impure shell around Bind: it reads the channel the job changes, the job
 // itself, a free number and the availability of the existing lineup, hands them to the pure Bind,
 // and logs what an unattended auto-curate bind dropped.
-func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
+func (b *Binder) planChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
 		return channelstore.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)

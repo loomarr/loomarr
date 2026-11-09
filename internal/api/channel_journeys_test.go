@@ -13,8 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -72,7 +72,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore
 		Approver: accept.NewApprover(st, b, channeljourney.Clock),
 	}))
 	t.Cleanup(srv.Close)
-	if err := createProposalWithJob(st, ctx, store.Proposal{
+	if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
 		ID: "reference", JobID: "reference-job", Status: "submitted",
 		Body: tc.Proposal, CreatedBy: "alice",
 	}); err != nil {
@@ -154,7 +154,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			pick.InLibrary, pick.LibraryItemID = false, ""
 			fixture.Proposal.Lineup = nil
 			fixture.Proposal.Acquisitions = []proposals.ProposalItem{pick}
-			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
+			if err := createProposalWithJob(st, ctx, proposalstore.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
 				t.Fatal(err)
 			}
 			resp := do(t, srv, http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")

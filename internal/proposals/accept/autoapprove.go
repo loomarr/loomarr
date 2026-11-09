@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -56,7 +57,7 @@ func NewAutoApprover(
 }
 
 // Consider applies the grant to a just-created proposal.
-func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (proposals.AutoDecision, error) {
+func (a *AutoApprover) Consider(ctx context.Context, p proposalstore.Proposal) (proposals.AutoDecision, error) {
 	if a == nil || p.CreatedBy == "" {
 		return proposals.AutoDecision{Reason: "no requester"}, nil
 	}

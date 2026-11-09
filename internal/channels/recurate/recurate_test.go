@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -64,11 +65,11 @@ func inLibItem(n int, name, libID string) proposals.ProposalItem {
 }
 
 // seedProposal writes a submitted proposal for jobID with the given picks.
-func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) store.Proposal {
+func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) proposalstore.Proposal {
 	t.Helper()
 	body := proposals.Proposal{Lineup: lineup, Acquisitions: acquisitions}
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}

@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -39,8 +39,8 @@ func existingChannel(lineup ...schedule.LineupEntry) channelstore.Channel {
 	return ch
 }
 
-func proposalFrom(approvedBy string, body proposals.Proposal) store.Proposal {
-	return store.Proposal{ID: "p1", JobID: "job-1", Status: "approved", CreatedBy: "requester", ApprovedBy: approvedBy, Body: body}
+func proposalFrom(approvedBy string, body proposals.Proposal) proposalstore.Proposal {
+	return proposalstore.Proposal{ID: "p1", JobID: "job-1", Status: "approved", CreatedBy: "requester", ApprovedBy: approvedBy, Body: body}
 }
 
 func titles(entries []schedule.LineupEntry) []string {
@@ -261,7 +261,7 @@ func TestBindRefusals(t *testing.T) {
 		in   approval.BindInput
 	}{
 		{"a proposal with no job has no channel to bind to", approval.BindInput{
-			Proposal: store.Proposal{ID: "p1", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{item(1, "One")}}}, Number: 1, Now: bindNow,
+			Proposal: proposalstore.Proposal{ID: "p1", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{item(1, "One")}}}, Number: 1, Now: bindNow,
 		}},
 		{"a pick with no external id cannot be keyed", approval.BindInput{
 			Proposal: proposalFrom("admin", proposals.Proposal{Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, Name: "No id"}}}), Number: 1, Now: bindNow,

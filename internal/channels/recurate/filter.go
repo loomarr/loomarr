@@ -7,8 +7,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -36,7 +36,7 @@ type retirement struct {
 
 // filterResult carries the rewritten proposal plus what it discarded and why.
 type filterResult struct {
-	Proposal store.Proposal
+	Proposal proposalstore.Proposal
 	BelowBar []dropped
 	OverCap  []dropped
 	// Retired are the keys the caller must remove from the channel's lineup, paired with
@@ -53,7 +53,7 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch channelstore.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
+func filterAcquisitionsProtected(p proposalstore.Proposal, ch channelstore.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
 	body := p.Body
 	var res filterResult
 
