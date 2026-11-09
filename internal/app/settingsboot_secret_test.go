@@ -126,7 +126,7 @@ func TestBootSettingsOpensNamespacedLLMKeys(t *testing.T) {
 func TestStorePersisterEncryptsOnlySecretSettings(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	protection := testSecretProtection(t, st)
-	persister := storePersister{st: st, protection: protection}
+	persister := protectedsettings.NewPersister(st, protection)
 	if err := persister.Apply(context.Background(), settings.PersistenceBatch{Upserts: []settings.PersistedSetting{
 		{Key: "notifications.smtp.password", Value: "smtp-secret"},
 		{Key: "notifications.smtp.host", Value: "mail.example.com"},
@@ -191,7 +191,7 @@ func TestBootSettingsFailsClosedOnPlaintextProtectedSettings(t *testing.T) {
 func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	protection := testSecretProtection(t, st)
-	persister := storePersister{st: st, protection: protection}
+	persister := protectedsettings.NewPersister(st, protection)
 	if err := persister.Apply(context.Background(), settings.PersistenceBatch{Upserts: []settings.PersistedSetting{
 		{Key: "notifications.smtp.password", Value: "smtp-before-rotation"},
 	}}); err != nil {

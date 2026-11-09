@@ -94,7 +94,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 // committed write on the live-update stream, so other tabs refetch settings-derived reads.
 func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(context.Context, map[string]string) error {
 	return func(ctx context.Context, edits map[string]string) error {
-		results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
+		results, err := set.svc.Patch(ctx, protectedsettings.NewPersister(st, set.protection), edits, "system")
 		saved := false
 		for _, r := range results {
 			saved = saved || r.Status == settings.PatchSaved
