@@ -38,7 +38,7 @@ func TestInvitationRedemption_PublicPreviewRequiresExplicitSubmitAndIssuesSessio
 	redemption := auth.NewInvitationRedemptionService(st, nil, mgr, func() string { return "user-ada" },
 		func() time.Time { return at.Add(time.Minute) })
 	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: api.NewSessionAuthorizer(mgr, "break-glass"),
+		Store: st, Auth: sessionAuth(mgr, "break-glass"),
 		Login:    auth.NewLoginService(nil, st, mgr, nil, func() time.Time { return at.Add(time.Minute) }),
 		Sessions: mgr, InvitationRedemption: redemption, CookieSecure: "false",
 	})

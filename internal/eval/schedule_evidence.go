@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -271,7 +271,7 @@ func verifyLibraryOwnershipBinding(ctx context.Context, lib LibraryReader, key p
 	if mediaType == provision.Series {
 		libraryMediaType = library.Series
 	}
-	detail, present, err := catalog.OwnedTitle(ctx, lib, library.TMDB, strconv.Itoa(id), libraryMediaType)
+	detail, present, err := titlesearch.OwnedTitle(ctx, lib, library.TMDB, strconv.Itoa(id), libraryMediaType)
 	if err != nil {
 		return fmt.Errorf("verify Library ownership binding for %s: %w", key, err)
 	}

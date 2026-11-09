@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -30,7 +30,7 @@ func (s libraryTitleScanner) scan(ctx context.Context, since time.Time) ([]libra
 	}
 	out := make([]library.SearchResult, 0, len(titles))
 	for _, t := range titles {
-		out = append(out, catalog.LibrarySearchResult(t))
+		out = append(out, titlesearch.LibrarySearchResult(t))
 	}
 	return out, nil
 }
@@ -45,6 +45,6 @@ type libraryLookup struct {
 func (l libraryLookup) Lookup(
 	ctx context.Context, kind library.ProviderKind, id string, mt library.MediaType,
 ) (string, bool, error) {
-	t, ok, err := catalog.OwnedTitle(ctx, l.titles, kind, id, mt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, l.titles, kind, id, mt)
 	return t.ID, ok, err
 }

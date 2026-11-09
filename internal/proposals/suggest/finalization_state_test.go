@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -30,7 +30,7 @@ func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T
 			}
 			model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 			references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			const prefix = "This is the reference intent-interpretation phase."
 			model.OnChat = func() {
 				if model.Calls == 1 || model.Calls == 2 {
@@ -95,7 +95,7 @@ func TestSuggest_FinalizationCarriesAcceptedMeaningThroughRepair(t *testing.T) {
 					}
 				}
 			}
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), intent)
 			if err != nil {
 				t.Fatal(err)

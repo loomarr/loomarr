@@ -12,7 +12,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/textmatch"
@@ -29,7 +29,7 @@ const (
 )
 
 type membershipSourceResolution struct {
-	candidate catalog.Candidate
+	candidate titlesearch.Candidate
 	found     bool
 }
 
@@ -57,7 +57,7 @@ var (
 )
 
 type referenceGrounding struct {
-	candidates []catalog.Candidate
+	candidates []titlesearch.Candidate
 	trace      proposals.DecisionTrace
 	messages   []llm.Message
 }
@@ -75,8 +75,8 @@ type sourceGroundingState struct {
 
 type sourceGroundingResult struct {
 	reference referenceGrounding
-	curated   []catalog.Candidate
-	explicit  []catalog.Candidate
+	curated   []titlesearch.Candidate
+	explicit  []titlesearch.Candidate
 }
 
 func newSourceGroundingState(intent Intent) sourceGroundingState {
@@ -98,7 +98,7 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 			return sourceGroundingResult{}, err
 		}
 		if len(referenceResult.candidates) == 0 {
-			return sourceGroundingResult{}, ErrNoGroundedTitles
+			return sourceGroundingResult{}, proposals.ErrNoGroundedTitles
 		}
 		result.reference = referenceResult
 	}
@@ -143,14 +143,14 @@ func (e *referenceReadError) Unwrap() error { return e.err }
 // groundExplicitRequiredTitles resolves required user titles independently of
 // the model. Named sets additionally record membership; ordinary themes retain
 // the exact binding only for deterministic inclusion and namesake rejection.
-func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning) ([]catalog.Candidate, error) {
+func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning) ([]titlesearch.Candidate, error) {
 	titles := directIncludedTitles(*intent)
 	examples := make(map[string]bool)
 	for _, title := range exampleTitles(*intent) {
 		examples[strings.ToLower(title)] = true
 	}
 	type result struct {
-		candidates []catalog.Candidate
+		candidates []titlesearch.Candidate
 		err        error
 	}
 	results := make([]result, len(titles))
@@ -159,12 +159,12 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[index].candidates, results[index].err = s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+			results[index].candidates, results[index].err = s.catalog.Search(ctx, title, titlesearch.ScopeAll, catalogSearchLimit)
 		}()
 	}
 	wg.Wait()
-	anchored := make([]catalog.Candidate, 0, len(titles))
-	var directExamples, franchiseExamples []catalog.Candidate
+	anchored := make([]titlesearch.Candidate, 0, len(titles))
+	var directExamples, franchiseExamples []titlesearch.Candidate
 	for index, title := range titles {
 		if titleExplicitlyExcluded(*intent, title) {
 			continue
@@ -233,9 +233,9 @@ type MovieCollectionResolver interface {
 // collection lookup, so members that don't carry the name ("Raiders of the
 // Lost Ark") are found; without a resolver, or when it fails, the name-prefix
 // hits alone stand in.
-func (s *Suggester) franchiseMembers(ctx context.Context, candidates []catalog.Candidate, title string, meaning ValidatedDateMeaning) []catalog.Candidate {
+func (s *Suggester) franchiseMembers(ctx context.Context, candidates []titlesearch.Candidate, title string, meaning ValidatedDateMeaning) []titlesearch.Candidate {
 	prefix := normalizeTitleLabel(title) + " "
-	var pool []catalog.Candidate
+	var pool []titlesearch.Candidate
 	var seeds []provision.Key
 	for _, candidate := range candidates {
 		key, err := candidate.Key()
@@ -261,7 +261,7 @@ func (s *Suggester) franchiseMembers(ctx context.Context, candidates []catalog.C
 		}
 	}
 	seen := make(map[provision.Key]bool, len(pool))
-	var members []catalog.Candidate
+	var members []titlesearch.Candidate
 	for _, candidate := range pool {
 		key, err := candidate.Key()
 		if err != nil || seen[key] || !candidate.InLibrary || candidateOutsideTitleDateRange(candidate, meaning) {
@@ -276,15 +276,15 @@ func (s *Suggester) franchiseMembers(ctx context.Context, candidates []catalog.C
 
 // bestExampleCandidate picks one of several exact-title namesakes: owned first,
 // then most-voted, then earliest. exact reports whether any namesake existed.
-func bestExampleCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
-	var exact []catalog.Candidate
+func bestExampleCandidate(candidates []titlesearch.Candidate, title string) (titlesearch.Candidate, bool) {
+	var exact []titlesearch.Candidate
 	for _, candidate := range candidates {
 		if _, err := candidate.Key(); err == nil && sameExactTitle(candidate.Name, title) {
 			exact = append(exact, candidate)
 		}
 	}
 	if len(exact) == 0 {
-		return catalog.Candidate{}, false
+		return titlesearch.Candidate{}, false
 	}
 	sort.SliceStable(exact, func(i, j int) bool {
 		if exact[i].InLibrary != exact[j].InLibrary {
@@ -334,14 +334,14 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 		intent.membershipKeys = make(map[provision.Key]bool)
 	}
 
-	byKey := make(map[provision.Key]catalog.Candidate)
+	byKey := make(map[provision.Key]titlesearch.Candidate)
 	messages := make([]llm.Message, 0, len(titles)*2)
 	for index, title := range prioritizedReferenceTitles(*intent, titles, hints) {
-		candidates, searchErr := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+		candidates, searchErr := s.catalog.Search(ctx, title, titlesearch.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
 			return referenceGrounding{}, true, fmt.Errorf("search reference title %q: %w", title, searchErr)
 		}
-		exact := make([]catalog.Candidate, 0, len(candidates))
+		exact := make([]titlesearch.Candidate, 0, len(candidates))
 		expectedMediaType := mediaTypes[strings.ToLower(title)]
 		expectedYear := years[strings.ToLower(title)]
 		for _, candidate := range candidates {
@@ -370,7 +370,7 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 		intent.membershipKeys[key] = true
 	}
 
-	candidates := make([]catalog.Candidate, 0, len(byKey))
+	candidates := make([]titlesearch.Candidate, 0, len(byKey))
 	for _, candidate := range byKey {
 		candidates = append(candidates, candidate)
 	}
@@ -379,7 +379,7 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 	if len(ranked.Candidates) > catalogSearchLimit {
 		ranked.Candidates = ranked.Candidates[:catalogSearchLimit]
 	}
-	intent.referenceCandidates = append([]catalog.Candidate(nil), ranked.Candidates...)
+	intent.referenceCandidates = append([]titlesearch.Candidate(nil), ranked.Candidates...)
 
 	return referenceGrounding{
 		candidates: ranked.Candidates,
@@ -509,8 +509,8 @@ func sameCuratedTitleSubject(candidate, subject string) bool {
 	return sameExactTitle(trimThe(candidate), trimThe(subject))
 }
 
-func unambiguousCuratedTitleCandidate(candidates []catalog.Candidate, subject string) (catalog.Candidate, bool) {
-	byKey := make(map[provision.Key]catalog.Candidate)
+func unambiguousCuratedTitleCandidate(candidates []titlesearch.Candidate, subject string) (titlesearch.Candidate, bool) {
+	byKey := make(map[provision.Key]titlesearch.Candidate)
 	for _, candidate := range candidates {
 		if !sameCuratedTitleSubject(candidate.Name, subject) {
 			continue
@@ -520,15 +520,15 @@ func unambiguousCuratedTitleCandidate(candidates []catalog.Candidate, subject st
 		}
 	}
 	if len(byKey) != 1 {
-		return catalog.Candidate{}, false
+		return titlesearch.Candidate{}, false
 	}
 	for _, candidate := range byKey {
 		return candidate, true
 	}
-	return catalog.Candidate{}, false
+	return titlesearch.Candidate{}, false
 }
 
-func (s *Suggester) groundCuratedTitleSubject(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+func (s *Suggester) groundCuratedTitleSubject(ctx context.Context, intent *Intent) ([]titlesearch.Candidate, error) {
 	subject, found := curatedTitleSubject(*intent)
 	if !found {
 		return nil, nil
@@ -538,7 +538,7 @@ func (s *Suggester) groundCuratedTitleSubject(ctx context.Context, intent *Inten
 		return nil, nil
 	}
 	intent.membershipSources.searches++
-	candidates, err := s.catalog.Search(ctx, subject, catalog.ScopeAll, catalogSearchLimit)
+	candidates, err := s.catalog.Search(ctx, subject, titlesearch.ScopeAll, catalogSearchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("search curated title subject %q: %w", subject, err)
 	}
@@ -549,7 +549,7 @@ func (s *Suggester) groundCuratedTitleSubject(ctx context.Context, intent *Inten
 	key, _ := candidate.Key()
 	intent.curatedTitleKey = key
 	intent.membershipKeys[key] = true
-	return []catalog.Candidate{candidate}, nil
+	return []titlesearch.Candidate{candidate}, nil
 }
 
 // positiveIntentOrReferenceNamesTitle verifies the provenance of a catalog title.
@@ -584,8 +584,8 @@ func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
 // pick must already have an independently resolved, surfaced Catalog key. Named
 // sets additionally require membership evidence at the proposal boundary.
 // Softer examples remain optional and therefore stay under model control.
-func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
-	required := make([]catalog.Candidate, 0, min(len(surfaced), maxFinalSelectionPicks))
+func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.Key]titlesearch.Candidate) []pick {
+	required := make([]titlesearch.Candidate, 0, min(len(surfaced), maxFinalSelectionPicks))
 	for _, key := range intent.requiredTitleKeys {
 		if candidate, found := surfaced[key]; found {
 			required = append(required, candidate)
@@ -644,7 +644,7 @@ func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.
 // completeNamedSourceSelection turns the provider's named-set shortlist into
 // the bounded review pool. The provider's grounded choices remain first; unused
 // members may enter only from the independently resolved source candidates.
-func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate, meaning ValidatedDateMeaning) []pick {
+func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[provision.Key]titlesearch.Candidate, meaning ValidatedDateMeaning) []pick {
 	if !requiresMembershipEvidence(intent) || len(intent.referenceCandidates) == 0 {
 		return picks
 	}
@@ -687,7 +687,7 @@ func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[prov
 	return result
 }
 
-func candidateOutsideTitleDateRange(candidate catalog.Candidate, meaning ValidatedDateMeaning) bool {
+func candidateOutsideTitleDateRange(candidate titlesearch.Candidate, meaning ValidatedDateMeaning) bool {
 	if candidate.Year <= 0 {
 		return false
 	}
@@ -708,7 +708,7 @@ func candidateOutsideTitleDateRange(candidate catalog.Candidate, meaning Validat
 	return false
 }
 
-func requiredIdentityConflicts(intent Intent, candidate catalog.Candidate) bool {
+func requiredIdentityConflicts(intent Intent, candidate titlesearch.Candidate) bool {
 	want, required := intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)]
 	if !required {
 		return false
@@ -871,9 +871,9 @@ func requiredIntentNamesTitle(intent Intent, title string) bool {
 // exact identity already in the Library remains actionable. It deliberately runs
 // before model-provided type/year or a ranked subset can select a remake; duplicate
 // rows for one key are harmless and multiple owned identities still fail closed.
-func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
-	byKey := make(map[provision.Key]catalog.Candidate)
-	ownedByKey := make(map[provision.Key]catalog.Candidate)
+func unambiguousMembershipCandidate(candidates []titlesearch.Candidate, title string) (titlesearch.Candidate, bool) {
+	byKey := make(map[provision.Key]titlesearch.Candidate)
+	ownedByKey := make(map[provision.Key]titlesearch.Candidate)
 	for _, candidate := range candidates {
 		if !sameExactTitle(candidate.Name, title) {
 			continue
@@ -895,10 +895,10 @@ func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string
 			return candidate, true
 		}
 	}
-	return catalog.Candidate{}, false
+	return titlesearch.Candidate{}, false
 }
 
-func cacheMembershipSourceResolution(intent Intent, title string, candidates []catalog.Candidate) {
+func cacheMembershipSourceResolution(intent Intent, title string, candidates []titlesearch.Candidate) {
 	if !requiresMembershipEvidence(intent) || !positiveIntentOrReferenceNamesTitle(intent, title) {
 		return
 	}
@@ -945,7 +945,7 @@ func (s *Suggester) resolveMembershipSource(ctx context.Context, intent Intent, 
 		return nil
 	}
 	state.searches++
-	candidates, err := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+	candidates, err := s.catalog.Search(ctx, title, titlesearch.ScopeAll, catalogSearchLimit)
 	if err != nil {
 		return fmt.Errorf("resolve membership source title %q: %w", title, err)
 	}
@@ -1199,8 +1199,8 @@ func prioritizedReferenceTitles(intent Intent, titles, hints []string) []string 
 // prioritizeReferenceCandidatePool keeps the household's already-owned members
 // visible in the bounded finalization context. Popularity orders only otherwise
 // equivalent, independently proven external members; it never proves membership.
-func prioritizeReferenceCandidatePool(candidates []catalog.Candidate) []catalog.Candidate {
-	ordered := append([]catalog.Candidate(nil), candidates...)
+func prioritizeReferenceCandidatePool(candidates []titlesearch.Candidate) []titlesearch.Candidate {
+	ordered := append([]titlesearch.Candidate(nil), candidates...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].InLibrary != ordered[j].InLibrary {
 			return ordered[i].InLibrary

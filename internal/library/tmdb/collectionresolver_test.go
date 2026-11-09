@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -22,18 +22,18 @@ func TestResolve_DeduplicatesCollectionsOrdersMembersAndMarksLibraryPresence(t *
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
-				Members: []catalog.Candidate{
-					{MediaType: provision.Movie, TMDBID: 90000673, Name: "Wren Halloway and the Glass Orchard", Year: 2004, Source: catalog.ScopeTMDB},
-					{MediaType: provision.Movie, TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001, InLibrary: true, LibraryItemID: "untrusted-source-id", Source: catalog.ScopeTMDB},
-					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002, Source: catalog.ScopeTMDB},
+				Members: []titlesearch.Candidate{
+					{MediaType: provision.Movie, TMDBID: 90000673, Name: "Wren Halloway and the Glass Orchard", Year: 2004, Source: titlesearch.ScopeTMDB},
+					{MediaType: provision.Movie, TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001, InLibrary: true, LibraryItemID: "untrusted-source-id", Source: titlesearch.ScopeTMDB},
+					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002, Source: titlesearch.ScopeTMDB},
 				},
 			},
 		},
 	}
-	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000672: {LibraryItemID: "lib-672", OfficialRating: "PG", Genres: []string{"Fantasy"}},
 	}}
-	resolver := tmdb.NewCollectionResolver(source).WithPresenceSource(func() catalog.LibraryPresence { return presence })
+	resolver := tmdb.NewCollectionResolver(source).WithPresenceSource(func() titlesearch.LibraryPresence { return presence })
 
 	got, err := resolver.Resolve(context.Background(), []provision.Key{
 		"movie:tmdb:90000671", "movie:tmdb:90000673", "movie:tmdb:90000671",
@@ -75,7 +75,7 @@ func TestResolve_OmitsAuthoritativeStandaloneMovies(t *testing.T) {
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
-				Members: []catalog.Candidate{
+				Members: []titlesearch.Candidate{
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002},
 				},
@@ -104,7 +104,7 @@ func TestResolve_ReturnsPartialGroundedCollectionsWithoutInventingFailedOnes(t *
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
-				Members: []catalog.Candidate{
+				Members: []titlesearch.Candidate{
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002},
 				},
@@ -147,7 +147,7 @@ func TestResolve_DropsMalformedDuplicateAndNonMovieRosterMembers(t *testing.T) {
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
-				Members: []catalog.Candidate{
+				Members: []titlesearch.Candidate{
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "duplicate", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 0, Name: "missing id"},
@@ -181,7 +181,7 @@ func TestResolve_RejectsACollectionResponseWithTheWrongIdentity(t *testing.T) {
 			90001241: {
 				TMDBID: 90009999,
 				Name:   "Unrelated Collection",
-				Members: []catalog.Candidate{
+				Members: []titlesearch.Candidate{
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "First", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Second", Year: 2002},
 				},
@@ -204,7 +204,7 @@ func TestResolve_DoesNotInventMissingCollectionIdentity(t *testing.T) {
 		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
-				Members: []catalog.Candidate{
+				Members: []titlesearch.Candidate{
 					{MediaType: provision.Movie, TMDBID: 90000671, Name: "First", Year: 2001},
 					{MediaType: provision.Movie, TMDBID: 90000672, Name: "Second", Year: 2002},
 				},

@@ -1,7 +1,9 @@
 # Library and inventory
 
 Formerly `design.md` §5 (media inventory, cached series episodes), §6 (Emby and Jellyfin) and §7.2
-(search). How Loomarr reads the household media server and what it keeps of it.
+(search). How Loomarr builds the household's Library from its own media folders (#2151): the
+scanner, the metadata providers and the inventory it keeps, and what it still asks the media
+server for.
 
 ## The media server contract
 
@@ -11,10 +13,10 @@ metadata come from the Library's own tables.
 
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Collections** (BoxSets) back `scope.collections`: `Collections()` lists them, and
-  `CollectionMembers(id)` returns members with full provider ids through `ParentId`. `ChildCount` is not
-  returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
-  tool-generated one-per-franchise groupings, so any picker must rank hand-made ones first.
+- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
+  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
+  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
+  ready-made sets.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
@@ -216,7 +218,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
-  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
+  top, or in a season folder there, is the show its name gives before `S01E02`
+  (`Example.Show.S01E02.mkv` is "Example Show"); a season folder never names a show. A file nothing grounds is
   still written, with no ids. Only movies and episodes are titles (0047): extras (trailers,
   `-trailer` files, `extras/` folders and the like) and theme videos (`backdrops/`) are not
   imported, and a skipped extra does not take a movie's folder art from it. An origin whose ids later name another item of its kind

@@ -13,17 +13,21 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`catalog`** · 6 importers · → `library`, `platform/store`, `provision`
-  Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`library`** · 13 importers · → `library/inventory`, `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
 - **`library/inventory`** · 10 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
+- **`library/provisionbackstop`** · 1 importer · → `library`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`
+  Provisioning backstop (design §4, §7, §18).
+- **`library/requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
+  Requester port (design §2, §6): it asks a downstream service to acquire a title.
 - **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/tmdb`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `provision`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
-- **`library/tmdb`** · 7 importers · → `catalog`, `platform/httpx`, `platform/metrics`, `provision`
+- **`library/titlesearch`** · 6 importers · → `library`, `platform/store`, `provision`
+  Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`library/tmdb`** · 7 importers · → `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 - **`metadataprovider`** · 8 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
@@ -41,7 +45,3 @@ One area of the [package map](../package-map.md#start-here).
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`provision`** · 35 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`, `requester`
-  Provisioning backstop (design §4, §7, §18).
-- **`requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
-  Requester port (design §2, §6): it asks a downstream service to acquire a title.

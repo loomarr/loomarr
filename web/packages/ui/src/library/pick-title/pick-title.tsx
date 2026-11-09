@@ -74,7 +74,7 @@ const PickTitle = ({
           <Stack flexBasis={0} flexGrow={1} minWidth={0}>
             <Text textRole="body">{nameYear(c)}</Text>
           </Stack>
-          <Action onPress={() => onPick(c)} variant="secondary">
+          <Action accessibilityLabel={`Use ${nameYear(c)}`} onPress={() => onPick(c)} variant="secondary">
             Use this one
           </Action>
         </Line>

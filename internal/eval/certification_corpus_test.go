@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -283,10 +283,10 @@ func TestV6NetworkAndPersonFamiliesPinExactToolRoutesAndEvidence(t *testing.T) {
 	if err := json.Unmarshal(fixtureBlob, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	wantEvidence := map[string]func(catalog.Candidate) bool{
-		"network-discovery": func(c catalog.Candidate) bool { return slices.Equal(c.Networks, []string{"Synthetic Network"}) },
-		"cast-discovery":    func(c catalog.Candidate) bool { return slices.Equal(c.Cast, []string{"Synthetic Performer"}) },
-		"creator-discovery": func(c catalog.Candidate) bool { return slices.Equal(c.Creators, []string{"Synthetic Filmmaker"}) },
+	wantEvidence := map[string]func(titlesearch.Candidate) bool{
+		"network-discovery": func(c titlesearch.Candidate) bool { return slices.Equal(c.Networks, []string{"Synthetic Network"}) },
+		"cast-discovery":    func(c titlesearch.Candidate) bool { return slices.Equal(c.Cast, []string{"Synthetic Performer"}) },
+		"creator-discovery": func(c titlesearch.Candidate) bool { return slices.Equal(c.Creators, []string{"Synthetic Filmmaker"}) },
 	}
 	for _, fixtureCase := range fixture.Cases {
 		check, ok := wantEvidence[fixtureCase.ID]
@@ -580,7 +580,7 @@ func TestCertificationCountsOnlyEncounteredRepairRecoveryOpportunities(t *testin
 }
 
 func TestCertificationAbstentionPassCarriesNoFailureStage(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{err: suggest.ErrNoGroundedTitles}, RunnerConfig{}).WithObserver(&scriptedObserver{
+	runner := NewRunner(scriptedGenerator{err: proposals.ErrNoGroundedTitles}, RunnerConfig{}).WithObserver(&scriptedObserver{
 		value: Observation{ToolCalls: 1, KeywordCalls: 1, GroundingStage: "selection_empty"},
 	})
 	card := runner.Run(context.Background(), []Case{{Name: "empty", NoFabrication: true}})

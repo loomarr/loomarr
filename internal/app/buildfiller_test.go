@@ -252,7 +252,7 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, governor)
+	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), &testkit.ArtifactWriter{}, governor)
 	if fetcher == nil {
 		t.Fatal("buildFetcher returned nil with both tools configured")
 	}
@@ -263,8 +263,8 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := string(raw)
-	if !strings.Contains(args, watchDir+"/%(title)s [%(id)s].%(ext)s") {
-		t.Errorf("yt-dlp args = %q, want output under applied watch %q", args, watchDir)
+	if !strings.Contains(args, watchDir+"/.loomarr-acquisitions/") {
+		t.Errorf("yt-dlp args = %q, want output staged under applied watch %q", args, watchDir)
 	}
 	if strings.Contains(args, clipDir+"/%(title)s") {
 		t.Errorf("yt-dlp args = %q, unexpectedly write raw arrivals into clip library %q", args, clipDir)

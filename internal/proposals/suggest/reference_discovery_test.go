@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -43,7 +43,7 @@ func TestSuggestDiscoversNamedBlockSourceOnce(t *testing.T) {
 	for _, request := range []string{"QFUN", "QFUN block", "Make a channel like QFUN", "a channel based on QFUN", "Recreate ZBN's QFUN Friday-night block."} {
 		t.Run(request, func(t *testing.T) {
 			meaning := dateMeaningNone()
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 				URL: "https://lineups.example/frozen-block", Title: "Synthetic block roster", Excerpt: "Marigold Protocol", TitleAnchors: []string{"Marigold Protocol"},
 			}}
@@ -66,7 +66,7 @@ func TestSuggestDiscoversAcronymSourceWithoutPhaseQualifier(t *testing.T) {
 	for _, request := range []string{"LCU Phase One.", "Recreate the LCU Phase One lineup.", "The LCU Phase One lineup of films, please."} {
 		t.Run(request, func(t *testing.T) {
 			meaning := dateMeaningNone()
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			references := &testkit.ReferenceResolver{ByLabel: map[string]webreference.Evidence{
 				"LCU": {
 					URL: "https://lineups.example/lcu", Title: "Synthetic LCU roster",
@@ -92,9 +92,9 @@ func TestSuggestDiscoversAcronymSourceWithoutPhaseQualifier(t *testing.T) {
 
 func TestSuggestNamedBlockStopsRetrievalAfterReferenceGrounding(t *testing.T) {
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 			if query == "Marigold Protocol" {
-				return []catalog.Candidate{marigoldCandidate()}, nil
+				return []titlesearch.Candidate{marigoldCandidate()}, nil
 			}
 			return nil, nil
 		},
@@ -104,7 +104,7 @@ func TestSuggestNamedBlockStopsRetrievalAfterReferenceGrounding(t *testing.T) {
 	}}
 	model := &namedSetToolAvailabilityLLM{}
 
-	prop, err := suggest.New(model, catalog.New(nil, corpus), nil, 10).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "QFUN"})
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), nil, 10).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatalf("suggestion failed after %d model calls and %d catalog searches: %v", model.calls, len(corpus.Searches()), err)
 	}
@@ -120,15 +120,15 @@ func TestSuggestNamedBlockStopsRetrievalAfterReferenceGrounding(t *testing.T) {
 }
 
 func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
-	grandOak := catalog.Candidate{MediaType: "series", TMDBID: 90001001, Name: "Grand Oak Hotel", Year: 1987, InLibrary: true}
-	crumbStreet := catalog.Candidate{MediaType: "series", TMDBID: 90001002, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true}
+	grandOak := titlesearch.Candidate{MediaType: "series", TMDBID: 90001001, Name: "Grand Oak Hotel", Year: 1987, InLibrary: true}
+	crumbStreet := titlesearch.Candidate{MediaType: "series", TMDBID: 90001002, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true}
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 			switch query {
 			case grandOak.Name:
-				return []catalog.Candidate{grandOak}, nil
+				return []titlesearch.Candidate{grandOak}, nil
 			case crumbStreet.Name:
-				return []catalog.Candidate{crumbStreet}, nil
+				return []titlesearch.Candidate{crumbStreet}, nil
 			default:
 				return nil, nil
 			}
@@ -160,14 +160,14 @@ func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
 }
 
 func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing.T) {
-	titles := []catalog.Candidate{
+	titles := []titlesearch.Candidate{
 		{MediaType: provision.Series, TMDBID: 90001001, Name: "Grand Oak Hotel", InLibrary: true},
 		{MediaType: provision.Series, TMDBID: 90001007, Name: "Penny the Pocket Witch", InLibrary: true},
 	}
-	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 		for _, candidate := range titles {
 			if query == candidate.Name {
-				return []catalog.Candidate{candidate}, nil
+				return []titlesearch.Candidate{candidate}, nil
 			}
 		}
 		return nil, nil
@@ -183,7 +183,7 @@ func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing
 		],"policy":{}}`),
 	)
 
-	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "QFUN"})
 	if err != nil {
@@ -199,19 +199,19 @@ func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing
 }
 
 func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t *testing.T) {
-	grandOak := catalog.Candidate{MediaType: provision.Series, TMDBID: 90001001, Name: "Grand Oak Hotel", Year: 1987, InLibrary: true}
-	crumbStreet := catalog.Candidate{MediaType: provision.Series, TMDBID: 90001002, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true}
-	wrongNamesake := catalog.Candidate{MediaType: provision.Series, TMDBID: 90002002, Name: "Crumb Street Bakery", Year: 2024}
-	bowlingAlley := catalog.Candidate{MediaType: provision.Series, TMDBID: 90001003, Name: "Bowling Alley Blues", Year: 1991, InLibrary: true}
+	grandOak := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90001001, Name: "Grand Oak Hotel", Year: 1987, InLibrary: true}
+	crumbStreet := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90001002, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true}
+	wrongNamesake := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90002002, Name: "Crumb Street Bakery", Year: 2024}
+	bowlingAlley := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90001003, Name: "Bowling Alley Blues", Year: 1991, InLibrary: true}
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 			switch query {
 			case grandOak.Name:
-				return []catalog.Candidate{grandOak}, nil
+				return []titlesearch.Candidate{grandOak}, nil
 			case crumbStreet.Name:
-				return []catalog.Candidate{crumbStreet, wrongNamesake}, nil
+				return []titlesearch.Candidate{crumbStreet, wrongNamesake}, nil
 			case bowlingAlley.Name:
-				return []catalog.Candidate{bowlingAlley}, nil
+				return []titlesearch.Candidate{bowlingAlley}, nil
 			default:
 				return nil, nil
 			}
@@ -231,7 +231,7 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 		],"policy":{}}`),
 	)
 
-	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
 	if err != nil {
@@ -257,14 +257,14 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 }
 
 func TestSuggestNamedSetExclusionDoesNotRemoveShorterRelatedTitle(t *testing.T) {
-	copperKnight := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90001726, Name: "Copper Knight", Year: 2008, InLibrary: true}
-	copperKnight2 := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90010138, Name: "Copper Knight 2", Year: 2010}
-	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+	copperKnight := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90001726, Name: "Copper Knight", Year: 2008, InLibrary: true}
+	copperKnight2 := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90010138, Name: "Copper Knight 2", Year: 2010}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 		switch query {
 		case copperKnight.Name:
-			return []catalog.Candidate{copperKnight}, nil
+			return []titlesearch.Candidate{copperKnight}, nil
 		case copperKnight2.Name:
-			return []catalog.Candidate{copperKnight2}, nil
+			return []titlesearch.Candidate{copperKnight2}, nil
 		default:
 			return nil, nil
 		}
@@ -288,14 +288,14 @@ func TestSuggestNamedSetExclusionDoesNotRemoveShorterRelatedTitle(t *testing.T) 
 }
 
 func TestSuggestNamedSourceCompletionRespectsKnownMovieReleaseRange(t *testing.T) {
-	oldMovie := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90001726, Name: "Copper Knight", Year: 2008, InLibrary: true}
-	inRange := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90010138, Name: "Copper Knight 2", Year: 2010, InLibrary: true}
-	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+	oldMovie := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90001726, Name: "Copper Knight", Year: 2008, InLibrary: true}
+	inRange := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90010138, Name: "Copper Knight 2", Year: 2010, InLibrary: true}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 		switch query {
 		case oldMovie.Name:
-			return []catalog.Candidate{oldMovie}, nil
+			return []titlesearch.Candidate{oldMovie}, nil
 		case inRange.Name:
-			return []catalog.Candidate{inRange}, nil
+			return []titlesearch.Candidate{inRange}, nil
 		default:
 			return nil, nil
 		}
@@ -327,15 +327,15 @@ func TestSuggestNamedSourceCompletionRespectsKnownMovieReleaseRange(t *testing.T
 }
 
 func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
-	titles := []catalog.Candidate{
+	titles := []titlesearch.Candidate{
 		{MediaType: provision.Series, TMDBID: 90001001, Name: "Grand Oak Hotel", InLibrary: true},
 		{MediaType: provision.Series, TMDBID: 90001002, Name: "Crumb Street Bakery", InLibrary: true},
 		{MediaType: provision.Series, TMDBID: 90001003, Name: "Bowling Alley Blues", InLibrary: true},
 	}
-	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 		for _, candidate := range titles {
 			if query == candidate.Name {
-				return []catalog.Candidate{candidate}, nil
+				return []titlesearch.Candidate{candidate}, nil
 			}
 		}
 		return nil, nil
@@ -351,7 +351,7 @@ func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		unsolicited, unsolicited, unsolicited,
 	)
-	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
 	if err != nil {
@@ -367,12 +367,12 @@ func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
 }
 
 func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
-	movie := catalog.Candidate{MediaType: "movie", TMDBID: 90001001, Name: "Pinwheel Summer", Year: 1995, InLibrary: true}
-	series := catalog.Candidate{MediaType: "series", TMDBID: 90001002, Name: "Pinwheel Summer", Year: 1996}
+	movie := titlesearch.Candidate{MediaType: "movie", TMDBID: 90001001, Name: "Pinwheel Summer", Year: 1995, InLibrary: true}
+	series := titlesearch.Candidate{MediaType: "series", TMDBID: 90001002, Name: "Pinwheel Summer", Year: 1996}
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 			if query == "Pinwheel Summer" || query == "Pinwheel Summer (TV series)" {
-				return []catalog.Candidate{movie, series}, nil
+				return []titlesearch.Candidate{movie, series}, nil
 			}
 			return nil, nil
 		},
@@ -386,7 +386,7 @@ func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 		testkit.FinalResponse(`{"channelName":"QFUN","rationale":"A verified named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[{"mediaType":"series","key":"series:tmdb:90001002","name":"Pinwheel Summer","rationale":"The source identifies the television series.","confidence":0.98}],"policy":{}}`),
 	)
 
-	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "QFUN"})
 	if err != nil {
@@ -398,11 +398,11 @@ func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 }
 
 func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
-	animated := catalog.Candidate{MediaType: provision.Series, TMDBID: 90001001, Name: "Penny the Pocket Witch", Year: 1970}
-	liveAction := catalog.Candidate{MediaType: provision.Series, TMDBID: 90001002, Name: "Penny the Pocket Witch", Year: 1996}
-	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+	animated := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90001001, Name: "Penny the Pocket Witch", Year: 1970}
+	liveAction := titlesearch.Candidate{MediaType: provision.Series, TMDBID: 90001002, Name: "Penny the Pocket Witch", Year: 1996}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]titlesearch.Candidate, error) {
 		if query == "Penny the Pocket Witch" {
-			return []catalog.Candidate{animated, liveAction}, nil
+			return []titlesearch.Candidate{animated, liveAction}, nil
 		}
 		return nil, nil
 	}}
@@ -417,7 +417,7 @@ func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
 		],"policy":{}}`),
 	)
 
-	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
 		Suggest(context.Background(), proposals.Intent{Description: "QFUN"})
 	if err != nil {
@@ -430,7 +430,7 @@ func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
 
 func TestSuggestMissingNamedSourceDoesNotPromoteModelMemory(t *testing.T) {
 	meaning := dateMeaningNone()
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	references := &testkit.ReferenceResolver{}
 	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
 	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "QFUN block"})

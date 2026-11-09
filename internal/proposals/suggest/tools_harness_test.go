@@ -3,7 +3,7 @@ package suggest
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
@@ -15,7 +15,7 @@ import (
 
 // runTool executes one model tool call on a fresh budget and returns the JSON
 // result, the surfaced candidates, the trace and whether the call was valid.
-func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, proposals.DecisionTrace, bool) {
+func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []titlesearch.Candidate, proposals.DecisionTrace, bool) {
 	ledger := newWorkLedger()
 	ledger.beginGeneration()
 	if !ledger.reserve(1) {
@@ -27,7 +27,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 
 // runToolWithDateMeaning is runTool against an earlier accepted date meaning and a
 // caller-owned budget. It also returns the meaning this call was accepted with.
-func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal, accepted *ValidatedDateMeaning, ledger *workLedger) (string, []catalog.Candidate, proposals.DecisionTrace, bool, *ValidatedDateMeaning) {
+func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal, accepted *ValidatedDateMeaning, ledger *workLedger) (string, []titlesearch.Candidate, proposals.DecisionTrace, bool, *ValidatedDateMeaning) {
 	prepared, result, trace, valid := prepareToolCall(tc, intent, accepted)
 	if result != "" || !valid || prepared.meaning.DateMeaning().Kind == DateMeaningAmbiguous {
 		return result, nil, trace, valid, func() *ValidatedDateMeaning {
@@ -50,6 +50,6 @@ func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall,
 
 // parseDiscoveryQuery parses discovery arguments with no accepted date meaning, so
 // a date-only discovery is refused.
-func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, error) {
+func parseDiscoveryQuery(args map[string]any) (titlesearch.DiscoveryQuery, bool, error) {
 	return parseDiscoveryQueryWithDateQualifier(args, false)
 }

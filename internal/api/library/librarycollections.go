@@ -20,7 +20,8 @@ import (
 // ordered list of titles. A collection a channel uses can't be deleted; the API says which
 // channels use it, and the UI words it.
 //
-// These are Loomarr's collections, not the media server's, which `/v1/library/collections` lists.
+// `/v1/library/collections` lists the same collections, names and sizes only, for the channel
+// scope picker.
 
 func (s *Handlers) registerLibraryCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
@@ -60,21 +61,14 @@ func (s *Handlers) registerLibraryCollections(api huma.API) {
 	}, httpcore.RoleAdmin), s.copySet)
 }
 
-// collectionChannelDTO is a channel that uses a collection.
-type collectionChannelDTO struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Number int    `json:"number"`
-}
-
 type collectionDTO struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	ImportedFrom string `json:"importedFrom,omitempty" enum:"emby,jellyfin" doc:"The media server it was brought over from; absent when made in Loomarr"`
 	// Titles leaves out a title that has left the library; it comes back in its place.
-	Titles []libraryItemDTO       `json:"titles" doc:"In the collection's order"`
-	UsedBy []collectionChannelDTO `json:"usedBy" doc:"The channels that use it, by number; it can't be deleted while any do"`
+	Titles []libraryItemDTO    `json:"titles" doc:"In the collection's order"`
+	UsedBy []libraryChannelDTO `json:"usedBy" doc:"The channels that use it, by number; it can't be deleted while any do"`
 }
 
 type collectionBody struct {
@@ -261,14 +255,14 @@ func collectionNotFound() error {
 	return httpcore.Problem(http.StatusNotFound, "No such collection", "It may have been deleted.")
 }
 
-func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses map[string][]collectionChannelDTO) collectionDTO {
+func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses map[string][]libraryChannelDTO) collectionDTO {
 	out := collectionDTO{
 		ID: c.ID, Name: c.Name, Description: c.Description, ImportedFrom: c.ImportedFrom,
 		Titles: make([]libraryItemDTO, 0, len(c.Titles)),
 		UsedBy: uses[c.ID],
 	}
 	if out.UsedBy == nil {
-		out.UsedBy = []collectionChannelDTO{}
+		out.UsedBy = []libraryChannelDTO{}
 	}
 	for _, it := range c.Titles {
 		out.Titles = append(out.Titles, libraryItemOf(it, posters))
@@ -278,13 +272,13 @@ func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses
 
 // collectionUses maps each collection id a channel scope names to those channels, by number: the
 // channel's own scope and each rule's.
-func (s *Handlers) collectionUses(ctx context.Context) (map[string][]collectionChannelDTO, error) {
+func (s *Handlers) collectionUses(ctx context.Context) (map[string][]libraryChannelDTO, error) {
 	channels, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
 	}
 	slices.SortFunc(channels, func(a, b channelstore.Channel) int { return a.Number - b.Number })
-	out := map[string][]collectionChannelDTO{}
+	out := map[string][]libraryChannelDTO{}
 	for _, ch := range channels {
 		named := map[string]bool{}
 		scopes := []*schedule.ScopePolicy{&ch.Policy.Scope}
@@ -300,7 +294,7 @@ func (s *Handlers) collectionUses(ctx context.Context) (map[string][]collectionC
 					continue
 				}
 				named[id] = true
-				out[id] = append(out[id], collectionChannelDTO{ID: ch.ID, Name: ch.Name, Number: ch.Number})
+				out[id] = append(out[id], libraryChannelDTO{ID: ch.ID, Name: ch.Name, Number: ch.Number})
 			}
 		}
 	}

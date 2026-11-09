@@ -1,4 +1,4 @@
-package catalog_test
+package titlesearch_test
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -19,9 +19,9 @@ import (
 
 // testLibrary is the Library's title search over three owned films, as production reads it
 // (catalog.LibrarySearch over the Library's tables).
-func testLibrary(t *testing.T) catalog.LibrarySearcher {
+func testLibrary(t *testing.T) titlesearch.LibrarySearcher {
 	t.Helper()
-	return catalog.LibrarySearch{
+	return titlesearch.LibrarySearch{
 		Titles: libraryTitlesFake{
 			{ID: "1000", Kind: "movie", Name: "Marigold Protocol", IDs: tmdbIDs("90000603")},
 			{ID: "1001", Kind: "movie", Name: "Marigold Protocol II", IDs: tmdbIDs("90000605")},
@@ -33,9 +33,9 @@ func testLibrary(t *testing.T) catalog.LibrarySearcher {
 
 func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
 	lib := testLibrary(t)
-	c := catalog.New(lib, nil)
+	c := titlesearch.New(lib, nil)
 
-	got, err := c.Search(context.Background(), "marigold", catalog.ScopeLibrary, 10)
+	got, err := c.Search(context.Background(), "marigold", titlesearch.ScopeLibrary, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,11 +66,11 @@ func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
 	lib := testLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	c := catalog.New(lib, tm)
+	c := titlesearch.New(lib, tm)
 
 	// "marigold" is in BOTH the library (tmdb 90000603) and the TMDB mock (90000603).
 	// The merged candidate must appear ONCE, in_library=true.
-	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "marigold", titlesearch.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,13 +95,13 @@ func TestCatalogSearch_EnrichesGenreOverview_WithoutChangingDedupe(t *testing.T)
 	lib := testLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	c := catalog.New(lib, tm)
+	c := titlesearch.New(lib, tm)
 
-	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "marigold", titlesearch.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var marigold *catalog.Candidate
+	var marigold *titlesearch.Candidate
 	count := 0
 	for i := range got {
 		if got[i].TMDBID == 90000603 {
@@ -130,13 +130,13 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	// A TMDB title absent from the library ("Quiet Engines") → in_library=false.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(testLibrary(t), tm)
+	c := titlesearch.New(testLibrary(t), tm)
 
-	got, err := c.Search(context.Background(), "quiet", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "quiet", titlesearch.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var engines *catalog.Candidate
+	var engines *titlesearch.Candidate
 	for i := range got {
 		if got[i].Name == "Quiet Engines" {
 			engines = &got[i]
@@ -156,12 +156,12 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(testLibrary(t), tm)
+	c := titlesearch.New(testLibrary(t), tm)
 
 	// "marigold" matches an in-library title; add a TMDB-only via broad-ish search
 	// isn't possible with distinct terms, so just assert in-library sorts first
 	// among the marigold results (all in-library here) — and that ordering is stable.
-	got, _ := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
+	got, _ := c.Search(context.Background(), "marigold", titlesearch.ScopeAll, 20)
 	seenNotInLib := false
 	for _, cand := range got {
 		if !cand.InLibrary {
@@ -185,11 +185,11 @@ func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit
 			IDs: tmdbIDs(strconv.Itoa(90_010_000 + i)),
 		}
 	}
-	lib := catalog.LibrarySearch{Titles: titles, Facts: itemFactsFake{}}
+	lib := titlesearch.LibrarySearch{Titles: titles, Facts: itemFactsFake{}}
 	tmdbServer := testkit.NewTMDB(t)
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
 
-	got, err := catalog.New(lib, tmdbClient).Search(context.Background(), "a", catalog.ScopeAll, 24)
+	got, err := titlesearch.New(lib, tmdbClient).Search(context.Background(), "a", titlesearch.ScopeAll, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,13 +210,13 @@ func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit
 }
 
 func TestCandidateKey(t *testing.T) {
-	c := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
+	c := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
 	k, err := c.Key()
 	if err != nil || k != "movie:tmdb:90000603" {
 		t.Errorf("Key() = %q,%v want movie:tmdb:90000603", k, err)
 	}
 	// A candidate with no usable id errors (grounding guarantee).
-	if _, err := (catalog.Candidate{MediaType: provision.Movie, Name: "Ghost"}).Key(); err == nil {
+	if _, err := (titlesearch.Candidate{MediaType: provision.Movie, Name: "Ghost"}).Key(); err == nil {
 		t.Error("expected Key() to error on an id-less candidate")
 	}
 }
@@ -225,8 +225,8 @@ func TestCandidateKey(t *testing.T) {
 // grounding gate / in-library-first ordering could shift. Two otherwise-identical
 // candidates that differ ONLY in OfficialRating must produce the same Key.
 func TestCandidateKey_IgnoresOfficialRating(t *testing.T) {
-	rated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", OfficialRating: "R"}
-	unrated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
+	rated := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", OfficialRating: "R"}
+	unrated := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
 	rk, _ := rated.Key()
 	uk, _ := unrated.Key()
 	if rk != uk {
@@ -242,12 +242,12 @@ type fakePresence struct {
 	ratings map[int]string
 }
 
-func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (catalog.Presence, bool, error) {
+func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (titlesearch.Presence, bool, error) {
 	id, ok := f.owned[tmdbID]
 	if !ok {
-		return catalog.Presence{}, false, nil
+		return titlesearch.Presence{}, false, nil
 	}
-	return catalog.Presence{LibraryItemID: id, OfficialRating: f.ratings[tmdbID]}, true, nil
+	return titlesearch.Presence{LibraryItemID: id, OfficialRating: f.ratings[tmdbID]}, true, nil
 }
 
 // In-library backfill: a DISCOVERED title the library already owns comes back
@@ -258,18 +258,18 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	// The mock owns Marigold Protocol (90000603), rated R → discovery of Action marks it
 	// in-library AND carries the rating, so audience enforcement has something to judge.
-	c := catalog.New(lib, tm).WithPresence(fakePresence{
+	c := titlesearch.New(lib, tm).WithPresence(fakePresence{
 		owned:   map[int]string{90000603: "lib-90000603"},
 		ratings: map[int]string{90000603: "R"},
 	})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Genres: []string{"Action"}, YearFrom: 1990, YearTo: 1999,
 	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var marigold *catalog.Candidate
+	var marigold *titlesearch.Candidate
 	for i := range got {
 		if got[i].TMDBID == 90000603 {
 			marigold = &got[i]
@@ -303,12 +303,12 @@ func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
 		LibraryItemID: "lib-90000603", Name: "Marigold Protocol", Year: 1999, MediaType: library.Movie,
 		TMDBID: 90000603, SizeBytes: 21_914_038_799,
 	}}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999,
-		Overview: "a florist", Source: catalog.ScopeTMDB,
+		Overview: "a florist", Source: titlesearch.ScopeTMDB,
 	}}}
 
-	got, err := catalog.New(lib, corpus).Search(context.Background(), "marigold", catalog.ScopeAll, 10)
+	got, err := titlesearch.New(lib, corpus).Search(context.Background(), "marigold", titlesearch.ScopeAll, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,16 +323,16 @@ func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
 // A discovered title the library owns gets its size from the same presence hit that
 // confirms ownership.
 func TestCatalogDiscover_BackfillCarriesLibrarySize(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 90000604, Name: "Marigold Protocol II", Source: catalog.ScopeTMDB},
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Source: titlesearch.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000604, Name: "Marigold Protocol II", Source: titlesearch.ScopeTMDB},
 	}}
-	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000603: {LibraryItemID: "lib-90000603", SizeBytes: 63_546_611_800},
 	}}
 
-	got, err := catalog.New(nil, corpus).WithPresence(presence).Discover(
-		context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 10)
+	got, err := titlesearch.New(nil, corpus).WithPresence(presence).Discover(
+		context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,22 +353,22 @@ func TestCatalogDiscover_BackfillCarriesLibrarySize(t *testing.T) {
 // self-sealing result: the model sees no relevant title it could acquire even when
 // TMDB returned missing candidates in the same bounded pool.
 func TestCatalogDiscover_KeepsOutsideLibraryCandidatesAfterPresenceBackfill(t *testing.T) {
-	candidates := make([]catalog.Candidate, 32)
-	owned := make(map[int]catalog.Presence, 24)
+	candidates := make([]titlesearch.Candidate, 32)
+	owned := make(map[int]titlesearch.Presence, 24)
 	for i := range candidates {
-		candidates[i] = catalog.Candidate{
+		candidates[i] = titlesearch.Candidate{
 			MediaType: provision.Movie, TMDBID: 90_020_000 + i,
 			Name:   fmt.Sprintf("%c Holiday Pick %02d", 'A'+rune(i/24)*25, i),
-			Genres: []string{"Family"}, Source: catalog.ScopeTMDB,
+			Genres: []string{"Family"}, Source: titlesearch.ScopeTMDB,
 		}
 		if i < 24 {
-			owned[candidates[i].TMDBID] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
+			owned[candidates[i].TMDBID] = titlesearch.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
 		}
 	}
 	corpus := &catalogfixture.Corpus{Candidates: candidates}
-	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: owned})
+	c := titlesearch.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: owned})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Genres: []string{"Family"},
 	}, 24)
 	if err != nil {
@@ -391,18 +391,18 @@ func TestCatalogDiscover_KeepsOutsideLibraryCandidatesAfterPresenceBackfill(t *t
 // result.
 func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *testing.T) {
 	tmdbServer := testkit.NewTMDB(t)
-	owned := make(map[int]catalog.Presence, 20)
+	owned := make(map[int]titlesearch.Presence, 20)
 	for i := range 28 {
 		id := 90_030_000 + i
 		tmdbServer.AddMovie(id, fmt.Sprintf("Holiday Pick %02d", i), 1990+i%10, []int{10_751}, "A family holiday gathering.")
 		if i < 20 {
-			owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
+			owned[id] = titlesearch.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
 		}
 	}
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
-	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{Hits: owned})
+	c := titlesearch.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{Hits: owned})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Genres: []string{"Family"},
 	}, 24)
 	if err != nil {
@@ -431,9 +431,9 @@ func TestCatalogDiscover_UnpinnedMediaTypeKeepsMoviesAndSeries(t *testing.T) {
 	// TMDB's TV genre namespace uses 10759 (Action & Adventure), not the movie
 	// namespace's 28 (Action). The adapter must translate the human genre per endpoint.
 	tmdbServer.AddSeries(90_051_000, "Action Dispatch", 2018, []int{10759}, "An action series.")
-	c := catalog.New(nil, tmdb.NewWithBase(tmdbServer.URL, "test-key"))
+	c := titlesearch.New(nil, tmdb.NewWithBase(tmdbServer.URL, "test-key"))
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{Genres: []string{"Action"}}, 24)
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{Genres: []string{"Action"}}, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,9 +460,9 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 	tmdbServer.AddKeywordMovie(90_041_001, "Snowbound Reunion", 2021, []int{35, 10_751},
 		"Estranged siblings reunite during Christmas week.", "Christmas")
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
-	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{})
+	c := titlesearch.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Keywords: []string{"Christmas"}, Genres: []string{"Comedy", "Family"},
 		YearFrom: 2015, YearTo: 2025,
 	}, 24)
@@ -487,17 +487,17 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 }
 
 func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{Name: "One", MediaType: provision.Movie, TMDBID: 90000101},
 		{Name: "Two", MediaType: provision.Movie, TMDBID: 90000202},
 	}}
-	primary := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	primary := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000101: {LibraryItemID: "item-101"},
 		90000202: {LibraryItemID: "item-202"},
 	}}
 	rotated := &catalogfixture.Presence{}
 	snapshots := 0
-	c := catalog.New(nil, corpus).WithPresenceSource(func() catalog.LibraryPresence {
+	c := titlesearch.New(nil, corpus).WithPresenceSource(func() titlesearch.LibraryPresence {
 		snapshots++
 		if snapshots == 1 {
 			return primary
@@ -505,7 +505,7 @@ func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 		return rotated
 	})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 20)
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,17 +526,17 @@ func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 }
 
 func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 90000004, Name: "Zulu Outside", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Zulu Owned", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Alpha Outside", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Alpha Owned", Source: catalog.ScopeTMDB},
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
+		{MediaType: provision.Movie, TMDBID: 90000004, Name: "Zulu Outside", Source: titlesearch.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Zulu Owned", Source: titlesearch.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Alpha Outside", Source: titlesearch.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Alpha Owned", Source: titlesearch.ScopeTMDB},
 	}}
-	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	c := titlesearch.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000003: {LibraryItemID: "owned-3"}, 90000001: {LibraryItemID: "owned-1"},
 	}})
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 4)
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,18 +552,18 @@ func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *tes
 }
 
 func TestCatalogDiscoverCandidateBlendPolicyControlsOutsideReserve(t *testing.T) {
-	candidates := make([]catalog.Candidate, 8)
-	hits := make(map[int]catalog.Presence, 6)
+	candidates := make([]titlesearch.Candidate, 8)
+	hits := make(map[int]titlesearch.Presence, 6)
 	for i := range candidates {
 		id := i + 1
-		candidates[i] = catalog.Candidate{
+		candidates[i] = titlesearch.Candidate{
 			MediaType: provision.Movie,
 			TMDBID:    id,
 			Name:      fmt.Sprintf("Candidate %d", id),
-			Source:    catalog.ScopeTMDB,
+			Source:    titlesearch.ScopeTMDB,
 		}
 		if id <= 6 {
-			hits[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+			hits[id] = titlesearch.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
 		}
 	}
 
@@ -581,15 +581,15 @@ func TestCatalogDiscoverCandidateBlendPolicyControlsOutsideReserve(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{Candidates: candidates}
 			presence := &catalogfixture.Presence{Hits: hits}
-			cat := catalog.New(nil, corpus).WithPresence(presence)
+			cat := titlesearch.New(nil, corpus).WithPresence(presence)
 			if tc.configure {
-				policy, err := catalog.NewCandidateBlendPolicy(tc.outsidePercent)
+				policy, err := titlesearch.NewCandidateBlendPolicy(tc.outsidePercent)
 				if err != nil {
 					t.Fatal(err)
 				}
 				cat.WithCandidateBlendPolicy(policy)
 			}
-			got, err := cat.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 4)
+			got, err := cat.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 4)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -608,18 +608,18 @@ func TestCatalogDiscoverCandidateBlendPolicyControlsOutsideReserve(t *testing.T)
 
 func TestNewCandidateBlendPolicyRejectsInvalidPercentage(t *testing.T) {
 	for _, percent := range []int{-1, 101} {
-		if _, err := catalog.NewCandidateBlendPolicy(percent); err == nil {
+		if _, err := titlesearch.NewCandidateBlendPolicy(percent); err == nil {
 			t.Fatalf("NewCandidateBlendPolicy(%d) succeeded, want validation error", percent)
 		}
 	}
 }
 
 func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000020, Name: "Earlier Alphabetically", RelevanceRank: 1},
 		{MediaType: provision.Movie, TMDBID: 90000010, Name: "Later Alphabetically", RelevanceRank: 1},
 	}}
-	got, err := catalog.New(nil, corpus).Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 20)
+	got, err := titlesearch.New(nil, corpus).Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,12 +629,12 @@ func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) 
 }
 
 func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) {
-	queries := []catalog.DiscoveryQuery{
+	queries := []titlesearch.DiscoveryQuery{
 		{MediaType: provision.Movie, YearFrom: 1990},
 		{MediaType: provision.Movie, YearFrom: 1991},
 		{MediaType: provision.Movie, YearFrom: 1992},
 	}
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
 		if limit != 48 {
 			t.Fatalf("source limit = %d, want 48", limit)
 		}
@@ -642,9 +642,9 @@ func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) 
 		case 1990: // An empty window is not an error.
 			return nil, nil
 		case 1991:
-			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Shared"}}, nil
+			return []titlesearch.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Shared"}}, nil
 		case 1992:
-			return []catalog.Candidate{
+			return []titlesearch.Candidate{
 				{MediaType: provision.Movie, TMDBID: 90000001, Name: "Shared", Overview: "merged"},
 				{MediaType: provision.Movie, TMDBID: 90000002, Name: "Later Window"},
 			}, nil
@@ -653,7 +653,7 @@ func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) 
 		}
 	}}
 
-	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), queries)
+	got, err := titlesearch.New(nil, corpus).DiscoverUnion(context.Background(), queries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,22 +667,22 @@ func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) 
 
 func TestCatalogDiscoverUnion_FinalizesAggregateOnce(t *testing.T) {
 	const perWindow = 24
-	owned := make(map[int]catalog.Presence, perWindow)
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
-		out := make([]catalog.Candidate, perWindow)
+	owned := make(map[int]titlesearch.Presence, perWindow)
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
+		out := make([]titlesearch.Candidate, perWindow)
 		for i := range out {
 			id := i + 1
 			if q.YearFrom == 2001 {
 				id += perWindow
 			} else {
-				owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+				owned[id] = titlesearch.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
 			}
-			out[i] = catalog.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
+			out[i] = titlesearch.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
 		}
 		return out, nil
 	}}
 	presence := &catalogfixture.Presence{Hits: owned}
-	got, err := catalog.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+	got, err := titlesearch.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []titlesearch.DiscoveryQuery{
 		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
 	})
 	if err != nil {
@@ -710,18 +710,18 @@ func TestCatalogDiscoverUnion_PreservesWindowPoolsUntilPresence(t *testing.T) {
 		perWindow = 48
 		missing   = 24
 	)
-	owned := make(map[int]catalog.Presence, perWindow)
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+	owned := make(map[int]titlesearch.Presence, perWindow)
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
 		if limit != perWindow {
 			t.Fatalf("source limit = %d, want %d", limit, perWindow)
 		}
-		out := make([]catalog.Candidate, perWindow)
+		out := make([]titlesearch.Candidate, perWindow)
 		for i := range out {
 			id := (q.YearFrom-2000)*perWindow + i + 1
 			if i >= missing {
-				owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+				owned[id] = titlesearch.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
 			}
-			out[i] = catalog.Candidate{
+			out[i] = titlesearch.Candidate{
 				MediaType:     provision.Movie,
 				TMDBID:        id,
 				Name:          fmt.Sprintf("Candidate %d", id),
@@ -731,7 +731,7 @@ func TestCatalogDiscoverUnion_PreservesWindowPoolsUntilPresence(t *testing.T) {
 		return out, nil
 	}}
 	presence := &catalogfixture.Presence{Hits: owned}
-	got, err := catalog.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+	got, err := titlesearch.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []titlesearch.DiscoveryQuery{
 		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
 	})
 	if err != nil {
@@ -756,21 +756,21 @@ func TestCatalogDiscoverUnion_PreservesWindowPoolsUntilPresence(t *testing.T) {
 
 func TestCatalogDiscoverUnion_AssignsFallbackRanksPerWindow(t *testing.T) {
 	const perWindow = 48
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
 		if limit != perWindow {
 			t.Fatalf("source limit = %d, want %d", limit, perWindow)
 		}
-		out := make([]catalog.Candidate, perWindow)
+		out := make([]titlesearch.Candidate, perWindow)
 		for i := range out {
 			id := i + 1
 			if q.YearFrom == 2000 {
 				id += 1000
 			}
-			out[i] = catalog.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
+			out[i] = titlesearch.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
 		}
 		return out, nil
 	}}
-	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+	got, err := titlesearch.New(nil, corpus).DiscoverUnion(context.Background(), []titlesearch.DiscoveryQuery{
 		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
 	})
 	if err != nil {
@@ -790,7 +790,7 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		corpus := &catalogfixture.Corpus{}
-		got, err := catalog.New(nil, corpus).DiscoverUnion(ctx, []catalog.DiscoveryQuery{{YearFrom: 2000}})
+		got, err := titlesearch.New(nil, corpus).DiscoverUnion(ctx, []titlesearch.DiscoveryQuery{{YearFrom: 2000}})
 		if !errors.Is(err, context.Canceled) || got.Candidates != nil || got.WindowsCompleted != 0 || got.SourceQueriesDispatched != 0 {
 			t.Fatalf("result = %+v, err = %v", got, err)
 		}
@@ -800,13 +800,13 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 	})
 
 	t.Run("source failure returns no partial candidates", func(t *testing.T) {
-		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 			if q.YearFrom == 2001 {
 				return nil, catalogfixture.ErrDiscover
 			}
-			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: q.YearFrom, Name: "partial"}}, nil
+			return []titlesearch.Candidate{{MediaType: provision.Movie, TMDBID: q.YearFrom, Name: "partial"}}, nil
 		}}
-		got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}, {YearFrom: 2002}})
+		got, err := titlesearch.New(nil, corpus).DiscoverUnion(context.Background(), []titlesearch.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}, {YearFrom: 2002}})
 		if !errors.Is(err, catalogfixture.ErrDiscover) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 2 {
 			t.Fatalf("result = %+v, err = %v", got, err)
 		}
@@ -818,11 +818,11 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 	t.Run("cancellation prevents remaining dispatch", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 			cancel()
 			return nil, nil
 		}}
-		got, err := catalog.New(nil, corpus).DiscoverUnion(ctx, []catalog.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}})
+		got, err := titlesearch.New(nil, corpus).DiscoverUnion(ctx, []titlesearch.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}})
 		if !errors.Is(err, context.Canceled) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 1 {
 			t.Fatalf("result = %+v, err = %v", got, err)
 		}
@@ -830,15 +830,15 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 }
 
 func TestCatalogDiscoverUnion_OneWindowMatchesDiscover(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "One"}, {MediaType: provision.Movie, TMDBID: 90000002, Name: "Two"},
 	}}
-	query := catalog.DiscoveryQuery{MediaType: provision.Movie, YearFrom: 2000, YearTo: 2001}
-	want, err := catalog.New(nil, corpus).Discover(context.Background(), query, 24)
+	query := titlesearch.DiscoveryQuery{MediaType: provision.Movie, YearFrom: 2000, YearTo: 2001}
+	want, err := titlesearch.New(nil, corpus).Discover(context.Background(), query, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{query})
+	got, err := titlesearch.New(nil, corpus).DiscoverUnion(context.Background(), []titlesearch.DiscoveryQuery{query})
 	if err != nil {
 		t.Fatal(err)
 	}

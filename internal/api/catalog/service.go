@@ -26,7 +26,7 @@ type SearchRequest struct {
 
 // SearchDiscovery is the dependency-light API representation of Catalog's
 // structured discovery request (§7.2). The composition-root adapter is the sole
-// conversion seam into catalog.DiscoveryQuery.
+// conversion seam into titlesearch.DiscoveryQuery.
 type SearchDiscovery struct {
 	MediaType        string
 	Keywords         []string

@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/requester"
 )
 
 // envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated

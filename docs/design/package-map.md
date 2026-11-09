@@ -61,7 +61,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 ### From a request to Live TV
 
-A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from `platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
+A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `library/titlesearch`(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from `platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a `provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
 
 ### From a filler source to a break
 
@@ -74,7 +74,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Depends on |
 | --- | --- |
 | `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
-| `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `library/inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
 | `channels/viewing` | `platform/store`, `platform/store/channelstore` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
@@ -95,7 +94,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/taxonomy` | — |
 | `library` | `library/inventory`, `platform/httpx`, `platform/metrics` |
 | `library/inventory` | — |
-| `library/tmdb` | `catalog`, `platform/httpx`, `platform/metrics`, `provision` |
+| `library/titlesearch` | `library`, `platform/store`, `provision` |
+| `library/tmdb` | `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision` |
 | `media/bgexec` | — |
 | `media/creative` | — |
 | `media/defects` | — |
@@ -129,7 +129,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
 | `proposals/accept` | `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
-| `proposals/suggest` | `catalog`, `channels/schedule`, `library/tmdb`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/quality`, `provision` |
+| `proposals/suggest` | `channels/schedule`, `library/titlesearch`, `library/tmdb`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/quality`, `provision` |
 | `provision` | — |
 
 ## How the area pages are made

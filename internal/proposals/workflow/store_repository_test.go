@@ -2,6 +2,9 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -18,6 +21,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+// testIntentHash keys the generation cache by the Intent's exact JSON: equal Intents collide and
+// different ones do not, which is all these tests need from the suggester's normalizing hash.
+func testIntentHash(intent proposals.Intent) string {
+	blob, _ := json.Marshal(intent)
+	sum := sha256.Sum256(blob)
+	return hex.EncodeToString(sum[:])
+}
+
 func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +40,7 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
-	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)
 	intent := proposals.Intent{Description: "Saturday morning cartoons"}
 	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
 	if err != nil || first.JobID == "" || first.CachedProposal != nil {
@@ -103,7 +114,7 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.September, 28, 18, 0, 0, 0, time.UTC)
 	var next atomic.Int64
-	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)
 
 	intent := proposals.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
 	prop := proposals.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []proposals.ProposalItem{
@@ -152,7 +163,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 
 	started := time.Date(2026, time.August, 22, 16, 0, 0, 0, time.UTC)
 	clock := started
-	workflow := New(st, func() string { return "proposal-1" }, func() time.Time { return clock })
+	workflow := New(st, func() string { return "proposal-1" }, func() time.Time { return clock }, testIntentHash)
 	intent := proposals.Intent{Description: "Saturday morning cartoons"}
 	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-1", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
@@ -217,7 +228,7 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 17, 0, 0, 0, time.UTC)
-	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-failed", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
 		IntentJSON:      `{"description":"Obscure regional monster movies"}`,
@@ -266,7 +277,7 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 18, 0, 0, 0, time.UTC)
-	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	for _, job := range []proposalstore.Job{
 		{ID: "alice-running", Kind: "suggest", Status: "queued", CreatedBy: "alice", IntentJSON: `{"description":"Anime after school"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
 		{ID: "bob-running", Kind: "suggest", Status: "queued", CreatedBy: "bob", IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
@@ -301,7 +312,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
-	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	for _, job := range []proposalstore.Job{
 		{ID: "poison", IntentJSON: "[1]"}, // JSON, as the column demands, but not an Intent
 		{ID: "good", IntentJSON: `{"description":"Noir"}`},
@@ -345,7 +356,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.September, 22, 3, 0, 0, 0, time.UTC)
-	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 
 	approve := func(jobID string, number int) channelstore.Channel {
 		t.Helper()
@@ -418,7 +429,7 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
-	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)
 	intent := proposals.Intent{Description: "Saturday morning cartoons"}
 	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
 	if err != nil {

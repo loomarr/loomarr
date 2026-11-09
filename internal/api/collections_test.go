@@ -116,15 +116,15 @@ func TestCollections_MemberIsNotForbidden(t *testing.T) {
 	}
 }
 
-// A media server that errors is a 502 with an explanation, never a 500 and never an empty list
-// — an empty list would read as "you have no collections", which is a different and false claim.
-func TestCollections_UpstreamErrorIs502(t *testing.T) {
-	harness := newCollectionsHarness(t, fakeCollections{err: errors.New("dial tcp: connection refused")})
+// The collections are Loomarr's own, so a read that fails is Loomarr's 500, never an empty list —
+// an empty list would read as "you have no collections", which is a different and false claim.
+func TestCollections_ReadErrorIs500(t *testing.T) {
+	harness := newCollectionsHarness(t, fakeCollections{err: errors.New("database is locked")})
 
 	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", resp.StatusCode)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
 	}
 }
 
