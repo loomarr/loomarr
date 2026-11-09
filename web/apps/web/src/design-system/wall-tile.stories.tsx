@@ -85,8 +85,13 @@ const Decade1970: Story = { args: { ...OnAir.args, decade: 1970 } };
 const Decade1980: Story = { args: { ...OnAir.args, decade: 1980 } };
 const Decade1990: Story = { args: { ...OnAir.args, decade: 1990 } };
 
-// Every decade and none side by side. The decade colours are the same in both themes; the tile has
-// no light story because its words over the picture take the theme's foreground.
+// The light theme (#3178): the words over the picture are light on the scrim, as in the dark theme.
+const LightOnAir: Story = { ...OnAir, globals: { theme: "light" } };
+const LightLastWatched: Story = { ...LastWatched, globals: { theme: "light" } };
+const LightFillingUp: Story = { ...FillingUp, globals: { theme: "light" } };
+const LightCompact: Story = { ...Compact, globals: { theme: "light" } };
+
+// Every decade and none side by side. The decade colours are the same in both themes.
 const Decades: Story = {
   render: (args) => (
     <div style={{ display: "grid", gap: 12 }}>
@@ -104,4 +109,18 @@ const Decades: Story = {
 };
 
 export default meta;
-export { Compact, CompactLast, Decade1970, Decade1980, Decade1990, Decades, FillingUp, LastWatched, OnAir };
+export {
+  Compact,
+  CompactLast,
+  Decade1970,
+  Decade1980,
+  Decade1990,
+  Decades,
+  FillingUp,
+  LastWatched,
+  LightCompact,
+  LightFillingUp,
+  LightLastWatched,
+  LightOnAir,
+  OnAir,
+};

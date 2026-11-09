@@ -83,7 +83,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           ...panelGlass(),
         }}
       >
-        <Text density={density} numberOfLines={1} shout textRole="guideMeta" tone="secondary" tracking={0.14}>
+        <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
           {identity}
         </Text>
         {band.programmeLine ? (

@@ -6,7 +6,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -269,7 +269,9 @@ const ChannelDetailLayout = () => {
             </span>
           </div>
           <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
-            <span className="font-mono tracking-wide uppercase">Ch</span>
+            <Text as="span" shout textRole="data">
+              Ch
+            </Text>
             {isAdmin ? (
               <ChannelIdentityField
                 label="Channel number"

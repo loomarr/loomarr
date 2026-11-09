@@ -1,4 +1,4 @@
-package app
+package routine
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 		{ID: "fcc:3", Country: "US", CallSigns: []station.CallSign{{Sign: "WCCC"}}},
 		{ID: "fcc:9", Country: "US", CallSigns: []station.CallSign{{Sign: "WZZZ"}}},
 	})
-	search := openArchiveSearch{
+	search := OpenArchiveSearch{
 		channels: &retirementFake{channels: []channelstore.Channel{channelAt("US", "lakeside")}},
 		policy:   retirementPolicy("US"), stations: fixedDirectory{directory},
 		languages: func(context.Context) (string, error) { return "en", nil },
@@ -97,7 +97,7 @@ func TestNearbyCallSignsAreThoseHeldDuringTheEraGaps(t *testing.T) {
 		{"across it", []pod.EraRange{{From: 1985, To: 1989}}, []string{"WAAA", "WBBB", "WCCC"}},
 		{"no era gap", nil, []string{"WAAA", "WBBB", "WCCC"}},
 	} {
-		if got := nearbyCallSigns(near, c.eras, directory); !slices.Equal(got, c.want) {
+		if got := NearbyCallSigns(near, c.eras, directory); !slices.Equal(got, c.want) {
 			t.Errorf("%s: call signs %v, want %v", c.name, got, c.want)
 		}
 	}

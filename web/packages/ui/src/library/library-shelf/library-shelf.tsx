@@ -88,6 +88,19 @@ const DeadAir = ({ onOpenSettings }: { onOpenSettings: () => void }) => (
   />
 );
 
+// Movies or Shows with nothing in it: the empty panel, worded for the tab, back to everything.
+const EmptyTab = ({ kind, onShowEverything }: { kind: "movie" | "series"; onShowEverything: () => void }) => {
+  const what = kind === "movie" ? "movie" : "show";
+  return (
+    <StatePanel
+      action={{ label: "Show everything", onPress: onShowEverything }}
+      description={`When a ${what} lands in one of your folders, it shows up here.`}
+      kind="empty"
+      title={`No ${what}s yet`}
+    />
+  );
+};
+
 const subtitle = (title: LibraryShelfTitle) => {
   const kind = title.kind === "series" ? "Show" : "Movie";
   return title.year ? `${title.year} · ${kind}` : kind;
@@ -246,6 +259,8 @@ const LibraryShelf = ({
             <Text textRole="body" tone="secondary">
               {`Nothing here matches "${search.trim()}".`}
             </Text>
+          ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
+            <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
           ) : (
             <Grid onOpenTitle={onOpenTitle} titles={titles} />
           )}

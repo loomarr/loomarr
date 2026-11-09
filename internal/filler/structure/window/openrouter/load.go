@@ -1,4 +1,4 @@
-package app
+package openrouter
 
 import (
 	"encoding/json"
@@ -9,12 +9,11 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
 )
 
 const maximumWindowStructureDeploymentBytes int64 = 1 << 20
 
-func loadWindowStructureDeployment(path string, authority *window.MaterializationAuthority) (*openrouter.Deployment, error) {
+func LoadDeployment(path string, authority *window.MaterializationAuthority) (*Deployment, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -35,7 +34,7 @@ func loadWindowStructureDeployment(path string, authority *window.Materializatio
 	defer func() { _ = file.Close() }()
 	decoder := json.NewDecoder(io.LimitReader(file, maximumWindowStructureDeploymentBytes+1))
 	decoder.DisallowUnknownFields()
-	var deployment openrouter.Deployment
+	var deployment Deployment
 	if err := decoder.Decode(&deployment); err != nil {
 		return nil, fmt.Errorf("decode long-reel deployment: %w", err)
 	}
@@ -43,7 +42,7 @@ func loadWindowStructureDeployment(path string, authority *window.Materializatio
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return nil, errors.New("long-reel deployment contains trailing JSON")
 	}
-	if err := openrouter.ValidateDeployment(deployment, *authority); err != nil {
+	if err := ValidateDeployment(deployment, *authority); err != nil {
 		return nil, err
 	}
 	return &deployment, nil

@@ -2,14 +2,12 @@ package app
 
 import (
 	"context"
-	"errors"
-	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
-	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/identity"
+	"github.com/loomarr/loomarr/internal/filler/routine"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
@@ -34,77 +32,8 @@ func fillerSyncJob(s *filler.Syncer) jobs.Job {
 	}
 }
 
-type fillerEnrichmentRunner interface {
-	Run(context.Context) (enrichment.RunResult, error)
-}
-
 type fillerPipelineRunner interface {
 	Run(context.Context) error
-}
-
-// fillerPipelineDriver owns one operator-facing background loop while preserving two independent
-// authority boundaries inside it: readiness prepares clips for playback; details enrich clips
-// that are already ready. A preparation failure does not strand the ready backlog, but a cancelled
-// lease stops before beginning more work.
-type fillerPipelineDriver struct {
-	prepare func(context.Context) (filler.PipelineResult, error)
-	details func(context.Context) error
-	// deferred counts consecutive passes that skipped details because preparation was advancing.
-	deferred int
-}
-
-// fillerDetailMaxDeferrals bounds how many consecutive advancing passes may postpone details.
-// ⚠ Deferral used to key on "anything is Runnable or InProgress", which is a property of the
-// backlog, not of progress: a backlog that never drains (production held 202 clips, 34 ready)
-// starved enrichment forever and filler_enrichment_passes stayed empty (#1412).
-const fillerDetailMaxDeferrals = 3
-
-func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichmentRunner, log *slog.Logger) *fillerPipelineDriver {
-	return &fillerPipelineDriver{
-		prepare: func(ctx context.Context) (filler.PipelineResult, error) {
-			if pipeline == nil {
-				return filler.PipelineResult{}, nil
-			}
-			return pipeline.RunOnce(ctx)
-		},
-		details: func(ctx context.Context) error {
-			if details == nil {
-				return nil
-			}
-			result, err := details.Run(ctx)
-			if log != nil {
-				log.Info("filler details run", "considered", result.Considered,
-					"updated", result.Updated, "failed", result.Failed)
-			}
-			return err
-		},
-	}
-}
-
-func (d *fillerPipelineDriver) Run(ctx context.Context) error {
-	var prepared filler.PipelineResult
-	var prepareErr error
-	if d.prepare != nil {
-		prepared, prepareErr = d.prepare(ctx)
-	}
-	if err := ctx.Err(); err != nil {
-		return errors.Join(prepareErr, err)
-	}
-	// Descriptive enrichment is optional and may involve a remote model. While preparation is
-	// actually advancing clips, let the next bounded pass keep moving them toward playable
-	// readiness — but only for a bounded number of passes, and never on the strength of a backlog
-	// that did not advance. Scheduled retries do not block enrichment because they cannot advance.
-	preparing := prepared.Advanced > 0 && (prepared.Overview.Runnable > 0 || prepared.Overview.InProgress > 0)
-	if preparing && d.deferred < fillerDetailMaxDeferrals {
-		d.deferred++
-		return prepareErr
-	}
-	d.deferred = 0
-	var detailsErr error
-	if d.details != nil {
-		detailsErr = d.details(ctx)
-	}
-	return errors.Join(prepareErr, detailsErr)
 }
 
 // fillerFetchJob declares auto-fetch (§10 V38b) — polling registered sources for new clips.
@@ -121,7 +50,7 @@ func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 // Each pass first switches the curated sources for the places' nearby stations (#2059 decision
 // 10), so a place set or moved since the last pass is fetched for in this one. A failure there costs
 // only the switch: the pass still runs with the sources as they are.
-func fillerFetchJob(f *acquisition.Fetcher, local localCuratedSources) jobs.Job {
+func fillerFetchJob(f *acquisition.Fetcher, local routine.LocalCuratedSources) jobs.Job {
 	return jobs.Job{
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.

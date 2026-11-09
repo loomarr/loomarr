@@ -1,4 +1,4 @@
-package app
+package routine
 
 import (
 	"context"
@@ -12,25 +12,37 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
-// fillerGeographyRetirement removes clips no current place can air (#2059 decision 14): a local
+// GeographyRetirement removes clips no current place can air (#2059 decision 14): a local
 // clip whose station is out of every place's radius, or a national clip from another country. It
 // runs after enrichment and research, and considers only clips whose geography is settled; unknown
 // or inferred geography is never a reason to remove one. Removal is the ordinary catalog tombstone,
 // so the clip's hash stays known and fetching never pulls it again.
-type fillerGeographyRetirement struct {
-	clips interface {
-		ListSettledGeographyClips(ctx context.Context) ([]records.SettledGeographyClip, error)
-	}
-	store interface {
-		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
-		SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
-	}
+type GeographyRetirement struct {
+	clips  SettledClips
+	store  RetirementStore
 	policy func() pod.Policy
 	log    *slog.Logger
 	now    func() time.Time
 }
 
-func (r fillerGeographyRetirement) Run(ctx context.Context) (int, error) {
+// SettledClips lists the clips whose geography is settled.
+type SettledClips interface {
+	ListSettledGeographyClips(ctx context.Context) ([]records.SettledGeographyClip, error)
+}
+
+// RetirementStore is the slice of the store the retirement reads channels from and removes clips
+// through.
+type RetirementStore interface {
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+}
+
+// NewGeographyRetirement returns the retirement routine. policy reads the places' policy live.
+func NewGeographyRetirement(clips SettledClips, store RetirementStore, policy func() pod.Policy, log *slog.Logger, now func() time.Time) *GeographyRetirement {
+	return &GeographyRetirement{clips: clips, store: store, policy: policy, log: log, now: now}
+}
+
+func (r GeographyRetirement) Run(ctx context.Context) (int, error) {
 	areas, err := currentAreas(ctx, r.store, r.policy())
 	if err != nil {
 		return 0, fmt.Errorf("retire unusable filler: %w", err)
