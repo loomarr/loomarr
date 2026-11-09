@@ -27,7 +27,7 @@ func (r *recordedAirings) RecordAiring(_ context.Context, _ string, _ provision.
 
 // stillResolver plays slots from now, each programme from its own library file (named for its
 // item id) and no media server.
-func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings airingRecorder) *Resolver {
+func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings AiringRecorder) *Resolver {
 	t.Helper()
 	accepted := &stubChannels{}
 	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()

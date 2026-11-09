@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -71,8 +72,8 @@ func newTimelineTMDB(t *testing.T) *tmdb.Client {
 // proves which TMDB URL it resolved the key to.
 func TestTimelineThumbResolver(t *testing.T) {
 	t.Parallel()
-	st := newMemImageStore()
-	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st)
+	st := imagetestkit.NewMemStore()
+	svc := imagetestkit.NewService(t, t.TempDir(), "https://machine-client-only.invalid", st)
 	ctx := context.Background()
 
 	// A fetched row per source URL the resolver should arrive at. The hashes are arbitrary but
@@ -149,7 +150,7 @@ func (f *timelineFetchStub) FetchNow(_ context.Context, work []images.Image, _ t
 // degradation on a failed bounded fetch is no image — never a gray permanent placeholder.
 func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 	t.Parallel()
-	st := newMemImageStore()
+	st := imagetestkit.NewMemStore()
 	contentHash := strings.Repeat("d", 64)
 	src := imgBase + "/pip.jpg"
 	fetch := &timelineFetchStub{warm: map[string]images.Image{
@@ -159,7 +160,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 		},
 	}}
 	r := timelineThumbResolver{
-		tmdb: newTimelineTMDB(t), images: newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", st),
+		tmdb: newTimelineTMDB(t), images: imagetestkit.NewService(t, t.TempDir(), "https://machine-client-only.invalid", st),
 		fetch: fetch,
 	}
 

@@ -35,12 +35,12 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// cyclePreviewer is the scheduling surface the resolver needs — satisfied by *channels.Engine.
+// CyclePreviewer is the scheduling surface the resolver needs — satisfied by *channels.Engine.
 //
 // Narrowed to reads deliberately: the resolver must not be able to reconcile, push to Tunarr, or
 // mutate anything. Playout is a READ of the schedule, and a narrow interface makes that
 // structural rather than a rule someone has to remember.
-type cyclePreviewer interface {
+type CyclePreviewer interface {
 	CyclePreview(ctx context.Context, channelID string, at time.Time) (
 		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution,
 		window time.Duration, err error)
@@ -52,61 +52,61 @@ type cyclePreviewer interface {
 	Calendar() schedule.Calendar
 }
 
-// titleReader is the one store method provenance needs.
+// TitleReader is the one store method provenance needs.
 //
 // Narrowed to a single method deliberately, the same way cyclePreviewer is: the guide READS
 // acquisition state and must not be able to mutate it. A structural guarantee beats a rule
 // someone has to remember.
-type titleReader interface {
+type TitleReader interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 
-// clipPlayRecorder is the one-method slice of the store the resolver needs to count an
+// ClipPlayRecorder is the one-method slice of the store the resolver needs to count an
 // airing. `at` is the scheduled clip start, which makes repeated resolves of one airing
 // idempotent in the store; `recordedAt` is the wall clock. Narrow deliberately — the resolver
 // has no other business writing.
-type clipPlayRecorder interface {
+type ClipPlayRecorder interface {
 	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (bool, error)
 }
 
-// airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
+// AiringRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
 // signal placement ranks on. Narrowed to the one write, like every other store slice here.
-type airingRecorder interface {
+type AiringRecorder interface {
 	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error
 }
 
-// channelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
+// ChannelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
 // the accepted cycle reconciliation committed; guide also fingerprints Lineup and Policy when it
 // forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
 // are reads, and neither path may mutate the channel it observes.
-type channelReader interface {
+type ChannelReader interface {
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
 }
 
-// codecWriter persists a channel's computed broadcast codec (§9.1 V50). Narrowed to the one
+// CodecWriter persists a channel's computed broadcast codec (§9.1 V50). Narrowed to the one
 // targeted column write — the resolver samples + probes the lineup, but has no other business
 // mutating a channel row (the binder owns the lineup, loomarr-one-lineup-writer).
-type codecWriter interface {
+type CodecWriter interface {
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 }
 
 // Resolver answers "what is airing now, and where does ffmpeg read it from". Build one with New;
 // the zero value is not wired to anything.
 type Resolver struct {
-	engine  cyclePreviewer
+	engine  CyclePreviewer
 	now     func() time.Time
 	metrics *metrics.Recorder
 	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
 	// line is simply absent, which is the right degradation: a guide without provenance is
 	// still a guide.
-	titles titleReader
+	titles TitleReader
 	// clipPlays counts a filler clip having aired (V28). Nil ⇒ no counting, which is the
 	// correct degradation: usage is telemetry and a channel must still play without it.
-	clipPlays clipPlayRecorder
+	clipPlays ClipPlayRecorder
 	// airings records that a PROGRAMME aired, feeding recency-aware placement
 	// (programming-design §3.1). Nil ⇒ no history, and placement degrades to the positional
 	// rotation it used before the signal existed.
-	airings airingRecorder
+	airings AiringRecorder
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
 	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
@@ -159,14 +159,14 @@ type Resolver struct {
 	inventory inventory.Service
 	// libraryAudio is the Library's tracks for a file the scanner read (#2151 decision 47). Audio
 	// selection reads it first, while the file is as the scanner read it; nil skips it.
-	libraryAudio libraryAudioReader
+	libraryAudio LibraryAudioReader
 	// libraryFile is the file a Library item plays (#2151 step 15): a programme keyed by a library
 	// item id reads it directly, with no media server. nil, or any other id, resolves through the
 	// media server.
-	libraryFile libraryFileReader
+	libraryFile LibraryFileReader
 	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
 	// still tone mapping; nil, or any other id, reads the inventory.
-	libraryVideo libraryVideoReader
+	libraryVideo LibraryVideoReader
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
 	itemFacts store.LibraryItemFactsReader
@@ -180,12 +180,12 @@ type Resolver struct {
 	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
 	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
 	// (merely slower) listings.
-	channels channelReader
+	channels ChannelReader
 	// codecs persists the computed broadcast codec after a bind samples the lineup (§9.1 V50).
 	// Nil ⇒ ComputeChannelCodec still returns the measured codec but skips the write — so a
 	// caller that only wants the value (or an install without the wiring) degrades to "compute,
 	// don't store", never to a failed bind.
-	codecs codecWriter
+	codecs CodecWriter
 	cycles *cycleCache
 	// detectOnce / detected cache the measured encoder choice (detectedEncoder). The first live
 	// demand synchronously checks only the persisted evidence fingerprint, then detectStart validates
@@ -231,7 +231,7 @@ type PodPreviewer interface {
 // cross-vendor encoder order, and so on).
 type Config struct {
 	// Engine is the schedule the resolver reads.
-	Engine cyclePreviewer
+	Engine CyclePreviewer
 	// Now is the clock.
 	Now func() time.Time
 	// Metrics receives the filler rotation counters.
@@ -239,21 +239,21 @@ type Config struct {
 	// DetectContext bounds the background encoder detection; it is the application's lifetime.
 	DetectContext context.Context
 	// Titles resolves a block's acquisition record for the grid's provenance line.
-	Titles titleReader
+	Titles TitleReader
 	// ClipPlays counts a filler clip having aired (V28).
-	ClipPlays clipPlayRecorder
+	ClipPlays ClipPlayRecorder
 	// Airings records that a programme aired, feeding recency-aware placement.
-	Airings airingRecorder
+	Airings AiringRecorder
 	// Channels reads the channel the arranged-cycle cache fingerprints.
-	Channels channelReader
+	Channels ChannelReader
 	// Codecs persists the computed broadcast codec (§9.1 V50).
-	Codecs codecWriter
+	Codecs CodecWriter
 	// LibraryAudio is the Library's tracks for a file the scanner read.
-	LibraryAudio libraryAudioReader
+	LibraryAudio LibraryAudioReader
 	// LibraryFile is the file a Library item plays.
-	LibraryFile libraryFileReader
+	LibraryFile LibraryFileReader
 	// LibraryVideo is a Library item's video format as the scanner read it.
-	LibraryVideo libraryVideoReader
+	LibraryVideo LibraryVideoReader
 	// ItemFacts answers the guide's metadata for a library item id.
 	ItemFacts store.LibraryItemFactsReader
 
@@ -1292,8 +1292,8 @@ func (r *Resolver) preferredAudioLanguage(ctx context.Context, channelID string)
 	return prefer
 }
 
-// libraryFileReader is the store's read of the file a Library item plays.
-type libraryFileReader interface {
+// LibraryFileReader is the store's read of the file a Library item plays.
+type LibraryFileReader interface {
 	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
 }
 
@@ -1329,8 +1329,8 @@ func readableFile(path string) bool {
 	return true
 }
 
-// libraryVideoReader is the store's read of the video a Library item plays.
-type libraryVideoReader interface {
+// LibraryVideoReader is the store's read of the video a Library item plays.
+type LibraryVideoReader interface {
 	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
 }
 
@@ -1354,8 +1354,8 @@ func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.Me
 	}}}), true
 }
 
-// libraryAudioReader is the store's one Library read audio selection makes.
-type libraryAudioReader interface {
+// LibraryAudioReader is the store's one Library read audio selection makes.
+type LibraryAudioReader interface {
 	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
 }
 

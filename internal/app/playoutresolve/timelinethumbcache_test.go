@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -79,7 +80,7 @@ func newThumbsUnderTest(
 	t *testing.T, client *tmdb.Client, fetch TimelineImageFetcher, logs *lockedBuffer,
 ) *TimelineThumbs {
 	t.Helper()
-	svc := newTestImageService(t, t.TempDir(), "https://machine-client-only.invalid", newMemImageStore())
+	svc := imagetestkit.NewService(t, t.TempDir(), "https://machine-client-only.invalid", imagetestkit.NewMemStore())
 	log := slog.New(slog.NewTextHandler(logs, nil))
 	return NewTimelineThumbs(t.Context(), client, svc, fetch, log)
 }

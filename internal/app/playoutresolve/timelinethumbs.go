@@ -30,7 +30,7 @@ type timelineThumbResolver struct {
 	fetch  TimelineImageFetcher
 }
 
-// Kept as the narrow capability the resolver needs so the cold-image behavior is testable without
+// TimelineImageFetcher is the narrow capability the resolver needs so the cold-image behavior is testable without
 // a network. *images.Fetcher is the production implementation shared with the scheduled job.
 type TimelineImageFetcher interface {
 	FetchNow(ctx context.Context, work []images.Image, budget time.Duration) map[string]images.Image

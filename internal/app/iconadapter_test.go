@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -42,8 +43,8 @@ func iconPosterURL(hash string) string {
 // fetched instead, which is also the steady state on a real instance after the first minute.
 func newIconAdapter(t *testing.T, st store.Store, client *tmdb.Client, warm ...string) (iconAdapter, map[string]string) {
 	t.Helper()
-	ims := newMemImageStore()
-	svc := newTestImageService(t, t.TempDir(), iconTestBase, ims)
+	ims := imagetestkit.NewMemStore()
+	svc := imagetestkit.NewService(t, t.TempDir(), iconTestBase, ims)
 
 	const hexDigits = "abcdef0123456789"
 	hashes := make(map[string]string, len(warm))
