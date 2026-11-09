@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -280,42 +278,7 @@ func (r fillerDetailRunner) Run(ctx context.Context) (enrichment.RunResult, erro
 type fillerEnrichmentSignals struct {
 	store    records.FillerSourceStore
 	files    fs.FS
-	stations *stationDirectory // nil: no station is ever named
-}
-
-// stationDirectory loads the broadcast station directory on first use. Boot seeds it and nothing
-// rewrites it while the process runs, so one load serves every pass; a failed load is retried.
-type stationDirectory struct {
-	list func(context.Context) ([]station.Station, error)
-	mu   sync.Mutex
-	dir  *station.Directory
-}
-
-func (s *stationDirectory) get(ctx context.Context) (*station.Directory, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.dir == nil {
-		stations, err := s.list(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("load broadcast stations: %w", err)
-		}
-		s.dir = station.NewDirectory(stations)
-	}
-	return s.dir, nil
-}
-
-// resolveDuring adapts the directory for research, which names a call sign and a span. An
-// unreadable directory resolves nothing, so the named station answers no geography.
-func (s *stationDirectory) resolveDuring(log *slog.Logger) research.StationResolver {
-	return func(callSign, from, to string) (string, string, bool) {
-		dir, err := s.get(context.Background())
-		if err != nil {
-			log.Warn("filler research: broadcast stations unavailable; the named station is unresolved", "err", err)
-			return "", "", false
-		}
-		station, ok := dir.ResolveDuring(callSign, from, to)
-		return station.ID, station.Country, ok
-	}
+	stations *station.Lazy // nil: no station is ever named
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.Candidate, observedAt time.Time) (enrichment.Signals, error) {
@@ -331,7 +294,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.
 		signals.SourceID = metadata.SourceID
 	}
 	if l.stations != nil {
-		directory, err := l.stations.get(ctx)
+		directory, err := l.stations.Get(ctx)
 		if err != nil {
 			return enrichment.Signals{}, err
 		}

@@ -2,22 +2,16 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"image"
-	"image/png"
 	"log/slog"
 	"maps"
 	"math"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	_ "golang.org/x/image/webp" // custom watermark uploads may be WebP
 
@@ -272,7 +266,7 @@ func (c *channelWatermarks) Options(ctx context.Context, channelID string, now t
 		return api.WatermarkOptions{}, err
 	}
 	decade := schedule.WatermarkEraDecade(ch.Policy.Scope)
-	out := api.WatermarkOptions{AutoCallsign: deriveCallsign(ch.Name, ch.Number), Holidays: []api.WatermarkHolidayOption{}}
+	out := api.WatermarkOptions{AutoCallsign: watermark.DeriveCallsign(ch.Name, ch.Number), Holidays: []api.WatermarkHolidayOption{}}
 	if decade > 0 {
 		out.Era = fmt.Sprintf("%ds", decade)
 	}
@@ -368,7 +362,7 @@ func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res sc
 	}
 	call := res.Callsign
 	if call == "" {
-		call = deriveCallsign(ch.Name, ch.Number)
+		call = watermark.DeriveCallsign(ch.Name, ch.Number)
 	}
 	style := watermark.Style(res.Look)
 	fill, pal := design.colours(res.Color)
@@ -390,74 +384,11 @@ func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res sc
 	}
 }
 
-// CallsignProposer is the seam for the issue's LLM callsign pick: one small call after channel
-// creation, off Add a channel's latency path, its answer stored as policy.watermark.callsign so
-// airtime never waits on a model. It is deliberately not wired while the LLM is off; with no
-// stored callsign, deriveCallsign names every Plate.
-type CallsignProposer interface {
-	ProposeCallsign(ctx context.Context, channelName string) (string, error)
-}
-
-// callsignStopwords are skipped for initials: "The Sci-Fi Vault" is SV.
-var callsignStopwords = map[string]bool{"a": true, "an": true, "and": true, "the": true, "of": true,
-	"for": true, "to": true, "in": true, "on": true, "with": true, "n": true}
-
-// deriveCallsign is the Plate's text when the channel has none, broadcast-short and deterministic:
-// an acronym the name already has (TGIF), else a decade or number (80s), else the initials of its
-// significant words (Saturday Cartoons: SC, at most 4), else its one word upper-cased (at most 8),
-// else "CH<number>". Words keep only letters and digits, so "Sci-Fi" is one word.
-func deriveCallsign(name string, number int) string {
-	var words, significant []string
-	for _, f := range strings.Fields(name) {
-		w := strings.Map(func(r rune) rune {
-			if unicode.IsLetter(r) || unicode.IsDigit(r) {
-				return r
-			}
-			return -1
-		}, f)
-		if w == "" {
-			continue
-		}
-		words = append(words, w)
-		if !callsignStopwords[strings.ToLower(w)] {
-			significant = append(significant, w)
-		}
-	}
-	// An all-caps name is shouting, not a string of acronyms.
-	if strings.ToUpper(name) != name {
-		for _, w := range words {
-			if r := []rune(w); len(r) >= 2 && len(r) <= 5 && unicode.IsLetter(r[0]) && w == strings.ToUpper(w) {
-				return w
-			}
-		}
-	}
-	for _, w := range words {
-		if r := []rune(w); unicode.IsDigit(r[0]) && len(r) <= 5 {
-			return w
-		}
-	}
-	if len(significant) >= 2 {
-		var initials []rune
-		for _, w := range significant[:min(len(significant), 4)] {
-			initials = append(initials, unicode.ToUpper([]rune(w)[0]))
-		}
-		return string(initials)
-	}
-	if len(significant) == 0 {
-		significant = words
-	}
-	if len(significant) > 0 {
-		r := []rune(strings.ToUpper(significant[0]))
-		return string(r[:min(len(r), 8)])
-	}
-	return fmt.Sprintf("CH%d", number)
-}
-
 // cached returns the aired bug's file for key, rendering it once.
 func (c *channelWatermarks) cached(key string, render func() (watermark.Bug, error)) (string, int, int, error) {
 	c.render.Lock()
 	defer c.render.Unlock()
-	path, w, h, _, err := cacheIn(c.dir, key, render)
+	path, w, h, _, err := watermark.CacheIn(c.dir, key, render)
 	return path, w, h, err
 }
 
@@ -468,7 +399,7 @@ func (c *channelWatermarks) cachedPreview(key string, render func() (watermark.B
 	dir := filepath.Join(c.dir, "preview")
 	c.preview.Lock()
 	defer c.preview.Unlock()
-	path, _, _, hit, err := cacheIn(dir, key, render)
+	path, _, _, hit, err := watermark.CacheIn(dir, key, render)
 	if err != nil {
 		return "", err
 	}
@@ -477,87 +408,8 @@ func (c *channelWatermarks) cachedPreview(key string, render func() (watermark.B
 		_ = os.Chtimes(path, now, now)
 		return path, nil
 	}
-	pruneLeastRecentlyUsed(dir, previewKeep, path, c.log)
+	watermark.PruneLeastRecentlyUsed(dir, previewKeep, path, c.log)
 	return path, nil
-}
-
-// cacheIn returns the bug's file for key in dir, rendering it when absent. The caller holds the
-// lock that serialises renders into dir.
-func cacheIn(dir, key string, render func() (watermark.Bug, error)) (path string, w, h int, hit bool, err error) {
-	sum := sha256.Sum256([]byte(key))
-	path = filepath.Join(dir, hex.EncodeToString(sum[:10])+".png")
-	if f, err := os.Open(path); err == nil {
-		cfg, derr := png.DecodeConfig(f)
-		_ = f.Close()
-		if derr == nil {
-			return path, cfg.Width, cfg.Height, true, nil
-		}
-	}
-	bug, err := render()
-	if err != nil {
-		return "", 0, 0, false, err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", 0, 0, false, err
-	}
-	if err := writePNGAtomic(path, bug.Straight); err != nil {
-		return "", 0, 0, false, err
-	}
-	w, h = bug.Size()
-	return path, w, h, false, nil
-}
-
-// pruneLeastRecentlyUsed removes the oldest-touched PNGs in dir beyond keep, never keepPath (the
-// file just written).
-func pruneLeastRecentlyUsed(dir string, keep int, keepPath string, log *slog.Logger) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	type used struct {
-		path string
-		at   time.Time
-	}
-	var files []used
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".png" {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		files = append(files, used{filepath.Join(dir, e.Name()), info.ModTime()})
-	}
-	if len(files) <= keep {
-		return
-	}
-	slices.SortFunc(files, func(a, b used) int { return a.at.Compare(b.at) })
-	for _, f := range files[:len(files)-keep] {
-		if f.path == keepPath {
-			continue
-		}
-		if err := os.Remove(f.path); err != nil && !os.IsNotExist(err) {
-			log.Warn("watermark: a stale preview could not be removed", "path", f.path, "err", err)
-		}
-	}
-}
-
-func writePNGAtomic(path string, img image.Image) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".bug-*")
-	if err != nil {
-		return err
-	}
-	if err := png.Encode(tmp, img); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
 
 // gate returns the encoder's self-check state, starting the check on first use.

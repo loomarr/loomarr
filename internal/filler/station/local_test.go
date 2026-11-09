@@ -1,4 +1,4 @@
-package app
+package station_test
 
 import (
 	"io"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -16,26 +17,26 @@ import (
 func TestLocalStationsResolvesThePickedPlaceAgainstTheSeededDirectory(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	radius := 100
-	local := &localStations{stations: &stationDirectory{list: st.ListBroadcastStations},
-		radiusKM: func() int { return radius }, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	local := &station.LocalResolver{Stations: station.NewLazy(st.ListBroadcastStations),
+		RadiusKM: func() int { return radius }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
-	near := local.resolve("US", "4560349")
+	near := local.Resolve("US", "4560349")
 	if !near["fcc:25453"] || near["fcc:59441"] {
 		t.Fatalf("Philadelphia at 100 km: KYW %v, WEWS %v; want KYW only", near["fcc:25453"], near["fcc:59441"])
 	}
-	if got := local.resolve("CA", "4560349"); got != nil {
+	if got := local.Resolve("CA", "4560349"); got != nil {
 		t.Fatalf("a US place resolved for Canada: %d stations", len(got))
 	}
-	if got := local.resolve("US", "no-such-place"); got != nil {
+	if got := local.Resolve("US", "no-such-place"); got != nil {
 		t.Fatalf("an unknown place resolved %d stations", len(got))
 	}
 	// The radius is live: a tighter one reaches fewer stations, and its answer is cached apart.
 	radius = 10
-	if tight := local.resolve("US", "4560349"); len(tight) >= len(near) {
+	if tight := local.Resolve("US", "4560349"); len(tight) >= len(near) {
 		t.Fatalf("10 km reached %d stations, 100 km %d", len(tight), len(near))
 	}
 
-	household := pod.Geography{Country: "US", Place: "4560349"}.Resolve(local.resolve)
+	household := pod.Geography{Country: "US", Place: "4560349"}.Resolve(local.Resolve)
 	clevelandNews := filler.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:59441"}
 	philadelphiaNews := filler.Clip{GeographicScope: pod.GeographicLocal, Country: "US", Station: "fcc:25453"}
 	if pod.GeographicallyEligible(clevelandNews, household) || !pod.GeographicallyEligible(philadelphiaNews, household) {
