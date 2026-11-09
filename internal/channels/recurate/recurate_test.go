@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -36,7 +37,7 @@ func (f fixedThresholds) MaxTitles(context.Context) int   { return f.maxTitles }
 // seedAutoCurateChannel writes a live, intent-backed, auto-curate channel bound to jobID.
 func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, ac *schedule.AutoCurate) {
 	t.Helper()
-	ch := store.Channel{Lineup: lineup}
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.Name = "Ch " + id

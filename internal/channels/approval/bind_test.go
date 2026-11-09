@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -26,8 +27,8 @@ func item(n int, name string) proposals.ProposalItem {
 
 func key(n int) provision.Key { return provision.Key("movie:tmdb:" + strconv.Itoa(90000000+n)) }
 
-func existingChannel(lineup ...schedule.LineupEntry) store.Channel {
-	ch := store.Channel{Lineup: lineup}
+func existingChannel(lineup ...schedule.LineupEntry) channelstore.Channel {
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = "ch_existing"
 	ch.IntentRef = "job-1"
 	ch.RequestedBy = "original-requester"
@@ -187,12 +188,12 @@ func TestBindChannelIdentity(t *testing.T) {
 	tests := []struct {
 		name  string
 		in    approval.BindInput
-		check func(t *testing.T, ch store.Channel)
+		check func(t *testing.T, ch channelstore.Channel)
 	}{
 		{
 			name: "a new channel gets an id derived from its job, the given number, and the requester",
 			in:   approval.BindInput{Proposal: proposalFrom("admin", body), Number: 4, Now: bindNow},
-			check: func(t *testing.T, ch store.Channel) {
+			check: func(t *testing.T, ch channelstore.Channel) {
 				if !strings.HasPrefix(ch.ID, "ch_") || len(ch.ID) != len("ch_")+16 {
 					t.Errorf("id = %q, want ch_ + 16 hex digits", ch.ID)
 				}
@@ -210,7 +211,7 @@ func TestBindChannelIdentity(t *testing.T) {
 				Proposal: proposalFrom("admin", proposals.Proposal{Intent: proposals.Intent{Description: "90s action"}, Lineup: body.Lineup}),
 				Number:   1, Now: bindNow,
 			},
-			check: func(t *testing.T, ch store.Channel) {
+			check: func(t *testing.T, ch channelstore.Channel) {
 				if ch.Name != "90s action" {
 					t.Errorf("name = %q", ch.Name)
 				}
@@ -219,7 +220,7 @@ func TestBindChannelIdentity(t *testing.T) {
 		{
 			name: "an existing channel keeps its id, number, name and requester",
 			in:   approval.BindInput{Proposal: proposalFrom("admin", body), Existing: existingChannel(), Number: 99, Now: bindNow},
-			check: func(t *testing.T, ch store.Channel) {
+			check: func(t *testing.T, ch channelstore.Channel) {
 				if ch.ID != "ch_existing" || ch.Number != 7 || ch.Name != "Operator Name" || ch.RequestedBy != "original-requester" {
 					t.Errorf("existing identity changed: %+v", ch)
 				}
@@ -228,7 +229,7 @@ func TestBindChannelIdentity(t *testing.T) {
 		{
 			name: "the channel is building, due now, and stores the request without its run inputs",
 			in:   approval.BindInput{Proposal: proposalFrom("admin", body), Number: 1, Now: bindNow},
-			check: func(t *testing.T, ch store.Channel) {
+			check: func(t *testing.T, ch channelstore.Channel) {
 				if ch.Status != schedule.StatusBuilding || !ch.ReconcileDeadline.Equal(bindNow) {
 					t.Errorf("status %v deadline %v, want building and due at %v", ch.Status, ch.ReconcileDeadline, bindNow)
 				}

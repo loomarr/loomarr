@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
@@ -167,7 +168,7 @@ type channelStopper interface {
 // internal backend. Explicit internal pins keep playing after a global switch to Tunarr.
 type inheritedInternalCutover struct {
 	channels interface {
-		ListChannels(context.Context) ([]store.Channel, error)
+		ListChannels(context.Context) ([]channelstore.Channel, error)
 	}
 	playout channelStopper
 }

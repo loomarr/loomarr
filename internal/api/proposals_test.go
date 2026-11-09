@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -1133,7 +1134,7 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	// A hand-made channel already occupies number 1.
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{
 			ID: "ch_manual", Name: "Manual", Number: 1, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,

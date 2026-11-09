@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -32,7 +32,7 @@ func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handle
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
 func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/icons2.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)

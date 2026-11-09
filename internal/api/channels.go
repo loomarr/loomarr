@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -343,7 +344,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	fresh, err := s.channelEdits().Edit(ctx, checkpoint.editBackend(), in.ID, in.Body.Revision, func(ch *store.Channel) error {
+	fresh, err := s.channelEdits().Edit(ctx, checkpoint.editBackend(), in.ID, in.Body.Revision, func(ch *channelstore.Channel) error {
 		return applyChannelPatch(ch, in)
 	})
 	if err != nil {
@@ -354,7 +355,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 
 // applyChannelPatch applies a PATCH body's fields. The edit rules around it (number check,
 // `building` signal, deadline, revision, reconcile) are channeledit's.
-func applyChannelPatch(ch *store.Channel, in *updateChannelInput) error {
+func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
 	}
@@ -553,7 +554,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 			return nil, httpcore.NotImplemented("Channel scheduling isn't set up", "Channel scheduling isn't available on this instance.")
 		}
 		if err := s.channels.Purge(ctx, in.ID); err != nil {
-			if errors.Is(err, store.ErrChannelStale) || errors.Is(err, store.ErrChannelConflict) {
+			if errors.Is(err, channelstore.ErrChannelStale) || errors.Is(err, channelstore.ErrChannelConflict) {
 				return nil, staleChannelConflict()
 			}
 			return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't purge the channel",
@@ -570,7 +571,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	ch.UpdatedAt = time.Now().Unix()
 	saved, err := s.store.SaveChannel(ctx, ch)
 	if err != nil {
-		if errors.Is(err, store.ErrChannelStale) {
+		if errors.Is(err, channelstore.ErrChannelStale) {
 			return nil, staleChannelConflict()
 		}
 		return nil, err

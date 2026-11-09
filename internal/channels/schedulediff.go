@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"golang.org/x/sync/errgroup"
@@ -145,7 +145,7 @@ func (e *Engine) ScheduleDiffDraft(
 // withDraft stands the draft in for the saved lineup and policy exactly as CyclePreviewDraft
 // does: the lineup lowered like an operator PATCH (Replace + PreserveByKey), the policy whole.
 // The anchor, id and history stay the saved channel's — they are not part of an edit.
-func withDraft(ch store.Channel, draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) store.Channel {
+func withDraft(ch channelstore.Channel, draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) channelstore.Channel {
 	if draftLineup != nil {
 		ch.Lineup = schedule.ApplyLineup(ch.Lineup, draftLineup, schedule.LineupReplace, schedule.ApplyOpts{PreserveByKey: true})
 	}
@@ -170,7 +170,7 @@ func withDraft(ch store.Channel, draftLineup []schedule.LineupEntry, draftPolicy
 // Each arrangement is PreviewPlannedChannel — the exact computation the single-point preview
 // runs — memoised on what the clock can change about it (ClockSignature + window index), so a
 // week of a daily rule costs one arrangement per distinct (rule, window), not one per boundary.
-func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.Time) ([]ForecastAiring, time.Time, error) {
+func (e *Engine) forecast(ctx context.Context, ch channelstore.Channel, from, to time.Time) ([]ForecastAiring, time.Time, error) {
 	carries, err := e.CarriesOver(ctx, ch.Policy)
 	if err != nil {
 		return nil, time.Time{}, err

@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -18,7 +19,7 @@ import (
 // makes one thing non-negotiable about anything ladder-shaped: it must consume the SAME pools
 // assembly does, never a second copy that agrees today. These tests are what keeps that true.
 
-func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (podPreviewAdapter, store.Store) {
+func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []channelstore.Channel) (podPreviewAdapter, store.Store) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -43,8 +44,8 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 	return podPreviewAdapter{store: st, pods: pods}, st
 }
 
-func liveChannel(id, name string, number, era int) store.Channel {
-	return store.Channel{
+func liveChannel(id, name string, number, era int) channelstore.Channel {
+	return channelstore.Channel{
 		Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: era, To: era + 9})},
@@ -76,7 +77,7 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 			commercial("1992/cereal.mp4", 1992, filler.Kids),
 			commercial("1978/cars.mp4", 1978, filler.General),
 		},
-		[]store.Channel{
+		[]channelstore.Channel{
 			liveChannel("ch-90s", "Saturday Mornings", 42, 1990),
 			liveChannel("ch-70s", "Drive-In", 7, 1970),
 			liveChannel("ch-quiet", "Test Card", 99, 1930),
@@ -114,7 +115,7 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 	t.Parallel()
 	ident := commercial("ident.mp4", 1992, filler.General)
 	ident.Role = filler.StationID
-	chans := []store.Channel{liveChannel("ch-90s", "Saturday Mornings", 42, 1990)}
+	chans := []channelstore.Channel{liveChannel("ch-90s", "Saturday Mornings", 42, 1990)}
 	without, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)}, chans)
 	with, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids), ident}, chans)
 	for _, tc := range []struct {
@@ -144,7 +145,7 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 			commercial("1992/toys.mp4", 1992, filler.Kids),
 			commercial("1994/cereal.mp4", 1994, filler.Kids),
 		},
-		[]store.Channel{
+		[]channelstore.Channel{
 			liveChannel("ch-90s", "Saturday Mornings", 42, 1990),
 			liveChannel("ch-30s", "Newsreel", 3, 1930),
 		},
@@ -204,7 +205,7 @@ func TestPool_ExcludesPausedAndDetachedChannels(t *testing.T) {
 
 	a, _ := newPoolAdapter(t,
 		[]filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)},
-		[]store.Channel{liveChannel("ch-live", "Live One", 1, 1990), paused, detached},
+		[]channelstore.Channel{liveChannel("ch-live", "Live One", 1, 1990), paused, detached},
 	)
 
 	report, err := a.Pool(ctx)

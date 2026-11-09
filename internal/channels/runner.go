@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Runner performs the channel-reconcile SWEEP (§9, §18): claim due channels (leased so
@@ -28,7 +28,7 @@ type Runner struct {
 // claimer is the slice of the store the sweep needs (ClaimDueChannels). Narrowed
 // to an interface so the sweep is testable with a fake.
 type claimer interface {
-	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Channel, error)
+	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]channelstore.Channel, error)
 }
 
 // NewRunner builds the sweep. `every` sizes the default lease (a claimed channel stays leased

@@ -7,7 +7,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // The three states of a filler era (§10, V51f), and the reason the middle one had to exist.
@@ -95,7 +95,7 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ch := store.Channel{Lineup: kidsLineup}
+			ch := channelstore.Channel{Lineup: kidsLineup}
 			ch.Policy.Filler = tc.filler
 			got := channels.SelectionForChannel(ch)
 			if got.Audience != tc.wantAudience || got.Era != tc.wantEra {
@@ -106,7 +106,7 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 }
 
 func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
-	ch := store.Channel{Lineup: []schedule.LineupEntry{{Year: 2010}}}
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{Year: 2010}}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1989, To: 1999})
 	if got := channels.SelectionForChannel(ch).Era; got != (pod.EraRange{From: 1989, To: 1999}) {
 		t.Errorf("era = %+v, want the scope era", got)
@@ -117,7 +117,7 @@ func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
 // settings. Japanese audio does not make Japanese commercials, and nothing about the shows sets a
 // location, so an unset channel inherits the household's at assembly.
 func TestSelectionForChannel_LanguageAndLocationAreNeverInferred(t *testing.T) {
-	ch := store.Channel{Lineup: []schedule.LineupEntry{{OfficialRating: "TV-14", Year: 1999}}}
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{OfficialRating: "TV-14", Year: 1999}}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{AudioLanguage: "jpn"}
 	if got := channels.SelectionForChannel(ch); got.Language != "" || got.Geography != (pod.Geography{}) {
 		t.Errorf("inferred language=%q geography=%+v, want neither", got.Language, got.Geography)

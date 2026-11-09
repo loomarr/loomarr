@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -43,7 +43,7 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
 	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)
-	_, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	_, err := st.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: "existing", Name: "Existing", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}})
 	if err != nil {

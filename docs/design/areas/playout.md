@@ -21,7 +21,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`playout/bench`** · → `media/encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
-- **`playout/channelbug`** · 1 importer · → `channels/schedule`, `media/encode`, `platform/diagnostics`, `platform/store`, `playout`, `playout/watermark`
+- **`playout/channelbug`** · 1 importer · → `channels/schedule`, `media/encode`, `platform/diagnostics`, `platform/store/channelstore`, `playout`, `playout/watermark`
   Turns a channel's watermark policy into the bug its programmes air with: it picks the look, colour and holiday version, renders through playout/watermark, caches the files, and runs the per-encoder GPU overlay self-check that gates the bug.
 - **`playout/landiscovery`** · → `platform/httpx`
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.

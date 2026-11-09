@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -63,7 +64,7 @@ func entry(n int, name string) schedule.LineupEntry {
 // seedChannel writes an auto-curate channel bound to jobID with an existing lineup + policy.
 func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, pol schedule.ChannelPolicy) {
 	t.Helper()
-	ch := store.Channel{Lineup: lineup}
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.Name = "Ch " + id
@@ -109,7 +110,7 @@ func inLib(n int, name string) proposals.ProposalItem {
 	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
 }
 
-func lineupKeys(ch store.Channel) map[provision.Key]bool {
+func lineupKeys(ch channelstore.Channel) map[provision.Key]bool {
 	m := map[provision.Key]bool{}
 	for _, e := range ch.Lineup {
 		m[e.Key] = true
@@ -405,7 +406,7 @@ type recordingCodec struct {
 
 func (r *recordingCodec) ComputeChannelCodec(_ context.Context, channelID string) (string, error) {
 	r.channelID = channelID
-	return store.BroadcastCodecH264, r.err
+	return channelstore.BroadcastCodecH264, r.err
 }
 
 type recordingReconciler struct {
@@ -433,7 +434,7 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 	reconciler := &recordingReconciler{err: errors.New("tunarr unavailable")}
 	activity := &recordedActivity{}
 	b := approval.New(st, reconciler, codec, nil).WithActivity(activity)
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-committed", Name: "Committed", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-committed", Name: "Committed", Number: 7}}
 
 	// There is deliberately no returned error: once local approval has committed,
 	// derived/external convergence cannot undo it.

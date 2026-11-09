@@ -24,6 +24,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -42,7 +43,7 @@ type Thresholds interface {
 type CuratorStore interface {
 	// GetChannelForJob identifies WHICH channel a re-curation proposal authorizes: the channel
 	// the proposal's job names.
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 	// LastAiredByKey says when each lineup title last aired on the channel; retirement ranks
 	// titles by how long they have gone without airing.
 	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
@@ -203,13 +204,13 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 // channelForJob finds the channel a re-curation job names, which identifies the channel to
 // authorize. A zero Channel still means "no channel for this job", which `Consider` reads as
 // not-opted-in and fails closed on.
-func (c *Curator) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (c *Curator) channelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	ch, err := c.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, nil
+		return channelstore.Channel{}, nil
 	}
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	return ch, nil
 }

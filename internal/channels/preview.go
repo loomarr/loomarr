@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // CycleResult is everything one preview computation answers. It exists because the draft
@@ -94,7 +94,7 @@ func (e *Engine) CyclePreviewDraft(
 // PreviewPlannedChannel evaluates an unsaved channel using observed availability.
 // It performs the same read-only settings, history, filler and scheduling computation
 // as the persisted-channel preview; it never stores a channel or acquires media.
-func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at time.Time, availability schedule.Availability) (CycleResult, error) {
+func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch channelstore.Channel, at time.Time, availability schedule.Availability) (CycleResult, error) {
 	if availability == nil {
 		return CycleResult{}, fmt.Errorf("preview requires observed availability")
 	}

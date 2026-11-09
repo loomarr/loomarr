@@ -6,7 +6,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -14,7 +14,7 @@ import (
 // retired programme route drew): a break's commercial, a filler clip and flex never carry it, and a
 // host whose GPU overlay has not passed its self-check draws none.
 func TestPackagerSourceWatermarksProgrammesOnly(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
 	programme := playout.Airing{Kind: schedule.SlotProgram, LibraryItemID: "title"}
 	for _, tc := range []struct {
 		name       string

@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type staticChannelReader struct{ channel store.Channel }
+type staticChannelReader struct{ channel channelstore.Channel }
 
-func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel, error) {
+func (s staticChannelReader) GetChannel(context.Context, string) (channelstore.Channel, error) {
 	return s.channel, nil
 }
 

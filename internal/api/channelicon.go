@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Channel icon UPLOAD. One Huma operation, registered in registerChannels, taking a
@@ -149,7 +149,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	// A logo is channel identity, so this goes through the same edit rules as a PATCH of `logo`
 	// (the `building` tuner-list signal, the due-now deadline, the auto-reconcile that pushes the
 	// icon to Tunarr). Revision 0: link the icon to whatever the channel is now.
-	if err := s.linkUploadToChannel(ctx, in.ID, "icon", func(ch *store.Channel) error {
+	if err := s.linkUploadToChannel(ctx, in.ID, "icon", func(ch *channelstore.Channel) error {
 		ch.Logo = logo
 		return nil
 	}); err != nil {

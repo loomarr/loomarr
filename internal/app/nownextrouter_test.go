@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -19,19 +20,19 @@ import (
 func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
 	// ⚠ A SECOND, TUNARR-BACKED CHANNEL IS LOAD-BEARING. With only internal channels present,
 	// anyOnTunarr short-circuits the guide read entirely, so `fromTunarr` is nil and the
 	// assertion below would pass even with the routing removed — the test would be vacuous.
 	// Verified by sabotage: without this channel, reverting the fix leaves this test green.
-	onTunarr := store.Channel{Channel: schedule.Channel{ID: "ch2", TunarrID: "tun-tun"}}
+	onTunarr := channelstore.Channel{Channel: schedule.Channel{ID: "ch2", TunarrID: "tun-tun"}}
 
 	r := nowNextRouter{
 		tunarr:   stubGuide{now: "Tunarr Says This"},
 		internal: stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels: routerChannels{list: []store.Channel{ch, onTunarr}},
+		channels: routerChannels{list: []channelstore.Channel{ch, onTunarr}},
 		// Only ch1 is internal; ch2 keeps the Tunarr guide populated.
-		internalFor: func(c store.Channel) bool { return c.ID == "ch1" },
+		internalFor: func(c channelstore.Channel) bool { return c.ID == "ch1" },
 		window:      2 * time.Hour,
 	}
 
@@ -56,13 +57,13 @@ func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
 func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
 
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels:    routerChannels{list: []store.Channel{ch}},
-		internalFor: func(store.Channel) bool { return false },
+		channels:    routerChannels{list: []channelstore.Channel{ch}},
+		internalFor: func(channelstore.Channel) bool { return false },
 		window:      2 * time.Hour,
 	}
 
@@ -78,7 +79,7 @@ func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
 	reads := 0
 	r := nowNextRouter{
 		internal: stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels: routerChannels{list: []store.Channel{
+		channels: routerChannels{list: []channelstore.Channel{
 			{Channel: schedule.Channel{ID: "one", Status: schedule.StatusLive}},
 			{Channel: schedule.Channel{ID: "two", Status: schedule.StatusLive}},
 		}},
@@ -101,7 +102,7 @@ func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
 	t.Parallel()
 	want := errors.New("checkpoint unavailable")
 	r := nowNextRouter{
-		channels:       routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "one"}}}},
+		channels:       routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "one"}}}},
 		appliedBackend: func(context.Context) (string, error) { return "", want },
 	}
 	if _, err := r.NowNext(context.Background(), time.Now()); !errors.Is(err, want) {
@@ -114,11 +115,11 @@ func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
 func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	internalCh := store.Channel{
+	internalCh := channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
 		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "internal"}}},
 	}
-	tunarrCh := store.Channel{
+	tunarrCh := channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"},
 		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "tunarr"}}},
 	}
@@ -126,10 +127,10 @@ func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 	r := nowNextRouter{
 		tunarr:   stubGuide{now: "From Tunarr"},
 		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels: routerChannels{list: []store.Channel{internalCh, tunarrCh}},
+		channels: routerChannels{list: []channelstore.Channel{internalCh, tunarrCh}},
 		// The real precedence rule, not a stub — a mixed install is exactly where a
 		// hand-rolled second copy of it would drift.
-		internalFor: func(ch store.Channel) bool {
+		internalFor: func(ch channelstore.Channel) bool {
 			return schedule.PlaysInternally(ch.Policy, "internal")
 		},
 		window: 2 * time.Hour,
@@ -152,8 +153,8 @@ func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    nil,
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
-		internalFor: func(store.Channel) bool { return true },
+		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(channelstore.Channel) bool { return true },
 		window:      2 * time.Hour,
 	}
 
@@ -173,8 +174,8 @@ func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
 	r := nowNextRouter{
 		tunarr:      guide,
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
-		internalFor: func(store.Channel) bool { return true },
+		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(channelstore.Channel) bool { return true },
 		window:      2 * time.Hour,
 	}
 
@@ -191,17 +192,17 @@ func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
 func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	internalCh := store.Channel{
+	internalCh := channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
 		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "internal"}}},
 	}
-	tunarrCh := store.Channel{Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"}}
+	tunarrCh := channelstore.Channel{Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"}}
 
 	r := nowNextRouter{
 		tunarr:   failingGuide{},
 		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels: routerChannels{list: []store.Channel{internalCh, tunarrCh}},
-		internalFor: func(ch store.Channel) bool {
+		channels: routerChannels{list: []channelstore.Channel{internalCh, tunarrCh}},
+		internalFor: func(ch channelstore.Channel) bool {
 			return schedule.PlaysInternally(ch.Policy, "tunarr")
 		},
 		window: 2 * time.Hour,
@@ -226,8 +227,8 @@ func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	r := nowNextRouter{
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
-		internalFor: func(store.Channel) bool { return true },
+		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
+		internalFor: func(channelstore.Channel) bool { return true },
 		window:      2 * time.Hour,
 	}
 	got, err := r.NowNext(context.Background(), now)
@@ -248,12 +249,12 @@ func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
 		internal: stubBroadcasts{
 			title: "Must not air", start: now.Add(-time.Hour), stop: now.Add(time.Hour),
 		},
-		channels: routerChannels{list: []store.Channel{
+		channels: routerChannels{list: []channelstore.Channel{
 			{Channel: schedule.Channel{ID: "paused", Status: schedule.StatusPaused}},
 			{Channel: schedule.Channel{ID: "detached", TunarrID: "tun-detached", Status: schedule.StatusDetached}},
 			{Channel: schedule.Channel{ID: "empty", TunarrID: "tun-empty", Status: schedule.StatusEmpty}},
 		}},
-		internalFor: func(ch store.Channel) bool { return ch.ID == "paused" },
+		internalFor: func(ch channelstore.Channel) bool { return ch.ID == "paused" },
 		window:      2 * time.Hour,
 	}
 
@@ -289,8 +290,8 @@ func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 	r := nowNextRouter{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
-		internalFor: func(store.Channel) bool { return true },
+		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
+		internalFor: func(channelstore.Channel) bool { return true },
 		window:      2 * time.Hour,
 	}
 
@@ -318,8 +319,8 @@ func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 	}
 	r := nowNextRouter{
 		tunarr:      guide,
-		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
-		internalFor: func(store.Channel) bool { return false },
+		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(channelstore.Channel) bool { return false },
 		window:      2 * time.Hour,
 	}
 
@@ -425,15 +426,17 @@ func (s stubBroadcasts) BroadcastsBetween(
 	}}, nil
 }
 
-type routerChannels struct{ list []store.Channel }
+type routerChannels struct{ list []channelstore.Channel }
 
-func (s routerChannels) ListChannels(context.Context) ([]store.Channel, error) { return s.list, nil }
+func (s routerChannels) ListChannels(context.Context) ([]channelstore.Channel, error) {
+	return s.list, nil
+}
 
-func (s routerChannels) GetChannel(_ context.Context, id string) (store.Channel, error) {
+func (s routerChannels) GetChannel(_ context.Context, id string) (channelstore.Channel, error) {
 	for _, ch := range s.list {
 		if ch.ID == id {
 			return ch, nil
 		}
 	}
-	return store.Channel{}, store.ErrNotFound
+	return channelstore.Channel{}, store.ErrNotFound
 }

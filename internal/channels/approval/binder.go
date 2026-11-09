@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -32,9 +33,9 @@ import (
 type Store interface {
 	// ListChannels backs nextFreeChannelNumber ONLY — that genuinely needs every number in
 	// use. Looking a channel up BY something is GetChannelForJob below.
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 	GetJob(ctx context.Context, id string) (store.Job, error)
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
@@ -133,9 +134,9 @@ func NewChannelID() string { return newChannelID() }
 // method does not query "newest approved" by job: before the approval transaction
 // commits, the candidate is necessarily not visible through that query, and resolving
 // again could pair the candidate's audit identity with another proposal's content.
-func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
 	if p.Status != "approved" {
-		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
 	}
 	return b.planChannel(ctx, p)
 }
@@ -143,9 +144,9 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 // PlanSubmittedChannel derives an unsaved channel for a pending proposal outlook.
 // It shares approval planning while preserving the submitted status and performs
 // no writes or post-commit work. Callers first use accept.PrepareApproval.
-func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
 	if p.Status != "submitted" {
-		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
 	}
 	return b.planChannel(ctx, p)
 }
@@ -153,14 +154,14 @@ func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (st
 // planChannel is the impure shell around Bind: it reads the channel the job changes, the job
 // itself, a free number and the availability of the existing lineup, hands them to the pure Bind,
 // and logs what an unattended auto-curate bind dropped.
-func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
-		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
+		return channelstore.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
 	existing, err := b.channelForJob(ctx, intentRef)
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 
 	in := BindInput{Proposal: p, Existing: existing, Now: time.Now().UTC()}
@@ -170,13 +171,13 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		// one here would duplicate that channel. This is a plain error for the approver to
 		// surface, not a "no channel yet" answer that replans.
 		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
-			return store.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
+			return channelstore.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
 				accept.ErrProposalJobGone, p.ID, intentRef)
 		} else if jerr != nil {
-			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
+			return channelstore.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
 		}
 		if in.Number, err = b.nextFreeChannelNumber(ctx); err != nil {
-			return store.Channel{}, err
+			return channelstore.Channel{}, err
 		}
 	} else if isAutoCurate(p) {
 		in.Unavailable = b.unavailableTitles(ctx, existing.Lineup)
@@ -184,7 +185,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 
 	bound, err := Bind(in)
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	if b.log != nil {
 		for _, e := range bound.Retired {
@@ -258,13 +259,13 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 //
 // ⚠ A job that names a channel which was removed is an ERROR, never "create a new one": approving
 // a refine of a deleted channel must not resurrect it as a second, differently numbered channel.
-func (b *Binder) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (b *Binder) channelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	ch, err := b.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, nil
+		return channelstore.Channel{}, nil
 	}
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	return ch, nil
 }

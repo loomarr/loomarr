@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/edit"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // channelEdits is the one write path for operator channel changes (create, PATCH, icon and
@@ -54,7 +54,7 @@ func channelEditProblem(err error) error {
 
 // linkUploadToChannel records an already-stored upload (`what`: "icon", "image") on the channel.
 // The bytes are saved by then, so a failure says so rather than reading as a lost upload.
-func (s *Server) linkUploadToChannel(ctx context.Context, id, what string, change func(*store.Channel) error) error {
+func (s *Server) linkUploadToChannel(ctx context.Context, id, what string, change func(*channelstore.Channel) error) error {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return err

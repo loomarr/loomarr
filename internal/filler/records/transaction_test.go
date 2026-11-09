@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // testCoreTransactionSpansFillerTables proves the seam #1747 split the store along: one
@@ -65,8 +66,8 @@ func testCoreTransactionSpansFillerTables(t *testing.T, newStore NewStoreFunc) {
 
 // sampleChannel is a minimal saved-channel fixture: the filler tests only need a channel to exist
 // so its filler selection can pin or exclude clips.
-func sampleChannel(id string, number int, deadline time.Time) store.Channel {
-	ch := store.Channel{}
+func sampleChannel(id string, number int, deadline time.Time) channelstore.Channel {
+	ch := channelstore.Channel{}
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
 	ch.Name = "Channel " + id
@@ -83,7 +84,7 @@ func sampleChannel(id string, number int, deadline time.Time) store.Channel {
 	return ch
 }
 
-func mustSaveChannel(t *testing.T, s Store, ch store.Channel) store.Channel {
+func mustSaveChannel(t *testing.T, s Store, ch channelstore.Channel) channelstore.Channel {
 	t.Helper()
 	saved, err := s.SaveChannel(context.Background(), ch)
 	if err != nil {

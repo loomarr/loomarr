@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
@@ -116,7 +117,7 @@ type posterCandidate struct{ title, src string }
 // posterCandidates resolves a channel's lineup to deduplicated TMDB poster URLs, capped at
 // iconMaxSuggestions. Split out so IconSuggestions reads as the three phases it actually has —
 // resolve, adopt, warm — rather than one loop doing all three.
-func (a iconAdapter) posterCandidates(ctx context.Context, ch store.Channel, channelID string) []posterCandidate {
+func (a iconAdapter) posterCandidates(ctx context.Context, ch channelstore.Channel, channelID string) []posterCandidate {
 	seen := make(map[string]struct{}, len(ch.Lineup))
 	out := make([]posterCandidate, 0, iconMaxSuggestions)
 	for _, entry := range ch.Lineup {
