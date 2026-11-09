@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -69,7 +69,7 @@ type Source struct {
 	// size the fallback reservation when the provider cannot report a size at download time.
 	DurationMS int64
 	Height     int
-	// Gap is the channel coverage gap this item was selected for (filler.EraGapKey, #749). Metadata
+	// Gap is the channel coverage gap this item was selected for (acquisition.EraGapKey, #749). Metadata
 	// only, like AcquisitionID: it is recorded on the artifact and never changes admission.
 	Gap string
 	// PublicationDir is set only by the Ingestor while downloading into hidden staging. It lets
@@ -127,7 +127,7 @@ type Downloader interface {
 }
 
 type ArtifactWriter interface {
-	UpsertAcquisitionArtifacts(context.Context, []filler.AcquisitionArtifact) error
+	UpsertAcquisitionArtifacts(context.Context, []acquisition.AcquisitionArtifact) error
 }
 
 // ArchiveCommitter advances provider deduplication only after the downloaded output has a
@@ -328,7 +328,7 @@ type Result struct {
 	// Empty counts sources that returned no clips and no error — a
 	// nonexistent/typo'd id or empty source (surfaced so it isn't silent).
 	Empty     int
-	Artifacts []filler.AcquisitionArtifact
+	Artifacts []acquisition.AcquisitionArtifact
 }
 
 // Run ingests every source once. A failed source is logged and counted, never
@@ -447,9 +447,9 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 	return res
 }
 
-func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []filler.AcquisitionArtifact {
+func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []acquisition.AcquisitionArtifact {
 	now := i.now().UTC()
-	manifests := make([]filler.AcquisitionArtifact, 0, len(outputs))
+	manifests := make([]acquisition.AcquisitionArtifact, 0, len(outputs))
 	for _, output := range outputs {
 		outputRelative, outputErr := filepath.Rel(outputDir, output.MediaPath)
 		stagingPath, stageErr := filepath.Rel(i.dropDir, output.MediaPath)
@@ -468,15 +468,15 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 				sidecarPath = strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 			}
 		}
-		state := filler.ArtifactStaged
+		state := acquisition.ArtifactStaged
 		if src.Kind == YouTube && output.ArchiveEntry == "" && output.Repair == "" {
 			output.Repair = "yt-dlp output has no exact provider archive entry"
 		}
 		if output.Repair != "" {
-			state = filler.ArtifactRepair
+			state = acquisition.ArtifactRepair
 		}
 		identity := sha256.Sum256([]byte(src.AcquisitionID + "\x00" + src.URL + "\x00" + mediaPath + "\x00" + output.SHA256))
-		manifests = append(manifests, filler.AcquisitionArtifact{
+		manifests = append(manifests, acquisition.AcquisitionArtifact{
 			ID: hex.EncodeToString(identity[:]), AcquisitionID: src.AcquisitionID, SourceID: src.ID,
 			Provider: string(src.Kind), SourceURL: src.URL, RemoteID: src.RemoteID, StagingPath: stagingPath,
 			MediaPath: mediaPath, SidecarPath: sidecarPath, MediaSHA256: output.SHA256,
@@ -488,17 +488,17 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 	return manifests
 }
 
-func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionArtifact, outputs []Output) ([]filler.AcquisitionArtifact, error) {
-	updated := append([]filler.AcquisitionArtifact(nil), manifests...)
+func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.AcquisitionArtifact, outputs []Output) ([]acquisition.AcquisitionArtifact, error) {
+	updated := append([]acquisition.AcquisitionArtifact(nil), manifests...)
 	for index := range updated {
-		if updated[index].State == filler.ArtifactRepair {
+		if updated[index].State == acquisition.ArtifactRepair {
 			continue
 		}
 		// Publish portable provenance first. A sidecar without media is inert; media without its
 		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
 			if err := publishSidecar(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath), updated[index]); err != nil {
-				updated[index].State = filler.ArtifactRepair
+				updated[index].State = acquisition.ArtifactRepair
 				updated[index].RepairReason = "publish sidecar: " + err.Error()
 				updated[index].UpdatedAt = i.now().UTC()
 				_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
@@ -507,13 +507,13 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 		}
 		target := filepath.Join(i.dropDir, updated[index].MediaPath)
 		if err := publishFile(outputs[index].MediaPath, target); err != nil {
-			updated[index].State = filler.ArtifactRepair
+			updated[index].State = acquisition.ArtifactRepair
 			updated[index].RepairReason = "publish media: " + err.Error()
 			updated[index].UpdatedAt = i.now().UTC()
 			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
 			return updated, err
 		}
-		updated[index].State = filler.ArtifactPublished
+		updated[index].State = acquisition.ArtifactPublished
 		updated[index].UpdatedAt = i.now().UTC()
 	}
 	if err := i.writer.UpsertAcquisitionArtifacts(ctx, updated); err != nil {
@@ -525,7 +525,7 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 // publishSidecar publishes the provenance sidecar idempotently: an existing target that is this
 // artifact's own earlier attempt counts as published, while one belonging to another item is a
 // conflict and is left untouched.
-func publishSidecar(source, target string, artifact filler.AcquisitionArtifact) error {
+func publishSidecar(source, target string, artifact acquisition.AcquisitionArtifact) error {
 	if _, err := os.Lstat(target); err == nil {
 		return acceptExistingSidecar(source, target, artifact)
 	} else if !errors.Is(err, os.ErrNotExist) {

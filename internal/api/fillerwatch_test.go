@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -23,7 +24,7 @@ func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt ti
 	if err != nil || !claimed {
 		t.Fatalf("claim source check %q = %v, %v", id, claimed, err)
 	}
-	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: checkedAt}); err != nil {
+	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, acquisition.SourceCheckCompletion{CheckedAt: checkedAt}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -108,7 +109,7 @@ func newFillerWatchServer(t *testing.T) (*httptest.Server, records.Store, *fakeF
 
 func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 	srv, _, ff := newFillerWatchServer(t)
-	ff.fetchStatus = filler.FetchStatus{
+	ff.fetchStatus = acquisition.FetchStatus{
 		Enabled: true, StoppedBy: "catalog",
 		CatalogClips: 2000, MaxCatalog: 2000,
 	}

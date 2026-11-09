@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
@@ -422,7 +423,7 @@ func (f *Fetcher) dueSources(srcs []FetchSource, sourceID string, scheduled bool
 		}
 		if !src.Enabled || src.URI == "" {
 			if sourceID != "" && !src.Enabled {
-				return nil, ErrSourceDisabled
+				return nil, cliplibrary.ErrSourceDisabled
 			}
 			continue
 		}

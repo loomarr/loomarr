@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 	t.Parallel()
 	base := filler.ReadinessInput{
-		Fetch: filler.FetchStatus{Enabled: true},
+		Fetch: acquisition.FetchStatus{Enabled: true},
 		Pool: pod.PoolReport{
 			Eligible: 10,
 			Channels: []pod.ChannelCoverage{{
@@ -34,10 +35,10 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		{"estimate unknown is not a folder problem", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "estimate_unknown" }, filler.ReadinessNone},
 		{"estimate unknown defers to the failed acquisition", func(in *filler.ReadinessInput) {
 			in.Storage.PausedBy = "estimate_unknown"
-			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 1}}
+			in.Runs = []acquisition.AcquisitionRun{{Status: acquisition.AcquisitionError, Failed: 1}}
 		}, filler.ReadinessRetryAcquisition},
 		{"latest acquisition failed", func(in *filler.ReadinessInput) {
-			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 2}}
+			in.Runs = []acquisition.AcquisitionRun{{Status: acquisition.AcquisitionError, Failed: 2}}
 		}, filler.ReadinessRetryAcquisition},
 		{"failed work before review", func(in *filler.ReadinessInput) {
 			in.Pipeline.Rejected, in.Pipeline.Recoverable, in.NeedsYou = 4, 2, 3
@@ -80,10 +81,10 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 
 func TestProjectReadinessOutstandingRepairsOutrankRecentSuccessfulHistory(t *testing.T) {
 	got := filler.ProjectReadiness(filler.ReadinessInput{
-		Fetch: filler.FetchStatus{Enabled: true},
+		Fetch: acquisition.FetchStatus{Enabled: true},
 		Pool:  pod.PoolReport{Eligible: 1},
-		Runs:  []filler.AcquisitionRun{{Status: filler.AcquisitionSuccess}},
-		Repairs: filler.AcquisitionRepairSummary{
+		Runs:  []acquisition.AcquisitionRun{{Status: acquisition.AcquisitionSuccess}},
+		Repairs: acquisition.AcquisitionRepairSummary{
 			Count: 2, LatestReason: "latest retained repair",
 		},
 	})

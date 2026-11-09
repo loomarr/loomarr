@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
@@ -34,7 +34,7 @@ func foreignSidecar(t *testing.T, root string) []byte {
 }
 
 // copyStagedSidecar reproduces a previous attempt that published the sidecar and died before the media.
-func copyStagedSidecar(t *testing.T, root string, artifact filler.AcquisitionArtifact) []byte {
+func copyStagedSidecar(t *testing.T, root string, artifact acquisition.AcquisitionArtifact) []byte {
 	t.Helper()
 	stage := strings.TrimSuffix(filepath.Join(root, filepath.FromSlash(artifact.StagingPath)), ".mp4") + ".info.json"
 	raw, err := os.ReadFile(stage)
@@ -47,7 +47,7 @@ func copyStagedSidecar(t *testing.T, root string, artifact filler.AcquisitionArt
 	return raw
 }
 
-func publishFixture(t *testing.T, root string, artifact filler.AcquisitionArtifact) (*Ingestor, []Output) {
+func publishFixture(t *testing.T, root string, artifact acquisition.AcquisitionArtifact) (*Ingestor, []Output) {
 	t.Helper()
 	db := openRecoveryStore(t)
 	seedRecoveryArtifact(t, db, artifact)
@@ -64,8 +64,8 @@ func TestPublish_ExistingIdenticalSidecarIsIdempotentSuccess(t *testing.T) {
 	copyStagedSidecar(t, root, artifact)
 	ing, outputs := publishFixture(t, root, artifact)
 
-	got, err := ing.publish(t.Context(), []filler.AcquisitionArtifact{artifact}, outputs)
-	if err != nil || got[0].State != filler.ArtifactPublished {
+	got, err := ing.publish(t.Context(), []acquisition.AcquisitionArtifact{artifact}, outputs)
+	if err != nil || got[0].State != acquisition.ArtifactPublished {
 		t.Fatalf("publish = %+v, %v; want published", got[0], err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "download.mp4")); err != nil {
@@ -79,7 +79,7 @@ func TestPublish_ConflictingSidecarIsReportedWithBothIdentitiesAndNeverOverwritt
 	before := foreignSidecar(t, root)
 	ing, outputs := publishFixture(t, root, artifact)
 
-	got, err := ing.publish(t.Context(), []filler.AcquisitionArtifact{artifact}, outputs)
+	got, err := ing.publish(t.Context(), []acquisition.AcquisitionArtifact{artifact}, outputs)
 	if err == nil {
 		t.Fatal("a sidecar belonging to another acquisition must be a conflict")
 	}
@@ -92,7 +92,7 @@ func TestPublish_ConflictingSidecarIsReportedWithBothIdentitiesAndNeverOverwritt
 	if string(after) != string(before) {
 		t.Fatal("another item's sidecar was overwritten")
 	}
-	if got[0].State != filler.ArtifactRepair {
+	if got[0].State != acquisition.ArtifactRepair {
 		t.Fatalf("state = %s, want repair", got[0].State)
 	}
 	if _, err := os.Stat(filepath.Join(root, "download.mp4")); !os.IsNotExist(err) {
@@ -102,8 +102,8 @@ func TestPublish_ConflictingSidecarIsReportedWithBothIdentitiesAndNeverOverwritt
 
 const sidecarExistsReason = "publish sidecar: target /data/filler/_watch/download.info.json already exists"
 
-func repairRow(artifact filler.AcquisitionArtifact, reason string) filler.AcquisitionArtifact {
-	artifact.State = filler.ArtifactRepair
+func repairRow(artifact acquisition.AcquisitionArtifact, reason string) acquisition.AcquisitionArtifact {
+	artifact.State = acquisition.ArtifactRepair
 	artifact.RepairReason = reason
 	return artifact
 }
@@ -120,7 +120,7 @@ func TestRecover_SidecarAlreadyExistsRepairRowIsRepublished(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, found, err := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if err != nil || !found || result.Published != 1 || got.State != filler.ArtifactPublished || got.RepairReason != "" {
+	if err != nil || !found || result.Published != 1 || got.State != acquisition.ArtifactPublished || got.RepairReason != "" {
 		t.Fatalf("recovery = %+v, artifact = %+v, found=%v, err=%v; want the repair row republished", result, got, found, err)
 	}
 }
@@ -136,7 +136,7 @@ func TestRecover_SidecarAlreadyExistsConflictSettlesAndIsNotRetriedForever(t *te
 		t.Fatal(err)
 	}
 	got, _, _ := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if got.State != filler.ArtifactRepair || strings.Contains(got.RepairReason, "already exists") || !strings.Contains(got.RepairReason, "acq-other") {
+	if got.State != acquisition.ArtifactRepair || strings.Contains(got.RepairReason, "already exists") || !strings.Contains(got.RepairReason, "acq-other") {
 		t.Fatalf("artifact = %+v, want a settled repair naming the other identity", got)
 	}
 	settled := got.RepairReason
@@ -160,14 +160,14 @@ func TestRecover_MissingMediaWithNoFileAnywhereBecomesTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := openRecoveryStore(t)
-	seedRecoveryArtifact(t, db, repairRow(artifact, filler.ArtifactMediaMissing))
+	seedRecoveryArtifact(t, db, repairRow(artifact, acquisition.ArtifactMediaMissing))
 
 	if _, err := RecoverAcquisitionArtifacts(t.Context(), root, root, db, time.Now); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if got.State != filler.ArtifactRepair || got.RepairReason != filler.ArtifactMediaGone {
-		t.Fatalf("artifact = %+v, want terminal %q", got, filler.ArtifactMediaGone)
+	if got.State != acquisition.ArtifactRepair || got.RepairReason != acquisition.ArtifactMediaGone {
+		t.Fatalf("artifact = %+v, want terminal %q", got, acquisition.ArtifactMediaGone)
 	}
 }
 
@@ -185,13 +185,13 @@ func TestRecover_MissingMediaWhoseFileExistsIsLeftForSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := openRecoveryStore(t)
-	seedRecoveryArtifact(t, db, repairRow(artifact, filler.ArtifactMediaMissing))
+	seedRecoveryArtifact(t, db, repairRow(artifact, acquisition.ArtifactMediaMissing))
 
 	if _, err := RecoverAcquisitionArtifacts(t.Context(), root, root, db, time.Now); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if got.RepairReason != filler.ArtifactMediaMissing {
+	if got.RepairReason != acquisition.ArtifactMediaMissing {
 		t.Fatalf("reason = %q; a present file must stay retryable, not be declared gone", got.RepairReason)
 	}
 }

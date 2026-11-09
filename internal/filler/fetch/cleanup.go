@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 const acquisitionCleanupGrace = 24 * time.Hour
 
 type AcquisitionCleanupStore interface {
-	GetAcquisitionRun(context.Context, string, time.Time) (filler.AcquisitionRun, error)
-	ListRecoverableAcquisitionArtifactsAfter(context.Context, filler.AcquisitionArtifactCursor, int) ([]filler.AcquisitionArtifact, error)
+	GetAcquisitionRun(context.Context, string, time.Time) (acquisition.AcquisitionRun, error)
+	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.AcquisitionArtifactCursor, int) ([]acquisition.AcquisitionArtifact, error)
 }
 
 // AcquisitionCleaner owns the only user-triggered storage cleanup in Filler. It removes stale
@@ -43,16 +43,16 @@ func NewAcquisitionCleaner(watchDir string, store AcquisitionCleanupStore, now f
 	return &AcquisitionCleaner{watchDir: watchDir, store: store, now: now, remove: os.RemoveAll}
 }
 
-func (c *AcquisitionCleaner) Preview(ctx context.Context) (filler.StorageCleanupPreview, error) {
+func (c *AcquisitionCleaner) Preview(ctx context.Context) (acquisition.StorageCleanupPreview, error) {
 	candidates, err := c.candidates(ctx)
 	if err != nil {
-		return filler.StorageCleanupPreview{}, err
+		return acquisition.StorageCleanupPreview{}, err
 	}
 	return cleanupPreview(candidates), nil
 }
 
-func (c *AcquisitionCleaner) Clean(ctx context.Context) (filler.StorageCleanupResult, error) {
-	var result filler.StorageCleanupResult
+func (c *AcquisitionCleaner) Clean(ctx context.Context) (acquisition.StorageCleanupResult, error) {
+	var result acquisition.StorageCleanupResult
 	candidates, err := c.candidates(ctx)
 	if err != nil {
 		return result, err
@@ -108,18 +108,18 @@ func (c *AcquisitionCleaner) candidates(ctx context.Context) ([]acquisitionClean
 	}
 	cutoff := c.now().UTC().Add(-acquisitionCleanupGrace)
 	candidates := make([]acquisitionCleanupCandidate, 0)
-	for _, acquisition := range acquisitions {
+	for _, entry := range acquisitions {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if acquisition.Type()&os.ModeSymlink != 0 || !acquisition.IsDir() || acquisition.Name() == "" {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() || entry.Name() == "" {
 			continue
 		}
-		run, runErr := c.store.GetAcquisitionRun(ctx, acquisition.Name(), c.now().UTC())
-		if runErr != nil || (run.Status != filler.AcquisitionSuccess && run.Status != filler.AcquisitionError) {
+		run, runErr := c.store.GetAcquisitionRun(ctx, entry.Name(), c.now().UTC())
+		if runErr != nil || (run.Status != acquisition.AcquisitionSuccess && run.Status != acquisition.AcquisitionError) {
 			continue
 		}
-		acquisitionDir := filepath.Join(root, acquisition.Name())
+		acquisitionDir := filepath.Join(root, entry.Name())
 		attempts, readErr := os.ReadDir(acquisitionDir)
 		if readErr != nil {
 			continue
@@ -144,7 +144,7 @@ func (c *AcquisitionCleaner) candidates(ctx context.Context) ([]acquisitionClean
 
 func (c *AcquisitionCleaner) protectedStaging(ctx context.Context, stagingRoot string) (map[string]bool, error) {
 	protected := make(map[string]bool)
-	var cursor filler.AcquisitionArtifactCursor
+	var cursor acquisition.AcquisitionArtifactCursor
 	for {
 		artifacts, err := c.store.ListRecoverableAcquisitionArtifactsAfter(ctx, cursor, 500)
 		if err != nil {
@@ -154,8 +154,8 @@ func (c *AcquisitionCleaner) protectedStaging(ctx context.Context, stagingRoot s
 			return protected, nil
 		}
 		for _, artifact := range artifacts {
-			cursor = filler.AcquisitionArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
-			if artifact.State != filler.ArtifactStaged && artifact.State != filler.ArtifactRepair {
+			cursor = acquisition.AcquisitionArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
+			if artifact.State != acquisition.ArtifactStaged && artifact.State != acquisition.ArtifactRepair {
 				continue
 			}
 			path := filepath.Clean(filepath.Join(c.watchDir, filepath.FromSlash(artifact.StagingPath)))
@@ -210,8 +210,8 @@ func privateTree(root string) (bytes int64, newest time.Time, safe bool, err err
 	return bytes, newest, safe, err
 }
 
-func cleanupPreview(candidates []acquisitionCleanupCandidate) filler.StorageCleanupPreview {
-	preview := filler.StorageCleanupPreview{Items: len(candidates)}
+func cleanupPreview(candidates []acquisitionCleanupCandidate) acquisition.StorageCleanupPreview {
+	preview := acquisition.StorageCleanupPreview{Items: len(candidates)}
 	for _, candidate := range candidates {
 		preview.Bytes += candidate.bytes
 	}

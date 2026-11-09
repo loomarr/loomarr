@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 func testFillerAcquisitionRepairSummary(t *testing.T, newStore NewStoreFunc) {
@@ -20,14 +20,14 @@ func testFillerAcquisitionRepairSummary(t *testing.T, newStore NewStoreFunc) {
 	}
 	for i, id := range []string{"run-old", "run-new"} {
 		at := now.Add(time.Duration(i) * time.Minute)
-		if err := s.UpsertAcquisitionRun(ctx, filler.AcquisitionRun{ID: id, Trigger: filler.AcquisitionSource, SourceID: "source", Status: filler.AcquisitionSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}); err != nil {
+		if err := s.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: id, Trigger: acquisition.AcquisitionSource, SourceID: "source", Status: acquisition.AcquisitionSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	longReason := strings.Repeat("界", 513)
-	artifacts := []filler.AcquisitionArtifact{
-		{ID: "repair-a", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/a", MediaPath: "a.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: filler.ArtifactRepair, RepairReason: "older", CompletedAt: now, UpdatedAt: now},
-		{ID: "repair-z", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/z", MediaPath: "z.mp4", MediaSHA256: strings.Repeat("b", 64), MediaBytes: 1, State: filler.ArtifactRepair, RepairReason: longReason, CompletedAt: now, UpdatedAt: now},
+	artifacts := []acquisition.AcquisitionArtifact{
+		{ID: "repair-a", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/a", MediaPath: "a.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: "older", CompletedAt: now, UpdatedAt: now},
+		{ID: "repair-z", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/z", MediaPath: "z.mp4", MediaSHA256: strings.Repeat("b", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: longReason, CompletedAt: now, UpdatedAt: now},
 	}
 	if err := s.UpsertAcquisitionArtifacts(ctx, artifacts); err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func testFillerAcquisitionRepairSummary(t *testing.T, newStore NewStoreFunc) {
 	if len(stored) != 2 || storedReason != longReason {
 		t.Fatalf("stored repair reason changed: got %d runes, want %d", len([]rune(storedReason)), len([]rune(longReason)))
 	}
-	artifacts[1].State, artifacts[1].RepairReason, artifacts[1].UpdatedAt = filler.ArtifactConsumed, "", now.Add(time.Minute)
+	artifacts[1].State, artifacts[1].RepairReason, artifacts[1].UpdatedAt = acquisition.ArtifactConsumed, "", now.Add(time.Minute)
 	if err := s.UpsertAcquisitionArtifacts(ctx, artifacts[1:]); err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -22,19 +22,19 @@ const fillerPullSelect = `SELECT id, title, reason, proposed_by, status, note, p
 	created_at, decided_at, decided_by FROM filler_pulls`
 
 type fillerPullPlanDocument struct {
-	Version  string                             `json:"version"`
-	Intent   filler.AcquisitionIntent           `json:"intent"`
-	Selected []filler.PullPlanRow               `json:"selected"`
-	Rejected []filler.AcquisitionDecision       `json:"rejected"`
-	Sources  []filler.AcquisitionSourceDecision `json:"sources"`
+	Version  string                                  `json:"version"`
+	Intent   acquisition.AcquisitionIntent           `json:"intent"`
+	Selected []acquisition.PullPlanRow               `json:"selected"`
+	Rejected []acquisition.AcquisitionDecision       `json:"rejected"`
+	Sources  []acquisition.AcquisitionSourceDecision `json:"sources"`
 }
 
 // GetPull reads one pull. ErrNotFound for an unknown id.
-func (s *sqlStore) GetPull(ctx context.Context, id string) (filler.Pull, error) {
+func (s *sqlStore) GetPull(ctx context.Context, id string) (acquisition.Pull, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(fillerPullSelect+` WHERE id = ?`), id)
 	p, err := scanPull(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.Pull{}, store.ErrNotFound
+		return acquisition.Pull{}, store.ErrNotFound
 	}
 	return p, err
 }
@@ -44,7 +44,7 @@ func (s *sqlStore) GetPull(ctx context.Context, id string) (filler.Pull, error) 
 //
 // Ordering is explicit rather than left to the engine: an unordered list reshuffles between
 // reads on Postgres, and an approval queue whose rows move under the pointer is its own bug.
-func (s *sqlStore) ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error) {
+func (s *sqlStore) ListPulls(ctx context.Context, status acquisition.PullStatus) ([]acquisition.Pull, error) {
 	q := fillerPullSelect
 	args := []any{}
 	if status != "" {
@@ -59,7 +59,7 @@ func (s *sqlStore) ListPulls(ctx context.Context, status filler.PullStatus) ([]f
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []filler.Pull
+	var out []acquisition.Pull
 	for rows.Next() {
 		p, err := scanPull(rows)
 		if err != nil {
@@ -72,7 +72,7 @@ func (s *sqlStore) ListPulls(ctx context.Context, status filler.PullStatus) ([]f
 
 // UpsertPull writes a proposal or imported snapshot by id. Live terminal decisions use
 // CommitPullApproval/DismissPull, whose compare-and-set protects the winning audit.
-func (s *sqlStore) UpsertPull(ctx context.Context, p filler.Pull) error {
+func (s *sqlStore) UpsertPull(ctx context.Context, p acquisition.Pull) error {
 	plan, err := encodePullPlan(p)
 	if err != nil {
 		return fmt.Errorf("encode pull plan %s: %w", p.ID, err)
@@ -93,24 +93,24 @@ func (s *sqlStore) UpsertPull(ctx context.Context, p filler.Pull) error {
 	return nil
 }
 
-func encodePullPlan(p filler.Pull) ([]byte, error) {
+func encodePullPlan(p acquisition.Pull) ([]byte, error) {
 	return json.Marshal(fillerPullPlanDocument{
-		Version: filler.AcquisitionIntentVersion, Intent: p.Intent,
+		Version: acquisition.AcquisitionIntentVersion, Intent: p.Intent,
 		Selected: p.Plan, Rejected: p.Rejected, Sources: p.Sources,
 	})
 }
 
-func scanPull(sc scannable) (filler.Pull, error) {
+func scanPull(sc scannable) (acquisition.Pull, error) {
 	var (
-		p                    filler.Pull
+		p                    acquisition.Pull
 		status, plan         string
 		createdAt, decidedAt int64
 	)
 	if err := sc.Scan(&p.ID, &p.Title, &p.Reason, &p.ProposedBy, &status, &p.Note, &plan,
 		&createdAt, &decidedAt, &p.DecidedBy); err != nil {
-		return filler.Pull{}, err
+		return acquisition.Pull{}, err
 	}
-	p.Status = filler.PullStatus(status)
+	p.Status = acquisition.PullStatus(status)
 	p.CreatedAt = fromEpoch(createdAt)
 	if decidedAt != 0 {
 		p.DecidedAt = fromEpoch(decidedAt)
@@ -122,15 +122,15 @@ func scanPull(sc scannable) (filler.Pull, error) {
 			// V35-V65 persisted a bare source-row array. Keep those approvals legible and
 			// executable; the V66 writer always upgrades the record to the document form.
 			if err := json.Unmarshal([]byte(plan), &p.Plan); err != nil {
-				return filler.Pull{}, fmt.Errorf("decode legacy pull plan %s: %w", p.ID, err)
+				return acquisition.Pull{}, fmt.Errorf("decode legacy pull plan %s: %w", p.ID, err)
 			}
 		} else {
 			var doc fillerPullPlanDocument
 			if err := json.Unmarshal([]byte(plan), &doc); err != nil {
-				return filler.Pull{}, fmt.Errorf("decode pull plan %s: %w", p.ID, err)
+				return acquisition.Pull{}, fmt.Errorf("decode pull plan %s: %w", p.ID, err)
 			}
-			if doc.Version != filler.AcquisitionIntentVersion {
-				return filler.Pull{}, fmt.Errorf("decode pull plan %s: unsupported version %q", p.ID, doc.Version)
+			if doc.Version != acquisition.AcquisitionIntentVersion {
+				return acquisition.Pull{}, fmt.Errorf("decode pull plan %s: unsupported version %q", p.ID, doc.Version)
 			}
 			p.Intent, p.Plan, p.Rejected, p.Sources = doc.Intent, doc.Selected, doc.Rejected, doc.Sources
 		}

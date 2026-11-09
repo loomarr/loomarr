@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
@@ -104,7 +104,7 @@ type FillerFetchStatusDTO struct {
 }
 
 type fillerFetchStatusService interface {
-	FetchStatus(context.Context) (filler.FetchStatus, error)
+	FetchStatus(context.Context) (acquisition.FetchStatus, error)
 }
 
 func (s *Server) registerFillerWatch(api huma.API) {

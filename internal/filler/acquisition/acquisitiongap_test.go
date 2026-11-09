@@ -1,4 +1,4 @@
-package filler_test
+package acquisition_test
 
 import (
 	"context"
@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 )
@@ -16,12 +17,12 @@ import (
 // own era, as a ranking preference that never rejects a candidate.
 
 func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
-	input := []filler.AcquisitionCandidate{
+	input := []acquisition.AcquisitionCandidate{
 		candidate("a", "modern-hd", 2015, 1080, ""),
 		candidate("a", "nineties-sd", 1994, 480, ""),
 	}
-	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}
-	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, input, nil, gaps)
+	gaps := acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}
+	plan, err := acquisition.PlanAcquisitionFor(acquisition.AcquisitionIntent{Count: 1}, input, nil, gaps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 		t.Fatalf("decision gap = %q, want the gap it was selected for recorded", got)
 	}
 	// No gaps: the historical quality ranking is unchanged.
-	plain, err := filler.PlanAcquisition(filler.AcquisitionIntent{Count: 1}, input, nil)
+	plain, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 1}, input, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,12 +46,12 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 }
 
 func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
-	input := []filler.AcquisitionCandidate{
+	input := []acquisition.AcquisitionCandidate{
 		candidate("a", "modern", 2015, 720, ""),
 		candidate("a", "undated", 0, 720, ""),
 	}
-	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 2}, input, nil,
-		filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Role{filler.StationID}})
+	plan, err := acquisition.PlanAcquisitionFor(acquisition.AcquisitionIntent{Count: 2}, input, nil,
+		acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Roles: []clips.Role{clips.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestGapKey(t *testing.T) {
 		{pod.EraRange{To: 1979}, "era:-1979"},
 		{pod.EraRange{}, ""},
 	} {
-		if got := filler.EraGapKey(tc.r); got != tc.want {
+		if got := acquisition.EraGapKey(tc.r); got != tc.want {
 			t.Errorf("EraGapKey(%+v) = %q, want %q", tc.r, got, tc.want)
 		}
 	}
@@ -93,8 +94,8 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 		channel(pod.MatchWidened, pod.EraRange{From: 2010, To: 2012}),
 	}}
 	pool.Bookends = 3
-	got := filler.CoverageGapsFrom(pool, pod.PoolTargets{}, 2026)
-	want := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
+	got := acquisition.CoverageGapsFrom(pool, pod.PoolTargets{}, 2026)
+	want := acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
 	}
@@ -115,8 +116,8 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 		exact(60, pod.EraRange{From: 1990, To: 1999}), // the default, 50: met
 		exact(90, pod.EraRange{From: 2000, To: 2019}), // two decades at the default, 100: 10 short
 	}}
-	got := filler.CoverageGapsFrom(pool, targets, 2026)
-	want := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
+	got := acquisition.CoverageGapsFrom(pool, targets, 2026)
+	want := acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
 	}
@@ -125,7 +126,7 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 	}
 	pool.Channels[0] = exact(80, pod.EraRange{From: 1980, To: 1989})
 	pool.Channels[2] = exact(100, pod.EraRange{From: 2000, To: 2019})
-	if got := filler.CoverageGapsFrom(pool, targets, 2026); !got.Met() {
+	if got := acquisition.CoverageGapsFrom(pool, targets, 2026); !got.Met() {
 		t.Fatalf("a pool at its target = %+v, want met", got)
 	}
 }
@@ -134,15 +135,15 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 // station ID at all. Every pod then opens and closes on the break body alone.
 func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
 	live := pod.PoolReport{Channels: []pod.ChannelCoverage{{Report: pod.CoverageReport{Level: pod.MatchExact}}}}
-	want := []filler.Role{filler.Bumper, filler.StationID}
-	if got := filler.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
+	want := []clips.Role{clips.Bumper, clips.StationID}
+	if got := acquisition.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
 	live.Bookends = 1
-	if got := filler.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; got != nil {
+	if got := acquisition.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with a bookend = %v, want none", got)
 	}
-	if got := filler.CoverageGapsFrom(pod.PoolReport{}, pod.PoolTargets{}, 2026).Roles; got != nil {
+	if got := acquisition.CoverageGapsFrom(pod.PoolReport{}, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)
 	}
 }
@@ -154,8 +155,8 @@ func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
 	ident.Title = "Local station ID loop"
 	spot := candidate("a", "spot", 0, 1080, "")
 	spot.Title = "Soda commercial"
-	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, []filler.AcquisitionCandidate{spot, ident}, nil,
-		filler.CoverageGaps{Roles: []filler.Role{filler.Bumper, filler.StationID}})
+	plan, err := acquisition.PlanAcquisitionFor(acquisition.AcquisitionIntent{Count: 1}, []acquisition.AcquisitionCandidate{spot, ident}, nil,
+		acquisition.CoverageGaps{Roles: []clips.Role{clips.Bumper, clips.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,14 +167,14 @@ func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
 
 func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers: []source.Item{
 			{ID: "modern-hd", URL: "https://archive.org/details/modern-hd", Height: 1080, ObservedYear: 2015},
 			{ID: "nineties", URL: "https://archive.org/details/nineties", Height: 480, ObservedYear: 1996},
 		},
 	}
-	fetcher := newFetcher(t, stub, limits(1, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
-		return filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}, nil
+	fetcher := newFetcher(t, stub, limits(1, 2000)).WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) {
+		return acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}}, nil
 	})
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -193,7 +194,7 @@ type searchingStub struct {
 	searched []string
 }
 
-func (s *searchingStub) search(source filler.FetchSource, query string, _ int) ([]source.Item, error) {
+func (s *searchingStub) search(source acquisition.FetchSource, query string, _ int) ([]source.Item, error) {
 	s.searched = append(s.searched, source.URI+"?"+query)
 	return s.hits[query], nil
 }
@@ -203,19 +204,19 @@ func (s *searchingStub) search(source filler.FetchSource, query string, _ int) (
 func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 	stub := &searchingStub{
 		fetchStub: &fetchStub{
-			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+			sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 			offers:  []source.Item{{ID: "listed-hd", URL: "https://archive.org/details/listed-hd", Height: 1080}},
 		},
 		hits: map[string][]source.Item{
 			"WAAA": {{ID: "waaa-news", URL: "https://archive.org/details/waaa-news", Title: "WAAA news update 1991", Height: 360}},
 		},
 	}
-	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{
+	gaps := acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
+	fetcher := acquisition.NewFetcher(fetchStoreWithRemoteStates{
 		fetchStub:        stub.fetchStub,
-		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) { return nil, nil },
+		listRemoteStates: func(context.Context) (map[string]acquisition.ExistingRemoteState, error) { return nil, nil },
 	}, providersOver(t, stub.list, stub.search), stub.fetchStub, limits(1, 2000), discardLog()).
-		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil })
+		WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) { return gaps, nil })
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +231,7 @@ func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 		t.Fatalf("queued gaps %q, want the download tagged with the station search that found it", stub.queuedGaps)
 	}
 	// Local material is a flavour, not a quota: nearby stations alone never make a target unmet.
-	if !(filler.CoverageGaps{Stations: []string{"WAAA"}}).Met() {
+	if !(acquisition.CoverageGaps{Stations: []string{"WAAA"}}).Met() {
 		t.Fatal("station searches made a met target unmet")
 	}
 }
@@ -247,8 +248,8 @@ func (o *openSearchStub) OpenSearch(_ context.Context, query string, _ int) ([]s
 	return o.hits[query], nil
 }
 
-func (o *openSearchStub) Gate(context.Context) (filler.ListingGate, error) {
-	return filler.ListingGate{Languages: "en", Station: func(title string) (string, bool) {
+func (o *openSearchStub) Gate(context.Context) (acquisition.ListingGate, error) {
+	return acquisition.ListingGate{Languages: "en", Station: func(title string) (string, bool) {
 		if strings.Contains(title, "WAAA") {
 			return "WAAA", true
 		}
@@ -264,10 +265,10 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 		{ID: "waaa-undated", URL: "https://archive.org/details/waaa-undated", Title: "WAAA-TV station ID"},
 		{ID: "wzzz-1984", URL: "https://archive.org/details/wzzz-1984", Title: "WZZZ-TV station ID 1984"},
 	}}}
-	gaps := filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: 5, Stations: []string{"WAAA"}}
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}}
+	gaps := acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: 5, Stations: []string{"WAAA"}}
+	stub := &fetchStub{sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}}
 	fetcher := newFetcher(t, stub, limits(10, 2000)).
-		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil }).
+		WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) { return gaps, nil }).
 		WithOpenSearch(open)
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -275,7 +276,7 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 	if !reflect.DeepEqual(open.searched, []string{"WAAA"}) {
 		t.Fatalf("searched %v, want the nearby call sign across the provider", open.searched)
 	}
-	if !reflect.DeepEqual(stub.queuedIDs, []string{"waaa-1984"}) || stub.sourceID != filler.OpenSearchSourceID ||
+	if !reflect.DeepEqual(stub.queuedIDs, []string{"waaa-1984"}) || stub.sourceID != acquisition.OpenSearchSourceID ||
 		!reflect.DeepEqual(stub.queuedGaps, []string{"station:WAAA"}) {
 		t.Fatalf("queued %v from %q for %q, want only the dated nearby hit, under open search", stub.queuedIDs,
 			stub.sourceID, stub.queuedGaps)
@@ -283,16 +284,16 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 
 	for name, c := range map[string]struct {
 		offers []source.Item
-		gaps   filler.CoverageGaps
+		gaps   acquisition.CoverageGaps
 	}{
-		"the sources fill the shortfall": {refs("a", "b"), filler.CoverageGaps{Eras: gaps.Eras, Short: 2, Stations: gaps.Stations}},
-		"no era is short":                {nil, filler.CoverageGaps{Short: 5, Stations: gaps.Stations}},
-		"no station is near":             {nil, filler.CoverageGaps{Eras: gaps.Eras, Short: 5}},
+		"the sources fill the shortfall": {refs("a", "b"), acquisition.CoverageGaps{Eras: gaps.Eras, Short: 2, Stations: gaps.Stations}},
+		"no era is short":                {nil, acquisition.CoverageGaps{Short: 5, Stations: gaps.Stations}},
+		"no station is near":             {nil, acquisition.CoverageGaps{Eras: gaps.Eras, Short: 5}},
 	} {
 		open.searched = nil
-		stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: c.offers}
+		stub := &fetchStub{sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: c.offers}
 		fetcher := newFetcher(t, stub, limits(10, 2000)).
-			WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return c.gaps, nil }).
+			WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) { return c.gaps, nil }).
 			WithOpenSearch(open)
 		if _, err := fetcher.Run(t.Context()); err != nil {
 			t.Fatal(err)
@@ -308,15 +309,15 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 // is met fetches nothing.
 func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{
+		sources: []acquisition.FetchSource{
 			{ID: "s1", Kind: "archive", URI: "one", Enabled: true},
 			{ID: "s2", Kind: "archive", URI: "two", Enabled: true},
 		},
 		offers: refs("a", "b", "c", "d", "e"),
 	}
 	short := 3
-	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
-		return filler.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
+	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) {
+		return acquisition.CoverageGaps{Eras: []pod.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
 	})
 	res, err := fetcher.Run(t.Context())
 	if err != nil {
@@ -332,9 +333,9 @@ func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
 
 	stub.queuedIDs = nil
 	reads := 0
-	fetcher = newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+	fetcher = newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) {
 		reads++
-		return filler.CoverageGaps{}, nil
+		return acquisition.CoverageGaps{}, nil
 	})
 	for range 2 {
 		res, err = fetcher.Run(t.Context())
@@ -357,11 +358,11 @@ func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
 // Steering is an optimisation: a failed coverage read must not cost the source its refresh.
 func TestFetch_UnavailableGapsDegradeToTheUnsteeredPass(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []acquisition.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b"),
 	}
-	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
-		return filler.CoverageGaps{}, errors.New("coverage unavailable")
+	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (acquisition.CoverageGaps, error) {
+		return acquisition.CoverageGaps{}, errors.New("coverage unavailable")
 	})
 	res, err := fetcher.Run(t.Context())
 	if err != nil {

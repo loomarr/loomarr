@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -46,7 +47,7 @@ type fakeFiller struct {
 	ingested []string
 	// sourceItems records exact result-row acquisitions. Unlike `asked`, these retain their
 	// registered parent and must never create another source.
-	sourceItems []filler.AcquisitionTarget
+	sourceItems []acquisition.AcquisitionTarget
 	// asked records only what came through IngestAsked — the operator-initiated path, and the
 	// only one that may register a source. Separate from `ingested` so a test can tell the two
 	// entry points apart; collapsing them is how the real adapter's bug hid.
@@ -79,14 +80,14 @@ type fakeFiller struct {
 	confirmNotFound       bool
 	confirmInvalid        bool
 	confirmFiled          bool
-	fetchStatus           filler.FetchStatus
-	fetchResult           filler.FetchResult
+	fetchStatus           acquisition.FetchStatus
+	fetchResult           acquisition.FetchResult
 	fetchErr              error
 	readiness             filler.Readiness
-	cleanupPreview        filler.StorageCleanupPreview
-	cleanupResult         filler.StorageCleanupResult
+	cleanupPreview        acquisition.StorageCleanupPreview
+	cleanupResult         acquisition.StorageCleanupResult
 	pullID                string
-	pullTargets           []filler.AcquisitionTarget
+	pullTargets           []acquisition.AcquisitionTarget
 	sourceSuggestions     []source.Suggestion
 	sourceSuggestionErr   error
 	resolvedSource        source.Suggestion
@@ -104,23 +105,23 @@ type fakeFiller struct {
 
 func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
 
-func (f *fakeFiller) PreviewStorageCleanup(context.Context) (filler.StorageCleanupPreview, error) {
+func (f *fakeFiller) PreviewStorageCleanup(context.Context) (acquisition.StorageCleanupPreview, error) {
 	return f.cleanupPreview, nil
 }
 
-func (f *fakeFiller) CleanupStorage(context.Context) (filler.StorageCleanupResult, error) {
+func (f *fakeFiller) CleanupStorage(context.Context) (acquisition.StorageCleanupResult, error) {
 	return f.cleanupResult, nil
 }
 
-func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
+func (f *fakeFiller) FetchStatus(context.Context) (acquisition.FetchStatus, error) {
 	return f.fetchStatus, nil
 }
 
-func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResult, error) {
+func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (acquisition.FetchResult, error) {
 	f.fetches++
 	f.fetchedSourceIDs = append(f.fetchedSourceIDs, sourceID)
 	if f.fetchErr != nil {
-		return filler.FetchResult{}, f.fetchErr
+		return acquisition.FetchResult{}, f.fetchErr
 	}
 	return f.fetchResult, nil
 }
@@ -243,14 +244,14 @@ func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind s
 		return "", api.ErrIngestUnavailable
 	}
 	for _, item := range items {
-		f.sourceItems = append(f.sourceItems, filler.AcquisitionTarget{
+		f.sourceItems = append(f.sourceItems, acquisition.AcquisitionTarget{
 			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
 		})
 	}
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (string, error) {
+func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []acquisition.AcquisitionTarget, commit func(context.Context, acquisition.AcquisitionRun) error) (string, error) {
 	if f.beforePull != nil {
 		f.beforePull()
 	}
@@ -262,11 +263,11 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []fi
 	if f.ingestPullErr != nil {
 		return "", f.ingestPullErr
 	}
-	if err := commit(ctx, filler.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := commit(ctx, acquisition.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: acquisition.AcquisitionPull, Status: acquisition.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		return "", err
 	}
 	f.pullID = pullID
-	f.pullTargets = append([]filler.AcquisitionTarget(nil), targets...)
+	f.pullTargets = append([]acquisition.AcquisitionTarget(nil), targets...)
 	for _, target := range targets {
 		f.ingested = append(f.ingested, target.URL)
 	}
@@ -339,7 +340,7 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{
-		fetchResult: filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+		fetchResult: acquisition.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
@@ -981,7 +982,7 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 	if len(ff.sourceItems) != 1 {
 		t.Fatalf("source item calls = %+v, want one", ff.sourceItems)
 	}
-	want := filler.AcquisitionTarget{
+	want := acquisition.AcquisitionTarget{
 		SourceID: "archive:classic", RemoteID: "HearthpotSoupAdvert", Kind: "archive",
 		URL: "https://archive.org/details/HearthpotSoupAdvert",
 	}

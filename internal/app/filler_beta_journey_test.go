@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -135,7 +136,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if jobID != "acq-beta-journey" {
 		t.Fatalf("job id = %q, want acq-beta-journey", jobID)
 	}
-	waitForAcquisition(t, st, jobID, now, filler.AcquisitionSuccess)
+	waitForAcquisition(t, st, jobID, now, acquisition.AcquisitionSuccess)
 
 	held, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
@@ -225,7 +226,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want filler.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.AcquisitionStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

@@ -409,7 +409,7 @@ An enabled source is checked on its effective policy and new items download with
   - **Open search** (#2067) comes after the sources. Only a pass they left short, and only one with
     nearby stations in a short era, searches all of archive.org. It looks for two of those call
     signs a pass, also rotating hourly, and takes no more than the remaining shortfall. A hit is
-    from nowhere vetted, so a deterministic listing gate (`filler.ListingGate`) reads its title
+    from nowhere vetted, so a deterministic listing gate (`acquisition.ListingGate`) reads its title
     before anything is downloaded. The title must:
     - carry no word from the safety list;
     - name no language, and use no script, that no channel airs;

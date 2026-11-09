@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/source/youtube"
@@ -78,11 +78,11 @@ func TestProvider_AddressAcceptsOnlyYouTubeHosts(t *testing.T) {
 // Without yt-dlp the provider still answers, naming the sentinel the API turns into advice.
 func TestProvider_FinderFailsWithTheProviderSentinelWhenUnavailable(t *testing.T) {
 	p := youtube.New(nil)
-	if _, err := p.Suggest(t.Context(), "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
-		t.Errorf("Suggest without a finder = %v, want filler.ErrSourceProvider", err)
+	if _, err := p.Suggest(t.Context(), "retro", 3); !errors.Is(err, acquisition.ErrSourceProvider) {
+		t.Errorf("Suggest without a finder = %v, want acquisition.ErrSourceProvider", err)
 	}
-	if _, err := p.Resolve(t.Context(), "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
-		t.Errorf("Resolve without a finder = %v, want filler.ErrSourceProvider", err)
+	if _, err := p.Resolve(t.Context(), "https://www.youtube.com/@vault"); !errors.Is(err, acquisition.ErrSourceProvider) {
+		t.Errorf("Resolve without a finder = %v, want acquisition.ErrSourceProvider", err)
 	}
 }
 

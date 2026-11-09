@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"errors"
@@ -125,11 +125,11 @@ const (
 	// the file. It is deliberately not retryable.
 	ArtifactMediaGone = "manifested media is permanently missing: no file remains at its manifested or catalog location"
 
-	artifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
+	ArtifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
 )
 
 // retryableRepair reports whether a stored repair reason describes an observation the scan should
 // re-check against the file, rather than a settled verdict.
-func retryableRepair(reason string) bool {
-	return reason == artifactIdentityMismatch || reason == ArtifactMediaMissing
+func RetryableRepair(reason string) bool {
+	return reason == ArtifactIdentityMismatch || reason == ArtifactMediaMissing
 }

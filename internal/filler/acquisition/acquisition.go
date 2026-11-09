@@ -1,4 +1,8 @@
-package filler
+// Package acquisition is how filler decides what to fetch and keeps the record of it: the intent a
+// source is searched with, the plan that selects candidates, the durable download manifests and
+// their repair, the per-pass Fetcher, and the gates that keep a compilation or an unlisted source
+// out. It depends on nothing of the filler pipeline; the root's Syncer and readiness read it.
+package acquisition
 
 import (
 	"sort"

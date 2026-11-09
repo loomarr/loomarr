@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -172,12 +173,12 @@ func (f FillerSource) ServesHome(home pod.Geography) bool {
 // decided (§10 V38c). Re-deriving nil-vs-0-vs-N in the fetcher is how the two would drift, and the
 // way they would drift is toward treating "never" as "inherit" — fetching from a source the
 // operator opted out of.
-func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Duration) filler.FetchSource {
+func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Duration) acquisition.FetchSource {
 	every, pollable := f.FetchEvery(globalEvery)
 	if !pollable {
 		every = 0
 	}
-	return filler.FetchSource{
+	return acquisition.FetchSource{
 		ID: f.ID, Kind: f.Kind, URI: f.URI, Enabled: f.EffectiveEnabled() && eligible, Region: region,
 		NeverFetch:        !pollable,
 		Every:             every,
@@ -669,7 +670,7 @@ func (s *sqlStore) ClaimFillerSourceCheck(
 // CompleteFillerSourceCheck commits a successful check only for the lease that performed it.
 // The guarded completion prevents a timed-out stale worker from clearing a newer worker's claim.
 func (s *sqlStore) CompleteFillerSourceCheck(
-	ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion,
+	ctx context.Context, id string, leaseUntil time.Time, completion acquisition.SourceCheckCompletion,
 ) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -690,7 +691,7 @@ func (s *sqlStore) CompleteFillerSourceCheck(
 		return fmt.Errorf("complete filler source check rows %s: %w", id, err)
 	}
 	if n != 1 {
-		return filler.ErrSourceCheckClaimLost
+		return acquisition.ErrSourceCheckClaimLost
 	}
 	if completion.ReplaceOutcomes {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_source_check_outcomes WHERE source_id = ?`), id); err != nil {
@@ -730,7 +731,7 @@ func (s *sqlStore) FailFillerSourceCheck(
 		return fmt.Errorf("fail filler source check rows %s: %w", id, err)
 	}
 	if n != 1 {
-		return filler.ErrSourceCheckClaimLost
+		return acquisition.ErrSourceCheckClaimLost
 	}
 	return nil
 }

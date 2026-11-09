@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -185,7 +186,7 @@ func (s *Server) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*filler
 	}}, nil
 }
 
-func fillerStorageCleanupPreviewDTO(preview filler.StorageCleanupPreview) FillerStorageCleanupPreviewDTO {
+func fillerStorageCleanupPreviewDTO(preview acquisition.StorageCleanupPreview) FillerStorageCleanupPreviewDTO {
 	return FillerStorageCleanupPreviewDTO{Items: preview.Items, Bytes: preview.Bytes}
 }
 
@@ -224,7 +225,7 @@ func pipelineOverviewDTO(overview pipelinestate.PipelineOverview) PipelineOvervi
 	}
 }
 
-func acquisitionRunDTO(run filler.AcquisitionRun) FillerAcquisitionRunDTO {
+func acquisitionRunDTO(run acquisition.AcquisitionRun) FillerAcquisitionRunDTO {
 	var gapYield []AcquisitionGapYieldDTO
 	for _, y := range run.GapYield {
 		gapYield = append(gapYield, AcquisitionGapYieldDTO{Gap: y.Gap, Downloads: y.Downloads, Outcome: acquisitionOutcomeDTO(y.Outcome)})
@@ -245,7 +246,7 @@ func acquisitionRunDTO(run filler.AcquisitionRun) FillerAcquisitionRunDTO {
 	}
 }
 
-func acquisitionOutcomeDTO(o filler.AcquisitionOutcome) AcquisitionOutcomeDTO {
+func acquisitionOutcomeDTO(o acquisition.AcquisitionOutcome) AcquisitionOutcomeDTO {
 	return AcquisitionOutcomeDTO{
 		Enrolled: o.Enrolled, Preparing: o.Preparing, NeedsDecision: o.NeedsDecision,
 		Ready: o.Ready, Complete: o.Complete, Rejected: o.Rejected, Dismissed: o.Dismissed,

@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"crypto/sha256"
@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
@@ -27,18 +28,18 @@ var (
 // Zero values mean the operator did not request that constraint; they never mean that missing
 // candidate metadata satisfies it.
 type AcquisitionIntent struct {
-	Version         string        `json:"version"`
-	Roles           []Role        `json:"roles,omitempty"`
-	EraStart        int           `json:"eraStart,omitempty"`
-	EraEnd          int           `json:"eraEnd,omitempty"`
-	Audiences       []Audience    `json:"audiences,omitempty"`
-	Geography       pod.Geography `json:"geography,omitempty"`
-	MaxDurationMS   int           `json:"maxDurationMs,omitempty"`
-	TaxonomyGaps    []string      `json:"taxonomyGaps,omitempty"`
-	SourceAllowlist []string      `json:"sourceAllowlist,omitempty"`
-	MinHeight       int           `json:"minHeight,omitempty"`
-	Count           int           `json:"count"`
-	CatalogReason   string        `json:"catalogReason"`
+	Version         string           `json:"version"`
+	Roles           []clips.Role     `json:"roles,omitempty"`
+	EraStart        int              `json:"eraStart,omitempty"`
+	EraEnd          int              `json:"eraEnd,omitempty"`
+	Audiences       []clips.Audience `json:"audiences,omitempty"`
+	Geography       pod.Geography    `json:"geography,omitempty"`
+	MaxDurationMS   int              `json:"maxDurationMs,omitempty"`
+	TaxonomyGaps    []string         `json:"taxonomyGaps,omitempty"`
+	SourceAllowlist []string         `json:"sourceAllowlist,omitempty"`
+	MinHeight       int              `json:"minHeight,omitempty"`
+	Count           int              `json:"count"`
+	CatalogReason   string           `json:"catalogReason"`
 }
 
 // Normalize supplies version/defaults and canonicalises set-like fields. It does not relax a
@@ -131,18 +132,18 @@ func (i RemoteIdentity) Validate() error {
 // AcquisitionCandidate contains metadata-only observations. ObservedYear and PublishedAt are
 // weak remote hints and must never be copied into an admitted clip as grounded era evidence.
 type AcquisitionCandidate struct {
-	Identity      RemoteIdentity `json:"identity"`
-	URL           string         `json:"url"`
-	Title         string         `json:"title,omitempty"`
-	License       string         `json:"license,omitempty"`
-	ObservedYear  int            `json:"observedYear,omitempty"`
-	PublishedAt   string         `json:"publishedAt,omitempty"`
-	DurationMS    int            `json:"durationMs,omitempty"`
-	Height        int            `json:"height,omitempty"`
-	Geography     pod.Geography  `json:"geography,omitempty"`
-	ObservedRoles []Role         `json:"observedRoles,omitempty"`
-	Audiences     []Audience     `json:"audiences,omitempty"`
-	Taxonomy      []string       `json:"taxonomy,omitempty"`
+	Identity      RemoteIdentity   `json:"identity"`
+	URL           string           `json:"url"`
+	Title         string           `json:"title,omitempty"`
+	License       string           `json:"license,omitempty"`
+	ObservedYear  int              `json:"observedYear,omitempty"`
+	PublishedAt   string           `json:"publishedAt,omitempty"`
+	DurationMS    int              `json:"durationMs,omitempty"`
+	Height        int              `json:"height,omitempty"`
+	Geography     pod.Geography    `json:"geography,omitempty"`
+	ObservedRoles []clips.Role     `json:"observedRoles,omitempty"`
+	Audiences     []clips.Audience `json:"audiences,omitempty"`
+	Taxonomy      []string         `json:"taxonomy,omitempty"`
 	// StationSearch is the call sign whose station search found this item (#2059 decision 9). The
 	// hit's title names the station, which proves nothing about its locality: that is still decided
 	// on arrival. It ranks the item as filling a station gap.
@@ -225,9 +226,9 @@ type AcquisitionSourceDecision struct {
 	Detail         string                       `json:"detail"`
 }
 
-func uniqueRoles(in []Role) []Role {
-	out := make([]Role, 0, len(in))
-	seen := map[Role]bool{}
+func uniqueRoles(in []clips.Role) []clips.Role {
+	out := make([]clips.Role, 0, len(in))
+	seen := map[clips.Role]bool{}
 	for _, value := range in {
 		if value != "" && !seen[value] {
 			seen[value] = true
@@ -238,9 +239,9 @@ func uniqueRoles(in []Role) []Role {
 	return out
 }
 
-func uniqueAudiences(in []Audience) []Audience {
-	out := make([]Audience, 0, len(in))
-	seen := map[Audience]bool{}
+func uniqueAudiences(in []clips.Audience) []clips.Audience {
+	out := make([]clips.Audience, 0, len(in))
+	seen := map[clips.Audience]bool{}
 	for _, value := range in {
 		if value != "" && !seen[value] {
 			seen[value] = true
@@ -251,9 +252,9 @@ func uniqueAudiences(in []Audience) []Audience {
 	return out
 }
 
-func validAudience(value Audience) bool {
+func validAudience(value clips.Audience) bool {
 	switch value {
-	case Kids, Family, General, LateNight:
+	case clips.Kids, clips.Family, clips.General, clips.LateNight:
 		return true
 	default:
 		return false

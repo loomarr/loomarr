@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -547,7 +548,7 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 		return "Media server library"
 	case "manual":
 		return "Manually added"
-	case filler.OpenSearchSourceID:
+	case acquisition.OpenSearchSourceID:
 		return "Search for nearby stations"
 	case "":
 		return ""
@@ -939,7 +940,7 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 	// ⚠ A switched-off drop-folder is not a failure, and must not be reported as one. Left as a
 	// 502 it reads "your media server is broken" — sending the operator to check a connection
 	// that is fine — when the true answer is a switch they flipped themselves, on this page.
-	if errors.Is(err, filler.ErrSourceDisabled) {
+	if errors.Is(err, cliplibrary.ErrSourceDisabled) {
 		return nil, errSourceDisabled()
 	}
 	if err != nil {
@@ -976,7 +977,7 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	// it is the one path that registers a source. Auto-fetch and approved pulls carry the items
 	// inside an already-registered collection and must not add a row per clip.
 	jobID, err := s.filler.IngestAsked(ctx, in.Body.URLs)
-	if errors.Is(err, filler.ErrProviderPaused) {
+	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That provider is paused",
 			"Resume it under Filler → Sources before downloading from it.")
 	}

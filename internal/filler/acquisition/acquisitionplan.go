@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 import (
 	"fmt"
@@ -184,7 +184,7 @@ type CoverageGaps struct {
 	Eras []pod.EraRange
 	// Roles are break roles the catalog lacks entirely: bookends (bumpers and station IDs) when
 	// no live channel's pod can open or close on one.
-	Roles []Role
+	Roles []clips.Role
 	// Short is how many commercials the shortest channel's exact rung lacks of its pool target
 	// (#2035). Zero with no gap is a met target: an unattended pass has nothing to fetch.
 	Short int
@@ -223,18 +223,18 @@ func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
 // observedRoles are the provider's observed roles or, failing those, the explicit role token in
 // the item's title: the same KindFromName rule intake applies to the downloaded file's name, so an
 // item steered here as an ident is classified as one on arrival. Ranking evidence only.
-func observedRoles(c AcquisitionCandidate) []Role {
+func observedRoles(c AcquisitionCandidate) []clips.Role {
 	if len(c.ObservedRoles) > 0 {
 		return c.ObservedRoles
 	}
-	if kind := clips.RoleFromName(c.Title); kind != Unclassified {
-		return []Role{kind}
+	if kind := clips.RoleFromName(c.Title); kind != clips.Unclassified {
+		return []clips.Role{kind}
 	}
 	return nil
 }
 
 // RoleGapKey is the stable record of a role gap an acquisition was for: "role:station_id".
-func RoleGapKey(role Role) string { return "role:" + string(role) }
+func RoleGapKey(role clips.Role) string { return "role:" + string(role) }
 
 // StationGapKey is the stable record of a station search an acquisition came from: "station:WPIX".
 func StationGapKey(callSign string) string { return "station:" + callSign }
@@ -284,7 +284,7 @@ func CoverageGapsFrom(pool pod.PoolReport, targets pod.PoolTargets, thisYear int
 	}
 	gaps := CoverageGaps{Eras: pod.NormalizeEraWindows(eras), Short: short}
 	if len(pool.Channels) > 0 && pool.Bookends == 0 {
-		gaps.Roles = []Role{Bumper, StationID}
+		gaps.Roles = []clips.Role{clips.Bumper, clips.StationID}
 	}
 	return gaps
 }
@@ -343,7 +343,7 @@ func containsFold(haystack []string, needle string) bool {
 	return false
 }
 
-func roleOverlap(a, b []Role) bool {
+func roleOverlap(a, b []clips.Role) bool {
 	for _, left := range a {
 		for _, right := range b {
 			if left == right {
@@ -354,7 +354,7 @@ func roleOverlap(a, b []Role) bool {
 	return false
 }
 
-func audienceOverlap(a, b []Audience) bool {
+func audienceOverlap(a, b []clips.Audience) bool {
 	for _, left := range a {
 		for _, right := range b {
 			if left == right {

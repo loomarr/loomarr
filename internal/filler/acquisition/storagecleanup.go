@@ -1,4 +1,4 @@
-package filler
+package acquisition
 
 // StorageCleanupPreview is the server-owned answer to “what can Loomarr safely remove?”.
 // It includes only terminal private staging proven disposable by the acquisition cleaner.

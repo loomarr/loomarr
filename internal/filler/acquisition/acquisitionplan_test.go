@@ -1,24 +1,25 @@
-package filler_test
+package acquisition_test
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
-func candidate(source, id string, year, height int, license string) filler.AcquisitionCandidate {
-	return filler.AcquisitionCandidate{
-		Identity: filler.RemoteIdentity{Provider: "archive", SourceID: source, RemoteID: id},
+func candidate(source, id string, year, height int, license string) acquisition.AcquisitionCandidate {
+	return acquisition.AcquisitionCandidate{
+		Identity: acquisition.RemoteIdentity{Provider: "archive", SourceID: source, RemoteID: id},
 		URL:      "https://archive.org/details/" + id, Title: id, License: license,
 		ObservedYear: year, Height: height,
 	}
 }
 
 func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
-	intent := filler.AcquisitionIntent{Count: 3}
-	input := []filler.AcquisitionCandidate{
+	intent := acquisition.AcquisitionIntent{Count: 3}
+	input := []acquisition.AcquisitionCandidate{
 		candidate("a", "third", 1992, 1080, ""),
 		candidate("a", "first", 1990, 480, "cc-by"),
 		candidate("b", "second", 1990, 720, "cc-by"),
@@ -26,7 +27,7 @@ func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
 	}
 	want := []string{"fourth", "third", "second"}
 	for run := 0; run < 2; run++ {
-		plan, err := filler.PlanAcquisition(intent, input, nil)
+		plan, err := acquisition.PlanAcquisition(intent, input, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +38,7 @@ func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("selected = %v, want %v", got, want)
 		}
-		if len(plan.Rejected) != 1 || plan.Rejected[0].Disposition != filler.CandidateRankedBelowLimit {
+		if len(plan.Rejected) != 1 || plan.Rejected[0].Disposition != acquisition.CandidateRankedBelowLimit {
 			t.Fatalf("rejected = %+v", plan.Rejected)
 		}
 	}
@@ -47,19 +48,19 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 	base := candidate("classic", "unknown", 0, 0, "")
 	checks := []struct {
 		name   string
-		intent filler.AcquisitionIntent
-		want   filler.CandidateDisposition
+		intent acquisition.AcquisitionIntent
+		want   acquisition.CandidateDisposition
 	}{
-		{"era", filler.AcquisitionIntent{EraStart: 1980, EraEnd: 1989}, filler.CandidateEraUnknown},
-		{"duration", filler.AcquisitionIntent{MaxDurationMS: 120_000}, filler.CandidateDurationUnknown},
-		{"quality", filler.AcquisitionIntent{MinHeight: 480}, filler.CandidateQualityUnknown},
-		{"role", filler.AcquisitionIntent{Roles: []filler.Role{filler.Commercial}}, filler.CandidateRoleUnknown},
-		{"audience", filler.AcquisitionIntent{Audiences: []filler.Audience{filler.Kids}}, filler.CandidateAudienceUnknown},
-		{"taxonomy", filler.AcquisitionIntent{TaxonomyGaps: []string{"toys"}}, filler.CandidateTaxonomyUnknown},
+		{"era", acquisition.AcquisitionIntent{EraStart: 1980, EraEnd: 1989}, acquisition.CandidateEraUnknown},
+		{"duration", acquisition.AcquisitionIntent{MaxDurationMS: 120_000}, acquisition.CandidateDurationUnknown},
+		{"quality", acquisition.AcquisitionIntent{MinHeight: 480}, acquisition.CandidateQualityUnknown},
+		{"role", acquisition.AcquisitionIntent{Roles: []clips.Role{clips.Commercial}}, acquisition.CandidateRoleUnknown},
+		{"audience", acquisition.AcquisitionIntent{Audiences: []clips.Audience{clips.Kids}}, acquisition.CandidateAudienceUnknown},
+		{"taxonomy", acquisition.AcquisitionIntent{TaxonomyGaps: []string{"toys"}}, acquisition.CandidateTaxonomyUnknown},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
-			plan, err := filler.PlanAcquisition(tc.intent, []filler.AcquisitionCandidate{base}, nil)
+			plan, err := acquisition.PlanAcquisition(tc.intent, []acquisition.AcquisitionCandidate{base}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -73,7 +74,7 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 func TestPlanAcquisition_LicenseMetadataDoesNotAffectSelection(t *testing.T) {
 	withLicense := candidate("classic", "z-declared", 1992, 720, "cc-by")
 	withoutLicense := candidate("classic", "a-not-provided", 1992, 720, "")
-	plan, err := filler.PlanAcquisition(filler.AcquisitionIntent{Count: 1}, []filler.AcquisitionCandidate{withLicense, withoutLicense}, nil)
+	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 1}, []acquisition.AcquisitionCandidate{withLicense, withoutLicense}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,26 +89,26 @@ func TestPlanAcquisition_LicenseMetadataDoesNotAffectSelection(t *testing.T) {
 func TestPlanAcquisition_ExplainsPriorStateAndDuplicates(t *testing.T) {
 	first := candidate("classic", "same", 1992, 480, "cc-by")
 	key := first.Identity.Key()
-	plan, err := filler.PlanAcquisition(filler.AcquisitionIntent{Count: 5}, []filler.AcquisitionCandidate{
+	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 5}, []acquisition.AcquisitionCandidate{
 		first,
 		first,
 		candidate("classic", "queued", 1992, 480, "cc-by"),
 		candidate("classic", "declined", 1992, 480, "cc-by"),
-	}, map[string]filler.ExistingRemoteState{
-		key: filler.RemoteCatalogued,
-		candidate("classic", "queued", 0, 0, "").Identity.Key():   filler.RemoteQueued,
-		candidate("classic", "declined", 0, 0, "").Identity.Key(): filler.RemoteDeclined,
+	}, map[string]acquisition.ExistingRemoteState{
+		key: acquisition.RemoteCatalogued,
+		candidate("classic", "queued", 0, 0, "").Identity.Key():   acquisition.RemoteQueued,
+		candidate("classic", "declined", 0, 0, "").Identity.Key(): acquisition.RemoteDeclined,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[filler.CandidateDisposition]int{
-		filler.CandidateAlreadyCatalogued:  1,
-		filler.CandidateDuplicateRemote:    1,
-		filler.CandidateAlreadyQueued:      1,
-		filler.CandidatePreviouslyDeclined: 1,
+	want := map[acquisition.CandidateDisposition]int{
+		acquisition.CandidateAlreadyCatalogued:  1,
+		acquisition.CandidateDuplicateRemote:    1,
+		acquisition.CandidateAlreadyQueued:      1,
+		acquisition.CandidatePreviouslyDeclined: 1,
 	}
-	got := map[filler.CandidateDisposition]int{}
+	got := map[acquisition.CandidateDisposition]int{}
 	for _, decision := range plan.Rejected {
 		got[decision.Disposition]++
 	}
@@ -117,36 +118,36 @@ func TestPlanAcquisition_ExplainsPriorStateAndDuplicates(t *testing.T) {
 }
 
 func TestDefaultAcquisitionIntent_NamesTheCoverageProjection(t *testing.T) {
-	intent := filler.DefaultAcquisitionIntent(pod.PoolReport{Channels: []pod.ChannelCoverage{{
+	intent := acquisition.DefaultAcquisitionIntent(pod.PoolReport{Channels: []pod.ChannelCoverage{{
 		Name: "Saturday Mornings", Report: pod.CoverageReport{Level: pod.MatchBumperCard},
 	}}}, pod.Geography{Country: "us", Place: "5128581"})
 	if intent.CatalogReason != "Improve filler coverage for Saturday Mornings; its current match level is bumper_card." {
 		t.Fatalf("reason = %q", intent.CatalogReason)
 	}
-	if intent.Geography.Country != "US" || intent.Count != 12 || intent.Version != filler.AcquisitionIntentVersion {
+	if intent.Geography.Country != "US" || intent.Count != 12 || intent.Version != acquisition.AcquisitionIntentVersion {
 		t.Fatalf("intent = %+v", intent)
 	}
 }
 
 func TestPlanAcquisition_RejectsConstraintsOutsideTheClosedVocabulary(t *testing.T) {
-	for _, intent := range []filler.AcquisitionIntent{
+	for _, intent := range []acquisition.AcquisitionIntent{
 		{Count: -1},
 		{Count: 51},
 		{EraStart: 1799},
 		{EraEnd: 2201},
 		{MinHeight: 4321},
-		{Roles: []filler.Role{filler.Unclassified}},
+		{Roles: []clips.Role{clips.Unclassified}},
 	} {
-		if _, err := filler.PlanAcquisition(intent, nil, nil); err == nil {
+		if _, err := acquisition.PlanAcquisition(intent, nil, nil); err == nil {
 			t.Errorf("PlanAcquisition(%+v) succeeded, want validation error", intent)
 		}
 	}
 }
 
 func TestAcquisitionIntentFamily_IgnoresPresentationButKeepsSelectionConstraints(t *testing.T) {
-	base := filler.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 2, CatalogReason: "first"}
-	presentationChange := filler.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 40, CatalogReason: "second"}
-	constraintChange := filler.AcquisitionIntent{EraStart: 1980, EraEnd: 1989, Count: 2, CatalogReason: "first"}
+	base := acquisition.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 2, CatalogReason: "first"}
+	presentationChange := acquisition.AcquisitionIntent{EraStart: 1990, EraEnd: 1999, Count: 40, CatalogReason: "second"}
+	constraintChange := acquisition.AcquisitionIntent{EraStart: 1980, EraEnd: 1989, Count: 2, CatalogReason: "first"}
 	if base.FamilyKey() != presentationChange.FamilyKey() {
 		t.Fatal("count/reason changed the semantic intent family")
 	}

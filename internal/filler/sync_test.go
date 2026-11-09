@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -61,15 +62,15 @@ func (m *memStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error 
 }
 
 type manifestAuthority struct {
-	artifact filler.AcquisitionArtifact
+	artifact acquisition.AcquisitionArtifact
 	found    bool
 }
 
-func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (filler.AcquisitionArtifact, bool, error) {
+func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.AcquisitionArtifact, bool, error) {
 	return m.artifact, m.found && clipHash == m.artifact.ClipHash, nil
 }
 
-func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []filler.AcquisitionArtifact) error {
+func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []acquisition.AcquisitionArtifact) error {
 	if len(artifacts) == 1 {
 		m.artifact = artifacts[0]
 		m.found = true
@@ -486,12 +487,12 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.AcquisitionArtifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",
 		SidecarPath: "download.info.json", MediaSHA256: digest, MediaBytes: size,
-		ClipHash: clipHash, State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		ClipHash: clipHash, State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
 	source := &fakeSource{clips: []cliplibrary.RawClip{
 		raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0),
@@ -512,7 +513,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if !ok || tags.AcquisitionID != "acq-1" || tags.SourceID != "youtube:classic" || !asset.SidecarFetchedByUs(media) {
 		t.Fatalf("repaired portable provenance = %+v, %v", tags, ok)
 	}
-	if authority.artifact.State != filler.ArtifactConsumed || authority.artifact.MediaPath != filepath.ToSlash(relative) {
+	if authority.artifact.State != acquisition.ArtifactConsumed || authority.artifact.MediaPath != filepath.ToSlash(relative) {
 		t.Fatalf("consumed manifest = %+v", authority.artifact)
 	}
 }
@@ -532,11 +533,11 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: filler.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.AcquisitionArtifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", Provider: "youtube",
 		SourceURL: "https://youtube.com/watch?v=one", MediaPath: filepath.Base(media),
 		MediaSHA256: strings.Repeat("f", 64), MediaBytes: size, ClipHash: clipHash,
-		State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 	}}
 	source := &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Substituted", filler.Commercial, 30_000, 0)}}
 	source.clips[0].Path = filepath.Base(media)
@@ -550,7 +551,7 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 	if _, ok := st.clips[clipHash]; ok {
 		t.Fatal("digest-substituted acquisition became catalog content")
 	}
-	if authority.artifact.State != filler.ArtifactRepair || authority.artifact.RepairReason == "" {
+	if authority.artifact.State != acquisition.ArtifactRepair || authority.artifact.RepairReason == "" {
 		t.Fatalf("artifact = %+v, want durable repair reason", authority.artifact)
 	}
 }

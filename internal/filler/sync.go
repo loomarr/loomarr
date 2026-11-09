@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -45,17 +46,9 @@ type Store interface {
 // AcquisitionManifestStore resolves and advances durable download manifests. Filesystem
 // validation stays in Syncer because it owns the applied clip root.
 type AcquisitionManifestStore interface {
-	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (AcquisitionArtifact, bool, error)
-	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []AcquisitionArtifact) error
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.AcquisitionArtifact, bool, error)
+	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error
 }
-
-// ErrSourceDisabled reports that the drop-folder is switched off on the Sources tab (§10 V35).
-//
-// ⚠ A distinct error rather than a silent zero result, and that is the difference between the
-// switch working and the switch lying. A no-op success makes "Fetch now" a button that appears
-// to run and changes nothing, which reads as a broken sync rather than a disabled source; the
-// caller turns this into an answer that names the switch to flip.
-var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched off")
 
 // Syncer reconciles the clip catalog against the Tunarr `local` filler source.
 type Syncer struct {
@@ -318,7 +311,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Checked BEFORE the FILLER_DIR check and before any filesystem work: a switched-off
 	// source must not scan, and must not report a configuration problem it does not have.
 	if s.enabled != nil && !s.enabled() {
-		return SyncResult{}, ErrSourceDisabled
+		return SyncResult{}, cliplibrary.ErrSourceDisabled
 	}
 	if s.dir == "" {
 		return SyncResult{}, fmt.Errorf("filler sync: no FILLER_DIR configured")
@@ -548,14 +541,14 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		if err := s.store.UpsertClip(ctx, merged); err != nil {
 			return res, fmt.Errorf("upsert clip %s: %w", rc.ID, err)
 		}
-		if acquired && artifact.State != ArtifactConsumed {
-			artifact.State = ArtifactConsumed
+		if acquired && artifact.State != acquisition.ArtifactConsumed {
+			artifact.State = acquisition.ArtifactConsumed
 			artifact.MediaPath = rc.Path
 			artifact.SidecarPath = strings.TrimSuffix(rc.Path, filepath.Ext(rc.Path)) + ".info.json"
 			artifact.ClipHash = rc.ID
 			artifact.RepairReason = ""
 			artifact.UpdatedAt = s.now().UTC()
-			if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); err != nil {
+			if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
 				return res, fmt.Errorf("consume acquisition artifact %s: %w", artifact.ID, err)
 			}
 		}
@@ -656,21 +649,21 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 			return err
 		}
 		fail := func(reason string) error {
-			artifact.State = ArtifactRepair
+			artifact.State = acquisition.ArtifactRepair
 			artifact.RepairReason = reason
 			artifact.UpdatedAt = s.now().UTC()
-			if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); persistErr != nil {
+			if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); persistErr != nil {
 				return fmt.Errorf("%s; record repair: %w", reason, persistErr)
 			}
 			return errors.New(reason)
 		}
-		if artifact.State == ArtifactRepair {
+		if artifact.State == acquisition.ArtifactRepair {
 			return errors.New(artifact.RepairReason)
 		}
 		verify := func(path, observedHash string) error {
 			info, statErr := os.Lstat(path)
 			if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-				return errors.New(ArtifactMediaMissing)
+				return errors.New(acquisition.ArtifactMediaMissing)
 			}
 			digest, size, digestErr := asset.FileSHA256(path)
 			if digestErr != nil {
@@ -683,7 +676,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 				}
 			}
 			if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || observedHash != artifact.ClipHash {
-				return errors.New(artifactIdentityMismatch)
+				return errors.New(acquisition.ArtifactIdentityMismatch)
 			}
 			return nil
 		}
@@ -702,7 +695,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 		}
 		artifact.MediaPath = filedPath
 		artifact.UpdatedAt = s.now().UTC()
-		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); err != nil {
+		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
 			return fmt.Errorf("bind manifested watch arrival: %w", err)
 		}
 		return nil
@@ -717,30 +710,30 @@ func (s *Syncer) warnQuarantined(clipPath string, err error) {
 		"clip", clipPath, "err", err)
 }
 
-func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawClip) (AcquisitionArtifact, bool, error) {
+func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawClip) (acquisition.AcquisitionArtifact, bool, error) {
 	if s.acquisitions == nil {
-		return AcquisitionArtifact{}, false, nil
+		return acquisition.AcquisitionArtifact{}, false, nil
 	}
 	artifact, found, err := s.acquisitions.AcquisitionArtifactForClip(ctx, rc.Path, rc.ID)
 	if err != nil || !found {
 		return artifact, found, err
 	}
-	fail := func(reason string) (AcquisitionArtifact, bool, error) {
-		artifact.State = ArtifactRepair
+	fail := func(reason string) (acquisition.AcquisitionArtifact, bool, error) {
+		artifact.State = acquisition.ArtifactRepair
 		artifact.RepairReason = reason
 		artifact.UpdatedAt = s.now().UTC()
-		if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); persistErr != nil {
+		if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); persistErr != nil {
 			return artifact, true, fmt.Errorf("%s; record repair: %w", reason, persistErr)
 		}
 		return artifact, true, errors.New(reason)
 	}
-	if artifact.State == ArtifactRepair && !retryableRepair(artifact.RepairReason) {
+	if artifact.State == acquisition.ArtifactRepair && !acquisition.RetryableRepair(artifact.RepairReason) {
 		return artifact, true, errors.New(artifact.RepairReason)
 	}
 	path := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return fail(ArtifactMediaMissing)
+		return fail(acquisition.ArtifactMediaMissing)
 	}
 	tags, state := asset.ReadSidecarTagsState(path)
 	if state == asset.SidecarInvalid {
@@ -748,7 +741,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 	}
 	normalizeConsumedManifest := false
 	if tags.MediaAssets != nil && tags.MediaAssets.Playback != nil &&
-		(artifact.State == ArtifactConsumed || retryableRepair(artifact.RepairReason)) {
+		(artifact.State == acquisition.ArtifactConsumed || acquisition.RetryableRepair(artifact.RepairReason)) {
 		// V66 deliberately gives the acquired source and the playable catalog entry different
 		// identities. The acquisition manifest continues to bind the immutable source-master
 		// SHA/size while clip_hash follows the current playback derivative. Comparing all three
@@ -763,7 +756,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 		}
 		if artifact.ClipHash != rc.ID || playback.ClipHash != rc.ID ||
 			filepath.Clean(filepath.FromSlash(playback.Path)) != filepath.Clean(filepath.FromSlash(rc.Path)) {
-			return fail(artifactIdentityMismatch)
+			return fail(acquisition.ArtifactIdentityMismatch)
 		}
 		if err := asset.ValidateFile(ctx, s.dir, playback, asset.RolePlayback, ""); err != nil {
 			return fail("manifested playback derivative does not match the portable media manifest")
@@ -771,20 +764,20 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 		// Verify the retained source on first normalization and while repairing the historical
 		// false-positive. Once media_path names the immutable master, ordinary scans keep their
 		// former one-full-file-hash cost; any later stage that reuses the master re-verifies it.
-		if artifact.State == ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
+		if artifact.State == acquisition.ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
 			if err := asset.ValidateFile(ctx, s.dir, assets.SourceMaster, asset.RoleSourceMaster, asset.MasterDirName); err != nil {
 				return fail("manifested source master does not match the portable media manifest")
 			}
 		}
-		normalizeConsumedManifest = artifact.State != ArtifactConsumed ||
+		normalizeConsumedManifest = artifact.State != acquisition.ArtifactConsumed ||
 			artifact.MediaPath != assets.SourceMaster.Path ||
 			artifact.SidecarPath != tools.SidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
-		artifact.State = ArtifactConsumed
+		artifact.State = acquisition.ArtifactConsumed
 		artifact.MediaPath = assets.SourceMaster.Path
 		artifact.SidecarPath = tools.SidecarPathFor(assets.SourceMaster.Path)
 		artifact.RepairReason = ""
 	} else {
-		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
+		if artifact.State == acquisition.ArtifactRepair && artifact.RepairReason != acquisition.ArtifactMediaMissing {
 			return artifact, true, errors.New(artifact.RepairReason)
 		}
 		digest, size, err := asset.FileSHA256(path)
@@ -792,7 +785,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 			return fail("manifested media cannot be hashed: " + err.Error())
 		}
 		if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || rc.ID != artifact.ClipHash {
-			return fail(artifactIdentityMismatch)
+			return fail(acquisition.ArtifactIdentityMismatch)
 		}
 	}
 	if state == asset.SidecarAbsent || tags.SourceID != artifact.SourceID || tags.AcquisitionID != artifact.AcquisitionID || !asset.SidecarFetchedByUs(path) {
@@ -804,7 +797,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 	}
 	if normalizeConsumedManifest {
 		artifact.UpdatedAt = s.now().UTC()
-		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); err != nil {
+		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
 			return artifact, true, fmt.Errorf("normalize consumed acquisition artifact: %w", err)
 		}
 	}

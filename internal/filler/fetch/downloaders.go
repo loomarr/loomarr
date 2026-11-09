@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -414,7 +414,7 @@ func commitProviderArchive(publicationDir string, entries []string) error {
 	}
 	var additions []string
 	for _, line := range entries {
-		if err := filler.ValidateProviderArchiveEntry(line); err != nil {
+		if err := acquisition.ValidateProviderArchiveEntry(line); err != nil {
 			return fmt.Errorf("validate yt-dlp archive entry: %w", err)
 		}
 		if _, already := known[line]; already {
@@ -476,7 +476,7 @@ func exactArchiveEntry(lines []string, archiveID string) (string, error) {
 	}
 	var match string
 	for _, line := range lines {
-		if filler.ValidateProviderArchiveEntry(line) != nil {
+		if acquisition.ValidateProviderArchiveEntry(line) != nil {
 			continue
 		}
 		fields := strings.Fields(line)
