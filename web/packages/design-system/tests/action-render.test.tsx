@@ -565,6 +565,17 @@ describe("Action render composition", () => {
     expect(markup).toContain("Save");
   });
 
+  it("keeps a plain style object on the submit button", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action style={{ width: "100%" }} submit>
+          Save
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("width:100%");
+  });
+
   it("submits its form when pressed", () => {
     const onSubmit = vi.fn((event: Event) => event.preventDefault());
     const container = document.createElement("div");

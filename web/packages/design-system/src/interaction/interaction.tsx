@@ -1,6 +1,7 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
 import type {
   ComponentProps,
+  CSSProperties,
   ComponentRef,
   ForwardRefExoticComponent,
   ReactElement,
@@ -181,7 +182,15 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const focusLook = useFocusLook({ onBlur, onFocus });
     const focused = focusLook.focused;
     const render: ReactElement<Record<string, unknown>> | undefined =
-      renderProp ?? (submit && isWeb ? <button disabled={disabled === true} type="submit" /> : undefined);
+      renderProp ??
+      (submit && isWeb ? (
+        <button
+          disabled={disabled === true}
+          // A plain style object carries over (a width, an alignSelf); a function style is native's.
+          style={typeof style === "object" && style !== null ? (style as CSSProperties) : undefined}
+          type="submit"
+        />
+      ) : undefined);
     // A composed submit button carries its own `disabled` (it must, so Enter in a field cannot
     // submit through it); the Action greys to match rather than drawing an enabled look over it.
     const isDisabled =
