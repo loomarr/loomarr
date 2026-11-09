@@ -17,17 +17,16 @@ import (
 // every segment of a split proposal. All three are the same question — "is this actually the
 // advert it says it is?" — and none of them can be answered from a thumbnail.
 //
-// ⚠ **Named `media`, deliberately NOT `preview`**, for the reason `thumb` is not: "preview"
-// already means a pod listing in `pod.Adapter.Preview` and two channel-scoped operations. A third
-// meaning on a route name is how an endpoint ends up called by the wrong handler a year later.
+// ⚠ **Named `media`, deliberately NOT `preview`**: "preview" already means a pod listing in
+// `pod.Adapter.Preview` and two channel-scoped operations. A third meaning on a route name is how
+// an endpoint ends up called by the wrong handler a year later.
 //
-// A plain mux handler rather than a Huma op, like `thumb` and the backup download.
+// A plain mux handler rather than a Huma op, like the backup download.
 //
-// ⚠ NOT because Huma is limited to JSON — it is not, and this comment used to say so. It is that
-// `http.ServeContent` (see the bottom of this file) is what gives this route Range support, and
-// range support is the whole point here: it is what lets a <video> seek instead of downloading a
-// whole clip to play its last five seconds. An op would need the raw ResponseWriter to call it
-// regardless.
+// ⚠ The reason is not that Huma is limited to JSON. `http.ServeContent` (see the bottom of
+// serveFillerMedia) is what gives this route Range support, and range support is the whole point
+// here: it is what lets a <video> seek instead of downloading a whole clip to play its last five
+// seconds. An op would need the raw ResponseWriter to call it regardless.
 
 // mediaTypes is the allowlist of what this route will serve, keyed by lowercase extension.
 //
@@ -35,8 +34,8 @@ import (
 // `FILLER_DIR` is an operator-writable folder — that is its whole purpose — so a file in it is
 // untrusted input. Serving whatever `mime.TypeByExtension` returns would let an `.html` dropped
 // in that folder come back as `text/html` **from Loomarr's own origin**, which is stored XSS
-// against the session cookie of anyone who clicks it. The thumbnail route never had this problem
-// because it hardcodes `image/jpeg`; this one has to enumerate.
+// against the session cookie of anyone who clicks it. A route that hardcodes one type has no such
+// exposure; this one serves several, so it has to enumerate.
 //
 // The list is what the scan already accepts plus the audio containers ffmpeg produces, and it is
 // deliberately short: an extension that is not here is not served, so adding a format is a
@@ -57,9 +56,9 @@ var mediaTypes = map[string]string{
 
 // serveFillerMedia streams a catalog clip's own file.
 //
-// Member-visible, matching `list-filler` and `thumb`: the catalog listing is already visible to
-// any authenticated user, and these are the same commercials the household's channels play at
-// them. NOT public — unlike the channel icon, nothing machine-to-machine needs this.
+// Member-visible, matching `list-filler`: the catalog listing is already visible to any
+// authenticated user, and these are the same commercials the household's channels play at them.
+// NOT public — unlike the channel icon, nothing machine-to-machine needs this.
 func (s *Handlers) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	// A clip path is meaningful only relative to the layout that catalogued it. The applied root
 	// is immutable for this server generation; a newly saved desired root takes effect when the
@@ -88,16 +87,12 @@ func (s *Handlers) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	// convenience. Without it this route serves any allowlisted file anywhere under a folder
 	// the operator also uses for their own media; with it, the only reachable files are rows
 	// the scan created. A path that is not a clip is not a clip, whatever is on disk.
-	// ⚠ The URL carries the clip's IDENTITY (its hash since V38c), and the file served is the
-	// row's `Path`. Before V38c those were the same string, so this route resolved the URL
-	// segment directly against the filesystem — which is why the lookup's result was discarded.
-	// It cannot be now: a caller-supplied string must never reach the filesystem, and the row is
-	// the only thing that says where a clip actually lives.
-	// ⚠ **By PATH, not by hash.** The URL segment is a clip's location under FILLER_DIR, which
-	// V38c made a DIFFERENT string from its identity — the path is sharded (`14/36/<hash>.mp4`)
-	// while the hash is bare. `GetClip` queries `WHERE hash = ?`, so this route used it and
-	// matched nothing: it 404'd for every clip in the catalog from V38c until V39, and nothing
-	// noticed because no client called it until the player shipped.
+	//
+	// ⚠ The URL carries the clip's IDENTITY (its hash), and the file served is the row's `Path`:
+	// a caller-supplied string must never reach the filesystem, and the row is the only thing
+	// that says where a clip actually lives. The path is sharded (`14/36/<hash>.mp4`) while the
+	// hash is bare, so the row is read BY PATH here — `GetClip` is keyed `WHERE hash = ?` and
+	// would match nothing against it.
 	clip, err := s.store.GetClipByPath(r.Context(), clipPath)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
@@ -158,21 +153,6 @@ func (s *Handlers) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, filepath.Base(full), info.ModTime(), f)
 }
 
-// safeFillerPath resolves a clip path inside the drop-folder, returning ok=false if it escapes.
-//
-// It resolves to absolute form and tests with filepath.Rel, because a `..` component in the
-// result is the only reliable containment test however the input was spelled.
-//
-// ⚠ It used to be described as "the same containment test as `safeThumbPath` against a different
-// base". `safeThumbPath` was deleted with the artwork routes in V52 phase 8 — a clip's still and
-// hover loop are image-service images now, and the image service does its own containment. A
-// comment naming a function that no longer exists is the drift this repo greps for, so the
-// property is stated here directly rather than by reference to a neighbour.
-//
-// Note what this function deliberately does NOT do: it does not exclude the thumbnail cache
-// under `.loomarr-thumbs`. It does not need to, and adding the check would imply the containment
-// test is the only thing standing between a caller and those files. Two other gates already
-// refuse them — a thumbnail is not a catalog row, and `.jpg` is not in `mediaTypes`.
 // clipFileOnDisk resolves a catalogue path to its media file in the applied drop-folder, and
 // reports false when there is no drop-folder or no file there.
 func (s *Handlers) clipFileOnDisk(rel string) (string, bool) {
@@ -190,6 +170,15 @@ func (s *Handlers) clipFileOnDisk(rel string) (string, bool) {
 	return full, true
 }
 
+// safeFillerPath resolves a clip path inside the drop-folder, returning ok=false if it escapes.
+//
+// It resolves to absolute form and tests with filepath.Rel, because a `..` component in the
+// result is the only reliable containment test however the input was spelled.
+//
+// Note what this function deliberately does NOT do: it does not exclude the thumbnail cache
+// under `.loomarr-thumbs`. It does not need to, and adding the check would imply the containment
+// test is the only thing standing between a caller and those files. Two other gates already
+// refuse them — a thumbnail is not a catalog row, and `.jpg` is not in `mediaTypes`.
 func safeFillerPath(fillerDir, rel string) (string, bool) {
 	if rel == "" || strings.Contains(rel, "\x00") {
 		return "", false

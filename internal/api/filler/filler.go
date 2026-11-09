@@ -135,11 +135,10 @@ func (s *Handlers) registerFiller(api huma.API) {
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		// ⚠ The clip is a QUERY parameter, not a path segment, and that is forced rather than
-		// stylistic. Clip identity is a PATH (§9.1 — `ads/cereal.mp4`), so `/v1/filler/{id}/fit`
-		// collides with every literal segment under /v1/filler: Go's ServeMux refuses to register
-		// it beside `/v1/filler/splits/{proposalId}` ("both match some paths, like
-		// /v1/filler/splits/fit"), and it panics at ROUTE REGISTRATION, i.e. at boot. A query
-		// parameter also avoids double-encoding a path that legitimately contains slashes.
+		// stylistic: `/v1/filler/{id}/fit` collides with every literal segment under /v1/filler.
+		// Go's ServeMux refuses to register it beside `/v1/filler/splits/{proposalId}` ("both match
+		// some paths, like /v1/filler/splits/fit"), and it panics at ROUTE REGISTRATION, i.e. at
+		// boot.
 		OperationID: "clip-channel-fit", Method: http.MethodGet, Path: "/v1/filler/fit",
 		Summary: "Where this clip lands on each channel's ladder",
 		Description: "The override picker's per-channel note (§10 V35). For every channel: which rung " +
@@ -186,23 +185,22 @@ func (s *Handlers) registerFiller(api huma.API) {
 		Tags: []string{"filler"},
 	}, httpcore.RoleAdmin), s.confirmFillerSplit)
 
-	// The three clip byte routes (V30/V35/V39). Member-visible, matching `list-filler`: the
-	// catalog listing is visible to any authenticated user, and an asset is strictly less
-	// information than the row it decorates. NOT public like the channel icon — that one is open
-	// so Tunarr can fetch it machine-to-machine, a reason that does not apply here.
+	// The clip byte route. Member-visible, matching `list-filler`: the catalog listing is
+	// visible to any authenticated user, and an asset is strictly less information than the row
+	// it decorates. NOT public like the channel icon — that one is open so Tunarr can fetch it
+	// machine-to-machine, a reason that does not apply here.
 	//
 	// ⚠ `media`, never `preview`: /v1/channels/{id}/filler/coverage and pod.Adapter.Preview
 	// already mean "the pod pool a channel would get", as JSON.
 	//
-	// ⚠ **`filler-thumb` and `filler-hover` were RETIRED in V52 phase 8.** A clip's still and
-	// hover loop are image-service images (§22): they are content-addressed, carry a srcset and a
-	// ThumbHash, and are served by /v1/images/{hash} under an honest immutable cache. Two routes
-	// serving the same two assets from a second store, with none of that, is the duplication §22
-	// exists to remove. `filler-media` stays — the clip's OWN bytes are not an image and the image
-	// service has no opinion about them.
+	// ⚠ **Only the clip's OWN bytes are served here.** A clip's still and hover loop are
+	// image-service images (§22): content-addressed, with a srcset and a ThumbHash, served by
+	// /v1/images/{hash} under an honest immutable cache. A second route serving them from a second
+	// store would be the duplication §22 exists to remove; the clip file is not an image and the
+	// image service has no opinion about it.
 	//
 	// It keeps the stdlib (w, r) signature because http.ServeContent answers Range,
-	// If-Modified-Since and 206 in one call — see rawop.go.
+	// If-Modified-Since and 206 in one call — see httpcore.RawOp.
 	//
 	// ⚠ Media type ranges, not a single type: this route serves whatever the clip's extension
 	// maps to in the `mediaTypes` allowlist (video/mp4, video/x-matroska, audio/mpeg, …). Naming
@@ -255,9 +253,8 @@ type ClipDTO struct {
 	// Hash is the clip's IDENTITY (its sparse content hash, V38c) — what every clip-addressing route
 	// takes (tags, split, and the byte routes). Hex, no slashes, so it is a clean URL/route id.
 	Hash string `json:"hash"`
-	// TunarrProgramID is informational since §9.1: it exists for Tunarr filler-lists and is
-	// TunarrProgramID is informational since §9.1: it exists for Tunarr filler-lists and is
-	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
+	// TunarrProgramID is informational: it exists for Tunarr filler-lists and is empty on an
+	// install with no Tunarr. NOT an identity — clients must key on Hash.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
 	Role            string `json:"role" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
@@ -285,32 +282,28 @@ type ClipDTO struct {
 	SourceLabel  string        `json:"sourceLabel,omitempty" doc:"Human-readable registered source name; use this instead of the canonical source identity in ordinary UI"`
 	Media        *ClipMediaDTO `json:"media,omitempty" doc:"Prepared playback file facts; included only for an exact single-clip detail read"`
 	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
-	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
-	// it existed in the store for two phases with no way to see it.
+	// scanned before the column existed.
 	// ⚠ The `doc` string is a CLIENT-VISIBLE contract (it ships in api/openapi.yaml and the
-	// generated TS). It used to say "never affects pod selection"; V17c made that false by
-	// adding an opt-in floor, so it was amended in the same PR rather than left as a lie the
-	// generated client repeats.
+	// generated TS), so it must say that quality affects selection when the opt-in
+	// `filler.min_quality` floor is set; a "display-only" claim would be repeated by the generated
+	// client.
 	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on."`
 	// ThumbImage / HoverImage are the clip's still and hover loop, as image-service records
 	// (§22) — content-addressed, with a width ladder, a ThumbHash and honest immutable caching.
 	//
-	// ⚠ **They REPLACED `thumbnail`/`preview` in V52 phase 8; those two string fields and the
-	// routes behind them are gone.** Phase 6 carried both while the adoption job caught up, which
-	// was the right shape for a migration window and the wrong thing to keep: two ways to address
-	// one asset is the duplication §22 exists to remove, and the legacy pair carried none of what
-	// the image service provides.
+	// ⚠ **These are the only way a clip's artwork is addressed on the wire**: there are no
+	// `thumbnail`/`preview` string fields and no per-clip artwork routes. One way to address an
+	// asset is the point of §22.
 	//
 	// ⚠ **Absence is ORDINARY and the client must treat it that way** — it is not an error and not
 	// a reason to draw a placeholder. A clip whose artwork the adoption job has not reached yet has
 	// neither field, and so does one where ffmpeg never ran (the entire catalog on a Tunarr-backed
-	// install). The card's no-frame layout is the designed answer for both, and it is what shipped
-	// before extracted frames existed.
+	// install). The card's no-frame layout is the designed answer for both.
 	//
-	// The forward pointer on the clip ROW is still `thumbnail`/`preview` — the render pipeline
-	// writes files under FILLER_DIR and the adoption job converts them (§22, phase 6). Those
-	// columns are the seam between the two, deliberately not exposed here: a path relative to a
-	// cache directory is not something a client can do anything with now that the routes are gone.
+	// The clip ROW still stores `thumbnail`/`preview` — the render pipeline writes files under
+	// FILLER_DIR and the adoption job converts them. Those columns are the seam between the two,
+	// deliberately not exposed here: a path relative to a cache directory is not something a
+	// client can do anything with.
 	ThumbImage *httpcore.ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the still; absent until the adoption job has run, or when no frame was extracted"`
 	HoverImage *httpcore.ImageDTO `json:"hoverImage,omitempty" doc:"Image-service record for the hover loop; absent until adopted, or when no animation was rendered"`
 	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
@@ -341,9 +334,8 @@ type ClipDTO struct {
 	Brand string `json:"brand,omitempty" doc:"The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred."`
 	// Held marks a clip recorded but NOT yet in the playable catalog (§10 V38).
 	//
-	// ⚠ Shipped in the same change as the `includeHeld` parameter, never after it. A client that
-	// can ASK for held clips and cannot TELL which ones they are renders an unreviewed clip
-	// identically to a filed one — the parameter alone would be worse than neither.
+	// ⚠ Travels with the `includeHeld` parameter: a client that can ASK for held clips and cannot
+	// TELL which ones they are renders an unreviewed clip identically to a filed one.
 	Held bool `json:"held,omitempty" doc:"Waiting for review in Incoming, not in the playable catalog (§10 V38). Only ever true when includeHeld or heldOnly was passed."`
 	// Language has THREE states and a client must not collapse them (§10 V40):
 	// absent = NOT YET CHECKED (the detection job has not reached this clip; never a fault),
@@ -451,9 +443,9 @@ func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
 func (s *Handlers) playsCounted() bool { return s.playsCountedOn }
 
 // clipPathByHash resolves a clip's content HASH (the wire identity, V45a) to its disk path (the disk
-// LOCATION, server-internal). The byte routes (thumb/media/hover) take the hash in the URL and need
+// LOCATION, server-internal). The media byte route takes the hash in the URL and needs
 // the path to find the file. Returns ("", false) for a missing clip or a nil/unconfigured store — the
-// caller renders that as an ordinary 404, never an error (a missing clip and a missing thumbnail are
+// caller renders that as an ordinary 404, never an error (a missing clip and a missing file are
 // the same non-event to the client). ⚠ One store read per byte request: the tradeoff for a single
 // wire identity (V45a) — the path never crosses the API, so no slash-in-URL encoding hazard remains.
 func (s *Handlers) clipPathByHash(ctx context.Context, hash string) (string, bool) {
@@ -467,8 +459,6 @@ func (s *Handlers) clipPathByHash(ctx context.Context, hash string) (string, boo
 	return clip.Path, true
 }
 
-// clipToDTO maps a stored clip. playsCounted comes from the caller because it is a property
-// of the INSTALL (does internal playout run here?), not of the clip.
 // clipArtworkResolver pre-resolves every artwork image for a page of clips in one pass.
 //
 // ⚠ **Called ONCE per page, before the render loop — never inside it.** The filler catalog is a
@@ -498,6 +488,8 @@ func (s *Handlers) clipArtworkResolver(ctx context.Context, clips []clipstore.Cl
 // clipToDTO renders a clip for the wire. `img`, when non-nil, resolves an image hash to its
 // record — pre-resolved by the caller for the whole page, never looked up per clip (see
 // imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
+// `playsCounted` comes from the caller because it is a property of the INSTALL (does internal
+// playout run here?), not of the clip.
 func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *httpcore.ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Role: string(c.Role),
@@ -607,17 +599,17 @@ type listFillerInput struct {
 	ParentHash string `query:"parentHash" doc:"Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction."`
 	// Hashes is the batch read: resolve these specific clips.
 	//
-	// ⚠ It exists because paging deleted the alternative. The channel pin/exclude editor used to
-	// load the whole catalog to map N saved ids to names, which a 100-row page truncates.
-	// Hashes resolves exactly these clip hashes — the batch read behind "name these N pinned clips".
+	// ⚠ It exists because the catalog is paged: mapping N saved ids to names by loading the
+	// catalog would be truncated at a 100-row page. Hashes resolves exactly these clip hashes —
+	// the batch read behind "name these N pinned clips".
 	//
 	// ⚠ **`explode`, and it is load-bearing.** Huma turns explode OFF by default for query fields
 	// ("parsing is *much* easier if we use comma-separated values"), which means `?hashes=a&hashes=b`
 	// binds ONE element — the rest are silently dropped and the request still returns 200. The
-	// generated TypeScript client sends exactly that repeated form, so before this tag every pinned
-	// clip after the first failed to resolve and the channel page reported real clips as "no longer
-	// in your catalog". Found on the live stack; neither side's tests could see it, because the Go
-	// tests hand-wrote `?hashes=a,b` and the client was generated from a spec that agreed with them.
+	// generated TypeScript client sends exactly that repeated form, so without the tag every pinned
+	// clip after the first fails to resolve and the channel page reports real clips as "no longer
+	// in your catalog". Neither side's tests can see it if the Go tests hand-write `?hashes=a,b`
+	// against a client generated from a spec that agrees with them.
 	Hashes []string `query:"hashes,explode" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent."`
 }
 type listFillerOutput struct {
@@ -802,8 +794,8 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 		return nil, err
 	}
 	// ⚠ EVERY refusal is decided before the first write. The writes below are separate store calls,
-	// so a tag or station rejected after the rename used to leave the clip renamed and retagged
-	// behind a 422 — the operator saw "not saved" for an edit that had half-saved.
+	// so a tag or station rejected after the rename would leave the clip renamed and retagged
+	// behind a 422 — the operator would see "not saved" for an edit that had half-saved.
 	//
 	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
 	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
@@ -982,11 +974,9 @@ func (s *Handlers) ingestFiller(ctx context.Context, in *ingestFillerInput) (*in
 			"Resume it under Filler → Sources before downloading from it.")
 	}
 	if errors.Is(err, ErrIngestUnavailable) {
-		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
-		// used to say "run the loomarr:filler image" — that variant no longer exists (the
-		// single image always ships the tooling, §16), so the remedy it named was a dead
-		// end of exactly the kind §7 warns about. Unavailable now means a degraded
-		// install, and the message says what an operator can actually check.
+		// NOT feature_not_configured: no setting can assert that a binary RUNS. The single image
+		// always ships the tooling (§16), so unavailable means a degraded install, and the message
+		// says what an operator can actually check — never a remedy that is a dead end (§7).
 		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
@@ -1003,8 +993,8 @@ func (s *Handlers) ingestFiller(ctx context.Context, in *ingestFillerInput) (*in
 type discoverFillerInput struct {
 	// Query is what the operator typed. An empty search would return archive.org's entire
 	// movies corpus ranked by nothing, which is not an answer to any question — so a search
-	// needs at least two characters. No longer `required`, because `collection` is the other
-	// way to ask; exactly one of the two must be given (checked in the handler).
+	// needs at least two characters. Not `required`, because `collection` is the other way to
+	// ask; at least one of the two must be given (checked in the handler).
 	Query string `query:"q" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\". When collection is also present, searches within that collection."`
 	// Collection lists ONE named archive.org collection instead of searching. This is what a
 	// starter pack is (§10, V17d): a curated collection an operator keeps or excludes from
@@ -1105,17 +1095,14 @@ func (s *Handlers) requireFillerProvider(ctx context.Context, kind string) error
 type discoverStatsInput struct {
 	// IDs are the search-result identifiers to describe, as REPEATED params (`?id=a&id=b&id=c`).
 	//
-	// ⚠ **This was comma-separated, and the comment here used to explain why** — huma disables
-	// `explode` for query fields by default ("parsing is *much* easier if we use comma-separated
-	// values"), so `?id=a&id=b` bound ONE element. The note was correct about the mechanism and
-	// wrong about the conclusion: the generated TypeScript client sends the repeated form, so the
-	// documented convention was one nobody on the wire actually used. `explode` makes the contract
-	// match the caller instead of the other way round.
+	// ⚠ **`explode` is load-bearing.** Huma disables it for query fields by default ("parsing is
+	// *much* easier if we use comma-separated values"), so `?id=a&id=b` would bind ONE element.
+	// The generated TypeScript client sends the repeated form, so the contract is repeated
+	// parameters, matching the caller.
 	//
-	// ⚠ **It also makes `maxItems` work for the first time.** The old note said the cap "never
-	// fires, because the slice is never long" — which is exactly right and exactly the problem:
-	// each id is one upstream call, so the cap exists to stop an uncapped list making Loomarr
-	// hammer archive.org on someone else's behalf. A limit that cannot fire is not a limit.
+	// ⚠ **`explode` is also what lets `maxItems` fire.** Each id is one upstream call, so the cap
+	// exists to stop an uncapped list making Loomarr hammer archive.org on someone else's behalf;
+	// with a comma-joined value the slice is never long and the cap never trips.
 	IDs []string `query:"id,explode" required:"true" maxItems:"25" doc:"Result ids to describe. Repeat the parameter per id (?id=a&id=b)."`
 }
 
@@ -1190,9 +1177,9 @@ type ChannelFitDTO struct {
 }
 
 type clipFitInput struct {
-	// Clip is the clip's PATH (its identity, §10) — a query parameter because a path
-	// containing slashes cannot be a path segment; see the route registration.
-	Clip string `query:"clip" required:"true" doc:"The clip's path (its identity, §10)"`
+	// Clip is the clip's content HASH (its identity, §10) — a query parameter because a path
+	// segment collides with the literal segments; see the route registration.
+	Clip string `query:"clip" required:"true" doc:"The clip's content hash (its identity, §10)"`
 }
 
 type clipFitOutput struct {
@@ -1248,7 +1235,7 @@ type splitFillerInput struct {
 	Body struct {
 		// Hash identifies the compilation clip (its content hash, V38c). ⚠ In the BODY (§10 V45a):
 		// the wire identity is the hash. This is ALSO what Propose needs — it is keyed `WHERE hash = ?`
-		// — so passing the hash straight through fixes the "clip not found" the old path arg caused.
+		// — so the hash passes straight through with no path lookup.
 		Hash string `json:"hash" doc:"The compilation clip's content hash (its identity, §10)"`
 	}
 }
