@@ -3,6 +3,7 @@ import type { ComponentProps, ElementType, ReactNode } from "react";
 import { createElement, useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 
+import { themeColors } from "../config";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import { TamaguiText } from "../text-base";
@@ -142,10 +143,12 @@ type TextTone =
   | "inverse"
   | "live"
   | "muted"
+  | "onDecade"
   | "primary"
   | "secondary"
   | "signal"
   | "success"
+  | "suggest"
   | "warning";
 type TextProps = Omit<
   TamaguiTextProps,
@@ -231,12 +234,40 @@ const textTones = {
   inverse: "contentInverse",
   live: "stateLive",
   muted: "contentMuted",
+  // A channel number on its decade's fill (#2767).
+  onDecade: "decadeInk",
   primary: "contentPrimary",
   secondary: "contentSecondary",
   signal: "actionPrimary",
   success: "stateSuccess",
+  suggest: "accentSuggest",
   warning: "stateWarning",
 } as const;
+
+// The monogram ident's colours (#3011): a 14% wash of the brand hue, with the letters in that hue's
+// on-tint text stop (the web's `-300` stops in dark; each theme's own text stop in light) rather
+// than the full hue, which fails AA on its own wash. `tone` is how a Text draws the letters, so
+// each theme resolves its own stop. The keys are `@loomarr/core/guide`'s ident hues.
+const CHANNEL_IDENT_WASH_PERCENT = 14;
+const channelIdentHues = {
+  tune: { wash: brandChroma[3], tone: "info" },
+  suggest: { wash: brandChroma[4], tone: "suggest" },
+  signal: { wash: brandChroma[0], tone: "signal" },
+  onair: { wash: brandChroma[5], tone: "live" },
+} as const satisfies Record<string, { wash: string; tone: TextTone }>;
+
+type ChannelIdentColorHue = keyof typeof channelIdentHues;
+
+/** Each ident hue's wash and letter colour as concrete values in one theme (for the contrast test). */
+const channelIdentColors = (mode: "dark" | "light") => {
+  const colors = themeColors(mode);
+  return Object.fromEntries(
+    Object.entries(channelIdentHues).map(([hue, { wash, tone }]) => [
+      hue,
+      { text: colors[textTones[tone]], wash },
+    ]),
+  ) as Record<ChannelIdentColorHue, { text: string; wash: string }>;
+};
 
 const roleTracking = (textRole: TextRole, size: number) =>
   textRole === "display"
@@ -794,6 +825,7 @@ export type {
   ArtworkState,
   BadgeShape,
   BadgeTone,
+  ChannelIdentColorHue,
   ProgressTone,
   ScreenProps,
   StatusTone,
@@ -805,6 +837,9 @@ export type {
 export {
   ArtworkFrame,
   Badge,
+  CHANNEL_IDENT_WASH_PERCENT,
+  channelIdentColors,
+  channelIdentHues,
   FocusSurface,
   lineHeightPx,
   ProgressTrack,

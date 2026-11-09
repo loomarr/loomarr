@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -117,7 +118,7 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate enrichment.Candi
 	if err != nil {
 		return enrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
 	}
-	storeClip := fillerClip(clip)
+	storeClip := storeadapter.StoreClip(clip)
 	if e.kind == enrichment.CapabilityTranscript {
 		if e.transcript == nil {
 			return enrichment.CapabilityResult{}, nil

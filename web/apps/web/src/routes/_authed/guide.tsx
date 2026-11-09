@@ -14,8 +14,13 @@ const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  // The raw search stays raw: the page reads none of it, and a legacy URL is read in `beforeLoad`.
-  validateSearch: (search: Record<string, unknown>) => search,
+  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads only `view`:
+  // `?view=grid` is the full grid, and anything else the Now/Next list it opens on (#2787), so the
+  // grid survives a reload and a link can open it.
+  validateSearch: (search: Record<string, unknown>): Record<string, unknown> & { view?: "grid" } => ({
+    ...search,
+    view: search.view === "grid" ? "grid" : undefined,
+  }),
   beforeLoad: ({ search }) => {
     const origination = legacyGuideOrigination(search);
     if (origination) throw redirect({ to: "/requests/new", search: origination, replace: true });

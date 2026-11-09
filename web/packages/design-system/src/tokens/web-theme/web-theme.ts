@@ -38,6 +38,11 @@ const accents = {
   caution: { base: brandChroma[1], on: brandChroma[1] }, // warnings, drift (dark text on solid fills)
 } as const;
 
+// The CSS colour for text drawn on an accent's own tint: its `-300` stop where it has one, else the
+// accent itself (which already clears AA there). The monogram ident's letters (#3011).
+const onTintVar = (name: keyof typeof accents): string =>
+  accents[name].on === accents[name].base ? `var(--color-${name})` : `var(--color-${name}-300)`;
+
 // Semantic aliases so shadcn primitives restyle without edits (§2.1).
 const semanticAliases = {
   primary: "signal",
@@ -140,6 +145,7 @@ const webThemeCss = (): string => {
 
 export {
   accents,
+  onTintVar,
   semanticAliases,
   staticExtras,
   staticScale,

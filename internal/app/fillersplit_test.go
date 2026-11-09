@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -132,7 +133,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	}
 	a := fillerServiceAdapter{
 		bus: bus, newID: func() string { return "job-1" }, timeout: time.Minute,
-		splitClips: fillerSplitStoreAdapter{st: st},
+		splitClips: storeadapter.NewSplit(st, nil),
 		start:      testInteractiveOperationLauncher, operations: st,
 	}
 	if withSplitter {
@@ -148,7 +149,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		}}
 		n := 0
-		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st: st}, tools, nil, drop,
+		a.splitter = filler.NewSplitter(storeadapter.NewSplit(st, nil), tools, nil, drop,
 			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
@@ -176,12 +177,12 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	tools := blockingSplitTools{
 		started: started, cancelled: cancelled, release: release,
 	}
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, tools, nil, drop,
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), tools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "sp-owned" }, time.Now, nil)
 	lifecycle := newGenerationLifecycle(t.Context())
 	application := &Application{lifecycle: lifecycle}
 	a := fillerServiceAdapter{
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st},
+		splitter: splitter, splitClips: storeadapter.NewSplit(st, nil),
 		newID: func() string { return "split-owned" }, timeout: time.Minute,
 		start: lifecycle.startInteractiveOperation, operations: st,
 	}
@@ -233,7 +234,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
-	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	a.pipeline = filler.NewPipeline(st, storeadapter.NewPipelineClips(st), nil, filler.Budget{}, nil, time.Now, nil)
 	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +306,7 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 		t.Fatal(err)
 	}
 	failing := &markPipelineFiledFailureStore{Store: st}
-	a.splitClips = fillerSplitStoreAdapter{st: failing}
+	a.splitClips = storeadapter.NewSplit(failing, nil)
 
 	if err := a.ConfirmSplit(ctx, proposal.ID, proposal.Segments); err != nil {
 		t.Fatalf("ConfirmSplit reported a failure after committing the generation: %v", err)
@@ -453,7 +454,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	}
 
 	n := 0
-	sp := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []tools.Chapter{
+	sp := filler.NewSplitter(storeadapter.NewSplit(st, nil), splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
@@ -479,8 +480,8 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 		t.Fatal(err)
 	}
 	app := fillerServiceAdapter{
-		splitter: sp, splitClips: fillerSplitStoreAdapter{st: st},
-		pipeline: filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil),
+		splitter: sp, splitClips: storeadapter.NewSplit(st, nil),
+		pipeline: filler.NewPipeline(st, storeadapter.NewPipelineClips(st), nil, filler.Budget{}, nil, time.Now, nil),
 	}
 	if err := app.ConfirmSplit(ctx, prop.ID, prop.Segments); err != nil {
 		t.Fatalf("ConfirmSplit: %v — this is the failure that made split review a dead end", err)
@@ -596,9 +597,9 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 
 	firstTools := &gatedSplitTools{entered: make(chan struct{}, 1), release: make(chan struct{})}
 	secondTools := &gatedSplitTools{}
-	first := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, firstTools, nil, drop,
+	first := filler.NewSplitter(storeadapter.NewSplit(st, nil), firstTools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-a" }, func() time.Time { return now }, nil)
-	second := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, secondTools, nil, drop,
+	second := filler.NewSplitter(storeadapter.NewSplit(st, nil), secondTools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-b" }, func() time.Time { return now }, nil)
 
 	firstErr := make(chan error, 1)
@@ -691,7 +692,7 @@ func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
 	ch, unsub := bus.Subscribe()
 	t.Cleanup(unsub)
 	a, st := newSplitAdapter(t, bus, true)
-	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	a.pipeline = filler.NewPipeline(st, storeadapter.NewPipelineClips(st), nil, filler.Budget{}, nil, time.Now, nil)
 	onBelt := parkReel(t, st)
 
 	if onBelt() {
@@ -729,7 +730,7 @@ func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
 	ch, unsub := bus.Subscribe()
 	t.Cleanup(unsub)
 	a, st := newSplitAdapter(t, bus, true)
-	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
+	a.pipeline = filler.NewPipeline(st, storeadapter.NewPipelineClips(st), nil, filler.Budget{}, nil, time.Now, nil)
 	onBelt := parkReel(t, st)
 
 	// Detection refuses a clip with no probed duration — a failure raised INSIDE Propose, after

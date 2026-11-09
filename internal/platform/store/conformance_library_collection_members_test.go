@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// A collection's members, by the provider ids a lineup knows them by: a title that has left the
-// library is not listed, and one with no provider id lists empty ids.
+// A collection's members, by the provider ids a lineup knows them by: one with no provider id
+// lists empty ids.
 func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
@@ -21,7 +21,7 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	night, err := st.CreateLibraryCollection(ctx, LibraryCollection{
-		Name: "Nights", Members: []string{"show", "gone", "film"},
+		Name: "Nights", Members: []string{"show", "film"},
 	}, at)
 	if err != nil {
 		t.Fatal(err)

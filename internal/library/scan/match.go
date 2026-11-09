@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // Matcher defaults (#2151 step 11, decision 27).
@@ -186,13 +186,15 @@ func (m *Matcher) Tick(ctx context.Context) error {
 			m.log().Debug("library match: search failed", "item", need.ID, "err", err)
 			return nil
 		}
-		if err := m.Store.SaveLibraryCandidates(ctx, need.ID, searched, candidates); err != nil {
-			return err
-		}
 		if settled.Value != "" && m.Match != nil {
 			if err := m.Match(ctx, need.ID, settled); err != nil {
+				// Not marked searched: the next tick searches and settles it again.
 				m.log().Warn("library match: settled title not answered", "item", need.ID, "err", err)
+				searched = ""
 			}
+		}
+		if err := m.Store.SaveLibraryCandidates(ctx, need.ID, searched, candidates); err != nil {
+			return err
 		}
 	}
 	return nil

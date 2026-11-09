@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -28,6 +28,8 @@ type ItemDetail struct {
 	Files []ItemFile
 	// Seasons is a series' episodes by season, in order; season 0 is the specials.
 	Seasons []Season
+	// Channels are the channels whose lineup holds it, by number.
+	Channels []store.LibraryItemChannel
 }
 
 // ItemFile is one of a movie's files, with what its header says once read; zero until then.
@@ -153,6 +155,9 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 		return ItemDetail{}, err
 	}
 	detail := ItemDetail{LibraryItemSummary: summary}
+	if detail.Channels, err = l.ItemStore.LibraryItemChannels(ctx, id); err != nil {
+		return ItemDetail{}, err
+	}
 	item, err := l.scanned(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err

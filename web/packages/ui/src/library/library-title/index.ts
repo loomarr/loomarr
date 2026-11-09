@@ -1,5 +1,6 @@
 export { LibraryTitle } from "./library-title";
 export type {
+  LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,

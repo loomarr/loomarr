@@ -4,9 +4,8 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -106,7 +105,7 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
           to="/filler/settings"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
         >
-          <ArrowLeft className="size-3.5" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
           All filler settings
         </Link>
         <p className="text-muted-foreground mt-2 text-xs">Jump straight to another task.</p>
@@ -134,7 +133,7 @@ const FillerSettingsIndex = () => (
         to="/filler/manage"
         className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
       >
-        <ArrowLeft className="size-3.5" aria-hidden />
+        <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         Manage
       </Link>
       <h2 className="mt-3 text-xl font-semibold">Filler settings</h2>
@@ -178,10 +177,9 @@ const FillerSettingsIndex = () => (
                   {item.description}
                 </span>
               </span>
-              <ArrowRight
-                className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                aria-hidden
-              />
+              <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
+              </span>
             </Link>
           ))}
         </div>

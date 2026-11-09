@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { semanticThemes } from "../index";
+import { decadeFill, decadeFillColor, semanticThemes } from "../index";
 
 const channel = (hex: string, offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
 const linear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
@@ -72,5 +72,24 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
       expect(contrast(theme.border.control, surface)).toBeGreaterThanOrEqual(3);
     }
     expect(contrast(theme.action.focus, theme.surface.canvas)).toBeGreaterThanOrEqual(3);
+  });
+
+  // A channel number on its decade's fill (#2767): small mono text, so AA for small text.
+  it.each(["1970", "1980", "1990"] as const)("keeps a channel number on the %s fill at WCAG AA", (decade) => {
+    expect(contrast(theme.decade.ink, theme.decade[decade])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("decadeFill", () => {
+  it("names the theme colour for a decade the era palette has, and nothing for any other", () => {
+    expect(decadeFill(1970)).toBe("decade1970");
+    expect(decadeFill(1980)).toBe("decade1980");
+    expect(decadeFill(1990)).toBe("decade1990");
+    for (const neutral of [undefined, 1960, 2000, 1985]) expect(decadeFill(neutral)).toBeUndefined();
+  });
+
+  it("gives the same colour as a value for chrome drawn alike in both themes", () => {
+    expect(decadeFillColor(1980)).toBe(semanticThemes.dark.decade["1980"]);
+    expect(decadeFillColor(undefined)).toBeUndefined();
   });
 });

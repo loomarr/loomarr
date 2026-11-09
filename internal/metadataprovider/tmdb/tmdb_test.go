@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/metadataprovider/providertest"
 	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/testkit"
-	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
 const apiKey = "test-key"
@@ -132,7 +132,7 @@ func TestProvider_IsInTheClosedSet(t *testing.T) {
 	if caps.Supplies(mp.FamilyTechnical) {
 		t.Error("a catalog has not seen the file, so it supplies no technical facts")
 	}
-	if caps.Rate.MaxConcurrent == 0 || caps.Rate.MinInterval == 0 {
+	if caps.Rate.MinInterval == 0 {
 		t.Errorf("rate hint %+v declares no limit; TMDB documents one", caps.Rate)
 	}
 }

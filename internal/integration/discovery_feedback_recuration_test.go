@@ -29,7 +29,7 @@ func actionDiscovery() llm.Response {
 }
 
 func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		actionDiscovery(),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},

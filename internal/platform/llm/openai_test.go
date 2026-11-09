@@ -76,6 +76,37 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 	}
 }
 
+// A tool call whose arguments are not a JSON object is reported on the call, not turned into an
+// empty argument map the dispatcher would run as "no filters".
+func TestOpenAI_MalformedToolCallArgumentsAreReportedOnTheCall(t *testing.T) {
+	for name, args := range map[string]string{
+		"truncated":  `{\"genres\":[\"Action\"`,
+		"not object": `[\"Action\"]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"",
+					"tool_calls":[{"id":"call_1","type":"function","function":{
+						"name":"catalog_search","arguments":"` + args + `"}}]}}]}`))
+			}))
+			defer srv.Close()
+
+			resp, err := llm.NewOpenAI(srv.URL, "gpt-x", "sk-test").Chat(context.Background(),
+				[]llm.Message{{Role: llm.User, Content: "hi"}},
+				llm.ChatOptions{Tools: []llm.ToolSchema{{Name: "catalog_search"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(resp.ToolCalls) != 1 {
+				t.Fatalf("tool calls = %+v, want the one call kept", resp.ToolCalls)
+			}
+			if resp.ToolCalls[0].ArgumentsError == "" {
+				t.Errorf("malformed arguments %q reported no error: %+v", args, resp.ToolCalls[0])
+			}
+		})
+	}
+}
+
 // Final content (no tool calls) round-trips as the Response content.
 func TestOpenAI_FinalContent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

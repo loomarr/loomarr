@@ -94,10 +94,7 @@ const CreateLocalDialog = ({
               <Action disabled={creating} onPress={() => changeOpen(false)} variant="outline">
                 Cancel
               </Action>
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={creating} type="submit" />}
-              >
+              <Action disabled={creating} submit>
                 {creating ? "Creating…" : "Create account"}
               </Action>
             </DialogFooter>

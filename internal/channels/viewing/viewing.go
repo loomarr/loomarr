@@ -14,7 +14,8 @@
 // replaces its old one at once rather than showing it on both until the old one times out.
 //
 // The tracker is in memory. One replica is the supported topology (deployment.md), and a restart
-// loses nothing a single poll interval doesn't rebuild.
+// loses nothing a single poll interval doesn't rebuild. The Recorder (history.go) writes its
+// viewings to the store's watch history (#3010), which outlives a restart.
 package viewing
 
 import (

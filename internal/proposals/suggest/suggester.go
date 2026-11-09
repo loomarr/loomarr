@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -120,7 +120,7 @@ type FeedbackSource interface {
 // (TMDB exists-check).
 type Suggester struct {
 	llm        llm.Provider
-	catalog    *catalog.Catalog
+	catalog    *titlesearch.Catalog
 	validator  Validator
 	ratings    RatingSource // optional acquisition-rating enrichment (§389)
 	feedback   FeedbackSource
@@ -186,7 +186,7 @@ func (s *Suggester) WithReferences(resolver webreference.Resolver) *Suggester {
 }
 
 // New builds a Suggester. maxAcq is the default acquisition cap (§8 quota).
-func New(provider llm.Provider, cat *catalog.Catalog, v Validator, maxAcq int) *Suggester {
+func New(provider llm.Provider, cat *titlesearch.Catalog, v Validator, maxAcq int) *Suggester {
 	if maxAcq <= 0 {
 		maxAcq = 10
 	}
@@ -285,7 +285,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	// A pick is grounded IFF it matches one of these — the model cannot smuggle in
 	// an id the tool never returned. Threaded across the tool loop AND repair
 	// re-asks, so grounding holds even when the final JSON is retried.
-	surfaced := map[provision.Key]catalog.Candidate{}
+	surfaced := map[provision.Key]titlesearch.Candidate{}
 	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion}
 	temp := groundedTemp
 
@@ -297,15 +297,15 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 	// nothing ever checked, which is precisely what grounding prevents.
 	//
 	// The model still chooses. An offered title it ignores is simply not picked.
-	adjacentCandidates := make([]catalog.Candidate, 0, len(allAdjacent))
+	adjacentCandidates := make([]titlesearch.Candidate, 0, len(allAdjacent))
 	for _, a := range allAdjacent {
 		k := provision.Key(a.Key)
 		mt, provider, id, ok := provision.ParseKey(k)
 		if !ok {
 			continue // an unparseable key could never be acquired; drop rather than offer
 		}
-		cand := catalog.Candidate{
-			MediaType: mt, Name: a.Name, Year: a.Year, Source: catalog.ScopeAdjacent,
+		cand := titlesearch.Candidate{
+			MediaType: mt, Name: a.Name, Year: a.Year, Source: titlesearch.ScopeAdjacent,
 		}
 		// Rebuild the external id from the key so the candidate's own Key() round-trips —
 		// a candidate whose identity doesn't reproduce would be dropped by the grounding
@@ -411,14 +411,14 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 					var readErr *referenceReadError
 					if errors.As(sourceErr, &readErr) {
 						terminal, code = proposals.TerminalReferenceUnreadable, FailureCodeNoGroundedTitles
-					} else if errors.Is(sourceErr, ErrNoGroundedTitles) {
+					} else if errors.Is(sourceErr, proposals.ErrNoGroundedTitles) {
 						terminal, code = proposals.ReasonRetrievalEmpty, FailureCodeNoGroundedTitles
 					}
 				}
 				trace.Terminal = terminal
-				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", ErrNoGroundedTitles, sourceErr))
+				return proposals.Proposal{}, NewFailure(code, trace, fmt.Errorf("%w: %w", proposals.ErrNoGroundedTitles, sourceErr))
 			}
-			for _, candidates := range [][]catalog.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
+			for _, candidates := range [][]titlesearch.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
 				for _, candidate := range candidates {
 					if key, keyErr := candidate.Key(); keyErr == nil {
 						surfaced[key] = candidate
@@ -447,19 +447,19 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 				}
 				if len(out.Picks) == 0 {
 					trace.Terminal = FailureSelectionEmpty
-					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, ErrNoGroundedTitles)
+					return proposals.Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, proposals.ErrNoGroundedTitles)
 				}
 			}
 			reportProgress(ctx, PhaseScoring, 0)
 			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace, *acceptedMeaning)
-			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
+			if errors.Is(buildErr, proposals.ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
 				groundingRetried = true
 				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
 				temp = temp / 2
 				continue
 			}
 			if buildErr != nil {
-				if errors.Is(buildErr, ErrNoGroundedTitles) {
+				if errors.Is(buildErr, proposals.ErrNoGroundedTitles) {
 					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
 						trace.Terminal = proposals.TerminalNamedSetUnproven
 					} else if trace.Terminal == "" {
@@ -494,7 +494,7 @@ func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (prop
 func (s *Suggester) buildRequiredNamedFallback(
 	ctx context.Context,
 	intent Intent,
-	surfaced map[provision.Key]catalog.Candidate,
+	surfaced map[provision.Key]titlesearch.Candidate,
 	trace *proposals.DecisionTrace,
 	meaning *ValidatedDateMeaning,
 ) (proposals.Proposal, bool, error) {
@@ -531,7 +531,7 @@ func (s *Suggester) buildRequiredNamedFallback(
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *proposals.DecisionTrace, temp float64, intent *Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int, acceptedMeaning **ValidatedDateMeaning, sources *sourceGroundingState, ledger *workLedger, continuation bool) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]titlesearch.Candidate, trace *proposals.DecisionTrace, temp float64, intent *Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int, acceptedMeaning **ValidatedDateMeaning, sources *sourceGroundingState, ledger *workLedger, continuation bool) (string, error) {
 	if !continuation {
 		ledger.beginGeneration()
 	}
@@ -601,7 +601,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				if valid {
 					trackerFrom(ctx).addTerms(searchTerms(prepared.arguments))
 				}
-				var cands []catalog.Candidate
+				var cands []titlesearch.Candidate
 				meaning := (*ValidatedDateMeaning)(nil)
 				if valid {
 					meaning = &prepared.meaning
@@ -629,7 +629,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 							trace.Terminal = proposals.TerminalRetrievalFailure
 							return "", NewFailure(FailureProvider, *trace, sourceErr)
 						}
-						for _, candidates := range [][]catalog.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
+						for _, candidates := range [][]titlesearch.Candidate{sourceResult.reference.candidates, sourceResult.curated, sourceResult.explicit} {
 							for _, candidate := range candidates {
 								if key, keyErr := candidate.Key(); keyErr == nil {
 									surfaced[key] = candidate
@@ -695,7 +695,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					*emptyRetrievals++
 					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {
 						trace.Terminal = proposals.ReasonRetrievalEmpty
-						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, ErrNoGroundedTitles)
+						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, proposals.ErrNoGroundedTitles)
 					}
 				}
 			}
@@ -738,11 +738,6 @@ func conflictingConstraints(intent Intent) bool {
 func normalizeConstraint(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
-
-// ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
-// the intent surfaced no themed, real content. The worker fails the job with this
-// (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
-var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
 
 var errDateSemanticsUnclear = errors.New("clarify_dates")
 var errDateConstraintsConflict = errors.New("constraints_conflict")

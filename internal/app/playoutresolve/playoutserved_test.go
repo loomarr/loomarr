@@ -1,13 +1,18 @@
 package playoutresolve
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Resolving what airs is a read. The admin Info page's default-audio /tracks request, the guide
@@ -94,6 +99,64 @@ func TestRecordAiringServedStampsAProgramme(t *testing.T) {
 	r.RecordAiringServed(context.Background(), "ch1", airing, later)
 	if !history.lastAiredAt.Equal(start) || !history.lastRecordedAt.Equal(later) {
 		t.Fatalf("tune-in recorded aired %v / observed %v, want %v / %v", history.lastAiredAt, history.lastRecordedAt, start, later)
+	}
+}
+
+// ctxAwareAirings is a recorder that refuses a write under a done context, as a database does.
+type ctxAwareAirings struct {
+	recorded int
+	err      error // fails every write when set
+}
+
+func (c *ctxAwareAirings) RecordAiring(ctx context.Context, _ string, _ provision.Key, _ string, _, _ time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.err != nil {
+		return c.err
+	}
+	c.recorded++
+	return nil
+}
+
+// A viewer that leaves right after receiving its first segment ends the context the serve ran
+// under; the airing it just received is still recorded, because the write does not depend on it.
+func TestRecordAiringServedWritesAfterTheRunContextEnds(t *testing.T) {
+	t.Parallel()
+	slots := []schedule.Slot{{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "item-1", DurationMs: 60_000}}
+	history := &ctxAwareAirings{}
+	now := testPlayoutAnchor().Add(20 * time.Second)
+	r := stillResolver(t, slots, now, history)
+	airing, _, err := r.AiringAt(context.Background(), "ch1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r.RecordAiringServed(ctx, "ch1", airing, now)
+	if history.recorded != 1 {
+		t.Fatalf("recorded %d airings under a cancelled run context, want 1", history.recorded)
+	}
+}
+
+// A failed airing write is a defect worth an operator's attention (recency-aware placement loses
+// that airing), so it logs at Warn, not Debug.
+func TestRecordAiringServedLogsAFailedWriteAtWarn(t *testing.T) {
+	t.Parallel()
+	slots := []schedule.Slot{{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "item-1", DurationMs: 60_000}}
+	now := testPlayoutAnchor().Add(20 * time.Second)
+	r := stillResolver(t, slots, now, &ctxAwareAirings{err: errors.New("database is gone")})
+	var logs bytes.Buffer
+	r.log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	airing, _, err := r.AiringAt(context.Background(), "ch1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.RecordAiringServed(context.Background(), "ch1", airing, now)
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "database is gone") {
+		t.Fatalf("a failed airing write logged:\n%s\nwant a Warn naming the error", logs.String())
 	}
 }
 

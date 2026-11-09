@@ -78,7 +78,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 
 ## Contents
 
-- [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
+- [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
@@ -279,6 +279,23 @@ One row per channel idea a person hid on Home. Deleted when they undo the hide o
 | `idea_id` | The hidden idea's stable name, such as genre:comedy. It isn't a link to another table, so the hide survives the library changing. | `TEXT` · key |
 | `hidden_at_ms` | When the person hid it, in Unix milliseconds. | `BIGINT` |
 
+### viewings
+
+The watch history: one row per person watching one programme on one channel on one device in the Loomarr apps, from when their player started to when it stopped. Only admins can read it, and the person isn't told. Watching through the media server's Live TV isn't recorded.
+
+**Kept:** Kept until an admin clears it, for one person or everyone; goes with the person.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `id` | Identifies the row. | `TEXT` · key |
+| `user_id` | The person watching, from users. | `TEXT` · → `users.id` |
+| `device` | What the household calls the device, such as a paired TV's name or the browser and system. | `TEXT` |
+| `channel_id` | The channel watched. It isn't a link to channels, so the history survives the channel being deleted. | `TEXT` |
+| `channel_name` | The channel's name when the viewing began. | `TEXT` |
+| `programme` | The programme watched; a new row starts when the next programme does. Empty when the guide had nothing for it. | `TEXT` |
+| `started_at` | When the player started, in Unix seconds. | `BIGINT` |
+| `ended_at` | When the player was last seen, in Unix seconds. | `BIGINT` |
+
 ## Channels and the guide
 
 The channels Loomarr runs, what they have aired, and the holidays that decide what is in season for seasonal channels and seasonal filler. The requests that create and refine channels are under Suggestions.
@@ -310,7 +327,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
-| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
+| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### channel_lineup
 
@@ -457,9 +474,9 @@ The Keep, Less like this, Never and Surprise me choices people make about titles
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the choice. | `TEXT` · key |
-| `actor_id` | The person who made it (users.id). | `TEXT` |
+| `actor_id` | The person who made it (users.id), or `api-token` for a choice sent with the API token. | `TEXT` |
 | `scope` | Where it applies. `household` for every channel, or `channel` for one channel. | `TEXT` |
-| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`; empty for `household`. | `TEXT` |
+| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`. | `TEXT` · may be empty · → `channels.id` |
 | `target_key` | The title it is about, by its key, such as `movie:tmdb:603`. | `TEXT` |
 | `action` | `keep` (favour this title), `less` (less like this, which also lowers titles of its genres), `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear` (remove an earlier choice). | `TEXT` |
 | `reason` | An optional reason the person gave. | `TEXT` |
@@ -573,8 +590,8 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
-| `inventory_item_id` | The title the file was last written as (a library_items id); empty until known. | `TEXT` |
-| `inventory_series_id` | For an episode, its show (a library_items id); empty otherwise or until known. | `TEXT` |
+| `inventory_item_id` | The title the file was last written as (a library_items id); null until known. | `TEXT` · may be empty · → `library_items.id` |
+| `inventory_series_id` | For an episode, its show (a library_items id); null otherwise or until known. | `TEXT` · may be empty · → `library_items.id` |
 
 ### library_items
 
@@ -635,7 +652,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `episode_end` | The last episode number a multi-episode file covers; 0 for a single episode. | `INTEGER` |
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
-| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; null otherwise. | `TEXT` · may be empty · → `library_items.id` |
 | `unnumbered` | 1 for an episode its show's catalog could not number, because the catalog numbers the show in more than one order or its seasons end elsewhere than the disk's, and nobody has said which order the show's files follow. It keeps its file's name and number, and its show is in Needs you. 0 otherwise. | `BOOLEAN` |
 
 **Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
@@ -907,7 +924,7 @@ The catalog search results for a movie or show Loomarr can't identify, offered i
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
+| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
 | `external_id` | The result's id in that catalog. | `TEXT` |
@@ -974,8 +991,8 @@ The titles in a collection, in order. A member whose title has left the library 
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `collection_id` | The collection (a library_collections id). | `TEXT` · key |
-| `inventory_item_id` | The title (a library_items id). | `TEXT` · key |
+| `collection_id` | The collection (a library_collections id). | `TEXT` · key · → `library_collections.id` |
+| `inventory_item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `position` | The title's place in the collection, from 1. | `INTEGER` |
 
 ### titles

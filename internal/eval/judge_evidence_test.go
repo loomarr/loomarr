@@ -314,7 +314,7 @@ func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T
 }
 
 func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
-	provider := testkit.NewLLM(testkit.FinalResponse(`{"overall":1,"relevance":1,"serendipity":1,"reason":"should not run"}`))
+	provider := testkit.NewLLM(t) // must not run: no script, so a call errors
 	evidence := JudgeEvidence{
 		Rubric:        "grounded evidence only",
 		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: JudgeOwnershipLibrary}},

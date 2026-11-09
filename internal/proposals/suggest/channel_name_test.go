@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -13,7 +13,7 @@ import (
 // A name the requester fixed (the manual builder's, handed to AI by "Try AI suggestions", #1914)
 // survives the model naming the channel something else; with none fixed, the model's name stands.
 func TestBuildProposalKeepsFixedChannelName(t *testing.T) {
-	surfaced := map[provision.Key]catalog.Candidate{
+	surfaced := map[provision.Key]titlesearch.Candidate{
 		"movie:tmdb:90910001": {MediaType: provision.Movie, TMDBID: 90910001, Name: "The Lantern Keeper", InLibrary: true},
 	}
 	for _, tc := range []struct {

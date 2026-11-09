@@ -299,8 +299,10 @@ type encoderStream struct {
 	err   error // valid once frags is closed
 }
 
-// readStream splits an encoder's fMP4 output into its init segment and moof+mdat fragments.
-func readStream(rc io.Reader) *encoderStream {
+// readStream splits an encoder's fMP4 output into its init segment and moof+mdat fragments. The
+// reader ends when rc does or when done closes: a consumer that stops reading (a bad fragment, a
+// full slot) closes done, so the reader never parks on a full fragment channel.
+func readStream(done <-chan struct{}, rc io.Reader) *encoderStream {
 	s := &encoderStream{frags: make(chan []byte, 2)}
 	go func() {
 		defer close(s.frags)
@@ -324,7 +326,11 @@ func readStream(rc io.Reader) *encoderStream {
 					s.err = fmt.Errorf("%w: mdat without moof", errBadBox)
 					return
 				}
-				s.frags <- append(moof, b...)
+				select {
+				case s.frags <- append(moof, b...):
+				case <-done:
+					return
+				}
 				moof = nil
 			}
 		}
@@ -347,7 +353,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		return p.notReady(ctx, nil, slot)
 	}
 	defer func() { _ = rc.Close() }()
-	stream := readStream(rc)
+	stream := readStream(ictx.Done(), rc)
 
 	timer := time.NewTimer(max(deadline.Sub(p.cfg.Now()), 0))
 	defer timer.Stop()

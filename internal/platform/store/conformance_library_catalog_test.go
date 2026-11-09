@@ -96,6 +96,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		{ID: "m1", Kind: "movie", Name: "Film", Catalog: movie},
 		{ID: "s1", Kind: "series", Name: "Show", Catalog: show},
 		{ID: "m2", Kind: "movie", Name: "Other"},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}

@@ -38,6 +38,29 @@ describe("Icon", () => {
     expect(markup).toContain("<svg");
   });
 
+  it("draws the AI accent for the suggest tone", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Icon decorative glyph={icons.suggest} tone="suggest" />
+        <Icon decorative glyph={icons.suggest} tone="primary" />
+      </LoomarrProvider>,
+    );
+    const strokes = [...markup.matchAll(/stroke="([^"]+)"/g)].map((match) => match[1]);
+
+    expect(strokes.length).toBeGreaterThan(1);
+    expect(new Set(strokes).size).toBeGreaterThan(1);
+  });
+
+  it("lets the inherit tone follow the surrounding text colour on the web", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Icon decorative glyph={icons.passed} tone="inherit" />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain("currentColor");
+  });
+
   it("keeps decorative glyphs out of the accessibility tree", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

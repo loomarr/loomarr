@@ -51,7 +51,9 @@ const timeout = 30 * time.Second
 // Register makes sure the arr has one webhook connection named Name that posts the file events to
 // url with the secret, creating or updating it as needed. The arr tests a connection before it
 // saves one, so an error here also covers an arr that cannot reach url. changed reports a write.
-func (c Client) Register(ctx context.Context, url, secret string) (changed bool, err error) {
+// rewrite writes an existing connection even when it looks the same: the arr masks the password,
+// so a secret that changed cannot be seen.
+func (c Client) Register(ctx context.Context, url, secret string, rewrite bool) (changed bool, err error) {
 	existing, err := c.find(ctx)
 	if err != nil {
 		return false, err
@@ -63,7 +65,7 @@ func (c Client) Register(ctx context.Context, url, secret string) (changed bool,
 		}
 	}
 	want := desired(conn, url, secret)
-	if existing != nil && same(existing, want) {
+	if existing != nil && !rewrite && same(existing, want) {
 		return false, nil
 	}
 	if existing == nil {
@@ -151,7 +153,7 @@ func desired(conn map[string]any, url, secret string) map[string]any {
 }
 
 // same reports whether the arr's connection already matches want. A password the arr masks is
-// taken as matching: Loomarr's secret never changes, so only a hand edit could make it differ.
+// taken as matching; Register's rewrite covers a secret that changed.
 func same(have, want map[string]any) bool {
 	for k, v := range want {
 		if k == "fields" {

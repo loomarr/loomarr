@@ -27,7 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -411,6 +411,10 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 	return airing, input, nil
 }
 
+// servedWriteTimeout bounds the airing-history write RecordAiringServed makes after its caller's
+// context may have ended.
+const servedWriteTimeout = 5 * time.Second
+
 // RecordAiringServed records that a viewer received segments of an airing AiringAt resolved at
 // `resolvedAt`. It is the ONLY writer of airing history and of a filler clip's play count: every
 // resolve is a read (the admin Info page's /tracks, the packager's lookups for a neighbour warm),
@@ -433,6 +437,10 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 //
 // Telemetry, never correctness: a failed write is logged and the airing carries on.
 func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, airing playout.Airing, resolvedAt time.Time) {
+	// The serve that fired this runs under the channel packager's context, which ends the moment the
+	// last viewer leaves; the write has already been earned, so it runs detached and bounded.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), servedWriteTimeout)
+	defer cancel()
 	switch {
 	case airing.Kind == schedule.SlotFiller:
 		if airing.Identity == "" || r.clipPlays == nil {
@@ -456,7 +464,7 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 			recordedAt = startedAt
 		}
 		if err := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); err != nil && r.log != nil {
-			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
+			r.log.Warn("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
 		}
 	}
 }

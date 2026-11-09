@@ -1,6 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
-import { AlertTriangle } from "lucide-react";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
@@ -63,7 +62,9 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
       {error ? (
         <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          </span>
           {error}
         </p>
       ) : null}

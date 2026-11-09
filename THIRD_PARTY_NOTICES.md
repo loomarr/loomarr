@@ -50,7 +50,7 @@ The bundled tree is entirely permissive and MIT-compatible. `pnpm licenses list 
 shipped closure resolves to **MIT (the large majority), plus ISC, Apache-2.0, and 0BSD** — no
 copyleft (no GPL/LGPL/AGPL/MPL/EPL/CDDL) reaches the bundle. Notable direct runtime deps: `react`
 / `react-dom` (MIT), the TanStack set — `react-query` / `react-form` / `react-virtual` (MIT),
-`@base-ui/react` and `@dnd-kit/*` (MIT), `react-markdown` / `remark-gfm` (MIT), `lucide-react`
+`@base-ui/react` and `@dnd-kit/*` (MIT), `react-markdown` / `remark-gfm` (MIT), `lucide-react-native`
 (ISC), `hls.js` and `class-variance-authority` (Apache-2.0). The authoritative, versioned list is
 [`web/pnpm-lock.yaml`](web/pnpm-lock.yaml); the full per-package inventory rides in the release SBOM.
 

@@ -149,8 +149,9 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
           {(userCode) => (
             <Action
               density="touch"
-              render={<button disabled={!userCode.trim() || approve.isPending} type="submit" />}
+              disabled={!userCode.trim() || approve.isPending}
               style={{ width: "100%" }}
+              submit
             >
               {approve.isPending ? "Checking…" : "Add device"}
             </Action>

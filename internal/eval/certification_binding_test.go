@@ -7,14 +7,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestV8BindingDuplicateFullBindingRejected(t *testing.T) {
-	provider := testkit.NewLLM()
+	provider := testkit.NewLLM(t)
 	_, _, err := newEmbeddedCertificationGenerator(v8MetadataFS(t, func(_, base, _ map[string]any) {
 		caseByID(base, "date-movie-adjacent")["description"] = caseByID(base, "date-movie-disjoint")["description"]
 		caseByID(base, "date-movie-adjacent")["mustInclude"] = caseByID(base, "date-movie-disjoint")["mustInclude"]
@@ -34,7 +34,7 @@ func TestV8BindingSameDescriptionDistinctIncludesAccepted(t *testing.T) {
 		caseByID(base, "date-movie-adjacent")["mustInclude"] = []any{"one"}
 		caseByID(base, "date-movie-disjoint")["mustInclude"] = []any{"two"}
 	})
-	provider := testkit.NewLLM(
+	provider := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:11001"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
@@ -62,7 +62,7 @@ func TestV8BindingChangedIncludeRejectedBeforeProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := certificationCaseByName(t, cases, "date-repair")
-	provider := testkit.NewLLM()
+	provider := testkit.NewLLM(t)
 	g, _, err := NewEmbeddedCertificationGenerator(provider)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestV8BindingEmptyRuntimeIncludeMatchesAbsentInclude(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := certificationCaseByName(t, cases, "date-title-year-none")
-	provider := testkit.NewLLM(
+	provider := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:10001"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
@@ -102,7 +102,7 @@ func TestV8BindingNilAndEmptyIncludesEquivalent(t *testing.T) {
 		caseByID(base, "date-movie-adjacent")["mustInclude"] = []any{}
 		caseByID(base, "date-movie-disjoint")["mustInclude"] = nil
 	})
-	_, _, err := newEmbeddedCertificationGenerator(files, testkit.NewLLM())
+	_, _, err := newEmbeddedCertificationGenerator(files, testkit.NewLLM(t))
 	if err == nil {
 		t.Fatal("equivalent empty bindings were not rejected as duplicates")
 	}
@@ -132,7 +132,7 @@ func TestV8MetadataActualCatalogDateFiltering(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture.selectCase(tc.fixture)
-			got, err := catalogue.Discover(context.Background(), catalog.DiscoveryQuery{Genres: []string{"Drama"}, MediaType: tc.mediaType, YearFrom: tc.from, YearTo: tc.to}, 10)
+			got, err := catalogue.Discover(context.Background(), titlesearch.DiscoveryQuery{Genres: []string{"Drama"}, MediaType: tc.mediaType, YearFrom: tc.from, YearTo: tc.to}, 10)
 			var ids []int
 			for _, candidate := range got {
 				ids = append(ids, candidate.TMDBID)
@@ -143,7 +143,7 @@ func TestV8MetadataActualCatalogDateFiltering(t *testing.T) {
 		})
 	}
 	fixture.selectCase("tool-error-recovery")
-	if _, err := catalogue.Discover(context.Background(), catalog.DiscoveryQuery{Keywords: []string{"adventure"}}, 10); err == nil {
+	if _, err := catalogue.Discover(context.Background(), titlesearch.DiscoveryQuery{Keywords: []string{"adventure"}}, 10); err == nil {
 		t.Fatal("fixture discovery error was lost")
 	}
 }

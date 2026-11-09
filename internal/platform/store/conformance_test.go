@@ -36,6 +36,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryRootCheck", func(t *testing.T) { testLibraryRootCheck(t, newStore) })
 		t.Run("LibraryFiles", func(t *testing.T) { testLibraryFiles(t, newStore) })
 		t.Run("LibraryItems", func(t *testing.T) { testLibraryItems(t, newStore) })
+		t.Run("LibraryItemsReadyAndChannels", func(t *testing.T) { testLibraryItemsReadyAndChannels(t, newStore) })
 		t.Run("LibraryItemProblems", func(t *testing.T) { testLibraryItemProblems(t, newStore) })
 		t.Run("LibraryItemIDs", func(t *testing.T) { testLibraryItemIDs(t, newStore) })
 		t.Run("LibraryCollections", func(t *testing.T) { testLibraryCollections(t, newStore) })
@@ -86,6 +87,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FavouriteChannels", func(t *testing.T) { testFavouriteChannels(t, newStore) })
 		t.Run("RecentChannels", func(t *testing.T) { testRecentChannels(t, newStore) })
 		t.Run("HiddenIdeas", func(t *testing.T) { testHiddenIdeas(t, newStore) })
+		t.Run("Viewings", func(t *testing.T) { testViewings(t, newStore) })
 	})
 
 	t.Run("Jobs", func(t *testing.T) {

@@ -56,6 +56,8 @@ interface PlayerLiveState {
 interface PlayerBandData {
   channelName: string;
   channelNumber: string;
+  /** The channel's era decade (1980 for the 1980s): it colours the channel block. Absent is amber. */
+  decade?: number;
   /** `Series · S2 E4 "Episode"`, `Commercials · <clip>`; omitted while nothing is known. */
   programmeLine?: string;
   /** 0–1 through the programme (or the break) airing at the playhead. */

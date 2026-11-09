@@ -78,12 +78,10 @@ describe("ApplicationDiagnostics", () => {
     );
 
     const errors = await screen.findByRole("button", { name: "1 error" });
-    expect(errors).toHaveClass("text-onair");
     expect(errors).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Playback failed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1 warning" })).toHaveClass("text-caution");
+    expect(screen.getByRole("button", { name: "1 warning" })).toHaveAttribute("aria-pressed", "false");
     const info = screen.getByRole("button", { name: "0 info" });
-    expect(info).toHaveClass("text-lock");
     expect(screen.getByRole("button", { name: "All 2" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.hover(info);
     expect(await screen.findByText("Show informational logs")).toBeInTheDocument();

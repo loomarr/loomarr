@@ -4,16 +4,17 @@ package eval
 
 import (
 	"context"
+	"testing"
+
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"testing"
 )
 
 func TestObservedProviderAttributesOnlyAcknowledgedModelCalls(t *testing.T) {
 	real := llm.ToolCall{ID: "model-call", Name: "catalog_search", Arguments: map[string]any{"network": "ABC"}}
 	// A returned but unexecuted finalization call is not a dispatched operation.
 	malformed := llm.ToolCall{ID: "model-call", Name: "catalog_search", Arguments: map[string]any{"cast": []any{"Actor"}}}
-	provider := &observedProvider{inner: testkit.NewLLM(llm.Response{ToolCalls: []llm.ToolCall{real}}, llm.Response{ToolCalls: []llm.ToolCall{malformed}})}
+	provider := &observedProvider{inner: testkit.NewLLM(t, llm.Response{ToolCalls: []llm.ToolCall{real}}, llm.Response{ToolCalls: []llm.ToolCall{malformed}})}
 	provider.Begin()
 	synthetic := llm.Message{Role: llm.Assistant, ToolCalls: []llm.ToolCall{{ID: "model-call", Name: "catalog_search", Arguments: map[string]any{"query": "Source anchor"}}}}
 	// Reusing a real model id in synthesized history cannot create another operation.

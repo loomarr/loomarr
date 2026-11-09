@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // LibraryProjector says how an inventory item is listed in the Library (#2151 decision 43): its
@@ -26,25 +26,24 @@ type LibraryProjection interface {
 
 func (s *sqlStore) ProjectLibraryWith(p LibraryProjector) { s.libraryProjector.Store(&p) }
 
-// projectLibrary rewrites the library rows of each item in tx. An item the inventory no longer
-// has, or one the projector does not list, keeps whatever row it had: presence comes from
-// library_files, and a title that comes back finds its row, its collections and its answer.
-func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, ids ...inventory.ItemID) error {
+// projecting reports whether a projector is installed, so an inventory write can skip reading the
+// items it would hand over.
+func (s *sqlStore) projecting() bool {
+	p := s.libraryProjector.Load()
+	return p != nil && *p != nil
+}
+
+// projectLibrary rewrites the library rows of each item in tx. The items come from the inventory
+// write that changed them, so this side never reads the inventory. An item the inventory no longer
+// has is not passed in, and one the projector does not list keeps whatever row it had: presence
+// comes from library_files, and a title that comes back finds its row, its collections and its
+// answer.
+func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, items []inventory.Item) error {
 	p := s.libraryProjector.Load()
 	if p == nil || *p == nil {
 		return nil
 	}
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		item, ok, err := s.readInventoryItem(ctx, tx, id)
-		if err != nil {
-			return fmt.Errorf("project library item %s: %w", id, err)
-		}
-		if !ok {
-			continue
-		}
+	for _, item := range items {
 		row, ok := (*p)(item)
 		if !ok {
 			continue
@@ -97,7 +96,7 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), it.Origin.Authority, it.Origin.Key,
 		it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page, it.Set.String(), at.UnixMilli(),
 		it.OriginalTitle, it.Overview, it.PremiereDate, it.Rating, it.Score, it.RuntimeMs,
-		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, it.SeriesID,
+		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, libraryLink(it.SeriesID),
 		it.From.Name, it.From.Year, it.From.Overview, it.From.Premiere, it.From.Rating, it.From.Score,
 		it.From.Runtime, it.Tagline, it.Trailer, it.Unnumbered); err != nil {
 		return fmt.Errorf("save library item: %w", err)

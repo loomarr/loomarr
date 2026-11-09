@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -29,11 +29,11 @@ func dateMeaningAiring1990() map[string]any {
 }
 
 func dateExecutionSuggester(model *testkit.LLM, corpus *catalogfixture.Corpus) *suggest.Suggester {
-	return suggest.New(model, catalog.New(nil, corpus), nil, 10)
+	return suggest.New(model, titlesearch.New(nil, corpus), nil, 10)
 }
 
-func marigoldCandidate() catalog.Candidate {
-	return catalog.Candidate{MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999, InLibrary: true}
+func marigoldCandidate() titlesearch.Candidate {
+	return titlesearch.Candidate{MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999, InLibrary: true}
 }
 
 func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
@@ -46,9 +46,9 @@ func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
 			"intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}},
 		}},
 	}
-	candidate := catalog.Candidate{MediaType: "series", TMDBID: 90003452, Name: "Lamplight Lane", Year: 1993, InLibrary: true, Genres: []string{"Comedy"}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{candidate}}
-	model := testkit.NewLLM(
+	candidate := titlesearch.Candidate{MediaType: "series", TMDBID: 90003452, Name: "Lamplight Lane", Year: 1993, InLibrary: true, Genres: []string{"Comedy"}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{candidate}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": meaning}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90003452","name":"Lamplight Lane"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":30,"end":35}],"axes":[{"kind":"series_airing","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
@@ -82,9 +82,9 @@ func finalWithDateMeaning(t *testing.T, meaning any) string {
 }
 
 func TestSuggest_DateWindowUnionRecordsAggregateDispatches(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	meaning := dateMeaning1990()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
@@ -106,13 +106,13 @@ func TestSuggest_DateUnionFirstEmptyLaterNonemptyFinalizesAfterCompleteWindowSet
 		map[string]any{"anchor": 0, "start": 1990, "end": 1990},
 		map[string]any{"anchor": 0, "start": 1999, "end": 1999},
 	}}}}
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 		if q.YearFrom == 1999 {
-			return []catalog.Candidate{marigoldCandidate()}, nil
+			return []titlesearch.Candidate{marigoldCandidate()}, nil
 		}
 		return nil, nil
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "movie", "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
@@ -146,8 +146,8 @@ func TestSuggest_DateOnlyConstraintsDispatchWithoutOtherDiscoveryQualifiers(t *t
 		"series airing": {meaning: dateMeaningAiring1990(), wantDispatches: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-			model := testkit.NewLLM(
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": tc.meaning}),
 				testkit.FinalResponse(finalWithDateMeaning(t, tc.meaning)),
 			)
@@ -166,13 +166,13 @@ func TestSuggest_DateOnlyConstraintsDispatchWithoutOtherDiscoveryQualifiers(t *t
 }
 
 func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 		if len(q.Genres) == 1 && q.Genres[0] == "later" {
-			return []catalog.Candidate{marigoldCandidate()}, nil
+			return []titlesearch.Candidate{marigoldCandidate()}, nil
 		}
 		return nil, nil
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"first"}, "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"must-not-dispatch"}, "dateMeaning": dateMeaning1990()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"later"}, "dateMeaning": dateMeaningNone()}),
@@ -192,9 +192,9 @@ func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 }
 
 func TestSuggest_NoneDateMeaningWithoutQualifierDoesNotDispatchBeforeValidDateDiscovery(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	meaning := dateMeaning1990()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
@@ -217,13 +217,13 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 		map[string]any{"anchor": 0, "start": 1990, "end": 1990},
 		map[string]any{"anchor": 0, "start": 2000, "end": 2000},
 	}}}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}, DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}, DiscoverFunc: func(_ context.Context, q titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 		if q.YearFrom == 2000 {
 			return nil, catalogfixture.ErrDiscover
 		}
-		return []catalog.Candidate{marigoldCandidate()}, nil
+		return []titlesearch.Candidate{marigoldCandidate()}, nil
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": meaning, "media_type": "movie"}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Marigold Protocol", "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
@@ -275,13 +275,13 @@ func TestSuggest_DateUnionCreditExhaustionSpansRepairsAndGroundingRetry(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		union, unsupported, unsupported, unsupported, testkit.FinalResponse("not json first repair"),
 		union, unsupported, unsupported, unsupported, testkit.FinalResponse(string(emptyFinal)),
 		union, unsupported, unsupported, unsupported, testkit.FinalResponse("not json second repair"),
 		union, unsupported, unsupported, unsupported, union,
 	)
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 		return nil, catalogfixture.ErrDiscover
 	}}
 	_, err = dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990, 2000, and 2010 movies"})
@@ -310,7 +310,7 @@ func TestSuggest_DateUnionCreditExhaustionSpansRepairsAndGroundingRetry(t *testi
 func TestSuggest_TwoEmptyDateUnionsStopAfterLogicalRetrievals(t *testing.T) {
 	meaning := dateMeaning1990()
 	corpus := &catalogfixture.Corpus{}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"first"}, "dateMeaning": meaning}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"second"}, "dateMeaning": meaning}),
 	)
@@ -331,7 +331,7 @@ func TestSuggest_DateUnionCapacityExhaustionDispatchesNoWindows(t *testing.T) {
 		map[string]any{"anchor": 0, "start": 2010, "end": 2010},
 	}}}}
 	invalid := testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": dateMeaningNone()})
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		invalid, invalid, invalid, invalid,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "movie", "dateMeaning": meaning}),
 	)
@@ -347,8 +347,8 @@ func TestSuggest_DateUnionCapacityExhaustionDispatchesNoWindows(t *testing.T) {
 }
 
 func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{}, "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
@@ -363,8 +363,8 @@ func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
 }
 
 func TestSuggest_FinalDateMeaningMismatchRepairsBeforeClarifying(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
@@ -380,7 +380,7 @@ func TestSuggest_FinalDateMeaningMismatchRepairsBeforeClarifying(t *testing.T) {
 
 func TestSuggest_InitialAmbiguousDateMeaningDoesNotDispatchCatalog(t *testing.T) {
 	corpus := &catalogfixture.Corpus{}
-	model := testkit.NewLLM(testkit.ToolCallResponse("catalog_search", map[string]any{
+	model := testkit.NewLLM(t, testkit.ToolCallResponse("catalog_search", map[string]any{
 		"genres": []any{"action"},
 		"dateMeaning": map[string]any{
 			"kind": "ambiguous", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 5}}, "axes": []any{},
@@ -398,7 +398,7 @@ func TestSuggest_InitialAmbiguousDateMeaningDoesNotDispatchCatalog(t *testing.T)
 
 func TestSuggest_InitialConflictingDateMeaningDoesNotDispatchCatalog(t *testing.T) {
 	corpus := &catalogfixture.Corpus{}
-	model := testkit.NewLLM(testkit.ToolCallResponse("catalog_search", map[string]any{
+	model := testkit.NewLLM(t, testkit.ToolCallResponse("catalog_search", map[string]any{
 		"genres": []any{"action"},
 		"dateMeaning": map[string]any{
 			"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 4}},
@@ -418,8 +418,8 @@ func TestSuggest_InitialConflictingDateMeaningDoesNotDispatchCatalog(t *testing.
 }
 
 func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
@@ -433,9 +433,9 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 }
 
 func TestSuggest_ExhaustedFinalDateMeaningMismatchIsProviderFailure(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	mismatch := `{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch),
 	)
@@ -457,8 +457,8 @@ func TestSuggest_StrictToolDateMeaningJSONRejectsThenRecovers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-			model := testkit.NewLLM(
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"must-not-dispatch"}, "dateMeaning": tc.malformed}),
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"valid"}, "dateMeaning": valid}),
 				testkit.FinalResponse(finalWithDateMeaning(t, valid)),
@@ -483,9 +483,9 @@ func TestSuggest_StrictFinalDateMeaningJSONRejectsBeforeGrounding(t *testing.T) 
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 			valid := dateMeaning1990()
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"valid"}, "dateMeaning": valid}),
 				testkit.FinalResponse(finalWithDateMeaning(t, tc.malformed)),
 				testkit.FinalResponse(finalWithDateMeaning(t, valid)),
@@ -505,8 +505,8 @@ func TestSuggest_StrictFinalDateMeaningJSONRejectsBeforeGrounding(t *testing.T) 
 
 func TestSuggest_ExhaustedMalformedFinalDateMeaningDoesNotGroundNames(t *testing.T) {
 	malformed := map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 4}}, "axes": []any{map[string]any{"kind": "movie_release", "combine": "any", "intervals": []any{map[string]any{"anchor": nil, "start": 1990, "end": 1999}}}}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)))
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t, testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)))
 	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != "provider_failure" || failure.Trace.Terminal != "malformed_exhausted" {
@@ -539,8 +539,8 @@ func TestSuggest_EquivalentCanonicalToolAndFinalDateMeaningsKeepDisjointScope(t 
 			map[string]any{"anchor": 0, "start": 1990, "end": 1991},
 		}}},
 	}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": toolMeaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, finalMeaning)),
 	)

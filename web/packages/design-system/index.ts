@@ -15,6 +15,10 @@ export {
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
 export { Card } from "./src/card";
+export type { ChipProps, ChipTone } from "./src/chip";
+export { Chip } from "./src/chip";
+export type { ChoiceCardAccent, ChoiceCardProps } from "./src/choice-card";
+export { ChoiceCard } from "./src/choice-card";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
@@ -94,12 +98,15 @@ export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "./src/men
 export type { ModalLayerProps } from "./src/modal-layer";
 export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
+export type { PressableRowProps } from "./src/pressable-row";
+export { PressableRow } from "./src/pressable-row";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
   ArtworkState,
   BadgeShape,
   BadgeTone,
+  ChannelIdentColorHue,
   ProgressTone,
   ScreenProps,
   StatusTone,
@@ -111,6 +118,9 @@ export type {
 export {
   ArtworkFrame,
   Badge,
+  CHANNEL_IDENT_WASH_PERCENT,
+  channelIdentColors,
+  channelIdentHues,
   FocusSurface,
   ProgressTrack,
   Screen,
@@ -145,10 +155,12 @@ export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
-export type { Density, FontFamilyRole, TextRole } from "./src/tokens";
+export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
   brandContract,
+  decadeFill,
+  decadeFillColor,
   iconography,
   nativeFontFace,
   playerChrome,

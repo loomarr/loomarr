@@ -1,4 +1,4 @@
-import { useTheme, View } from "@tamagui/core";
+import { isWeb, useTheme, View } from "@tamagui/core";
 import type { LucideIcon } from "lucide-react-native";
 
 import { iconography } from "../tokens";
@@ -9,11 +9,13 @@ type IconTone =
   | "danger"
   | "disabled"
   | "info"
+  | "inherit"
   | "inverse"
   | "muted"
   | "primary"
   | "secondary"
   | "success"
+  | "suggest"
   | "warning";
 type AccessibleIcon = { accessibilityLabel: string; decorative?: false };
 type DecorativeIcon = { accessibilityLabel?: never; decorative: true };
@@ -41,11 +43,16 @@ const Icon = ({
     danger: theme.stateDanger.val,
     disabled: theme.actionDisabled.val,
     info: theme.stateInfo.val,
+    // Web: the surrounding text colour, so a glyph inside a badge, a link or a menu row follows its
+    // label through the theme and through hover. Native has no inherited colour: body text.
+    inherit: isWeb ? "currentColor" : theme.contentPrimary.val,
     inverse: theme.contentInverse.val,
     muted: theme.contentMuted.val,
     primary: theme.actionPrimary.val,
     secondary: theme.contentSecondary.val,
     success: theme.stateSuccess.val,
+    // The AI accent's own text stop: the glyph beside a suggestion, never a plain action.
+    suggest: theme.accentSuggest.val,
     warning: theme.stateWarning.val,
   };
 

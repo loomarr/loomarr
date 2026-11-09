@@ -9,7 +9,7 @@ import {
   guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import { Action, SectionHeader, Surface } from "@loomarr/design-system";
-import { surfChannelData, WallTile } from "@loomarr/ui";
+import { NeedsLine, surfChannelData, WallTile } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -130,8 +130,9 @@ const wallEntry = (channel: GuideChannelLayout, nowMs: number, timezone?: string
 // ChannelWall — Home's first section (#2764, Direction mock "Channel wall"): every channel as a live
 // tile, like a TV multiview, the channel the viewer tuned last first and marked, the rest in channel
 // number order. No hero picture and no filled button: the tile is the control. A channel still
-// downloading its titles is a dimmer tile that says so instead of airing an ad as its "now".
-const ChannelWall = ({ lastChannelId, layout, nowMs }: ChannelWallProps) => {
+// downloading its titles is a dimmer tile that says so instead of airing an ad as its "now". For an
+// admin, the "Needs you" counts sit as one quiet line between the header and the tiles (#2785).
+const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs }: ChannelWallProps) => {
   const phone = usePhoneWidth();
   const byNumber = [...layout.channels].sort((a, b) => a.source.number - b.source.number);
   const last = byNumber.find((c) => c.source.channelId === lastChannelId);
@@ -150,6 +151,11 @@ const ChannelWall = ({ lastChannelId, layout, nowMs }: ChannelWallProps) => {
           Full guide
         </Action>
       </SectionHeader>
+      {needs.length > 0 && (
+        <Surface backgroundColor="transparent" borderWidth={0} marginBottom={16}>
+          <NeedsLine compact={phone} items={needs} />
+        </Surface>
+      )}
       <Surface
         backgroundColor="transparent"
         borderWidth={0}
@@ -181,6 +187,7 @@ const ChannelWall = ({ lastChannelId, layout, nowMs }: ChannelWallProps) => {
               number={String(channel.source.number).padStart(2, "0")}
               render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
               title={entry.title}
+              {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
               {...(entry.detail ? { detail: entry.detail } : {})}
               {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
             />

@@ -97,12 +97,14 @@ export type {
   LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySetCard,
   LibrarySettingsProps,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,
+  LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
@@ -125,6 +127,8 @@ export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-r
 export { ListGroup, ListRow } from "./src/list-row";
 export type { LinkLike, NavTab, NavTabsProps } from "./src/nav-tabs";
 export { NavTabs } from "./src/nav-tabs";
+export type { NeedsLineItem, NeedsLineProps } from "./src/needs-line";
+export { NeedsLine } from "./src/needs-line";
 export type { NumberFieldProps } from "./src/number-field";
 export { NumberField } from "./src/number-field";
 export type {
@@ -260,3 +264,11 @@ export {
 } from "./src/watching-surface";
 export type { YearFieldProps } from "./src/year-field";
 export { YearField } from "./src/year-field";
+export type { YearRange, YearRangeListFieldProps } from "./src/year-range-list-field";
+export {
+  isValidYearRange,
+  normalizeYearRanges,
+  YEAR_MAX,
+  YEAR_MIN,
+  YearRangeListField,
+} from "./src/year-range-list-field";

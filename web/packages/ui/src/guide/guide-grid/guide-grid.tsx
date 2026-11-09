@@ -14,6 +14,7 @@ import {
 } from "@loomarr/core/guide";
 import {
   brandChroma,
+  decadeFill,
   PreviewAnchor,
   PreviewGroup,
   Surface,
@@ -398,10 +399,21 @@ const Row = memo(
           borderWidth={0}
           flexDirection="row"
           gap={9}
-          paddingLeft={12}
           paddingRight={4}
           width={railWidth}
         >
+          {/* The channel's decade colour as the mock's 4px bar at the rail's edge (#2767), the one
+              place the grid shows it; clear without a decade. The bar takes the rail's old
+              12px inset, so the ident sits where it did. */}
+          <Surface
+            aria-hidden
+            backgroundColor={decadeFill(channel.source.decade) ?? "transparent"}
+            borderRadius="round"
+            borderWidth={0}
+            flexShrink={0}
+            height={24}
+            width={4}
+          />
           <ChannelIdent name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"

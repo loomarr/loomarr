@@ -118,14 +118,14 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("idea-req-%d", next.Add(1)) }
-		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
+		flow := workflow.New(defaults.Store, newID, func() time.Time { return now }, suggest.IntentHash)
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
 			WithProposalNotifier(notify)
 		return api.Router(defaults.Log, api.Options{
 			Suggest:          service,
 			ProposalWorkflow: flow,
 			Store:            defaults.Store,
-			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Auth:             sessionAuth(mgr, "break-glass-token"),
 			Log:              defaults.Log,
 			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
 			Sessions:         mgr,
@@ -369,7 +369,7 @@ func newManualChannelHarness(
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
-		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
+		flow := workflow.New(defaults.Store, newID, func() time.Time { return now }, suggest.IntentHash)
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 		approver := accept.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
@@ -380,7 +380,7 @@ func newManualChannelHarness(
 			Binder:           chBinder,
 			ProposalWorkflow: flow,
 			Store:            defaults.Store,
-			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Auth:             sessionAuth(mgr, "break-glass-token"),
 			Log:              defaults.Log,
 			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
 			Sessions:         mgr,

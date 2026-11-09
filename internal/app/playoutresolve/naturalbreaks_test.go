@@ -3,7 +3,7 @@ package playoutresolve
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // Only measured scene fades may become mid-roll breaks. A container chapter mark is not one:

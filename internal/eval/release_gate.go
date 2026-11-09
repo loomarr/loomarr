@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -321,7 +321,7 @@ func NewEmbeddedReleaseGateGenerator(provider llm.Provider) (Generator, Observer
 	}
 	fixture := newEmbeddedCatalogFixture(decoded)
 	observed := &observedProvider{inner: provider}
-	cat := catalog.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
+	cat := titlesearch.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
 	sourceBlob, err := releaseGateFiles.ReadFile(corpus.SourcesFixture.Path)
 	if err != nil {
 		return nil, nil, err

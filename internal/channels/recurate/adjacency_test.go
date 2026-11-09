@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -17,14 +17,14 @@ import (
 
 // fakeAdjacencer records the seeds it was walked with and returns a fixed answer.
 type fakeAdjacencer struct {
-	seeds   []catalog.Candidate
+	seeds   []titlesearch.Candidate
 	exclude map[provision.Key]bool
-	out     []catalog.Adjacency
+	out     []titlesearch.Adjacency
 	err     error
 }
 
-func (f *fakeAdjacencer) Adjacent(_ context.Context, seeds []catalog.Candidate,
-	exclude map[provision.Key]bool, _ int) ([]catalog.Adjacency, error) {
+func (f *fakeAdjacencer) Adjacent(_ context.Context, seeds []titlesearch.Candidate,
+	exclude map[provision.Key]bool, _ int) ([]titlesearch.Adjacency, error) {
 	f.seeds, f.exclude = seeds, exclude
 	return f.out, f.err
 }
@@ -58,8 +58,8 @@ func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
 		{Key: provision.Key("movie:tmdb:90000218"), Title: "The Iron Courier", Year: 1984},
 	})
 
-	adj := &fakeAdjacencer{out: []catalog.Adjacency{{
-		Candidate: catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000280, Name: "Iron Lullaby", Year: 1991},
+	adj := &fakeAdjacencer{out: []titlesearch.Adjacency{{
+		Candidate: titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000280, Name: "Iron Lullaby", Year: 1991},
 		Votes:     3,
 	}}}
 	ref := &fakeRefiner{}
@@ -161,7 +161,7 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 // adjItem is an acquisition candidate that came from the adjacency corpus.
 func adjItem(n int, name string, confidence float64) proposals.ProposalItem {
 	it := acqItem(n, name, confidence)
-	it.Source = string(catalog.ScopeAdjacent)
+	it.Source = string(titlesearch.ScopeAdjacent)
 	return it
 }
 

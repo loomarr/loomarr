@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -23,7 +24,7 @@ func TestFetchStoreAdapter_ListAcquisitionRemoteStatesMapsArtifactLifecycle(t *t
 	if err := st.UpsertAcquisitionArtifacts(t.Context(), artifacts); err != nil {
 		t.Fatal(err)
 	}
-	states, err := (fetchStoreAdapter{st: st}).ListAcquisitionRemoteStates(t.Context())
+	states, err := (storeadapter.NewFetch(st, nil, nil)).ListAcquisitionRemoteStates(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

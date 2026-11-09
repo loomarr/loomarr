@@ -67,6 +67,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 			testSplitProposalClaimFencesConfirmers(t, newStore)
 		})
 		t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
+		t.Run("ChangeFillerSource", func(t *testing.T) { testChangeFillerSource(t, newStore) })
 		t.Run("FillerProviderPolicy", func(t *testing.T) { testFillerProviderPolicy(t, newStore) })
 		t.Run("SeededDefaultSources", func(t *testing.T) { testSeededDefaultSources(t, newStore) })
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })

@@ -1,7 +1,9 @@
 # Library and inventory
 
 Formerly `design.md` §5 (media inventory, cached series episodes), §6 (Emby and Jellyfin) and §7.2
-(search). How Loomarr reads the household media server and what it keeps of it.
+(search). How Loomarr builds the household's Library from its own media folders (#2151): the
+scanner, the metadata providers and the inventory it keeps, and what it still asks the media
+server for.
 
 ## The media server contract
 
@@ -11,10 +13,10 @@ metadata come from the Library's own tables.
 
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Collections** (BoxSets) back `scope.collections`: `Collections()` lists them, and
-  `CollectionMembers(id)` returns members with full provider ids through `ParentId`. `ChildCount` is not
-  returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
-  tool-generated one-per-franchise groupings, so any picker must rank hand-made ones first.
+- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
+  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
+  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
+  ready-made sets.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
@@ -126,7 +128,7 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   not read. Its details rank below every service. The default `uniqueid` names its catalog. Reads are
   capped at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop
   malformed ids.
-- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
+- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/library/tmdb` client. A movie or
   series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
   content ratings, keywords, images), so the record carries guide text, genres, keywords, the
   community rating, series status, the US certification (the strictest of a movie's releases),
@@ -216,7 +218,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
-  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
+  top, or in a season folder there, is the show its name gives before `S01E02`
+  (`Example.Show.S01E02.mkv` is "Example Show"); a season folder never names a show. A file nothing grounds is
   still written, with no ids. Only movies and episodes are titles (0047): extras (trailers,
   `-trailer` files, `extras/` folders and the like) and theme videos (`backdrops/`) are not
   imported, and a skipped extra does not take a movie's folder art from it. An origin whose ids later name another item of its kind
@@ -237,6 +241,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
   and wait while any playout session is live. A file whose header does not parse is marked failed
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
+  The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
+  the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
+  later pass wrote meanwhile is dropped.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the

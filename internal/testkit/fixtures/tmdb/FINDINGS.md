@@ -5,7 +5,7 @@
 
 ## Result: the adapter was ALREADY correct
 
-The Phase-11 TMDB adapter (`internal/tmdb`) was built against TMDB's documented v3 shape while the
+The Phase-11 TMDB adapter (`internal/library/tmdb`) was built against TMDB's documented v3 shape while the
 key was unavailable. The live capture **confirms every assumption** — no adapter change needed. This
 is the sanctioned live-verification of a previously-deferred contract.
 

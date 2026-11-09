@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -75,7 +75,7 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 }
 
 func TestToolResultCarriesGroundedDiscoveryEvidence(t *testing.T) {
-	candidates := []catalog.Candidate{{
+	candidates := []titlesearch.Candidate{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", OriginalLanguage: "en",
 		OriginCountries: []string{"US"}, RuntimeMinutes: 136, VoteAverage: 8.2, VoteCount: 26000,
 		Keywords: []string{"artificial reality"}, Networks: []string{"KBX"},

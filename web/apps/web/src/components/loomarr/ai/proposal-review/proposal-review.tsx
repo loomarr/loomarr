@@ -194,11 +194,7 @@ const ProposalReview = ({
             </Action>
             <briefForm.Subscribe selector={(state) => state.values.brief.trim() === ""}>
               {(empty) => (
-                <Action
-                  // A real submit button under Action's look, so Enter in a field still submits.
-                  render={<button disabled={controlsDisabled || empty} type="submit" />}
-                  variant="suggest"
-                >
+                <Action disabled={controlsDisabled || empty} submit variant="suggest">
                   Update suggestions
                 </Action>
               )}

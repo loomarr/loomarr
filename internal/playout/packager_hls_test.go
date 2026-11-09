@@ -1178,7 +1178,8 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 	}
 	args, _ = os.ReadFile(argsFile)
 	lines = strings.Split(strings.TrimSpace(string(args)), "\n")
-	if len(lines) != 3 || strings.Contains(lines[2], "-progress") {
-		t.Fatalf("a GPU host's item encoder: want one unwatched command, got:\n%s", args)
+	// A GPU host has no rung monitor, but its progress is still read: the dashboard's speed.
+	if len(lines) != 3 || !strings.Contains(lines[2], "-progress pipe:3") {
+		t.Fatalf("a GPU host's item encoder: want one command reporting progress, got:\n%s", args)
 	}
 }

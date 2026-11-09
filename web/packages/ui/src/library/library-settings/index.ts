@@ -6,6 +6,7 @@ export type {
   LibraryHeldRemoval,
   LibraryHook,
   LibraryPathMapping,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
   LibraryWizardStepProps,

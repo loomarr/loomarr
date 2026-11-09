@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -15,20 +15,20 @@ import (
 )
 
 func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: provision.Series, Name: "Mudpuddles", Year: 2020, TMDBID: 90009001},
 		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
 	}}
-	s := New(testkit.NewLLM(
+	s := New(testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"mode": "collection", "media_type": "series",
 			"titles": []any{map[string]any{"name": "The Mudpuddles", "year": float64(1989)}}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
 		}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"The Mudpuddles"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
-	), catalog.New(nil, corpus), nil, 10)
+	), titlesearch.New(nil, corpus), nil, 10)
 
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classic Mudpuddles"})
-	if !errors.Is(err, ErrNoGroundedTitles) {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
 	}
 	searches := corpus.Searches()
@@ -38,11 +38,11 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 }
 
 func TestGroundCuratedTitleSubjectTreatsDuplicateKeyRowsAsOneIdentity(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
 		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
 	}}
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	intent := Intent{Intent: proposals.Intent{Description: "Classic Mudpuddles"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 
 	candidates, err := s.groundCuratedTitleSubject(context.Background(), &intent)
@@ -223,7 +223,7 @@ func TestProjectCatalogArgumentsRejectsMalformedDiscardedFieldsAndOtherRoutes(t 
 
 func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 	corpus := &catalogfixture.Corpus{}
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	_, _, _, _ = s.runTool(context.Background(), llm.ToolCall{
 		Name: catalogToolName,
 		Arguments: map[string]any{
@@ -245,7 +245,7 @@ func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 }
 
 func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
 		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
 	}}
@@ -253,7 +253,7 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 		Intent:         proposals.Intent{Description: "90s family comedies like Grand Oak Hotel"},
 		membershipKeys: make(map[provision.Key]bool)}
 
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	_, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
 		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
 	}, intent, nil)
@@ -284,7 +284,7 @@ func TestPrepareToolCallProjectsThematicKeywordToExplicitDiscovery(t *testing.T)
 }
 
 func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
 		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
 		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
@@ -293,7 +293,7 @@ func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T)
 		Intent:         proposals.Intent{Description: "A named programming block with Grand Oak Hotel and Crumb Street Bakery"},
 		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}}
 	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
 	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
@@ -310,14 +310,14 @@ func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T)
 func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing.T) {
 	tests := []struct {
 		name       string
-		candidates []catalog.Candidate
+		candidates []titlesearch.Candidate
 		wantKeys   int
 	}{
-		{name: "different canonical identities stay ambiguous", candidates: []catalog.Candidate{
+		{name: "different canonical identities stay ambiguous", candidates: []titlesearch.Candidate{
 			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
 			{MediaType: "series", Name: "Grand Oak Hotel", Year: 2020, TVDBID: 90999762},
 		}},
-		{name: "duplicate rows for one key remain unambiguous", candidates: []catalog.Candidate{
+		{name: "duplicate rows for one key remain unambiguous", candidates: []titlesearch.Candidate{
 			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
 			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
 		}, wantKeys: 1},
@@ -326,7 +326,7 @@ func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
 			intent := Intent{Intent: proposals.Intent{Description: "A named programming block with Grand Oak Hotel"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
-			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 			_, candidates, _, _ := s.runCollectionTool(context.Background(), map[string]any{
 				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Grand Oak Hotel", "year": float64(1987)}},
 			}, intent, nil)
@@ -340,13 +340,13 @@ func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing
 func TestMembershipSourcePrefersOneOwnedExactIdentity(t *testing.T) {
 	tests := []struct {
 		name       string
-		candidates []catalog.Candidate
+		candidates []titlesearch.Candidate
 		wantKey    provision.Key
 		wantFound  bool
 	}{
 		{
 			name: "one owned identity among unavailable namesakes",
-			candidates: []catalog.Candidate{
+			candidates: []titlesearch.Candidate{
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500, InLibrary: true},
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324},
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2009, TMDBID: 90031183},
@@ -355,14 +355,14 @@ func TestMembershipSourcePrefersOneOwnedExactIdentity(t *testing.T) {
 		},
 		{
 			name: "multiple owned identities remain ambiguous",
-			candidates: []catalog.Candidate{
+			candidates: []titlesearch.Candidate{
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500, InLibrary: true},
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324, InLibrary: true},
 			},
 		},
 		{
 			name: "unavailable namesakes remain ambiguous",
-			candidates: []catalog.Candidate{
+			candidates: []titlesearch.Candidate{
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500},
 				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324},
 			},
@@ -400,7 +400,7 @@ func TestRunToolDoesNotProjectMalformedNonEmptyFields(t *testing.T) {
 	}
 	for _, arguments := range tests {
 		corpus := &catalogfixture.Corpus{}
-		s := New(nil, catalog.New(nil, corpus), nil, 10)
+		s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 		result, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
 			Name: catalogToolName, Arguments: arguments,
 		}, Intent{}, nil)

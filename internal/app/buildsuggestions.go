@@ -13,13 +13,13 @@ import (
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -35,7 +35,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 type suggestionBuild struct {
@@ -81,7 +80,7 @@ func buildSuggestions(
 		return result, nil
 	}
 
-	result.durableWorkflow = workflow.New(st, newID, time.Now)
+	result.durableWorkflow = workflow.New(st, newID, time.Now, suggest.IntentHash)
 	result.workflow = result.durableWorkflow
 
 	var err error
@@ -103,12 +102,12 @@ func buildSuggestions(
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}
 
-	catalogService := catalog.New(catalog.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return catalog.LibraryOwnership{Titles: st}
+	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: st}
 	})
 	result.search = searchAdapter{catalogService}
-	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return catalog.LibraryOwnership{Titles: st}
+	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: st}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{own: st}

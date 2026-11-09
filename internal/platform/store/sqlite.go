@@ -3,13 +3,35 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	_ "modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
+	"modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
 )
+
+// SQLite's own lower() folds ASCII only, so a search for "ä" never found "Ä". unicode_lower folds
+// every script, as Go's strings.ToLower does for the term and as Postgres's LOWER does. It is a
+// new name rather than a replacement for lower(), which a CHECK constraint and other stores use.
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("unicode_lower", 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if s, ok := args[0].(string); ok {
+				return strings.ToLower(s), nil
+			}
+			return args[0], nil
+		})
+}
+
+// lower is expr folded to lower case in every script, on either backend.
+func (s *sqlStore) lower(expr string) string {
+	if s.dialect == DialectSQLite {
+		return "unicode_lower(" + expr + ")"
+	}
+	return "LOWER(" + expr + ")"
+}
 
 // SQLite claim: a guarded UPDATE that leases the due rows by pushing their
 // deadline to ?1 (now+lease), so they aren't re-claimed until the reconciler

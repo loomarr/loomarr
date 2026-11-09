@@ -1,6 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Action } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -171,14 +172,15 @@ const AdvancedSettingsTable = ({
                     Choose model
                   </Link>
                 ) : (
-                  <button
-                    type="button"
+                  <Action
                     disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
-                    onClick={() => onClear?.(entry)}
-                    className="text-muted-foreground enabled:hover:text-foreground w-fit text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:underline disabled:opacity-40"
+                    layout="text"
+                    onPress={() => onClear?.(entry)}
+                    style={{ alignSelf: "flex-start" }}
+                    variant="link"
                   >
                     Use default
-                  </button>
+                  </Action>
                 )}
               </div>
             );

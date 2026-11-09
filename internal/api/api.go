@@ -68,7 +68,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		auth: opts.Auth, log: log,
 		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
 		channels: opts.Channels,
-		viewing:  viewing.New(),
+		viewing:  opts.Viewing,
+	}
+	if srv.viewing == nil {
+		srv.viewing = viewing.New()
 	}
 	srv.registerMiddleware(humaAPI)
 	setupRoutes := setupapi.New(setupapi.Deps{
@@ -93,7 +96,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Log: log,
 		// Stamped per handler build, so a restart (§9.2) resets the uptime About reports — a
 		// package-level var would survive the rebuild and keep counting from the original boot.
-		StartedAt: time.Now(), Ready: ready,
+		StartedAt: startedAt(opts.Now), Ready: ready,
 		StoreFacts:   storeFacts(opts.Store),
 		Operations:   opts.Store,
 		BackupSQLite: opts.BackupSQLite,
@@ -253,6 +256,15 @@ func systemGPU(svc system.SystemLLMService) func(context.Context) (string, float
 		}
 		return status.GPUName, status.VRAMGiB, nil
 	}
+}
+
+// startedAt is the instant a handler generation reports as its start: the request clock when one is
+// injected, else the wall clock.
+func startedAt(now func() time.Time) time.Time {
+	if now != nil {
+		return now()
+	}
+	return time.Now()
 }
 
 // storeFacts is the schema version and backend name GET /v1/system/version reports, read from st on

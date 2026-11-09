@@ -1,4 +1,4 @@
-import { Check, Loader2 } from "lucide-react";
+import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
@@ -58,9 +58,9 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
     >
       <div className="border-border bg-card flex max-w-sm items-center gap-3 rounded-lg border p-4 shadow-lg">
         {restarting ? (
-          <Loader2 className="text-signal size-5 shrink-0 animate-spin" aria-hidden />
+          <ActivityIndicator decorative size="default" tone="primary" />
         ) : failed ? null : (
-          <Check className="text-lock size-5 shrink-0" aria-hidden />
+          <Icon decorative glyph={icons.selected} size="default" tone="success" />
         )}
         <div className="min-w-0">
           <p className="text-sm font-medium">

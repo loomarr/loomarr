@@ -101,6 +101,44 @@ func TestArrHooks(t *testing.T) {
 	}
 }
 
+// An arr masks the stored password, so a secret that changed (a reinstall) cannot be seen: the first
+// registration after start writes the connection anyway, and later ones write only on a change.
+func TestArrHooksRewriteOnceAfterStart(t *testing.T) {
+	h := newHarness(t)
+	var puts int
+	arr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/notification":
+			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": 90000031.0, "name": arrhook.Name, "fields": []any{
+				map[string]any{"name": "url", "value": "http://loomarr.test/v1/library/hooks/sonarr"},
+				map[string]any{"name": "method", "value": 1},
+				map[string]any{"name": "username", "value": arrhook.Username},
+				map[string]any{"name": "password", "value": "********"},
+			}}})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v3/notification/90000031":
+			puts++
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(arr.Close)
+	hooks := &ArrHooks{
+		Scanner: NewScanner(h.im, time.Hour),
+		Clients: map[string]arrhook.Client{"sonarr": {Conn: func() (string, string) { return arr.URL, "key" }}},
+		URL:     func(app string) string { return "http://loomarr.test/v1/library/hooks/" + app },
+		Secret:  "secret-90000032",
+	}
+	for range 3 {
+		if err := hooks.Register(context.Background(), "sonarr"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if puts != 1 {
+		t.Fatalf("writes = %d, want 1 (the first after start)", puts)
+	}
+}
+
 // An arr that stops taking Loomarr's connection is reported once, when it starts failing.
 func TestArrHooksReportDegradedOnce(t *testing.T) {
 	h := newHarness(t)

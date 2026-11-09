@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /** An app that names library folders: the media server, Sonarr or Radarr. */
 type LibraryAuthority = "emby" | "jellyfin" | "sonarr" | "radarr";
 
@@ -40,6 +42,14 @@ interface LibraryScan {
   paused: boolean;
 }
 
+/** A title that became ready while the import runs (decision 29). */
+interface LibraryReadyTitle {
+  id: string;
+  name: string;
+  /** Its poster; absent draws a plain tile. */
+  poster?: ReactNode;
+}
+
 /** Removals a scan found in one folder and is holding for the maintainer. */
 interface LibraryHeldRemoval {
   path: string;
@@ -59,6 +69,8 @@ interface LibrarySettingsProps {
   folders: readonly LibraryFolder[];
   pathMap: readonly LibraryPathMapping[];
   scan: LibraryScan;
+  /** The latest few titles that became ready, last first, shown while the import runs. */
+  readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
   hooks: readonly LibraryHook[];
   /** A check of every folder is running. */
@@ -80,7 +92,15 @@ interface LibrarySettingsProps {
 /** The setup wizard's Library step: the folders, each with Use this folder, and Check again. */
 type LibraryWizardStepProps = Pick<
   LibrarySettingsProps,
-  "folders" | "pathMap" | "scan" | "checking" | "onCheckAgain" | "onUseFolder" | "onAddFolder" | "now"
+  | "folders"
+  | "pathMap"
+  | "scan"
+  | "readySoFar"
+  | "checking"
+  | "onCheckAgain"
+  | "onUseFolder"
+  | "onAddFolder"
+  | "now"
 > & {
   /** A Check again finished a moment ago. */
   checkedJustNow?: boolean;
@@ -93,6 +113,7 @@ export type {
   LibraryHeldRemoval,
   LibraryHook,
   LibraryPathMapping,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
   LibraryWizardStepProps,

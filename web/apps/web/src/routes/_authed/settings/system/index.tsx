@@ -1,5 +1,5 @@
+import { Icon, icons } from "@loomarr/design-system";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
   SETTINGS_DESTINATIONS,
@@ -62,10 +62,9 @@ const SystemHome = () => (
                         {item.description}
                       </span>
                     </span>
-                    <ArrowRight
-                      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                      aria-hidden
-                    />
+                    <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                      <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
+                    </span>
                   </Link>
                 ))}
               </div>

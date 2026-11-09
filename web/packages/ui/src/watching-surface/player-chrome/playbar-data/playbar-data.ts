@@ -105,6 +105,8 @@ const eraLabel = (era: { from?: number; to?: number } | undefined) => {
 interface ChromeChannel {
   name: string;
   number: string;
+  /** The channel's era decade from the API, for the channel block's colour. */
+  decade?: number;
   /** The years the channel airs as (its filler era) and where (its filler place), for the ident. */
   era?: { from?: number; to?: number };
   place?: string;
@@ -122,6 +124,7 @@ const bandOf = (
   const base = {
     channelName: channel.name,
     channelNumber: channel.number,
+    ...(channel.decade === undefined ? {} : { decade: channel.decade }),
     station: station || undefined,
   };
   if (!airing) return base;

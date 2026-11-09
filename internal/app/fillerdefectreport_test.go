@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -37,7 +38,7 @@ func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 		Assessment: a, Verdict: verdict, VerdictReason: reason, MeasuredAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	reports := defectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, func() time.Time { return at })
+	reports := defectfloor.NewDefectReports(storeadapter.NewDefects(st), func() time.Time { return at })
 
 	if err := reports.Label(ctx, "unmeasured", defects.LabelPass); !errors.Is(err, defectfloor.ErrDefectNotMeasured) {
 		t.Fatalf("labelling an unmeasured clip = %v, want ErrDefectNotMeasured", err)

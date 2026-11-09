@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,8 @@ func (m *pipeMemStore) GetClip(_ context.Context, id string) (cliplibrary.StoreC
 	return c, ok, nil
 }
 
+// ListPipelineWork orders like the real store, by next_run then clip_hash, before it applies the
+// limit: a limit over map order would hand the engine a different clip each pass.
 func (m *pipeMemStore) ListPipelineWork(_ context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error) {
 	var out []pipelinestate.ClipPipeline
 	for _, r := range m.rows {
@@ -108,11 +111,46 @@ func (m *pipeMemStore) ListPipelineWork(_ context.Context, now time.Time, limit 
 			continue
 		}
 		out = append(out, r)
-		if limit > 0 && len(out) >= limit {
-			break
+	}
+	slices.SortFunc(out, func(a, b pipelinestate.ClipPipeline) int {
+		if c := a.NextRun.Compare(b.NextRun); c != 0 {
+			return c
 		}
+		return strings.Compare(a.ClipHash, b.ClipHash)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
+}
+
+// The double hands out work in the real store's order, so a pass with a limit works the oldest due
+// clips and never the same arbitrary subset: tie-broken by hash, due rows only.
+func TestPipeMemStore_ListPipelineWorkOrdersByNextRunThenHash(t *testing.T) {
+	st := newPipeMemStore()
+	base := time.Unix(1_800_000_000, 0).UTC()
+	for i, hash := range []string{"h", "g", "f", "e", "d", "c", "b", "a"} {
+		st.rows[hash] = pipelinestate.ClipPipeline{
+			ClipHash: hash, Disposition: pipelinestate.DispositionRunning,
+			NextRun: base.Add(time.Duration(i/2) * time.Minute), // pairs share a next_run
+		}
+	}
+	st.rows["later"] = pipelinestate.ClipPipeline{
+		ClipHash: "later", Disposition: pipelinestate.DispositionRunning, NextRun: base.Add(time.Hour),
+	}
+
+	got, err := st.ListPipelineWork(context.Background(), base.Add(10*time.Minute), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hashes []string
+	for _, r := range got {
+		hashes = append(hashes, r.ClipHash)
+	}
+	// Pairs by next_run (h,g) (f,e) (d,c) (b,a): within a pair the lower hash first.
+	if want := []string{"g", "h", "e", "f", "c"}; !slices.Equal(hashes, want) {
+		t.Fatalf("work = %v, want %v (next_run, then clip_hash, limit applied after the sort)", hashes, want)
+	}
 }
 
 func (m *pipeMemStore) PipelineOverview(_ context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
@@ -212,6 +250,9 @@ type fakeStage struct {
 	panicV  any
 	runs    int
 	killCtx func()
+	// onRun runs as the rung starts, so a test can make the catalog change mid-pass the way a real
+	// split or transcode does.
+	onRun func()
 }
 
 func (f *fakeStage) ID() pipelinestate.StageID { return f.id }
@@ -221,6 +262,9 @@ func (f *fakeStage) Applies(context.Context, cliplibrary.StoreClip) (bool, strin
 }
 func (f *fakeStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (filler.StageResult, error) {
 	f.runs++
+	if f.onRun != nil {
+		f.onRun()
+	}
 	if f.panicV != nil {
 		panic(f.panicV)
 	}
@@ -244,7 +288,7 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	stages[pipelinestate.StageVision].panicV = "classifier exploded"
 
 	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
-	if err := p.Advance(context.Background(), "c1"); err != nil {
+	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,9 +314,10 @@ func TestPipeline_ScreeningPersistenceFailureNeverFallsThroughToReadiness(t *tes
 
 			p := newPipe(st, asSlice(stages), filler.DefaultBudget())
 			for range filler.MaxAttempts + 1 {
-				if err := p.Advance(context.Background(), "c1"); err != nil {
+				if _, err := p.RunOnce(context.Background()); err != nil {
 					t.Fatal(err)
 				}
+				st.rows["c1"] = resetSchedule(st.rows["c1"])
 			}
 
 			row := st.rows["c1"]
@@ -750,7 +795,7 @@ func TestPipeline_NonFatalFailureSkipsRatherThanStranding(t *testing.T) {
 	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
 	// Each pass burns one attempt; the clock is frozen, so drive it explicitly.
 	for i := 0; i < filler.MaxAttempts; i++ {
-		if err := p.Advance(context.Background(), "c1"); err != nil {
+		if _, err := p.RunOnce(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		st.rows["c1"] = resetSchedule(st.rows["c1"])
@@ -774,7 +819,7 @@ func TestPipeline_FatalFailureRejects(t *testing.T) {
 
 	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
 	for i := 0; i < filler.MaxAttempts; i++ {
-		if err := p.Advance(context.Background(), "c1"); err != nil {
+		if _, err := p.RunOnce(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		st.rows["c1"] = resetSchedule(st.rows["c1"])
@@ -818,7 +863,7 @@ func TestPipeline_AStorageHoldNeverRejectsTheClip(t *testing.T) {
 			at := time.Unix(1_800_000_000, 0).UTC()
 			p := newPipe(st, asSlice(stages), filler.DefaultBudget())
 			for i := 0; i < filler.MaxAttempts+2; i++ {
-				if err := p.Advance(context.Background(), "c1"); err != nil && !errors.Is(err, filler.ErrDeferred) {
+				if _, err := p.RunOnce(context.Background()); err != nil {
 					t.Fatal(err)
 				}
 				// Space frees on a cleanup, not within a pass: the clip must not ask again at once.
@@ -856,7 +901,7 @@ func TestPipeline_FailureBacksOffBeforeGivingUp(t *testing.T) {
 	stages[pipelinestate.StageProbe].err = fmt.Errorf("transient")
 
 	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
-	if err := p.Advance(context.Background(), "c1"); err != nil {
+	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -889,10 +934,13 @@ func TestPipeline_ADeadlineDefersInsteadOfBurningAnAttempt(t *testing.T) {
 	defer cancel()
 	stages[pipelinestate.StageProbe].killCtx = cancel
 
-	err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(ctx, "c1")
+	res, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if !errors.Is(err, filler.ErrDeferred) {
-		t.Fatalf("Advance = %v, want ErrDeferred — a deadline is not a failure", err)
+	if res.Deferred != 1 || res.Failed != 0 {
+		t.Fatalf("deferred=%d failed=%d, want 1 and 0 — a deadline is not a failure", res.Deferred, res.Failed)
 	}
 	row := st.rows["c1"]
 	// ⚠ The write LANDED despite the dead context. That is the whole fix: before it, this row
@@ -922,9 +970,12 @@ func TestPipeline_AStageCanYieldAPersistedBatchWithoutFailing(t *testing.T) {
 	stages := allStages()
 	stages[pipelinestate.StageProbe].err = filler.ErrDeferred
 
-	err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(context.Background(), "c1")
-	if !errors.Is(err, filler.ErrDeferred) {
-		t.Fatalf("Advance = %v, want ErrDeferred", err)
+	res, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Deferred != 1 || res.Failed != 0 {
+		t.Fatalf("deferred=%d failed=%d, want 1 and 0", res.Deferred, res.Failed)
 	}
 	row := st.rows["c1"]
 	if row.Stage != pipelinestate.StageProbe || row.Status != pipelinestate.StatusQueued {
@@ -995,13 +1046,16 @@ func TestPipeline_BudgetExhaustionDefersRatherThanSkips(t *testing.T) {
 func TestPipeline_SpawnedClipsAreEnrolledFromTheStart(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "reel")
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "seg1", Path: "a/b/seg1.mp4"}})
 	stages := allStages()
 	stages[pipelinestate.StageSplit].result = filler.StageResult{
 		Verdict: pipelinestate.VerdictContinue, Spawned: []string{"seg1"},
 	}
+	// The segment exists only once the split has cut it, which is after the pass's own enrolment.
+	stages[pipelinestate.StageSplit].onRun = func() {
+		st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "seg1", Path: "a/b/seg1.mp4"}})
+	}
 
-	if err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(context.Background(), "reel"); err != nil {
+	if _, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1024,12 +1078,13 @@ func TestPipeline_FollowsAStageIdentityReplacement(t *testing.T) {
 	replacement := st.clips["old-hash"]
 	replacement.Hash = "new-hash"
 	replacement.Path = "aa/bb/new-hash.mp4"
-	st.clips[replacement.Hash] = replacement
+	// The re-keyed clip appears when the transcode rewrites storage, after the pass's own enrolment.
+	stages[pipelinestate.StageTranscode].onRun = func() { st.clips[replacement.Hash] = replacement }
 	stages[pipelinestate.StageTranscode].result = filler.StageResult{
 		Clip: replacement, Verdict: pipelinestate.VerdictContinue,
 	}
 
-	if err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(context.Background(), "old-hash"); err != nil {
+	if _, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	row, ok := st.rows["new-hash"]

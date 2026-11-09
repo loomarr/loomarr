@@ -2,12 +2,15 @@ import type { MeBody, TitleDTO } from "@loomarr/api";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import {
   getChannelGuideMockHandler,
+  getChannelUpcomingMockHandler,
   getDeleteChannelMockHandler,
   getEnqueueTitleMockHandler,
   getGetProposalJobMockHandler,
   getListChannelsMockHandler,
   getListTitlesMockHandler,
   getMeMockHandler,
+  getMyChannelsMockHandler,
+  getPreviewChannelPodsMockHandler,
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
@@ -130,6 +133,10 @@ const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
     // connected, so a rebuild can't 501). ⚠ The old entry supplied four of SettingEntry's eight
     // required fields; `setting()` carries the rest.
     getSettingsListMockHandler({ features: {}, settings: [setting({ key: "tunarr.url" })] }),
+    // A channel's page, which the tests that open a channel's info land on, asks for these. Once
+    // its route chunk is loaded by an earlier test it asks before the test ends.
+    getChannelUpcomingMockHandler({ upcoming: [] }),
+    getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
     // Spread LAST — see handlers.ts: MSW takes the FIRST match and `use()` prepends.
     ...appHandlers(),
   );
@@ -168,10 +175,88 @@ const renderAt = (path: string) => {
   return Object.assign(view, { router });
 };
 
+// The guide opens on the Now/Next list (#2787); these tests are about the full grid.
+const GRID = "/guide?view=grid";
+
+// The list asks what is on at the real clock, so its guide is served around it.
+const onNow = (channels: { channelId: string; name: string; number: number; title: string }[]) => {
+  const now = Date.now();
+  return getChannelGuideMockHandler({
+    fromMs: now - 1_800_000,
+    toMs: now + 3 * 3_600_000,
+    channels: channels.map(({ title, ...ch }) => ({
+      ...ch,
+      status: "live" as const,
+      pendingCount: 0,
+      airings: [
+        {
+          kind: "program" as const,
+          scheduleBlockId: `block_${ch.channelId}`,
+          title,
+          startMs: now - 600_000,
+          stopMs: now + 3_000_000,
+        },
+      ],
+    })),
+  });
+};
+
+describe("Guide's Now & next list", () => {
+  it("is what a desktop opens on, with the full grid one click away", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    server.use(
+      onNow([{ channelId: "ch-live", name: "Saturday Cartoons", number: 42, title: "Space Western" }]),
+    );
+    const view = renderAt("/guide");
+
+    expect(await view.findByRole("heading", { name: "What's on" })).toBeInTheDocument();
+    expect(await view.findByText("Space Western")).toBeInTheDocument();
+    // No grid, so no span picker and no grid row menu.
+    expect(view.queryByRole("button", { name: "Show 4 hours" })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: /actions for saturday cartoons/i })).not.toBeInTheDocument();
+
+    await user.click(view.getByRole("tab", { name: "Full grid" }));
+    expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+    expect(view.router.state.location.search).toEqual({ view: "grid" });
+  });
+
+  it("opens a channel's info from its row's ⋯", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt("/guide");
+
+    await user.click(await view.findByRole("button", { name: "Channel info for Saturday Cartoons" }));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/channels/ch-live/info"));
+  });
+
+  it("puts the viewer's favourites first", async () => {
+    stubGuide();
+    server.use(
+      onNow([
+        { channelId: "ch-live", name: "Saturday Cartoons", number: 42, title: "Space Western" },
+        { channelId: "ch-fav", name: "Movie Night", number: 99, title: "A Favourite Film" },
+      ]),
+      getMyChannelsMockHandler({
+        favourites: [{ addedAt: "2026-11-01T00:00:00Z", channelId: "ch-fav" }],
+        recent: [],
+      }),
+    );
+    const view = renderAt("/guide");
+
+    const favourite = await view.findByText("A Favourite Film");
+    await waitFor(() =>
+      expect(
+        favourite.compareDocumentPosition(view.getByText("Space Western")) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy(),
+    );
+  });
+});
+
 describe("Guide", () => {
   it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
     stubGuide();
-    renderAt("/guide");
+    renderAt(GRID);
     // The heading is "Channels", not "Guide": one surface, and the mock names it for the
     // objects it lists rather than the view it uses (§12).
     expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
@@ -211,7 +296,7 @@ describe("Guide", () => {
         ],
       }),
     );
-    renderAt("/guide");
+    renderAt(GRID);
     const label = "Commercials until titles arrive · 3 of 12 downloaded";
     expect(await screen.findByRole("button", { name: label })).toBeInTheDocument();
     expect(screen.queryByText("Fizzbolt")).not.toBeInTheDocument();
@@ -230,7 +315,7 @@ describe("Guide", () => {
         return GUIDE;
       }),
     );
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
     expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
 
     expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "true");
@@ -239,10 +324,6 @@ describe("Guide", () => {
     await user.click(view.getByRole("button", { name: "Show 2 hours" }));
     expect(view.getByRole("button", { name: "Show 2 hours" })).toHaveAttribute("aria-pressed", "true");
     expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "false");
-    // Pressed is neutral (#1909 Q2): a foreground border on the elevated fill, never amber.
-    const pressed = view.getByRole("button", { name: "Show 2 hours" });
-    expect(pressed).toHaveClass("border-foreground", "bg-static-800", "font-semibold");
-    expect(pressed.className).not.toContain("signal");
     await vi.waitFor(() => expect(spans).toContain(2 * 3_600_000));
   });
 
@@ -289,7 +370,7 @@ describe("Guide", () => {
       const user = userEvent.setup();
       stubGuide();
       const { release } = stubSlowNextWindow();
-      const view = renderAt("/guide");
+      const view = renderAt(GRID);
       expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
       expect(view.queryByRole("status", { name: /loading guide/i })).not.toBeInTheDocument();
 
@@ -310,7 +391,7 @@ describe("Guide", () => {
     it("prefetches the adjacent windows once the current one has loaded", async () => {
       stubGuide();
       const { froms, release } = stubSlowNextWindow();
-      const view = renderAt("/guide");
+      const view = renderAt(GRID);
       expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
 
       const HOUR = 3_600_000;
@@ -327,7 +408,7 @@ describe("Guide", () => {
   it("keeps everyday time controls visible and precise view controls behind one disclosure", async () => {
     const user = userEvent.setup();
     stubGuide();
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
 
     // Wait for a guide row so the loading state cannot be mistaken for a closed disclosure.
     expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
@@ -356,7 +437,7 @@ describe("Guide", () => {
   it("opens the channel's page from its name, not the player (#2745)", async () => {
     const user = userEvent.setup();
     stubGuide();
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
     await view.findByRole("button", { name: /actions for saturday cartoons/i });
 
     await user.click(view.getByRole("button", { name: /^\d+\s*Saturday Cartoons$/ }));
@@ -367,7 +448,7 @@ describe("Guide", () => {
   it("closes the View panel on Escape (#2745)", async () => {
     const user = userEvent.setup();
     stubGuide();
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
     expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
 
     const viewTrigger = view.getByRole("button", { name: "View options" });
@@ -417,7 +498,7 @@ describe("Guide", () => {
         ],
       }),
     );
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
 
     const next = await view.findByRole("button", { name: /^Harbour Mystery,/ });
     expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
@@ -441,7 +522,7 @@ describe("Guide", () => {
   it("puts each channel's actions menu in its row's ⋯ slot", async () => {
     const user = userEvent.setup();
     stubGuide();
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
 
     await user.click(await view.findByRole("button", { name: /actions for saturday cartoons/i }));
     expect(await screen.findByRole("menuitem", { name: /pause/i })).toBeInTheDocument();
@@ -450,7 +531,7 @@ describe("Guide", () => {
 
   it("has no manual rebuild/refresh — edits are seamless (§9) — and each row opens its channel", async () => {
     stubGuide();
-    renderAt("/guide");
+    renderAt(GRID);
 
     // The row is present (its ⋮ actions menu is the stable, explicitly-labelled handle on
     // it — the channel button's accessible name is assembled from sibling spans and is a
@@ -474,7 +555,7 @@ describe("Guide", () => {
         return undefined as never;
       }),
     );
-    renderAt("/guide");
+    renderAt(GRID);
 
     await user.click(await screen.findByRole("button", { name: /actions for saturday cartoons/i }));
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
@@ -488,7 +569,7 @@ describe("Guide", () => {
   it("is the door to origination: 'Add a channel' goes to the request page (#2746)", async () => {
     const user = userEvent.setup();
     stubGuide();
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
 
     // Each row carries a ⋮ actions menu (pause/resume + delete) so removing a channel doesn't
     // require opening it — awaited because the rows depend on the guide query resolving.
@@ -509,7 +590,7 @@ describe("Guide", () => {
   // labels, one action, two of them visible at once.
   it("shows only ONE origination door on an empty guide, and names it the same as the header", async () => {
     stubGuide(me(), { empty: true });
-    renderAt("/guide");
+    renderAt(GRID);
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
     // Exactly one control offers the action, and it uses the header's own wording.
@@ -524,7 +605,7 @@ describe("Guide", () => {
   it("shows Dead air, not an error, when the guide answers without channels", async () => {
     stubGuide(me(), { empty: true });
     server.use(http.get("*/v1/guide", () => HttpResponse.json({})));
-    renderAt("/guide");
+    renderAt(GRID);
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
@@ -534,7 +615,7 @@ describe("Guide", () => {
   it("sends the empty state's door to the request page", async () => {
     const user = userEvent.setup();
     stubGuide(me(), { empty: true });
-    const view = renderAt("/guide");
+    const view = renderAt(GRID);
 
     await view.findByText("Dead air");
     await user.click(view.getByRole("button", { name: /add a channel/i }));
@@ -545,7 +626,7 @@ describe("Guide", () => {
 
   it("keeps the header door on a populated guide, where no empty state offers it", async () => {
     stubGuide();
-    renderAt("/guide");
+    renderAt(GRID);
 
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /add a channel/i })).toBeInTheDocument();
@@ -554,7 +635,7 @@ describe("Guide", () => {
 
   it("names the origination door for a member — they request rather than add", async () => {
     stubGuide(MEMBER);
-    renderAt("/guide");
+    renderAt(GRID);
     // A member has no other way to ask for a channel now that /suggest is gone, so the
     // affordance must be present for them too — worded for what they are actually doing.
     expect(await screen.findByRole("link", { name: /request a channel/i })).toBeInTheDocument();

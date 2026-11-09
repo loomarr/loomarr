@@ -72,8 +72,8 @@ tables:
         confirm them. A held file still counts as present.
       seen_at_ms: When a walk last found the file, in Unix milliseconds.
       missing_at_ms: When a walk stopped finding the file, in Unix milliseconds; 0 means it is present.
-      inventory_item_id: The title the file was last written as (a library_items id); empty until known.
-      inventory_series_id: For an episode, its show (a library_items id); empty otherwise or until known.
+      inventory_item_id: The title the file was last written as (a library_items id); null until known.
+      inventory_series_id: For an episode, its show (a library_items id); null otherwise or until known.
 
   - name: library_items
     about: >
@@ -138,7 +138,7 @@ tables:
       series_key: An episode's show, by the folder part of the show's scan origin; empty otherwise.
       series_id: >
         An episode's show (a library_items id), filled once both the episode and the show are written;
-        empty otherwise.
+        null otherwise.
       unnumbered: >
         1 for an episode its show's catalog could not number, because the catalog numbers the show in
         more than one order or its seasons end elsewhere than the disk's, and nobody has said which
