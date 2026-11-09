@@ -93,13 +93,97 @@ const markup = (onWatch = vi.fn()) =>
     </LoomarrProvider>,
   );
 
+const order = (html: string, names: string[]) => {
+  const positions = names.map((name) => html.indexOf(`>${name}<`));
+  expect(positions.every((position) => position >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+};
+
+// The rows with nothing on (#2787): an off-air channel with and without a known return, and an
+// admin-paused one that still has listings.
+const quiet = layoutGuide(
+  {
+    fromMs: FROM,
+    toMs: at(240),
+    timezone: "UTC",
+    channels: [
+      {
+        channelId: "back",
+        name: "Evening News",
+        number: 3,
+        pendingCount: 0,
+        status: "live" as const,
+        airings: [program("b0", 60, 90, "The Six O'Clock Report")],
+      },
+      {
+        channelId: "dark",
+        name: "Quiet Hours",
+        number: 4,
+        pendingCount: 0,
+        status: "empty" as const,
+        airings: [],
+      },
+      {
+        channelId: "held",
+        name: "Holiday Films",
+        number: 6,
+        pendingCount: 0,
+        status: "paused" as const,
+        airings: [program("h0", -10, 80, "A Snowy Evening")],
+      },
+    ],
+  },
+  NOW,
+);
+
+// The inline style of a ProgressTrack's fill.
+const PROGRESS_TRACK = "border-bottom-left-radius:999px;height:100%";
+
 describe("GuideNowNext", () => {
-  it("is one row per channel, in the guide's order", () => {
+  it("is one row per channel, by channel number", () => {
     const html = markup();
-    const names = ["Cartoon Classics", "Sitcom Corner", "Late Movies", "Matinee Westerns"];
-    const positions = names.map((name) => html.indexOf(`>${name}<`));
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    order(html, ["Cartoon Classics", "Sitcom Corner", "Matinee Westerns", "Late Movies"]);
+    // Two programmes and a break are on, so three rows draw a progress track.
+    expect(html.split(PROGRESS_TRACK)).toHaveLength(4);
+  });
+
+  it("puts the viewer's favourites first, each group by channel number", () => {
+    const html = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideNowNext favouriteIds={["new", "ads"]} layout={layout} nowMs={NOW} onWatch={vi.fn()} />
+      </LoomarrProvider>,
+    );
+    order(html, ["Sitcom Corner", "Late Movies", "Cartoon Classics", "Matinee Westerns"]);
+  });
+
+  it("says when an off-air channel is back, or only that it is off air, and that a paused one is paused", () => {
+    for (const wide of [false, true]) {
+      const html = renderToStaticMarkup(
+        <LoomarrProvider>
+          <GuideNowNext layout={quiet} nowMs={NOW} onWatch={vi.fn()} wide={wide} />
+        </LoomarrProvider>,
+      );
+      expect(html).toContain(">Off air · back at 9:00 PM<");
+      expect(html).toContain(">Off air<");
+      expect(html).toContain(">Paused<");
+      // Nothing on draws no progress bar, and a paused channel lists nothing next.
+      expect(html).not.toContain(PROGRESS_TRACK);
+      expect(html).not.toContain("A Snowy Evening");
+      expect(html).not.toContain("Later tonight");
+    }
+  });
+
+  it("lays the desktop list out under Channel, On now and Next, with a ⋯ per row for channel info", () => {
+    const html = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideNowNext layout={layout} nowMs={NOW} onOpenChannelInfo={vi.fn()} onWatch={vi.fn()} wide />
+      </LoomarrProvider>,
+    );
+    order(html, ["Channel", "On now", "Next"]);
+    expect(html).toContain(">until 8:25 PM · 18 min left<");
+    expect(html).toContain(">Back in 3 min<");
+    expect(html).toContain('aria-label="Channel info for Sitcom Corner"');
+    expect(html.match(/aria-label="Channel info for /g)).toHaveLength(4);
   });
 
   it("says what is on, how long is left, and what comes next", () => {

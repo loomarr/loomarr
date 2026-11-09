@@ -24,7 +24,7 @@ import {
   GuideProgrammeDetail,
 } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -89,12 +89,12 @@ const START_HOUR_OPTIONS = [
   ...START_HOURS.map((h) => ({ label: hourLabel(h), value: String(h) })),
 ];
 
-// A phone's two views of the guide (#2766): a Now/Next list, or the full grid.
-const PHONE_VIEWS = [
+// The guide's two views (#2766 on phones, #2787 on desktops): a Now/Next list, or the full grid.
+const GUIDE_VIEWS = [
   { label: "Now & next", value: "list" },
   { label: "Full grid", value: "grid" },
 ] as const;
-type PhoneView = (typeof PHONE_VIEWS)[number]["value"];
+type GuideView = (typeof GUIDE_VIEWS)[number]["value"];
 
 // The selection survives a new window or a refetch: the same channel, at the block nearest the
 // same time, as the shared guide controller does. Otherwise the block airing now on the first
@@ -146,10 +146,21 @@ const GuidePage = () => {
   // `nowMs` drives the now-line and moves on its own timer. `anchorMs` pins TODAY's window so the
   // grid does not slide under the reader while they look at it: it advances only when the clock
   // nears the window's end (see `useGuideWindow`). The now-line moves; the axis stays put.
-  // A phone opens on the Now/Next list. It always asks about now, and about a few hours so that
-  // "next" is usually listed; the day, hour and span controls belong to the grid.
-  const [phoneView, setPhoneView] = useState<PhoneView>("list");
-  const nowNextView = phoneWidth && phoneView === "list";
+  // The guide opens on the Now/Next list, phone and desktop alike (#2787); `?view=grid` is the full
+  // grid. The list always asks about now, and about a few hours so that "next" is usually listed;
+  // the day, hour and span controls belong to the grid.
+  const { view: viewParam } = useSearch({ from: "/_authed/guide" });
+  const view: GuideView = viewParam === "grid" ? "grid" : "list";
+  const setView = useCallback(
+    (next: GuideView) =>
+      void navigate({
+        to: "/guide",
+        search: (prev) => ({ ...prev, view: next === "grid" ? "grid" : undefined }),
+        replace: true,
+      }),
+    [navigate],
+  );
+  const nowNextView = view === "list";
   const queryMinutes = nowNextView ? DEFAULT_WINDOW_MINUTES : windowMinutes;
   const { nowMs, anchorMs } = useGuideWindow(queryMinutes);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
@@ -248,9 +259,10 @@ const GuidePage = () => {
   );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
 
-  // The phone grid's filters read the viewer's favourites and recents (#1778's lists).
+  // The phone grid's filters read the viewer's favourites and recents (#1778's lists), and the
+  // Now/Next list puts the favourites first (#2787).
   const [filter, setFilter] = useState<GuideFilter>("all");
-  const mine = channelsApi.useMyChannels({ query: { retry: false, enabled: phoneWidth } });
+  const mine = channelsApi.useMyChannels({ query: { retry: false, enabled: phoneWidth || nowNextView } });
   const mineBody = unwrap(mine.data);
   const myChannels = useMemo(
     () =>
@@ -336,20 +348,21 @@ const GuidePage = () => {
 
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}
-      {channels.length > 0 && phoneWidth && (
+      {channels.length > 0 && (
         <GuidePhoneHeader
-          title={phoneView === "list" ? "What's on" : "Guide"}
+          title={nowNextView ? "What's on" : "Guide"}
           subtitle={
-            phoneView === "list"
+            nowNextView
               ? `${formatGuideTime(nowMs, body?.timezone)} · ${pluralize(channels.length, "channel")}`
               : formatGuideTimeRange(from, to, body?.timezone)
           }
+          wide={!phoneWidth}
         >
           <SegmentedControl
             accessibilityLabel="Guide view"
-            onValueChange={setPhoneView}
-            options={PHONE_VIEWS}
-            value={phoneView}
+            onValueChange={setView}
+            options={GUIDE_VIEWS}
+            value={view}
           />
         </GuidePhoneHeader>
       )}
@@ -519,12 +532,16 @@ const GuidePage = () => {
             />
           )}
           {layout && nowNextView ? (
-            // A phone opens on the Now/Next list (#2766, the Direction mock): one row per channel,
-            // no time grid. A row tunes its channel; the full grid is one tap away.
+            // The guide opens on the Now/Next list (#2766, #2787, the Direction mock): one row per
+            // channel, no time grid, favourites first. A row tunes its channel, a long-press or its ⋯
+            // opens the channel's info, and the full grid is one tap away.
             <GuideNowNext
+              favouriteIds={myChannels?.favouriteIds}
               layout={layout}
               nowMs={nowMs}
-              onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
+              onOpenChannelInfo={onOpenChannelInfo}
+              onWatch={onOpenChannel}
+              wide={!phoneWidth}
             />
           ) : layout && phoneWidth ? (
             // The phone's Full grid view: the native compact grid (#1785, mocks 5d/5f, decision N6): the number
