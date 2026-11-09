@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -39,7 +38,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Conte
 		return preparedStructureAssessmentSource{}, errors.New("structure assessment source is not the declared regular file")
 	}
 
-	stageDir := filepath.Join(p.mediaRoot, filler.MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, split.MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return preparedStructureAssessmentSource{}, fmt.Errorf("create structure assessment staging: %w", err)
 	}

@@ -1104,9 +1104,6 @@ func isHashDisplayName(value string) bool {
 	return isOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
 }
 
-// IsContentHash reports whether value is a 64-character lowercase hex content hash.
-func IsContentHash(value string) bool { return split.IsContentHash(value) }
-
 func isOpaqueHash(value string) bool {
 	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
 }

@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	MediaAssetRootName        = ".loomarr-media"
 	mediaMasterDirName        = "masters"
-	mediaEvidenceDirName      = "evidence"
 	mediaAssetManifestVersion = 1
 )
 
@@ -73,7 +71,7 @@ func (m MediaAssetManifest) validate() error {
 		return err
 	}
 	if m.Evidence != nil {
-		if err := validateMediaDerivative(*m.Evidence, MediaAssetEvidence, mediaEvidenceDirName, m.SourceMaster.SHA256); err != nil {
+		if err := validateMediaDerivative(*m.Evidence, MediaAssetEvidence, split.MediaEvidenceDirName, m.SourceMaster.SHA256); err != nil {
 			return err
 		}
 	}
@@ -125,7 +123,7 @@ func (m MediaAssetManifest) validateReuseFiles(ctx context.Context, clipDir, pla
 		return err
 	}
 	if m.Evidence != nil {
-		if err := validateMediaAssetFile(ctx, clipDir, m.Evidence.Asset, MediaAssetEvidence, mediaEvidenceDirName); err != nil {
+		if err := validateMediaAssetFile(ctx, clipDir, m.Evidence.Asset, MediaAssetEvidence, split.MediaEvidenceDirName); err != nil {
 			return err
 		}
 	}
@@ -195,12 +193,12 @@ func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, t
 		return fmt.Errorf("%s media asset path is outside the filler root", role)
 	}
 	if tree == "" {
-		if split.PathContains(MediaAssetRootName, clean) {
+		if split.PathContains(split.MediaAssetRootName, clean) {
 			return fmt.Errorf("%s media asset path is hidden rather than playable", role)
 		}
 		return nil
 	}
-	wantPrefix := filepath.Join(MediaAssetRootName, tree)
+	wantPrefix := filepath.Join(split.MediaAssetRootName, tree)
 	if clean == wantPrefix || !split.PathContains(wantPrefix, clean) {
 		return fmt.Errorf("%s media asset path is outside its hidden tree", role)
 	}
@@ -229,7 +227,7 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 		return MediaAssetIdentity{}, errors.New("preserve source master: source is not a non-empty regular file")
 	}
 
-	stageDir := filepath.Join(clipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(clipDir, split.MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: create staging directory: %w", err)
 	}
@@ -266,7 +264,7 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 		return MediaAssetIdentity{}, errors.New("preserve source master: snapshot does not match catalog identity")
 	}
 	ext := retainedMediaExtension(sourcePath)
-	relMaster := filepath.ToSlash(filepath.Join(MediaAssetRootName, mediaMasterDirName, digest[:2], digest[2:4], digest+ext))
+	relMaster := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, mediaMasterDirName, digest[:2], digest[2:4], digest+ext))
 	masterPath := filepath.Join(clipDir, filepath.FromSlash(relMaster))
 	if err := os.MkdirAll(filepath.Dir(masterPath), 0o755); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: create master directory: %w", err)

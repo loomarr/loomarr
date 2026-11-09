@@ -64,7 +64,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Cont
 
 func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Context, plan window.Plan, prepared preparedStructureAssessmentSource, window window.Window) (StructureAssessmentWindowMedia, error) {
 	operation := structureAssessmentWindowOperationSHA256(plan, prepared.Identity, window, prepared.Profile, prepared.Tool)
-	if !filler.IsContentHash(operation) {
+	if !split.IsContentHash(operation) {
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window operation identity is invalid")
 	}
 	indexPath := structureAssessmentWindowIndexPath(p.mediaRoot, operation)
@@ -76,7 +76,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 		return p.reuseWindow(ctx, plan, prepared, window, operation, index)
 	}
 
-	stageDir := filepath.Join(p.mediaRoot, filler.MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, split.MediaAssetRootName, ".staging")
 	output, err := os.CreateTemp(stageDir, "structure-window-*.mp4")
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err

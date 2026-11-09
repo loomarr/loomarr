@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 )
 
-// Locations of the retained evidence tree below a clip folder. They mirror the filler root's
-// MediaAssetRootName and its evidence directory; the root's resolveSplitSource test builds a real
-// evidence derivative under the root's names and requires it to validate here.
+// Locations of the retained media-asset tree below a clip folder. The evidence derivatives a
+// split proposal is bound to live under MediaAssetRootName/MediaEvidenceDirName; the filler root
+// builds and resolves them under these same names.
 const (
-	mediaAssetRootName   = ".loomarr-media"
-	mediaEvidenceDirName = "evidence"
+	MediaAssetRootName   = ".loomarr-media"
+	MediaEvidenceDirName = "evidence"
 )
 
 type SourceRole string
@@ -46,10 +46,10 @@ func (s SourceAsset) validate() error {
 	}
 	clean := filepath.Clean(filepath.FromSlash(s.Path))
 	if s.Role == SourceEvidence {
-		if !PathContains(filepath.Join(mediaAssetRootName, mediaEvidenceDirName), clean) {
+		if !PathContains(filepath.Join(MediaAssetRootName, MediaEvidenceDirName), clean) {
 			return errors.New("split evidence source is outside the evidence tree")
 		}
-	} else if PathContains(mediaAssetRootName, clean) {
+	} else if PathContains(MediaAssetRootName, clean) {
 		return errors.New("legacy split source is unexpectedly hidden")
 	}
 	return nil

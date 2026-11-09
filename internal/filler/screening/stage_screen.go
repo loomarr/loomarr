@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // SegmentScreeningStage is the rendered-child safety boundary between structure materialization
@@ -39,7 +40,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 	if s == nil || s.runtime == nil {
 		return segmentScreeningReview(clip, "complete rendered-child screening is not configured"), nil
 	}
-	if !clip.IsSegment() || !filler.IsContentHash(clip.Hash) || clip.Path == "" ||
+	if !clip.IsSegment() || !split.IsContentHash(clip.Hash) || clip.Path == "" ||
 		s.clipDir == "" || !filepath.IsAbs(s.clipDir) || filepath.Clean(s.clipDir) != s.clipDir {
 		return segmentScreeningReview(clip, "rendered-child identity is incomplete"), nil
 	}

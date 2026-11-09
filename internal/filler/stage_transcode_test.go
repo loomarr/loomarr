@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -43,7 +44,7 @@ func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *t
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
 		t.Fatalf("Run error = %v, want capacity refusal", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, MediaAssetRootName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(dir, split.MediaAssetRootName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("retained-media tree exists after refusal: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, transcodeStagingDir)); !errors.Is(err, os.ErrNotExist) {

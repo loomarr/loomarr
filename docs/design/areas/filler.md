@@ -34,7 +34,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 4 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`filler/screening`** · 2 importers · → `filler`, `filler/structure/assessment`, `media/tools`
+- **`filler/screening`** · 2 importers · → `filler`, `filler/split`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`filler/source`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
@@ -42,7 +42,7 @@ One area of the [package map](../package-map.md#start-here).
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`filler/source/youtube`** · 1 importer · → `filler`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`filler/split`** · 6 importers · → `filler/clips`, `filler/structure`, `media/tools`
+- **`filler/split`** · 7 importers · → `filler/clips`, `filler/structure`, `media/tools`
   The filler source-structure planner and the split model it plans over: the exact source asset, the proposed segments, the detector checkpoint, and the deterministic reduction of independent observations into one complete-timeline assessment.
 - **`filler/station`** · 5 importers · → `filler/location`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.

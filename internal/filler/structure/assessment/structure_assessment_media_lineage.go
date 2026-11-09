@@ -45,7 +45,7 @@ func structureAssessmentSourceIdentity(source split.SourceAsset) StructureAssess
 }
 
 func structureAssessmentMediaPath(clipDir, digest string) string {
-	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
+	return filepath.Join(clipDir, split.MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
 }
 
 func strictStructureAssessmentJSON(raw []byte, destination any) error {

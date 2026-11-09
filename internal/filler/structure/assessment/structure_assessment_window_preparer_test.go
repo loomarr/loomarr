@@ -39,7 +39,7 @@ func TestStructureAssessmentWindowPreparerRendersCompleteSetAndReusesVerifiedMed
 		window := plan.Windows[ordinal]
 		if prepared.Window != window || prepared.Media != first.Authority.Windows[ordinal] ||
 			prepared.Media.Media.ProfileSHA256 != cut.SoftwareProfile().SHA256 ||
-			!filler.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
+			!split.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
 			t.Fatalf("prepared window %d = %+v", ordinal, prepared)
 		}
 		want := cut.PartArguments(cut.SoftwareProfile(), calls.snapshots[ordinal], window.MediaStartMS, window.MediaEndMS-window.MediaStartMS, calls.outputs[ordinal])

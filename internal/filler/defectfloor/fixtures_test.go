@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -48,7 +49,7 @@ func preserveSourceMaster(clipDir, sourcePath, clipHash string) (filler.MediaAss
 	if err != nil {
 		return filler.MediaAssetIdentity{}, err
 	}
-	rel := path.Join(filler.MediaAssetRootName, "masters", digest[:2], digest[2:4], digest+strings.ToLower(filepath.Ext(sourcePath)))
+	rel := path.Join(split.MediaAssetRootName, "masters", digest[:2], digest[2:4], digest+strings.ToLower(filepath.Ext(sourcePath)))
 	full := filepath.Join(clipDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return filler.MediaAssetIdentity{}, err

@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -34,7 +35,7 @@ func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningSubject(ctx 
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningSubject(ctx context.Context, subjectSHA256 string) (filler.SegmentScreeningSubject, error) {
-	if r == nil || r.files == nil || !filler.IsContentHash(subjectSHA256) {
+	if r == nil || r.files == nil || !split.IsContentHash(subjectSHA256) {
 		return filler.SegmentScreeningSubject{}, fmt.Errorf("segment screening subject identity is invalid")
 	}
 	raw, err := r.files.ReadBlob(ctx, segmentScreeningSubjectKind, subjectSHA256, segmentScreeningSubjectMaxBytes)
