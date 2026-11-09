@@ -125,6 +125,11 @@ type Channel struct {
 // after, so a save records the same "no requester" rather than failing.
 const requesterValue = `(SELECT id FROM users WHERE id = ?)`
 
+// intentJobValue writes the job a channel came from, or NULL once that job is purged:
+// intent_ref is a foreign key cleared when its job goes (SET NULL, #2793), and a channel read
+// before the purge may be saved after.
+const intentJobValue = `(SELECT id FROM proposal_jobs WHERE id = ?)`
+
 // ChannelRequesters maps each channel made from a member's request to that person's name, read
 // from the channel's own `requested_by`. One query for every channel; a hand-made channel, or
 // one whose requester no longer exists, has no entry (#1663).
@@ -192,7 +197,8 @@ func (s *Store) GetChannelForJob(ctx context.Context, jobID string) (Channel, er
 func ChannelForJobIn(ctx context.Context, s *Store, q DB, jobID string) (Channel, error) {
 	ph := s.h.Rebind
 	var channelID string
-	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).Scan(&channelID)
+	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).
+		Scan((*storedb.OptionalID)(&channelID))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
 	}
@@ -288,7 +294,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
+	args := []any{storedb.OptionalID(ch.IntentRef), ch.FromRequest, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
@@ -306,10 +312,10 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		}
 		query :=
 			`INSERT INTO channels
-			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
+			   (id, intent_ref, from_request, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -331,7 +337,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	expected := ch.Revision
 	query :=
 		`UPDATE channels SET
-		   intent_ref=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
+		   intent_ref=` + intentJobValue + `, from_request=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
@@ -504,7 +510,7 @@ func (s *Store) ClaimDueChannels(ctx context.Context, now time.Time, lease time.
 // included, goes through it, so none can miss the lineup. The Postgres claim spells the rest with
 // its `c.` alias (postgres.go) and must stay in step.
 func Columns(lineup string) string {
-	return `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
+	return `id, intent_ref, from_request, intent_json, requested_by, name, number, grp, logo, strategy,
 		tunarr_id, status, shuffle_seed, ` + lineup + `, desired_json, policy_json, broadcast_codec,
 		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
 }
@@ -601,7 +607,7 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, (*storedb.OptionalID)(&ch.IntentRef), &ch.FromRequest, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

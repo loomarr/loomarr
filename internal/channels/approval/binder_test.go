@@ -62,12 +62,16 @@ func entry(n int, name string) schedule.LineupEntry {
 	return schedule.LineupEntry{Key: movieKey(n), Title: name}
 }
 
-// seedChannel writes an auto-curate channel bound to jobID with an existing lineup + policy.
+// seedChannel writes an auto-curate channel made from jobID, with an existing lineup + policy.
+// The job is written first: intent_ref is a foreign key to it (#2793).
 func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, pol schedule.ChannelPolicy) {
 	t.Helper()
+	if err := st.CreateJob(context.Background(), proposalstore.Job{ID: jobID, Kind: "suggest", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
 	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
-	ch.IntentRef = jobID
+	ch.IntentRef, ch.FromRequest = jobID, true
 	ch.Name = "Ch " + id
 	ch.Number = 5
 	ch.Strategy = schedule.Sequential

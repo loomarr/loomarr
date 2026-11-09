@@ -1144,6 +1144,9 @@ components:
             - 1980
           format: int64
           type: integer
+        fromRequest:
+          description: True when the channel was made from a member's request, which refine and auto-curate re-run; false for a hand-made channel
+          type: boolean
         group:
           examples:
             - Kids
@@ -1156,6 +1159,7 @@ components:
           description: True when this channel can be tuned by Loomarr's in-app player
           type: boolean
         intentRef:
+          description: The suggestion job this channel came from, while that job is kept; absent once it is purged and for a hand-made channel
           type: string
         lineup:
           description: The channel's titles, in order (the intent-level lineup, not the expanded slots)
@@ -1228,6 +1232,7 @@ components:
         - strategy
         - status
         - inAppPlayable
+        - fromRequest
         - programCount
         - pendingCount
         - breakCount

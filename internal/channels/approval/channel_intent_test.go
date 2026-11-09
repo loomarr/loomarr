@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -111,21 +112,34 @@ func TestPlan_JobNamingAChannelPatchesItWithoutMovingTheRequest(t *testing.T) {
 }
 
 // A job whose channel was removed is an error: approving it must not create a second channel.
+// The job goes with its channel (proposal_jobs.channel_id is ON DELETE CASCADE, #2793), so its
+// suggestion is left with no job, which approval refuses.
 func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	ctx := context.Background()
 	putAvailable(t, st, 1, "Exact")
+	seedChannel(t, st, "c-removed", "job-origin", []schedule.LineupEntry{entry(2, "Old")}, schedule.ChannelPolicy{})
 	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orphan", Kind: "recurate", Status: "done", ChannelID: "c-removed",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	p := proposalFor(t, "p-orphan", "job-orphan", "", proposals.Intent{Description: "90s action"})
+	removed, err := st.GetChannel(ctx, "c-removed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteChannel(ctx, removed.ID, removed.Revision); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := approval.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
-	if !errors.Is(err, channelstore.ErrJobChannelGone) {
-		t.Fatalf("plan for a removed channel = %v, want ErrJobChannelGone", err)
+	_, err = approval.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
+	if !errors.Is(err, accept.ErrProposalJobGone) {
+		t.Fatalf("plan for a removed channel = %v, want ErrProposalJobGone", err)
+	}
+	if chans, err := st.ListChannels(ctx); err != nil || len(chans) != 0 {
+		t.Errorf("channels after refusing = %d, %v; want none", len(chans), err)
 	}
 }
 
