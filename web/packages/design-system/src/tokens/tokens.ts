@@ -55,6 +55,16 @@ const semanticThemes = {
     accent: {
       suggest: "#DC5BAC",
     },
+    // The monogram ident's letters, one per hue (#3011): each clears 4.5:1 on its own 14% wash over
+    // the canvas, a raised card and the focus surface a selected guide row puts it on. Where the
+    // hue's text stop missed on focus, the letters take the nearest lighter step (maintainer,
+    // 2026-11-09): magenta #DC5BAC 3.6:1, red #E85A5F 3.5:1.
+    identLetter: {
+      tune: "#4CC9E8",
+      suggest: "#E37CBD",
+      signal: "#FFB020",
+      onair: "#ED7B7F",
+    },
     artwork: {
       placeholder: "#1B1E24",
       scrim: "rgba(11, 12, 14, 0.66)",
@@ -141,6 +151,14 @@ const semanticThemes = {
     // the suggest badge's 15% wash). Amber's light text stop is `action.primary` (#795000, 7.1:1).
     accent: {
       suggest: "#A8246F",
+    },
+    // As in dark, the nearest darker step where the hue's text stop missed 4.5:1 on the focus
+    // surface: magenta #A8246F 3.9:1, teal #08657A 4.3:1, red #A5272C 4.2:1.
+    identLetter: {
+      tune: "#086276",
+      suggest: "#8F1F5E",
+      signal: "#795000",
+      onair: "#9E252A",
     },
     artwork: {
       placeholder: "#E7EAF0",
