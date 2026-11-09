@@ -8,6 +8,8 @@ import {
   PlayerAudio,
   PlayerChrome,
   PlayerCover,
+  PlayerDetails,
+  PlayerDetailsPanel,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
@@ -26,6 +28,7 @@ import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { TunerOSD } from "../tuner-osd";
+import { usePlaybackDetails } from "../use-playback-details";
 import { useSwitchSound } from "../use-switch-sound";
 import { useTunePhase } from "../use-tune-phase";
 import type { WatchChannels } from "../use-watch-channels";
@@ -140,6 +143,9 @@ const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident:
   }, [hide, ident]);
   return null;
 };
+
+// Picture in picture is the browser's: offered only where it is.
+const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled === true;
 
 const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWatchProps) => {
   const drawer = channels?.drawer;
@@ -315,14 +321,26 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const last = previous ? { id: previous.id, number: String(previous.number) } : undefined;
   const goLast = last ? () => player.tune(last.id) : undefined;
 
+  // Playback details (§9.5): a panel at the upper left on a pointer, a sheet on a phone. I toggles it.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
-    hasInfo: info !== undefined,
     channels: drawer?.channels,
+    detailsAsSheet: touch,
+    onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
-    onLeave,
+    // Esc closes the top layer, then leaves: the details panel is a layer too.
+    onLeave: () => (detailsOpen ? setDetailsOpen(false) : onLeave()),
     onTune: player.tune,
     viewerPaused: player.liveTransport.state.mode === "paused",
   });
+
+  const detailRows = usePlaybackDetails(detailsOpen || sheet === "details", videoRef, {
+    lagSeconds: player.liveTransport.state.lagSeconds,
+    level: player.ladder.onAir,
+    sessionId: player.playbackSessionId,
+  });
+  const copyDetails = (text: string) => void navigator.clipboard?.writeText(text);
 
   // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
   // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
@@ -380,6 +398,25 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               : { detail: formatGuideTime(serverNowMs ?? Date.now()), onPress: chrome.goLive }
           }
           info={info ? { onPress: () => toggleSheet("info") } : undefined}
+          pictureInPicture={
+            pipSupported
+              ? {
+                  onPress: () => {
+                    closeSheet();
+                    void videoRef.current?.requestPictureInPicture().catch(() => undefined);
+                  },
+                }
+              : undefined
+          }
+          playbackDetails={{
+            onPress: () => {
+              if (touch) toggleSheet("details");
+              else {
+                closeSheet();
+                setDetailsOpen(true);
+              }
+            },
+          }}
           last={touch && last && goLast ? { number: last.number, onPress: goLast } : undefined}
           picture={
             qualityOptions
@@ -406,6 +443,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           }
         />,
       )
+    ) : sheet === "details" ? (
+      sheetOf("Playback details", <PlayerDetails density={density} onCopy={copyDetails} rows={detailRows} />)
     ) : sheet === "info" && info ? (
       sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
@@ -470,6 +509,16 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           live={live}
           onGoLive={chrome.goLive}
           readout={readout}
+          panel={
+            detailsOpen && !touch ? (
+              <PlayerDetailsPanel
+                density={density}
+                onClose={() => setDetailsOpen(false)}
+                onCopy={copyDetails}
+                rows={detailRows}
+              />
+            ) : undefined
+          }
           sheet={openSheetFor(chrome)}
           top={{
             audioOpen: sheet === "audio",

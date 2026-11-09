@@ -1,7 +1,11 @@
 /** One variant of a live channel's master playlist, as hls.js parsed it. */
 interface LiveLevel {
+  /** Declared bits per second. */
+  bitrate?: number;
   /** The variant's CODECS attribute, verbatim; absent when the master did not name it. */
   codecs?: string;
+  /** FRAME-RATE, frames per second. */
+  frameRate?: number;
   height?: number;
   /** VIDEO-RANGE: SDR or PQ. */
   videoRange?: string;
@@ -42,6 +46,8 @@ interface LiveRung {
  */
 interface LiveLadder {
   height?: number;
+  /** The level on air, as its master declared it: what Playback details reads (§9.5). */
+  onAir?: LiveLevel;
   rungs: readonly LiveRung[];
 }
 

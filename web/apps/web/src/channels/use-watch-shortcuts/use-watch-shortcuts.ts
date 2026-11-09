@@ -6,11 +6,12 @@ import { useNumberEntry } from "../use-number-entry";
 const INFO_PLAYING_MS = 8_000;
 
 // The one sheet the chrome can have open at a time (§9.1, layer 4).
-type WatchSheet = "audio" | "channels" | "info" | "more" | "picture";
+type WatchSheet = "audio" | "channels" | "details" | "info" | "more" | "picture";
 
 type WatchShortcutsOptions = {
-  // The airing programme has an Info sheet to show.
-  hasInfo: boolean;
+  // I toggles Playback details (§9.3): a sheet (a phone), or `onDetails` for the pointer's panel.
+  detailsAsSheet?: boolean;
+  onDetails?: () => void;
   // The channels drawer's list, which a typed number is looked up in; undefined without a drawer.
   channels?: DrawerChannel[];
   // Back to the channel before this one; omitted when there is none (L then does nothing).
@@ -23,11 +24,12 @@ type WatchShortcutsOptions = {
 };
 
 // The Watch player's one right-hand sheet (Audio, Picture, More, Info or Channels) and its keys
-// (§9.3): A opens Audio, I Info, G Channels, L goes to the last channel; digits open a number entry;
+// (§9.3): A opens Audio, I Playback details, G Channels, L goes to the last channel; digits open a number entry;
 // Enter tunes it at once; Escape closes the sheet, then leaves. Closing a sheet hands focus back to
 // what opened it (its button, or the frame for a key).
 const useWatchShortcuts = ({
-  hasInfo,
+  detailsAsSheet = false,
+  onDetails,
   channels,
   onLast,
   onLeave,
@@ -69,8 +71,9 @@ const useWatchShortcuts = ({
       toggleSheet("audio");
       return true;
     }
-    if ((key === "i" || key === "I") && hasInfo) {
-      toggleSheet("info");
+    if ((key === "i" || key === "I") && (detailsAsSheet || onDetails)) {
+      if (detailsAsSheet) toggleSheet("details");
+      else onDetails?.();
       return true;
     }
     if ((key === "l" || key === "L") && onLast) {

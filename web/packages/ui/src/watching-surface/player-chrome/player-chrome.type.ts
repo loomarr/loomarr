@@ -133,6 +133,8 @@ interface PlayerChromeProps {
    */
   layout?: "overlay" | "portrait";
   top: PlayerTopRowProps;
+  /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
+  panel?: ReactNode;
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
   /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */

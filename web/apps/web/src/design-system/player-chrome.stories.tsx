@@ -6,6 +6,8 @@ import {
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
+  PlayerDetails,
+  PlayerDetailsPanel,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
@@ -345,6 +347,56 @@ const PictureSheet: Story = {
   },
 };
 
+// Playback details (§9.5): mono values for what the player really knows, and Copy details.
+const detailRows = [
+  { label: "Resolution", value: "1920×1080 · 29.97 fps" },
+  { label: "Video", value: "avc1.640029,mp4a.40.2" },
+  { label: "HDR", value: "None (SDR)" },
+  { label: "Bitrate", value: "4.6 Mbps" },
+  { label: "Buffer ahead", value: "6.2 s" },
+  { label: "Dropped frames", value: "3 of 12,418" },
+  { label: "Behind live", value: "2.3 s" },
+  { label: "Server", value: "loomarr.lan" },
+  { label: "Session", value: "4f2a9c1d" },
+];
+
+// On a pointer it is a panel at the upper left, over the picture.
+const PlaybackDetails: Story = {
+  args: {
+    panel: <PlayerDetailsPanel density="pointer" onClose={fn()} onCopy={fn()} rows={detailRows} />,
+  },
+};
+
+// A native player has no level to read: only the rows that are true are left.
+const PlaybackDetailsBare: Story = {
+  args: {
+    panel: (
+      <PlayerDetailsPanel
+        density="pointer"
+        onClose={fn()}
+        rows={[
+          { label: "Behind live", value: "0.0 s" },
+          { label: "Server", value: "loomarr.lan" },
+        ]}
+      />
+    ),
+  },
+};
+
+// On a phone it is a sheet.
+const PlaybackDetailsSheet: Story = {
+  args: {
+    density: "touch",
+    keys: { ...keys, density: "touch", pointer: false },
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="Playback details">
+        <PlayerDetails density="touch" onCopy={fn()} rows={detailRows} />
+      </PlayerSheet>
+    ),
+    top: { ...top, density: "touch", pointer: false },
+  },
+};
+
 const MoreSheet: Story = {
   args: {
     keys: { ...keys, moreOpen: true },
@@ -356,6 +408,8 @@ const MoreSheet: Story = {
           formatTime={formatTime}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          pictureInPicture={{ onPress: fn() }}
+          playbackDetails={{ onPress: fn() }}
           {...moreData(live)}
         />
       </PlayerSheet>
@@ -552,6 +606,9 @@ export {
   NoSuchChannel,
   OffAir,
   PictureSheet,
+  PlaybackDetails,
+  PlaybackDetailsBare,
+  PlaybackDetailsSheet,
   Playing,
   Portrait,
   PortraitBehind,

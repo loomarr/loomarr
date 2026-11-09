@@ -549,7 +549,7 @@ describe("ChannelWatch — full-bleed route", () => {
 
     afterEach(() => vi.useRealTimers());
 
-    it("opens Info from ⓘ and from I, reading the programme and what is up next", async () => {
+    it("opens Info from More, reading the programme and what is up next", async () => {
       stubTracks();
       withProgramme();
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
@@ -563,8 +563,6 @@ describe("ChannelWatch — full-bleed route", () => {
 
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
-      await userEvent.keyboard("i");
-      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
     });
 
     it("has no Info while nothing is known to be airing", async () => {
@@ -628,6 +626,77 @@ describe("ChannelWatch — full-bleed route", () => {
       expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
       act(() => vi.advanceTimersByTime(5_500));
       expect(screen.queryByText("Coast 90s · 1990s · Portland, ME")).not.toBeInTheDocument();
+    });
+  });
+
+  // Playback details (§9.5): the one place technical terms are allowed, with only what the browser knows.
+  describe("Playback details", () => {
+    it("opens from More and from I as a panel, shows the real rows, and closes on Esc before it leaves", async () => {
+      stubTracks();
+      const onLeave = vi.fn();
+      render(
+        <ChannelWatch
+          channel={live}
+          isAdmin={false}
+          onLeave={onLeave}
+          player={{
+            ladder: {
+              height: 1080,
+              onAir: {
+                bitrate: 4_600_000,
+                codecs: "avc1.640029,mp4a.40.2",
+                frameRate: 29.97,
+                height: 1080,
+                videoRange: "SDR",
+              },
+              rungs: [],
+            },
+          }}
+        />,
+        { wrapper: makeWrapper() },
+      );
+      await userEvent.click(within(await openMore()).getByRole("button", { name: "Playback details" }));
+      const panel = screen.getByRole("dialog", { name: "Playback details" });
+      for (const text of [
+        "Bitrate",
+        "4.6 Mbps",
+        "avc1.640029,mp4a.40.2",
+        "None (SDR)",
+        "Behind live",
+        "Server",
+      ])
+        expect(within(panel).getByText(text)).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: "Playback details" })).not.toBeInTheDocument();
+      expect(onLeave).not.toHaveBeenCalled();
+      await userEvent.keyboard("i");
+      expect(screen.getByRole("dialog", { name: "Playback details" })).toBeInTheDocument();
+      await userEvent.click(
+        within(screen.getByRole("dialog", { name: "Playback details" })).getByRole("button", {
+          name: "Close Playback details",
+        }),
+      );
+      expect(screen.queryByRole("dialog", { name: "Playback details" })).not.toBeInTheDocument();
+    });
+
+    it("copies the rows as text", async () => {
+      stubTracks();
+      const user = userEvent.setup();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      await user.click(within(await openMore()).getByRole("button", { name: "Playback details" }));
+      await user.click(screen.getByRole("button", { name: "Copy details" }));
+      // user-event stands in for the clipboard; the rows are on it as text.
+      expect(await navigator.clipboard.readText()).toMatch(/Behind live: \d+\.\d s\nServer: /);
+    });
+
+    it("offers Picture in picture only where the browser has it", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      expect(
+        within(await openMore()).queryByRole("button", { name: "Picture in picture" }),
+      ).not.toBeInTheDocument();
     });
   });
 
