@@ -974,8 +974,8 @@ The titles in a collection, in order. A member whose title has left the library 
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `collection_id` | The collection (a library_collections id). | `TEXT` · key |
-| `inventory_item_id` | The title (a library_items id). | `TEXT` · key |
+| `collection_id` | The collection (a library_collections id). | `TEXT` · key · → `library_collections.id` |
+| `inventory_item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `position` | The title's place in the collection, from 1. | `INTEGER` |
 
 ### titles
