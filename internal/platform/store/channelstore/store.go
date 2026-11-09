@@ -146,12 +146,12 @@ func (s *Store) ChannelRequesters(ctx context.Context) (map[string]string, error
 }
 
 func (s *Store) GetChannel(ctx context.Context, id string) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select+` WHERE id = ?`), id)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE id = ?`), id)
 	return ScanChannel(row)
 }
 
 func (s *Store) GetChannelByNumber(ctx context.Context, number int) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select+` WHERE number = ?`), number)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE number = ?`), number)
 	return ScanChannel(row)
 }
 
@@ -168,7 +168,7 @@ func (s *Store) GetChannelByNumber(ctx context.Context, number int) (Channel, er
 // that has to be the CALLER's decision: a lookup that silently answers with an empty struct is one
 // a caller can forget to check, and the zero Channel has an empty ID that reads as valid.
 func (s *Store) GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error) {
-	row := s.h.QueryRowContext(ctx, s.h.Rebind(Select+` WHERE intent_ref = ?`), intentRef)
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(s.Select()+` WHERE intent_ref = ?`), intentRef)
 	return ScanChannel(row)
 }
 
@@ -181,23 +181,26 @@ func (s *Store) GetChannelByIntentRef(ctx context.Context, intentRef string) (Ch
 // names a channel which has since been removed returns ErrJobChannelGone instead, so a caller
 // cannot mistake it for a first approval and create a second channel.
 func (s *Store) GetChannelForJob(ctx context.Context, jobID string) (Channel, error) {
-	return ChannelForJobIn(ctx, s.h, s.h.Rebind, jobID)
+	return s.ChannelForJobIn(ctx, s.h, jobID)
 }
 
-func ChannelForJobIn(ctx context.Context, q DB, ph storedb.Placeholder, jobID string) (Channel, error) {
+// ChannelForJobIn is GetChannelForJob on q, which is a caller's transaction or the pool, so the
+// approval transaction and the job's Journey read see the same channel it does.
+func (s *Store) ChannelForJobIn(ctx context.Context, q DB, jobID string) (Channel, error) {
+	ph := s.h.Rebind
 	var channelID string
 	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).Scan(&channelID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
 	}
 	if channelID != "" {
-		ch, err := ScanChannel(q.QueryRowContext(ctx, ph(Select+` WHERE id = ?`), channelID))
+		ch, err := ScanChannel(q.QueryRowContext(ctx, ph(s.Select()+` WHERE id = ?`), channelID))
 		if errors.Is(err, storedb.ErrNotFound) {
 			return Channel{}, fmt.Errorf("%w: job %s names channel %s", ErrJobChannelGone, jobID, channelID)
 		}
 		return ch, err
 	}
-	return ScanChannel(q.QueryRowContext(ctx, ph(Select+` WHERE intent_ref = ?`), jobID))
+	return ScanChannel(q.QueryRowContext(ctx, ph(s.Select()+` WHERE intent_ref = ?`), jobID))
 }
 
 // ChannelHasUnfinishedJob reports whether one of the channel's refine or re-curation jobs is
@@ -220,35 +223,32 @@ func (s *Store) ChannelHasUnfinishedJob(ctx context.Context, channelID string) (
 	return n > 0, nil
 }
 
+// SaveChannel writes the channel row and its lineup rows in one transaction; a live channel's
+// job also reaches its Journey milestone in it.
 func (s *Store) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return Channel{}, fmt.Errorf("save channel %s: begin: %w", ch.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	saved, err := s.saveChannel(ctx, tx, ch)
+	if storedb.IsConstraintViolation(err) {
+		return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+	}
+	if err != nil {
+		return Channel{}, err
+	}
 	if (ch.Status == schedule.StatusLive || ch.Status == schedule.StatusDrifted) && ch.IntentRef != "" {
-		tx, err := s.h.Begin(ctx)
-		if err != nil {
-			return Channel{}, fmt.Errorf("save live channel %s: begin: %w", ch.ID, err)
-		}
-		defer func() { _ = tx.Rollback() }()
-		saved, err := s.saveChannel(ctx, tx, ch)
-		if storedb.IsConstraintViolation(err) {
-			return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)
-		}
-		if err != nil {
-			return Channel{}, err
-		}
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(
 			`UPDATE proposal_jobs SET reached_live=TRUE WHERE id=?`),
 			ch.IntentRef); err != nil {
 			return Channel{}, fmt.Errorf("save live channel %s Journey milestone: %w", ch.ID, err)
 		}
-		if err := tx.Commit(); err != nil {
-			return Channel{}, fmt.Errorf("save live channel %s: commit: %w", ch.ID, err)
-		}
-		return saved, nil
 	}
-	saved, err := s.saveChannel(ctx, s.h, ch)
-	if storedb.IsConstraintViolation(err) {
-		return Channel{}, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+	if err := tx.Commit(); err != nil {
+		return Channel{}, fmt.Errorf("save channel %s: commit: %w", ch.ID, err)
 	}
-	return saved, err
+	return saved, nil
 }
 
 type DB interface {
@@ -256,7 +256,8 @@ type DB interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-// SaveChannelIn writes ch on exec, which is a caller's transaction or the pool, with the same
+// SaveChannelIn writes ch on exec, which must be a caller's transaction (the lineup rows are written
+// beside the channel row), with the same
 // serialization and SQL as Store.SaveChannel. The proposal-approval transaction and the
 // library-reference rewrite use it so their atomic paths are not a subtly different channel adapter.
 // It is a function, not a method, so it does not widen the store's method set.
@@ -267,10 +268,6 @@ func SaveChannelIn(ctx context.Context, s *Store, exec DB, ch Channel) (Channel,
 // saveChannel is shared by ordinary channel writes and SaveChannelIn. Keeping the serialization and
 // SQL in one place prevents the atomic path from becoming a subtly different channel adapter.
 func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, error) {
-	lineupBlob, err := json.Marshal(orEmptyEntries(ch.Lineup))
-	if err != nil {
-		return Channel{}, fmt.Errorf("marshal lineup: %w", err)
-	}
 	desiredBlob, err := json.Marshal(orEmptySlots(ch.Desired))
 	if err != nil {
 		return Channel{}, fmt.Errorf("marshal desired: %w", err)
@@ -290,7 +287,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	}
 	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
-		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
+		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
 	invalidation := ""
 	if s.inv != nil {
@@ -307,9 +304,9 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		query :=
 			`INSERT INTO channels
 			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
-			    tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -323,7 +320,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		if err != nil {
 			return Channel{}, fmt.Errorf("insert channel %s: %w", ch.ID, err)
 		}
-		return ch, nil
+		return ch, s.writeLineup(ctx, exec, ch.ID, ch.Lineup)
 	}
 	if ch.Revision < 0 {
 		return Channel{}, fmt.Errorf("save channel %s: revision must not be negative", ch.ID)
@@ -332,7 +329,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	query :=
 		`UPDATE channels SET
 		   intent_ref=?, intent_json=?, requested_by=?, name=?, number=?, grp=?, logo=?, strategy=?,
-		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
+		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
 		 WHERE id=? AND revision=?
@@ -352,7 +349,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if err != nil {
 		return Channel{}, fmt.Errorf("save channel %s: %w", ch.ID, err)
 	}
-	return ch, nil
+	return ch, s.writeLineup(ctx, exec, ch.ID, ch.Lineup)
 }
 
 func channelRevisionMiss(ctx context.Context, q DB, ph storedb.Placeholder, id string, expected int64) error {
@@ -429,7 +426,7 @@ func (s *Store) SetChannelBroadcastCodec(ctx context.Context, id string, expecte
 }
 
 func (s *Store) ListChannels(ctx context.Context) ([]Channel, error) {
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(Select+` ORDER BY number`))
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(s.Select()+` ORDER BY number`))
 	if err != nil {
 		return nil, err
 	}
@@ -504,15 +501,70 @@ func (s *Store) ClaimDueChannels(ctx context.Context, now time.Time, lease time.
 	return ScanChannels(rows)
 }
 
-// channelSelect is the shared column list; claim SQL RETURNs the same columns in
-// this order so scanChannel serves both paths (mirrors scanTitle).
-// channelColumns is the column list scanChannel reads, in its order. The Postgres claim spells it
-// with its `c.` alias (postgres.go) and must stay in step.
-const Columns = `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
-		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+// Columns is the column list ScanChannel reads, in its order; lineup is the expression that
+// rebuilds the lineup (SQLiteLineup, PostgresLineup). Every channel read, the claims' RETURNING
+// included, goes through it, so none can miss the lineup. The Postgres claim spells the rest with
+// its `c.` alias (postgres.go) and must stay in step.
+func Columns(lineup string) string {
+	return `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
+		tunarr_id, status, shuffle_seed, ` + lineup + `, desired_json, policy_json, broadcast_codec,
 		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
+}
 
-const Select = `SELECT ` + Columns + ` FROM channels`
+// SQLiteLineup and PostgresLineup rebuild a channel's lineup, in order, as the JSON list
+// LineupEntry decodes from: each channel_lineup row's entry with its title key put back as Key
+// (#2793). table is how the statement names the channels row.
+func SQLiteLineup(table string) string {
+	return `(SELECT json_group_array(json_set(l.entry, '$.Key', l.title_key) ORDER BY l.position)
+		FROM channel_lineup l WHERE l.channel_id = ` + table + `.id)`
+}
+
+// PostgresLineup is SQLiteLineup for Postgres.
+func PostgresLineup(table string) string {
+	return `COALESCE((SELECT jsonb_agg(l.entry || jsonb_build_object('Key', l.title_key) ORDER BY l.position)
+		FROM channel_lineup l WHERE l.channel_id = ` + table + `.id), '[]'::jsonb)`
+}
+
+// Select selects every channel column, the lineup rebuilt for this store's engine.
+func (s *Store) Select() string {
+	// The lineup rebuild is a JSON aggregate whose function names differ between the engines.
+	lineup := storedb.ByDialect(s.h.Dialect(), SQLiteLineup("channels"), PostgresLineup("channels"))
+	return `SELECT ` + Columns(lineup) + ` FROM channels`
+}
+
+// writeLineup replaces a channel's lineup rows with lineup, in order. It runs on the transaction
+// that wrote the channel row, so a reader never sees a channel with half a lineup.
+func (s *Store) writeLineup(ctx context.Context, exec DB, channelID string, lineup []schedule.LineupEntry) error {
+	if _, err := exec.ExecContext(ctx, s.h.Rebind(`DELETE FROM channel_lineup WHERE channel_id = ?`), channelID); err != nil {
+		return fmt.Errorf("clear lineup %s: %w", channelID, err)
+	}
+	for i, e := range lineup {
+		entry, err := lineupEntryDocument(e)
+		if err != nil {
+			return fmt.Errorf("marshal lineup %s entry %d: %w", channelID, i, err)
+		}
+		if _, err := exec.ExecContext(ctx, s.h.Rebind(`INSERT INTO channel_lineup (channel_id, position, title_key, entry)
+			VALUES (?, ?, ?, ?)`), channelID, i, string(e.Key), entry); err != nil {
+			return fmt.Errorf("write lineup %s entry %d: %w", channelID, i, err)
+		}
+	}
+	return nil
+}
+
+// lineupEntryDocument is an entry's attributes without its title key, which is its row's column.
+func lineupEntryDocument(e schedule.LineupEntry) (string, error) {
+	blob, err := json.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(blob, &fields); err != nil {
+		return "", err
+	}
+	delete(fields, "Key")
+	blob, err = json.Marshal(fields)
+	return string(blob), err
+}
 
 func ScanChannel(sc storedb.Scannable) (Channel, error) {
 	var (
@@ -563,15 +615,8 @@ func ScanChannels(rows *sql.Rows) ([]Channel, error) {
 	return out, rows.Err()
 }
 
-// orEmptyEntries / orEmptySlots ensure a nil slice serializes to `[]` not `null`,
-// so the stored JSON round-trips to an empty (non-nil) slice.
-func orEmptyEntries(e []schedule.LineupEntry) []schedule.LineupEntry {
-	if e == nil {
-		return []schedule.LineupEntry{}
-	}
-	return e
-}
-
+// orEmptySlots ensures a nil slice serializes to `[]` not `null`, so the stored JSON round-trips
+// to an empty (non-nil) slice.
 func orEmptySlots(s []schedule.Slot) []schedule.Slot {
 	if s == nil {
 		return []schedule.Slot{}

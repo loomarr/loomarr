@@ -245,11 +245,14 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 			}
 		}
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(channelstore.Select+` ORDER BY number`))
+	rows, err := tx.QueryContext(ctx, s.ph(s.Select()+` ORDER BY number`))
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
 	}
 	channels, err := channelstore.ScanChannels(rows)
+	if err == nil {
+		err = rows.Err() // ScanChannels checks it too; naming it here keeps the invariant visible to rowserrcheck
+	}
 	_ = rows.Close()
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)

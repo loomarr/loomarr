@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -297,6 +298,54 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 // ⚠ **This is a regression test for a real leak.** A deleted channel's ref once survived it, and a
 // ref is precisely what tells the GC an image is still in use (§22), so the icon was never orphaned
 // and never collected — bytes on disk owned by a channel that no longer exists, forever.
+// A lineup is rows in channel_lineup (#2793): it reads back in order, every field intact; a
+// shorter lineup leaves no stale rows behind; and the rows go with their channel.
+func testChannelLineupRows(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	ch := sampleChannel("ch-lineup", 41, time.Time{})
+	ch.Lineup = []schedule.LineupEntry{
+		{Key: "series:tmdb:90000013", Title: "C", SeasonMin: 1, SeasonMax: 4, Genres: []string{"Comedy"}, Year: 1991,
+			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}, BoxSetIDs: []string{"bs-1"}, BoxSetsResolved: true},
+		{Key: "movie:tmdb:90000011", Title: "A", DurationMs: 3600000, CollectionID: -1, Fit: 0.75},
+		{Key: "movie:tmdb:90000012", Title: "B", AddedAt: time.Unix(1_700_000_000, 0).UTC()},
+	}
+	saved := mustSaveChannel(t, s, ch)
+	got, err := s.GetChannel(ctx, saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Lineup, ch.Lineup) {
+		t.Fatalf("lineup read back as\n%+v\nwant\n%+v", got.Lineup, ch.Lineup)
+	}
+
+	got.Lineup = got.Lineup[1:2]
+	saved = mustSaveChannel(t, s, got)
+	if again, err := s.GetChannel(ctx, saved.ID); err != nil || len(again.Lineup) != 1 || again.Lineup[0].Key != "movie:tmdb:90000011" {
+		t.Fatalf("after shortening, lineup = %+v (err %v); want just movie:tmdb:90000011", again.Lineup, err)
+	}
+
+	saved.Lineup = nil
+	saved = mustSaveChannel(t, s, saved)
+	if again, err := s.GetChannel(ctx, saved.ID); err != nil || again.Lineup == nil || len(again.Lineup) != 0 {
+		t.Fatalf("an emptied lineup read back as %#v (err %v); want an empty, non-nil list", again.Lineup, err)
+	}
+
+	saved.Lineup = ch.Lineup
+	saved = mustSaveChannel(t, s, saved)
+	if err := s.DeleteChannel(ctx, saved.ID, saved.Revision); err != nil {
+		t.Fatal(err)
+	}
+	sqlSt, ok := s.(*sqlStore)
+	if !ok {
+		return
+	}
+	var left int
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT count(*) FROM channel_lineup`).Scan(&left); err != nil || left != 0 {
+		t.Errorf("%d lineup rows outlived their channel (err %v)", left, err)
+	}
+}
+
 func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
