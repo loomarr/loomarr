@@ -21,14 +21,10 @@ type EventSource interface {
 // --- Frame payloads (§7 /v1/events, §8) ---
 //
 // ⚠ **These are the ONE definition of each frame's shape, and that is the point of typing
-// them.** They used to be `map[string]string` literals built at ten publish sites, mirrored
-// by hand into TypeScript interfaces — a shape defined twice, in two languages, with nothing
-// binding them. That mirror had already drifted: `LlmPullEvent.percent` was missing on the
-// frontend while the backend had been sending it all along (so the UI recomputed a worse
-// version and showed nothing during "starting"), and `ChannelEvent` declared `id` while the
-// backend sends `channelId` — invisible because an index signature swallowed it.
-//
-// Now they generate into api/openapi.yaml through sse.Register and the frontend imports them.
+// them.** A frame defined as an untyped map at each publish site and mirrored by hand into
+// TypeScript is a shape defined twice, in two languages, with nothing binding them, and the
+// two drift unseen. These types generate into api/openapi.yaml through sse.Register and the
+// frontend imports them.
 //
 // ⚠ **huma derives the SSE event NAME from the Go TYPE of the payload** — sse.Message has no
 // Event field. So each frame needs its own named type, every type must appear in eventTypeMap,
@@ -48,10 +44,7 @@ type TitleEvent struct {
 type SuggestionEvent struct {
 	JobID string `json:"jobId"`
 	Phase string `json:"phase" enum:"searching,reasoning,scoring,done,failed"`
-	// ⚠ A real int now. It was stringified only because the payload was a flat
-	// map[string]string — the frontend type carried a comment warning that declaring it a
-	// number "would typecheck and then compare wrong at runtime". Typing the frame removes
-	// the hazard rather than documenting it.
+	// Round is a number on the wire, typed once here so no client has to guess its type.
 	//
 	// Phases repeat: the model thinks, searches, then thinks again about what came back. The
 	// round distinguishes "still working, third pass" from "stuck", which is why a long run
@@ -61,9 +54,7 @@ type SuggestionEvent struct {
 
 // ChannelEvent fires after a reconcile so the Channels pages update live (§9).
 //
-// ⚠ The field is `channelId`. The hand-written frontend mirror called it `id` and therefore
-// read undefined forever; it only went unnoticed because the handler invalidates by prefix
-// without reading the payload.
+// The field is `channelId`, not `id`; clients read it by that name from the generated type.
 type ChannelEvent struct {
 	ChannelID string `json:"channelId" example:"ch_abc123"`
 	Status    string `json:"status"`
@@ -110,10 +101,8 @@ type FillerIngestEvent struct {
 // file, so the POST returns a job id and the terminal frame hands the review UI its proposal id.
 type FillerSplitEvent struct {
 	JobID string `json:"jobId"`
-	// ClipHash is the compilation's IDENTITY (§10 V38c). ⚠ This was `ClipPath` while every caller
-	// already passed a hash into it — only the field and the wire key said "path". That is the same
-	// naming drift that broke split confirm outright: the persisted proposal stored a path in a
-	// field the hash-keyed lookup needed (§10 V51a).
+	// ClipHash is the compilation's IDENTITY (§10 V38c) — a content hash, never a path. The
+	// hash-keyed proposal lookup needs exactly this value (§10 V51a).
 	ClipHash   string `json:"clipHash"`
 	Status     string `json:"status" enum:"running,success,error"`
 	ProposalID string `json:"proposalId,omitempty"`
