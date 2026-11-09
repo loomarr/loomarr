@@ -85,6 +85,27 @@ describe("ServicesPanel", () => {
     expect(screen.getByText("not configured")).toBeInTheDocument();
   });
 
+  // One vocabulary with Settings: the shared status words, not lower-case pass/fail.
+  it("says OK, Needs attention or Not set up in words", () => {
+    render(
+      <ServicesPanel
+        view={{
+          loomarr,
+          rows: [
+            { name: "requester", ok: false, hint: "connection refused" },
+            { name: "filler", ok: false },
+          ],
+        }}
+        onFix={() => {}}
+      />,
+    );
+    expect(screen.getByText("OK")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText("Not set up")).toBeInTheDocument();
+    expect(screen.queryByText("pass")).not.toBeInTheDocument();
+    expect(screen.queryByText("fail")).not.toBeInTheDocument();
+  });
+
   // #2734: TMDB has no target by design, so a passing TMDB row read "not configured · pass"
   // while Connections showed it working. A passing row is never called unconfigured.
   it("never calls a passing row without a target unconfigured", () => {

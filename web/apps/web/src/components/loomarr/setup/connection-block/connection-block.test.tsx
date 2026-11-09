@@ -147,12 +147,12 @@ describe("ConnectionBlock", () => {
   it.each([
     ["not tested yet", {}],
     ["OK", { verdict: { ok: true } }],
-    ["needs attention", { verdict: { ok: false } }],
+    ["Needs attention", { verdict: { ok: false } }],
     // #2781: an optional service nobody set up is neutral, not failing…
     ["Not set up", { optional: true, verdict: { ok: false, notSetUp: true } }],
     // …but a required one is still red, and a set-up optional failure still needs attention.
-    ["needs attention", { verdict: { ok: false, notSetUp: true } }],
-    ["needs attention", { optional: true, verdict: { ok: false } }],
+    ["Needs attention", { verdict: { ok: false, notSetUp: true } }],
+    ["Needs attention", { optional: true, verdict: { ok: false } }],
     // testing wins over the standing verdict — a probe in flight is the newer truth.
     ["testing…", { verdict: { ok: true }, testing: true }],
   ])("summarises the connection as %s in the header", async (expected, props) => {
@@ -179,7 +179,7 @@ describe("ConnectionBlock", () => {
       </ConnectionBlock>,
     );
 
-    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent("needs attention");
+    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent("Needs attention");
     expect(screen.getByRole("status")).toHaveTextContent(/connection refused/i);
   });
 });

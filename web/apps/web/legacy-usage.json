@@ -124,7 +124,7 @@
       "tailwindClasses": 40
     },
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "tailwindClasses": 47
+      "tailwindClasses": 36
     },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
@@ -317,7 +317,7 @@
       "tailwindClasses": 5
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 82
+      "tailwindClasses": 77
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
       "tailwindClasses": 112

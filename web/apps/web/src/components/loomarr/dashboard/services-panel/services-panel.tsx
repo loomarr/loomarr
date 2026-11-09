@@ -1,4 +1,4 @@
-import { Action, ActivityIndicator } from "@loomarr/design-system";
+import { Action, ActivityIndicator, StatusWord } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
@@ -59,9 +59,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
             key={row.name}
             meta={
               <>
-                <span className={cn("shrink-0 font-mono text-xs", row.ok ? "text-lock" : "text-onair")}>
-                  {row.ok ? "pass" : "fail"}
-                </span>
+                <StatusWord kind={row.ok ? "ok" : !row.target && !row.hint ? "notSetUp" : "attention"} />
                 {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
                   settings live. Offering it on a healthy row would train the eye past it. */}
                 {!row.ok && row.settingsGroup ? (
@@ -86,11 +84,6 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
             }
           >
             <div className="flex items-center gap-3">
-              <span
-                role="img"
-                aria-label={row.ok ? "OK" : "Not responding"}
-                className={cn("size-1.5 shrink-0 rounded-full", row.ok ? "bg-lock" : "bg-onair")}
-              />
               <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
               <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
@@ -101,7 +94,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}
               {!row.ok && row.hint ? (
-                <p className="text-muted-foreground mt-1 basis-full pl-7.5 text-xs">{row.hint}</p>
+                <p className="text-muted-foreground mt-1 basis-full text-xs">{row.hint}</p>
               ) : null}
             </div>
           </PanelRow>
