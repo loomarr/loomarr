@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,8 @@ func (m *pipeMemStore) GetClip(_ context.Context, id string) (cliplibrary.StoreC
 	return c, ok, nil
 }
 
+// ListPipelineWork orders like the real store, by next_run then clip_hash, before it applies the
+// limit: a limit over map order would hand the engine a different clip each pass.
 func (m *pipeMemStore) ListPipelineWork(_ context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error) {
 	var out []pipelinestate.ClipPipeline
 	for _, r := range m.rows {
@@ -108,11 +111,46 @@ func (m *pipeMemStore) ListPipelineWork(_ context.Context, now time.Time, limit 
 			continue
 		}
 		out = append(out, r)
-		if limit > 0 && len(out) >= limit {
-			break
+	}
+	slices.SortFunc(out, func(a, b pipelinestate.ClipPipeline) int {
+		if c := a.NextRun.Compare(b.NextRun); c != 0 {
+			return c
 		}
+		return strings.Compare(a.ClipHash, b.ClipHash)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
+}
+
+// The double hands out work in the real store's order, so a pass with a limit works the oldest due
+// clips and never the same arbitrary subset: tie-broken by hash, due rows only.
+func TestPipeMemStore_ListPipelineWorkOrdersByNextRunThenHash(t *testing.T) {
+	st := newPipeMemStore()
+	base := time.Unix(1_800_000_000, 0).UTC()
+	for i, hash := range []string{"h", "g", "f", "e", "d", "c", "b", "a"} {
+		st.rows[hash] = pipelinestate.ClipPipeline{
+			ClipHash: hash, Disposition: pipelinestate.DispositionRunning,
+			NextRun: base.Add(time.Duration(i/2) * time.Minute), // pairs share a next_run
+		}
+	}
+	st.rows["later"] = pipelinestate.ClipPipeline{
+		ClipHash: "later", Disposition: pipelinestate.DispositionRunning, NextRun: base.Add(time.Hour),
+	}
+
+	got, err := st.ListPipelineWork(context.Background(), base.Add(10*time.Minute), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hashes []string
+	for _, r := range got {
+		hashes = append(hashes, r.ClipHash)
+	}
+	// Pairs by next_run (h,g) (f,e) (d,c) (b,a): within a pair the lower hash first.
+	if want := []string{"g", "h", "e", "f", "c"}; !slices.Equal(hashes, want) {
+		t.Fatalf("work = %v, want %v (next_run, then clip_hash, limit applied after the sort)", hashes, want)
+	}
 }
 
 func (m *pipeMemStore) PipelineOverview(_ context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
