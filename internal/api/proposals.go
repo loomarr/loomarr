@@ -23,15 +23,6 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// userIDFromHuma returns the authenticated user's id, or "" for a token
-// (break-glass) caller with no user record. Used to stamp created_by/decided_by.
-func userIDFromHuma(ctx context.Context) string {
-	if u, ok := userFrom(ctx); ok {
-		return u.ID
-	}
-	return ""
-}
-
 // registerProposals mounts /v1/proposals* (§7/§8). Submit is open to any
 // authenticated user (members request; §8 human-in-the-loop); list/get are
 // visible to all; approve/deny require admin (the approval gate — §11). Approve
@@ -149,7 +140,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err
 	}
-	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
+	createdBy := httpcore.UserIDFrom(ctx) // the member who requested it (§8 My proposals)
 	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)
 	if err != nil {
 		return nil, err
@@ -284,7 +275,7 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 		// on a token returns exactly the proposals that token submitted (usually none), which
 		// is the honest reading of "mine" for a caller that is not a person. What it can never
 		// do is fall through to everyone's, which is the failure mode worth designing against.
-		props, err = s.store.ListProposalsByCreator(ctx, userIDFromHuma(ctx))
+		props, err = s.store.ListProposalsByCreator(ctx, httpcore.UserIDFrom(ctx))
 		if err != nil {
 			return nil, err
 		}
@@ -436,7 +427,7 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if s.approver == nil {
 		return nil, errors.New("approve: approval coordinator is not configured")
 	}
-	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), userIDFromHuma(ctx))
+	result, err := s.approver.Approve(ctx, p, approvalEditFromDTO(in.Body), httpcore.UserIDFrom(ctx))
 	if errors.Is(err, accept.ErrNotSubmitted) {
 		return nil, httpcore.Conflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
@@ -588,7 +579,7 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 		return nil, err
 	}
 	p.Status = "denied"
-	p.ApprovedBy = userIDFromHuma(ctx)
+	p.ApprovedBy = httpcore.UserIDFrom(ctx)
 	p.DenyReason = in.Body.Reason
 	p.UpdatedAt = time.Now()
 	if err := s.store.CommitProposalDenial(ctx, p); err != nil {

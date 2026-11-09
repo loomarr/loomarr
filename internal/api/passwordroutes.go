@@ -72,7 +72,7 @@ func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*
 	if s.passwords == nil {
 		return nil, httpcore.NotImplemented("Not available", "Local account management isn't configured on this install.")
 	}
-	uid := userIDFromHuma(ctx)
+	uid := httpcore.UserIDFrom(ctx)
 	if uid == "" {
 		return nil, httpcore.Unauthorized("Sign in required", "Sign in to change your password.")
 	}

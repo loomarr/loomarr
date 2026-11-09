@@ -138,30 +138,3 @@ func roleOf(u identitystore.User) httpcore.Role {
 	}
 	return httpcore.RoleMember
 }
-
-// userCtxKey threads the authenticated store.User for handlers that need
-// identity (e.g. /v1/auth/me). It is stored by the middleware via huma.WithValue.
-type userCtxKey struct{}
-
-func userFrom(ctx context.Context) (identitystore.User, bool) {
-	u, ok := ctx.Value(userCtxKey{}).(identitystore.User)
-	return u, ok
-}
-
-// deviceCtxKey threads the safe token-hash identity of an authenticated paired device. It is set
-// only by the authorizer that validated the bearer credential; handlers never re-parse credentials.
-type deviceCtxKey struct{}
-
-func deviceIDFrom(ctx context.Context) (string, bool) {
-	id, ok := ctx.Value(deviceCtxKey{}).(string)
-	return id, ok && id != ""
-}
-
-// reqCtxKey threads the raw *http.Request so handlers can read the client IP and
-// set cookies (login/logout).
-type reqCtxKey struct{}
-
-func requestFrom(ctx context.Context) *http.Request {
-	r, _ := ctx.Value(reqCtxKey{}).(*http.Request)
-	return r
-}

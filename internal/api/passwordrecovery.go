@@ -49,7 +49,7 @@ func (s *Server) requestPasswordRecovery(
 	ctx context.Context,
 	in *requestPasswordRecoveryInput,
 ) (*requestPasswordRecoveryOutput, error) {
-	rateKey := s.clientIP(requestFrom(ctx)) + "|" + strings.ToLower(strings.TrimSpace(in.Body.Username))
+	rateKey := s.origin.ClientIP(httpcore.RequestFrom(ctx)) + "|" + strings.ToLower(strings.TrimSpace(in.Body.Username))
 	if err := s.passwordRecovery.Request(ctx, in.Body.Username, rateKey); err != nil {
 		if errors.Is(err, auth.ErrRateLimited) {
 			return nil, httpcore.TooManyRequests("Too many requests", "Wait a moment before requesting another password reset.")
@@ -77,7 +77,7 @@ func (s *Server) previewPasswordRecovery(
 	ctx context.Context,
 	in *passwordRecoveryBearerInput,
 ) (*previewPasswordRecoveryOutput, error) {
-	value, err := s.passwordRecovery.Preview(ctx, in.Body.Grant, s.clientIP(requestFrom(ctx)))
+	value, err := s.passwordRecovery.Preview(ctx, in.Body.Grant, s.origin.ClientIP(httpcore.RequestFrom(ctx)))
 	if err != nil {
 		return nil, passwordRecoveryError(err)
 	}
@@ -98,7 +98,7 @@ func (s *Server) redeemPasswordRecovery(
 	in *redeemPasswordRecoveryInput,
 ) (*struct{}, error) {
 	if err := s.passwordRecovery.Redeem(
-		ctx, in.Body.Grant, in.Body.Password, s.clientIP(requestFrom(ctx)),
+		ctx, in.Body.Grant, in.Body.Password, s.origin.ClientIP(httpcore.RequestFrom(ctx)),
 	); err != nil {
 		return nil, passwordRecoveryError(err)
 	}

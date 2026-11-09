@@ -88,7 +88,7 @@ func (s *Server) householdViewing(ctx context.Context, _ *struct{}) (*householdV
 	if s.viewing != nil {
 		watches = s.viewing.Watching(s.clock())
 	}
-	me, hasMe := userFrom(ctx)
+	me, hasMe := httpcore.UserFrom(ctx)
 	admin := httpcore.RoleFrom(ctx) == httpcore.RoleAdmin
 	out.Body.Scope = viewingScopeSelf
 	if admin {

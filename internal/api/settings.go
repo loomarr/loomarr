@@ -321,7 +321,7 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 // API_TOKEN break-glass path has no user → empty (stored NULL), same as a system
 // write.
 func auditActor(ctx context.Context) string {
-	if u, ok := userFrom(ctx); ok {
+	if u, ok := httpcore.UserFrom(ctx); ok {
 		return u.ID
 	}
 	return ""
