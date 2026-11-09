@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -87,13 +88,13 @@ func moveIfPresent(src, dst string) error {
 	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
 }
 
-func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
-	return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
+func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags asset.SidecarTags) (asset.Identity, error) {
+	return asset.PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
 }
 
 // SidecarFetchedMarkFor is the fetched mark for a source with no acquisition run.
 func SidecarFetchedMarkFor(sourceID string) map[string]any {
-	return SidecarFetchedMarkForAcquisition(sourceID, "")
+	return asset.SidecarFetchedMarkForAcquisition(sourceID, "")
 }
 
 func structureDecisionSHA256ForInterval(proposal SplitProposal, segment split.Segment) string {

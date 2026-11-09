@@ -21,7 +21,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(context.Background(), root, source, sourceHash, SidecarTags{})
+	master, err := preserveSourceMaster(context.Background(), root, source, sourceHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(playable, SidecarTags{MediaAssets: &MediaAssetManifest{
-		Version: mediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	if err := asset.WriteSidecarTags(playable, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master, Evidence: &evidence,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}

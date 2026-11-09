@@ -1,4 +1,4 @@
-package filler
+package asset
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ func TestSidecarRejectsMalformedSegmentScreeningReference(t *testing.T) {
 		`{"loomarr":{"segmentScreening":{}}}`,
 		`{"loomarr":{"segmentScreening":{"schemaVersion":1,"subjectSha256":"bad","evidenceSha256":"bad"}}}`,
 	} {
-		if _, state, _ := decodeSidecarTags([]byte(raw)); state != SidecarInvalid {
+		if _, state, _ := DecodeSidecarTags([]byte(raw)); state != SidecarInvalid {
 			t.Fatalf("malformed reference state=%v, want invalid: %s", state, raw)
 		}
 	}
@@ -23,7 +23,7 @@ func TestSidecarRequiresStructureDecisionAndRoleTogether(t *testing.T) {
 		`{"loomarr":{"conditioningLineage":{` + lineage + `"structureDecisionSha256":"` + strings.Repeat("3", 64) + `"}}}`,
 		`{"loomarr":{"conditioningLineage":{` + lineage + `"structureRole":"commercial"}}}`,
 	} {
-		if _, state, _ := decodeSidecarTags([]byte(raw)); state != SidecarInvalid {
+		if _, state, _ := DecodeSidecarTags([]byte(raw)); state != SidecarInvalid {
 			t.Fatalf("unpaired structure authority state=%v, want invalid: %s", state, raw)
 		}
 	}

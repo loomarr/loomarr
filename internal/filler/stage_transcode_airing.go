@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The library re-encode (#2121, decisions 8, 9 and 11): a clip already on air is re-encoded from
@@ -59,7 +61,7 @@ func (s *TranscodeStage) NeedsReencode(c StoreClip) bool {
 	if profile.Family == "" {
 		return false
 	}
-	tags, ok := ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path)))
 	return ok && tags.MediaAssets != nil && tags.MediaAssets.Playback != nil && tags.Mezzanine != profile.ID()
 }
 
@@ -71,7 +73,7 @@ func (s *TranscodeStage) ReplaceAiring(ctx context.Context, c StoreClip) (StoreC
 		return StoreClip{}, fmt.Errorf("re-encode %s: not an airing clip with an original to encode from", c.Path)
 	}
 	swap := &airingSwap{store: s.airingStore, check: s.airingCheck}
-	if tags, ok := ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path))); ok {
+	if tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path))); ok {
 		swap.oldEvidence = derivativePath(tags.MediaAssets.Evidence)
 	}
 	res, err := s.run(ctx, c, swap)
@@ -121,7 +123,7 @@ func (w *airingSwap) admit(ctx context.Context, c StoreClip, staged, newHash str
 func (w *airingSwap) commit(ctx context.Context, oldHash string, c StoreClip, published string) error {
 	if err := w.store.ReplaceAiringClip(ctx, oldHash, c, w.record); err != nil {
 		_ = os.Remove(published)
-		_ = os.Remove(sidecarPathFor(published))
+		_ = os.Remove(tools.SidecarPathFor(published))
 		return err
 	}
 	w.committed = true
@@ -137,7 +139,7 @@ func (w *airingSwap) discardUncommitted(clipDir, evidence string) {
 
 // removeOldEvidence removes the airing clip's own evidence copy once it switched. Evidence is
 // encoded from one clip's master, so no other clip names it; the master itself always stays.
-func (w *airingSwap) removeOldEvidence(clipDir string, assets MediaAssetManifest) {
+func (w *airingSwap) removeOldEvidence(clipDir string, assets asset.Manifest) {
 	if w.oldEvidence == "" || w.oldEvidence == derivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
 		return
 	}

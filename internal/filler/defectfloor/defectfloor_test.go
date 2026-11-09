@@ -212,7 +212,7 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	blocky := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlockMean: 90}
 
-	master := func(name string) filler.MediaAssetIdentity {
+	master := func(name string) asset.Identity {
 		src := filepath.Join(dir, name)
 		if err := os.WriteFile(src, []byte(name), 0o644); err != nil {
 			t.Fatal(err)
@@ -227,9 +227,9 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 		}
 		return m
 	}
-	clip := func(body string, m filler.MediaAssetIdentity) DefectClip {
+	clip := func(body string, m asset.Identity) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
-		if err := filler.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), filler.SidecarTags{MediaAssets: &filler.MediaAssetManifest{
+		if err := asset.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), asset.SidecarTags{MediaAssets: &asset.Manifest{
 			Version: mediaAssetManifestVersion, SourceMaster: m,
 		}}, false); err != nil {
 			t.Fatal(err)
@@ -242,14 +242,14 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	failing := clip("blocky copy", own)
 	sibling := clip("blocky cut", shared) // also fails, but shares its master with a clean clip
 	clean := clip("clean copy", shared)
-	unfingerprintable := clip("blocky, no picture to fingerprint", filler.MediaAssetIdentity{})
+	unfingerprintable := clip("blocky, no picture to fingerprint", asset.Identity{})
 	// Two failing cuts of one master, retired in one pass: the master goes with the second.
 	twinA, twinB := clip("blocky twin", twins), clip("blocky twin, other cut", twins)
 	// A failing cut whose master an operator-removed clip also names: that clip can be restored.
 	beside, removed := clip("blocky beside a removed cut", kept), clip("removed cut", kept)
 	removed.RemovedAt = t0
 	// Merged into a better copy by creative identity after the floor listed it.
-	merged := clip("blocky, merged away mid-pass", filler.MediaAssetIdentity{})
+	merged := clip("blocky, merged away mid-pass", asset.Identity{})
 	merged.CreatedAt = t0.Add(-time.Hour) // first in line, so the rest of the pass must still run
 
 	st := &defectMemStore{clips: []DefectClip{failing, sibling, clean, unfingerprintable, twinA, twinB, beside, removed, merged},
@@ -318,7 +318,7 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	clip := func(body string, held bool) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		m := manifest
-		if err := filler.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), filler.SidecarTags{MediaAssets: &m}, false); err != nil {
+		if err := asset.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
 			t.Fatal(err)
 		}
 		c := DefectClip{CreatedAt: t0}
@@ -346,14 +346,14 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	if res.Released != 1 {
 		t.Fatalf("pass = %+v, want the admitted clip's evidence released", res)
 	}
-	if tags, ok := filler.ReadSidecarTags(filepath.Join(dir, admitted.Path)); !ok || tags.MediaAssets == nil ||
+	if tags, ok := asset.ReadSidecarTags(filepath.Join(dir, admitted.Path)); !ok || tags.MediaAssets == nil ||
 		tags.MediaAssets.Evidence != nil || tags.MediaAssets.SourceMaster != manifest.SourceMaster || tags.MediaAssets.Playback == nil {
 		t.Fatalf("admitted sidecar = %+v (ok %v), want the master and playback kept and no evidence", tags.MediaAssets, ok)
 	}
-	if tags, _ := filler.ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+	if tags, _ := asset.ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 		t.Fatal("a held clip's evidence was released before admission")
 	}
-	if tags, _ := filler.ReadSidecarTags(filepath.Join(dir, rewound.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+	if tags, _ := asset.ReadSidecarTags(filepath.Join(dir, rewound.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 		t.Fatal("a clip held since the listing had its evidence released under its re-run")
 	}
 	if _, err := os.Stat(evidenceFile); err != nil {

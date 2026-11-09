@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -112,7 +113,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	var staged string
 	dir, stage, store, airing := airingFixture(t, passingCheck(&staged))
 	oldFull := filepath.Join(dir, filepath.FromSlash(airing.Path))
-	oldTags, _ := ReadSidecarTags(oldFull)
+	oldTags, _ := asset.ReadSidecarTags(oldFull)
 
 	got, err := stage.ReplaceAiring(context.Background(), airing)
 	if err != nil {
@@ -131,7 +132,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	if raw, err := os.ReadFile(newFull); err != nil || string(raw) != "nvenc derivative" {
 		t.Fatalf("new playback = %q, %v", raw, err)
 	}
-	tags, ok := ReadSidecarTags(newFull)
+	tags, ok := asset.ReadSidecarTags(newFull)
 	if !ok || tags.Mezzanine != tools.FileMezzanine(nvencHost).ID() || tags.MediaAssets == nil ||
 		tags.MediaAssets.SourceMaster.Path != oldTags.MediaAssets.SourceMaster.Path {
 		t.Fatalf("new sidecar = %+v", tags)
@@ -139,7 +140,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 	if _, err := os.Stat(oldFull); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the old playback file is still on disk: %v", err)
 	}
-	if _, err := os.Stat(sidecarPathFor(oldFull)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(tools.SidecarPathFor(oldFull)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the old sidecar is still on disk: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(oldTags.MediaAssets.Evidence.Asset.Path))); !errors.Is(err, os.ErrNotExist) {
@@ -171,7 +172,7 @@ func TestReplaceAiring_ARefusedReplacementLeavesTheClipAiring(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, stage, store, airing := airingFixture(t, tc.check)
 			oldFull := filepath.Join(dir, filepath.FromSlash(airing.Path))
-			before, _ := os.ReadFile(sidecarPathFor(oldFull))
+			before, _ := os.ReadFile(tools.SidecarPathFor(oldFull))
 
 			_, err := stage.ReplaceAiring(context.Background(), airing)
 			if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
@@ -183,7 +184,7 @@ func TestReplaceAiring_ARefusedReplacementLeavesTheClipAiring(t *testing.T) {
 			if raw, err := os.ReadFile(oldFull); err != nil || string(raw) != "software derivative" {
 				t.Fatalf("airing file = %q, %v", raw, err)
 			}
-			if after, _ := os.ReadFile(sidecarPathFor(oldFull)); !bytes.Equal(before, after) {
+			if after, _ := os.ReadFile(tools.SidecarPathFor(oldFull)); !bytes.Equal(before, after) {
 				t.Fatalf("airing sidecar changed:\n%s\n→\n%s", before, after)
 			}
 			if left := filesHolding(t, dir, "nvenc derivative"); len(left) != 0 {
@@ -235,16 +236,16 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 	}
 
 	full := filepath.Join(dir, filepath.FromSlash(airing.Path))
-	tags, _ := ReadSidecarTags(full)
+	tags, _ := asset.ReadSidecarTags(full)
 	tags.Mezzanine = tools.FileMezzanine(nvencHost).ID()
-	if err := WriteSidecarTags(full, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	if stage.NeedsReencode(airing) {
 		t.Error("a clip already under the current profile is due a re-encode")
 	}
 	tags.Mezzanine, tags.MediaAssets.Playback = tools.DefaultMezzanine().ID(), nil
-	if err := WriteSidecarTags(full, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	if stage.NeedsReencode(airing) {

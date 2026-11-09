@@ -25,6 +25,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -1200,7 +1201,7 @@ func (r *Resolver) airingFiller(
 			// The loudness measured at ingest rides the airing so the channel packager can apply a
 			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
 			var measured, truePeak *float64
-			if lufs, peak, ok := filler.PlaybackLoudness(full); ok {
+			if lufs, peak, ok := asset.PlaybackLoudness(full); ok {
 				measured, truePeak = &lufs, peak
 			}
 			return playout.Airing{

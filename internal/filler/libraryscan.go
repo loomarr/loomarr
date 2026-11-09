@@ -155,7 +155,7 @@ func (s *LibraryScanner) Scan(ctx context.Context, folder, watchDir string, cata
 				return nil
 			}
 		}
-		if err := copyFile(path, dst); err != nil {
+		if err := asset.CopyFile(path, dst); err != nil {
 			res.Unreadable++
 			return nil
 		}
@@ -182,7 +182,7 @@ func cataloguedClips(clipDir string, inferior map[string]bool) func(clipID, ext 
 	rekeyed := map[string]bool{}
 	if filed, err := collectMedia(clipDir); err == nil {
 		for _, path := range filed {
-			if tags, ok := ReadSidecarTags(path); ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.ClipHash != "" {
+			if tags, ok := asset.ReadSidecarTags(path); ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.ClipHash != "" {
 				rekeyed[tags.MediaAssets.SourceMaster.ClipHash] = true
 			}
 		}

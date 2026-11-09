@@ -505,8 +505,8 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	if !ok || !clip.Held || clip.Source != "youtube:classic" {
 		t.Fatalf("manifested clip = %+v, %v; want held and source-attributed", clip, ok)
 	}
-	tags, ok := filler.ReadSidecarTags(media)
-	if !ok || tags.AcquisitionID != "acq-1" || tags.SourceID != "youtube:classic" || !filler.SidecarFetchedByUs(media) {
+	tags, ok := asset.ReadSidecarTags(media)
+	if !ok || tags.AcquisitionID != "acq-1" || tags.SourceID != "youtube:classic" || !asset.SidecarFetchedByUs(media) {
 		t.Fatalf("repaired portable provenance = %+v, %v", tags, ok)
 	}
 	if authority.artifact.State != filler.ArtifactConsumed || authority.artifact.MediaPath != filepath.ToSlash(relative) {
@@ -693,9 +693,9 @@ func TestSync_CatalogRebuildRestoresConditioningParentFromSidecar(t *testing.T) 
 		t.Fatal(err)
 	}
 	const parentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{
 		OriginalName: "Reviewed child",
-		ConditioningLineage: &filler.ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 12_000, IntendedEndMs: 42_000,
 		},
 	}, false); err != nil {
@@ -743,7 +743,7 @@ func TestSync_EmptyCatalogRebuildMarksConditioningParentCompositeInEitherScanOrd
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}}, false); err != nil {
 				t.Fatal(err)
@@ -811,7 +811,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 				}
 			}
 			if tc.parentMode == "conditioned" {
-				if err := filler.WriteSidecarTags(parentFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+				if err := asset.WriteSidecarTags(parentFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 					ChildHash: parentHash, ParentHash: strings.Repeat("b", 64), IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 				}}, false); err != nil {
 					t.Fatal(err)
@@ -824,12 +824,12 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			const reviewedHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			before := syncConditioningMeasurement(true)
 			after := syncConditioningMeasurement(false)
-			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+			if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{
 				Mezzanine: tools.DefaultMezzanine().ID(),
-				ConditioningLineage: &filler.ConditioningLineage{
+				ConditioningLineage: &asset.ConditioningLineage{
 					ChildHash: reviewedHash, ParentHash: lineageParentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 				},
-				Conditioning: &filler.ConditioningEvidence{
+				Conditioning: &asset.ConditioningEvidence{
 					BeforeRewriteHash: reviewedHash, AfterRewriteHash: childHash,
 					BeforeRewrite: before, AfterRewrite: after,
 					DerivedParentEdgesAfterRewrite: before.Cuts[0],
@@ -901,7 +901,7 @@ func TestSync_MalformedConditioningLineageCannotBecomeAnAirableTopLevelClip(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ParentHash: "retained-parent", IntendedStartMs: 12_000, IntendedEndMs: 12_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -926,7 +926,7 @@ func TestSync_BlankConditioningLineageCannotBecomeAnAirableTopLevelClip(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 		ChildHash: childHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)
@@ -951,14 +951,14 @@ func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(childFull, asset.SidecarTags{
 		Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &filler.MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		ConditioningLineage: &filler.ConditioningLineage{
+		ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: "reviewed-source-hash", ParentHash: "retained-parent",
 			IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 		},
@@ -990,18 +990,18 @@ func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t
 			if err := os.WriteFile(media, []byte("clip bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			tags := filler.SidecarTags{Mezzanine: tools.DefaultMezzanine().ID()}
+			tags := asset.SidecarTags{Mezzanine: tools.DefaultMezzanine().ID()}
 			if tc.conditioned {
-				tags.Conditioning = &filler.ConditioningEvidence{}
+				tags.Conditioning = &asset.ConditioningEvidence{}
 			}
-			if err := filler.WriteSidecarTags(media, tags, false); err != nil {
+			if err := asset.WriteSidecarTags(media, tags, false); err != nil {
 				t.Fatal(err)
 			}
-			_, sidecarState := filler.ReadSidecarTagsState(media)
-			if tc.conditioned && sidecarState != filler.SidecarInvalid {
+			_, sidecarState := asset.ReadSidecarTagsState(media)
+			if tc.conditioned && sidecarState != asset.SidecarInvalid {
 				t.Fatalf("conditioning without lineage state = %v, want invalid", sidecarState)
 			}
-			if !tc.conditioned && sidecarState != filler.SidecarValid {
+			if !tc.conditioned && sidecarState != asset.SidecarValid {
 				t.Fatalf("ordinary top-level mezzanine state = %v, want valid", sidecarState)
 			}
 			id, err := asset.ClipID(media)
@@ -1025,17 +1025,17 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 		name      string
 		sidecar   string
 		wantHeld  bool
-		wantState filler.SidecarReadState
+		wantState asset.SidecarReadState
 	}{
-		{name: "corrupt JSON", sidecar: `{"loomarr":`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine omitted lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine null lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":null,"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine blank lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":{},"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: true, wantState: filler.SidecarValid},
+		{name: "corrupt JSON", sidecar: `{"loomarr":`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine omitted lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine null lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":null,"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine blank lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":{},"conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "conditioned mezzanine malformed lineage", sidecar: `{"loomarr":{"mezzanine":"h264-crf20-aac192","conditioningLineage":"not-lineage","conditioning":{"beforeRewriteHash":"before","afterRewriteHash":"after"}}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: asset.SidecarInvalid},
+		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: true, wantState: asset.SidecarValid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -1047,7 +1047,7 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 			if err := os.WriteFile(sidecar, []byte(tc.sidecar), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != tc.wantState {
+			if _, state := asset.ReadSidecarTagsState(media); state != tc.wantState {
 				t.Fatalf("sidecar state = %v, want %v", state, tc.wantState)
 			}
 			id, err := asset.ClipID(media)
@@ -1090,7 +1090,7 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 			if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+			if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 				t.Fatalf("sidecar state = %v, want invalid when %s is omitted", state, omitted)
 			}
 			id, err := asset.ClipID(media)
@@ -1114,12 +1114,12 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 		if err := os.WriteFile(media, []byte("conditioned bytes"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := filler.WriteSidecarTags(media, filler.SidecarTags{ConditioningLineage: &filler.ConditioningLineage{
+		if err := asset.WriteSidecarTags(media, asset.SidecarTags{ConditioningLineage: &asset.ConditioningLineage{
 			ChildHash: "reviewed-child", ParentHash: "retained-parent", IntendedStartMs: 0, IntendedEndMs: 30_000,
 		}}, false); err != nil {
 			t.Fatal(err)
 		}
-		if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+		if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarValid {
 			t.Fatalf("sidecar state = %v, want valid for explicit zero start", state)
 		}
 	})
@@ -1155,7 +1155,7 @@ func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *
 				if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+				if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
 				}
 			})
@@ -1181,7 +1181,7 @@ func TestReadSidecarTagsState_ConditioningLineageRequiresExactPrimitiveTypes(t *
 			if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarValid {
+			if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarValid {
 				t.Fatalf("sidecar state = %v, want structurally valid explicit zero", state)
 			}
 		})
@@ -1206,7 +1206,7 @@ func TestReadSidecarTagsState_ConditioningDecisionIdentityRequiresAString(t *tes
 	if err := os.WriteFile(sidecar, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+	if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 		t.Fatalf("sidecar state = %v, want invalid", state)
 	}
 }
@@ -1245,7 +1245,7 @@ func TestReadSidecarTagsState_ConditioningEvidenceHashesRequireExactStrings(t *t
 				if err := os.WriteFile(strings.TrimSuffix(media, filepath.Ext(media))+".info.json", raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				if _, state := filler.ReadSidecarTagsState(media); state != filler.SidecarInvalid {
+				if _, state := asset.ReadSidecarTagsState(media); state != asset.SidecarInvalid {
 					t.Fatalf("sidecar state = %v, want invalid for %s %s", state, field, mutation.name)
 				}
 			})
@@ -1370,7 +1370,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if id, err := asset.ClipID(newFull); err != nil || id != actual {
 		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
 	}
-	tags, ok := filler.ReadSidecarTags(newFull)
+	tags, ok := asset.ReadSidecarTags(newFull)
 	if !ok || tags.OriginalName != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
 	}
@@ -1430,7 +1430,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	if got := st.clips[actual].Name; got != "Untitled commercial" {
 		t.Errorf("name = %q, want neutral display name", got)
 	}
-	tags, ok := filler.ReadSidecarTags(full)
+	tags, ok := asset.ReadSidecarTags(full)
 	if !ok || tags.OriginalName != "Untitled commercial" {
 		t.Errorf("sidecar = %+v ok=%v, want durable neutral display name", tags, ok)
 	}
@@ -1441,7 +1441,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 // produced the name. A name a person or the source gave is never replaced.
 func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string, tags filler.SidecarTags) (string, string) {
+	write := func(name, body string, tags asset.SidecarTags) (string, string) {
 		t.Helper()
 		probe := filepath.Join(dir, name+".probe")
 		if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
@@ -1460,17 +1460,17 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := filler.WriteSidecarTags(full, tags, false); err != nil {
+		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 			t.Fatal(err)
 		}
 		return id, rel
 	}
 	const transcript = "true tales of the canyon patrol. troopers close in on a desperate gunman"
-	untitled, untitledRel := write("untitled", "untitled spot", filler.SidecarTags{OriginalName: "Untitled commercial"})
-	named, namedRel := write("named", "operator named spot", filler.SidecarTags{OriginalName: "Summer Sale Spot"})
+	untitled, untitledRel := write("untitled", "untitled spot", asset.SidecarTags{OriginalName: "Untitled commercial"})
+	named, namedRel := write("named", "operator named spot", asset.SidecarTags{OriginalName: "Summer Sale Spot"})
 	// #1988: an operator named this segment in split review. Its name reads like the placeholder,
 	// but its recorded provenance says a person chose it, so it is not Loomarr's to improve.
-	segment, segmentRel := write("segment", "operator named segment", filler.SidecarTags{
+	segment, segmentRel := write("segment", "operator named segment", asset.SidecarTags{
 		OriginalName: "Untitled commercial.mp4", DisplayName: "Untitled commercial",
 		NameProvenance: string(clips.NameFromCurated), SplitPublicationToken: "tok",
 	})
@@ -1499,7 +1499,7 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	if got := st.clips[segment]; got.Name != "Untitled commercial" || got.NameSource != clips.NameFromCurated {
 		t.Fatalf("operator-named segment = %q (%s), want its name kept as curated", got.Name, got.NameSource)
 	}
-	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
 	if !ok || tags.DisplayName != want || tags.NameSource != string(filler.NameFromTranscript) {
 		t.Fatalf("sidecar = %+v, want the derived name and its evidence recorded", tags)
 	}

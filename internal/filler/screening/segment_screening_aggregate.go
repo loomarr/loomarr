@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
@@ -73,8 +73,8 @@ type SegmentScreeningEvidence struct {
 	SHA256          string                   `json:"sha256"`
 }
 
-func NewSegmentScreeningEvidence(subject filler.SegmentScreeningSubject, results []SegmentScreeningResult, airworthiness AirworthinessDecision, assessedAt time.Time) (SegmentScreeningEvidence, error) {
-	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
+func NewSegmentScreeningEvidence(subject asset.SegmentScreeningSubject, results []SegmentScreeningResult, airworthiness AirworthinessDecision, assessedAt time.Time) (SegmentScreeningEvidence, error) {
+	if err := asset.ValidateSegmentScreeningSubject(subject); err != nil {
 		return SegmentScreeningEvidence{}, err
 	}
 	evidence := SegmentScreeningEvidence{
@@ -158,16 +158,16 @@ func SegmentScreeningEvidenceSHA256(evidence SegmentScreeningEvidence) string {
 }
 
 // NewSegmentScreeningReference builds the sidecar locator for an aggregate that binds subject.
-func NewSegmentScreeningReference(subject filler.SegmentScreeningSubject, evidence SegmentScreeningEvidence) (filler.SegmentScreeningReference, error) {
+func NewSegmentScreeningReference(subject asset.SegmentScreeningSubject, evidence SegmentScreeningEvidence) (asset.SegmentScreeningReference, error) {
 	if ValidateSegmentScreeningEvidence(evidence) != nil {
-		return filler.SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
+		return asset.SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
 	}
-	reference, err := filler.NewSegmentScreeningReference(subject, evidence.SHA256)
+	reference, err := asset.NewSegmentScreeningReference(subject, evidence.SHA256)
 	if err != nil {
-		return filler.SegmentScreeningReference{}, err
+		return asset.SegmentScreeningReference{}, err
 	}
 	if evidence.SubjectSHA256 != subject.SHA256 {
-		return filler.SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
+		return asset.SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
 	}
 	return reference, nil
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -85,7 +86,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// A catalog rebuild loses pipeline state but not sidecar evidence. Re-apply a prior content
 	// quality decision here so a near-total-black clip cannot become airable merely because the
 	// database was recreated; first-time clips have no report yet and continue to transcode.
-	if tags, ok := ReadSidecarTags(file); ok && tags.MediaQuality != nil {
+	if tags, ok := asset.ReadSidecarTags(file); ok && tags.MediaQuality != nil {
 		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != pipelinestate.VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
 			if v == pipelinestate.VerdictReview {

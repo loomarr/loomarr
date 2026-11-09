@@ -28,6 +28,19 @@ const (
 	News      Role = "news"
 )
 
+// Valid reports whether r is one of the closed set of clip roles, Unclassified included.
+func (r Role) Valid() bool {
+	switch r {
+	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial, Political, News:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidConcrete reports whether r is a valid role that names what the clip is, so not Unclassified.
+func (r Role) ValidConcrete() bool { return r != Unclassified && r.Valid() }
+
 // Placement says where a Ready clip may be scheduled. It is deliberately separate from Role:
 // selecting a source can authorize generic break-body use without claiming that unknown bytes are
 // a commercial.

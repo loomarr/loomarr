@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -161,7 +162,7 @@ func (p *Pipeline) evidenceReleased(clip StoreClip) bool {
 	if err != nil {
 		return false
 	}
-	tags, ok := ReadSidecarTags(full)
+	tags, ok := asset.ReadSidecarTags(full)
 	return ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.Path != "" && tags.MediaAssets.Evidence == nil
 }
 
@@ -287,9 +288,9 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 		// The `mezzanine` marker is the gate that would otherwise make the rung skip itself
 		// immediately.
 		full := filepath.Join(p.clipDir, filepath.FromSlash(clip.Path))
-		if tags, ok := ReadSidecarTags(full); ok {
+		if tags, ok := asset.ReadSidecarTags(full); ok {
 			tags.Mezzanine = ""
-			if err := WriteSidecarTags(full, tags, false); err != nil {
+			if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 				return fmt.Errorf("rewind %s: clearing the encode marker: %w", clip.Path, err)
 			}
 		}

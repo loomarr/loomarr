@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -499,7 +500,7 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 			StageQueuedAt: now,
 		}
 		if p.clipDir != "" && c.Path != "" {
-			if tags, ok := ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(c.Path))); ok {
+			if tags, ok := asset.ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(c.Path))); ok {
 				row.AcquisitionID = tags.AcquisitionID
 			}
 		}

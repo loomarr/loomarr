@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 func TestPlaybackLoudness_ReadsTheIngestMeasurementFromTheSidecar(t *testing.T) {
@@ -13,11 +15,11 @@ func TestPlaybackLoudness_ReadsTheIngestMeasurementFromTheSidecar(t *testing.T) 
 	if err := os.WriteFile(media, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(media, SidecarTags{MediaAssets: &manifest}, false); err != nil {
+	if err := asset.WriteSidecarTags(media, asset.SidecarTags{MediaAssets: &manifest}, false); err != nil {
 		t.Fatal(err)
 	}
 
-	got, peak, ok := PlaybackLoudness(media)
+	got, peak, ok := asset.PlaybackLoudness(media)
 	if !ok || got != -23.4 {
 		t.Fatalf("PlaybackLoudness = %v, %v; want -23.4, true", got, ok)
 	}
@@ -32,17 +34,17 @@ func TestPlaybackLoudness_ReadsTheIngestMeasurementFromTheSidecar(t *testing.T) 
 func TestPlaybackLoudness_UnmeasuredClipsReportNothing(t *testing.T) {
 	dir := t.TempDir()
 	bare := filepath.Join(dir, "bare.mp4")
-	if _, _, ok := PlaybackLoudness(bare); ok {
+	if _, _, ok := asset.PlaybackLoudness(bare); ok {
 		t.Fatal("a clip with no sidecar reported a measurement")
 	}
 
 	manifest := screeningSubjectManifest(t)
 	manifest.Playback.QC = fixtureDerivativeQC(30_000, manifest.Playback.Recipe.KeyframeSeconds, false, 0)
 	silent := filepath.Join(dir, "silent.mp4")
-	if err := WriteSidecarTags(silent, SidecarTags{MediaAssets: &manifest}, false); err != nil {
+	if err := asset.WriteSidecarTags(silent, asset.SidecarTags{MediaAssets: &manifest}, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := PlaybackLoudness(silent); ok {
+	if _, _, ok := asset.PlaybackLoudness(silent); ok {
 		t.Fatal("a clip with no audio measurement reported one")
 	}
 }

@@ -53,7 +53,7 @@ One area of the [package map](../package-map.md#start-here).
   Validates the repository's release publication policy.
 - **`platform/settings`** · 8 importers · → `library`, `platform/buildinfo`, `platform/config`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
-- **`platform/storagegovernor`** · 6 importers
+- **`platform/storagegovernor`** · 7 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`platform/store`** · 22 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
