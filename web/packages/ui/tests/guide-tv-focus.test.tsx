@@ -11,6 +11,7 @@ import { declarationsOfElement } from "./support/atomic-css";
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
 type GuideNode = {
   className: string;
+  closest(selector: string): GuideNode | null;
   firstElementChild: GuideNode | null;
   focus(): void;
   getAttribute(name: string): string | null;
@@ -73,8 +74,8 @@ const amberBorder = /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/;
 const amberText = /(?<![-\w])color:var\(--actionPrimary\)/;
 // Harbor Lights' monogram ident is lettered in its hue's text stop, and that hue is the brand amber
 // (#3011): identity, not focus, so the decorative tile is not counted.
-const inIdent = (node: Element) => node.closest('[aria-hidden="true"]')?.textContent === "HL";
-const isAmber = (node: Element) => {
+const inIdent = (node: GuideNode) => node.closest('[aria-hidden="true"]')?.textContent === "HL";
+const isAmber = (node: GuideNode) => {
   if (inIdent(node)) return false;
   const styles = declarationsOfElement(node);
   return amberBorder.test(styles) || amberText.test(styles);
