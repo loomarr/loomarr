@@ -2041,6 +2041,48 @@ func TestConfirm_StopsAndPublishesNothingWhenSplitOutputExceedsReservation(t *te
 	}
 }
 
+// A parent whose sidecar is present but damaged holds the confirm: cutting children from it would
+// inherit empty source and acquisition ids, and the catalog would read them as hand-added media.
+// Nothing is cut or published, and the proposal stays for a retry once the sidecar is repaired.
+func TestConfirm_HoldsWhenTheParentSidecarIsInvalid(t *testing.T) {
+	st := newSplitMemStore()
+	parentHash := seedCompilation(st, "comps/damaged-sidecar.mp4", 60_000)
+	drop := t.TempDir()
+	parent := filepath.Join(drop, "comps", "damaged-sidecar.mp4")
+	if err := os.MkdirAll(filepath.Dir(parent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parent, []byte("compilation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
+	mediaTools := &fakeTools{chapters: []tools.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
+		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
+	}}
+	sp := newSplitter(st, mediaTools, nil, drop)
+	proposal, err := sp.Propose(context.Background(), parentHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tools.SidecarPathFor(parent), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sp.Confirm(context.Background(), proposal.ID, proposal.Segments); err == nil {
+		t.Fatal("Confirm succeeded from a parent with a damaged sidecar")
+	}
+	if len(mediaTools.cutCalls) != 0 {
+		t.Errorf("cuts made from a parent with a damaged sidecar: %v", mediaTools.cutCalls)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), proposal.ID); err != nil {
+		t.Errorf("the proposal was consumed despite the hold: %v", err)
+	}
+	if clips, err := st.ListClips(context.Background()); err != nil || len(clips) != 1 {
+		t.Errorf("catalog clips = %d, err %v, want only the parent", len(clips), err)
+	}
+}
+
 func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 	st := newSplitMemStore()
 	parentHash := seedCompilation(st, "comps/sidecar-failure.mp4", 60_000)
