@@ -1,6 +1,5 @@
+import { Action } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MoreVertical } from "lucide-react";
-import { Button } from "@/components/ui";
 import { ChannelCard } from "./channel-card";
 
 // ChannelCard states (§3): healthy · pending-slots · drift · error · creating. The story
@@ -61,9 +60,9 @@ const WithMenu: Story = {
     nowNext: { now: { title: "Kiln", until: "9:42 PM" }, next: { title: "Ash Lane" } },
     health: "healthy",
     trailing: (
-      <Button variant="ghost" size="icon" className="size-8" aria-label="Actions">
-        <MoreVertical className="size-4" aria-hidden />
-      </Button>
+      <Action icon="more" layout="icon" variant="ghost">
+        Actions
+      </Action>
     ),
   },
 };
