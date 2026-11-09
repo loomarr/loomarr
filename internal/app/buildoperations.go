@@ -13,6 +13,7 @@ import (
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
@@ -65,8 +66,8 @@ type operationsBuild struct {
 	bootConfig               *config.Config
 	auth                     authBuild
 	guide                    guideapi.GuideReader
-	settings                 api.SettingsService
-	notificationDestinations api.NotificationDestinationService
+	settings                 setupapi.SettingsService
+	notificationDestinations setupapi.NotificationDestinationService
 	webPushPublicKey         string
 	productNotifications     *productNotificationCoordinator
 	invitationDelivery       people.InvitationDeliveryService
@@ -237,7 +238,7 @@ func buildNotificationDestinations(
 	repository notifications.Repository,
 	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
-) api.NotificationDestinationService {
+) setupapi.NotificationDestinationService {
 	if repository == nil {
 		return nil
 	}
@@ -304,7 +305,7 @@ type authBuild struct {
 	sso                  people.SSOService
 	sessions             people.SessionManager
 	userSync             people.UserSyncer
-	provision            api.Provisioner
+	provision            people.Provisioner
 	password             people.PasswordService
 	invitations          people.InvitationService
 	invitationRedemption people.InvitationRedemptionService
@@ -413,7 +414,7 @@ func buildSettings(
 	triggerHealth func(context.Context),
 	settingsChanged func(),
 	log *slog.Logger,
-) api.SettingsService {
+) setupapi.SettingsService {
 	if st == nil || secrets == nil {
 		return nil
 	}

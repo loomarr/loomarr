@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -176,8 +177,8 @@ func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
 	}
 }
 
-func (f *fakeSettings) List(context.Context) []api.SettingEntry {
-	return []api.SettingEntry{
+func (f *fakeSettings) List(context.Context) []setupapi.SettingEntry {
+	return []setupapi.SettingEntry{
 		{Key: "library.url", Group: "connections.media_server", Owner: "settings.connections", Kind: "url", Apply: "live", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
 		{Key: "library.token", Group: "connections.media_server", Owner: "settings.connections", Kind: "secret", Apply: "live", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
 		{Key: "job.workers", Group: "advanced", Owner: "settings.advanced", Kind: "int", Apply: "live", Value: "2", Provenance: "env", Doc: "x"},
@@ -187,49 +188,49 @@ func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 
 // Clear scripts the three outcomes the route maps to HTTP: unknown → invalid (404),
 // env-pinned → pinned (409), anything else → saved (204).
-func (f *fakeSettings) Clear(_ context.Context, key string) api.SettingResult {
+func (f *fakeSettings) Clear(_ context.Context, key string) setupapi.SettingResult {
 	f.cleared = key
 	switch key {
 	case "nope.missing":
-		return api.SettingResult{Key: key, Status: "invalid", Problem: "unknown setting"}
+		return setupapi.SettingResult{Key: key, Status: "invalid", Problem: "unknown setting"}
 	case "job.workers":
-		return api.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
+		return setupapi.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
 	}
 	if f.afterClear != nil {
 		f.afterClear(key)
 	}
-	return api.SettingResult{Key: key, Status: "saved"}
+	return setupapi.SettingResult{Key: key, Status: "saved"}
 }
 
 // SetEnvOverride scripts §3.1's three outcomes: an unregistered key (bootstrap keys
 // included) → unknown (404), a key the environment does not pin → not_pinned (409),
 // otherwise applied (204).
-func (f *fakeSettings) SetEnvOverride(_ context.Context, key string, on bool, _ string) api.SettingResult {
+func (f *fakeSettings) SetEnvOverride(_ context.Context, key string, on bool, _ string) setupapi.SettingResult {
 	f.envOverride = key
 	f.envOverrideOn = on
 	switch key {
 	case "nope.missing":
-		return api.SettingResult{Key: key, Status: "unknown"}
+		return setupapi.SettingResult{Key: key, Status: "unknown"}
 	case "library.url":
 		// Provenance "db" in the fixture above — nothing in the environment to take back.
-		return api.SettingResult{Key: key, Status: "not_pinned"}
+		return setupapi.SettingResult{Key: key, Status: "not_pinned"}
 	}
 	if f.afterEnvOverride != nil {
 		f.afterEnvOverride(key, on)
 	}
-	return api.SettingResult{Key: key, Status: "applied"}
+	return setupapi.SettingResult{Key: key, Status: "applied"}
 }
 
-func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by string) []api.SettingResult {
+func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by string) []setupapi.SettingResult {
 	f.patched = edits
 	f.patchBy = by
-	var out []api.SettingResult
+	var out []setupapi.SettingResult
 	for k := range edits {
 		st := "saved"
 		if k == "job.workers" {
 			st = "pinned" // env-pinned
 		}
-		out = append(out, api.SettingResult{Key: k, Status: st})
+		out = append(out, setupapi.SettingResult{Key: k, Status: st})
 	}
 	if f.afterPatch != nil {
 		f.afterPatch(edits)
@@ -268,7 +269,7 @@ type settingsHarnessConfig struct {
 	Source                   *fakeConnector
 	Config                   map[string]string
 	Channels                 guideapi.ChannelService
-	BackendTransition        api.BackendTransitioner
+	BackendTransition        setupapi.BackendTransitioner
 	WithoutBackendTransition bool
 }
 
@@ -355,8 +356,8 @@ func TestSettings_ListMasksSecretsAndFeatures(t *testing.T) {
 		t.Fatalf("list → %d", resp.StatusCode)
 	}
 	var body struct {
-		Settings []api.SettingEntry `json:"settings"`
-		Features map[string]bool    `json:"features"`
+		Settings []setupapi.SettingEntry `json:"settings"`
+		Features map[string]bool         `json:"features"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	for _, e := range body.Settings {
@@ -396,7 +397,7 @@ func TestSettings_PatchResults(t *testing.T) {
 		t.Fatalf("patch → %d", resp.StatusCode)
 	}
 	var body struct {
-		Results []api.SettingResult `json:"results"`
+		Results []setupapi.SettingResult `json:"results"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	got := map[string]string{}

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/api"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/requester"
 )
@@ -12,7 +12,7 @@ import (
 // so a just-saved Seerr connection is the one asked.
 type arrDiscovery struct{ set resolved }
 
-func (d arrDiscovery) ArrServers(ctx context.Context) ([]api.DiscoveredArr, error) {
+func (d arrDiscovery) ArrServers(ctx context.Context) ([]setupapi.DiscoveredArr, error) {
 	// Seerr is the requester unless the direct arrs are chosen, and only Seerr knows the arrs.
 	if settings.RequesterProvider.Get(d.set) == "arr" || settings.SeerrURL.Get(d.set) == "" {
 		return nil, nil
@@ -21,9 +21,9 @@ func (d arrDiscovery) ArrServers(ctx context.Context) ([]api.DiscoveredArr, erro
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.DiscoveredArr, 0, len(servers))
+	out := make([]setupapi.DiscoveredArr, 0, len(servers))
 	for _, s := range servers {
-		out = append(out, api.DiscoveredArr{App: s.App, URLs: s.URLs, APIKey: s.APIKey})
+		out = append(out, setupapi.DiscoveredArr{App: s.App, URLs: s.URLs, APIKey: s.APIKey})
 	}
 	return out, nil
 }

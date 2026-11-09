@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type arrsFromRequesterOutput struct {
 // arrsFromRequester fills in each arr Loomarr has no address for from the one Seerr uses (#2151).
 // The first address Loomarr can reach wins; when it reaches none, the first is saved anyway, so
 // the step shows it with its key and the operator only corrects the address.
-func (s *Server) arrsFromRequester(ctx context.Context, _ *struct{}) (*arrsFromRequesterOutput, error) {
+func (s *Handlers) arrsFromRequester(ctx context.Context, _ *struct{}) (*arrsFromRequesterOutput, error) {
 	out := &arrsFromRequesterOutput{}
 	out.Body.Arrs = []arrFromRequesterDTO{}
 	if s.arrDiscovery == nil || s.settings == nil {

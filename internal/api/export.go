@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 )
 
@@ -54,22 +55,16 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// op and the status projection.
 	playoutapi.New(playoutapi.Deps{Log: log}, true).Register(humaAPI)
 	guideapi.New(guideapi.Deps{}).Register(humaAPI)
-	srv.registerSetup(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
 	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
 	imagesapi.New(imagesapi.Deps{}).Register(humaAPI)
-	srv.registerSettings(humaAPI)
-	srv.registerNotificationDestinations(humaAPI)
+	setupapi.New(setupapi.Deps{}).Register(humaAPI)
 	// The events frames are nil-guarded on the bus; schemaOnly forces the frame schemas out so the
 	// generated client always has the event types even when this export ran without one. The
 	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
 	// exporter has no Options to read the flag from.
 	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
-	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
-	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
-	// spec, matching how /v1/auth/* is handled. Documented via §11.
-	srv.registerProvisioning(humaAPI)
 	return srv, humaAPI
 }
 

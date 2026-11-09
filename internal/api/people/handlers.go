@@ -56,6 +56,10 @@ type Deps struct {
 	// DevLogin mounts the credential-free dev sign-in (LOOMARR_DEV_LOGIN=1).
 	DevLogin bool
 	SSO      SSOService
+	// Provision owns first-run bootstrap and the media-server user import; nil leaves those routes
+	// unmounted. Demo is the demo site's public sign-in, reported by the setup state.
+	Provision Provisioner
+	Demo      DemoAccount
 
 	// ConfigInt reads an integer setting; LibraryUnconfigured reports that no library source is
 	// connected yet.
@@ -82,6 +86,8 @@ type Handlers struct {
 	deviceLimiter        *auth.RateLimiter
 	devLogin             bool
 	sso                  SSOService
+	provision            Provisioner
+	demo                 DemoAccount
 
 	configIntFn           func(settings.IntKey) int
 	libraryUnconfiguredFn func() bool
@@ -100,7 +106,7 @@ func New(d Deps, schemaOnly bool) *Handlers {
 		invitations: d.Invitations, invitationDelivery: d.InvitationDelivery,
 		invitationRedemption: d.InvitationRedemption, passwordRecovery: d.PasswordRecovery,
 		accessPublicURL: d.AccessPublicURL, devices: d.Devices, deviceLimiter: d.DeviceLimiter,
-		devLogin: d.DevLogin, sso: d.SSO,
+		devLogin: d.DevLogin, sso: d.SSO, provision: d.Provision, demo: d.Demo,
 		configIntFn: d.ConfigInt, libraryUnconfiguredFn: d.LibraryUnconfigured,
 		schemaOnly: schemaOnly,
 	}
@@ -116,6 +122,7 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerPasswordRecovery(api)
 	s.registerPasswords(api)
 	s.registerSSO(api)
+	s.registerProvisioning(api)
 }
 
 func (s *Handlers) configInt(key settings.IntKey) int {

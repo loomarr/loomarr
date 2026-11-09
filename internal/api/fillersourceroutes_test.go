@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
@@ -710,10 +711,10 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 // pinnedFolderSettings refuses every write the way an environment-pinned key does.
 type pinnedFolderSettings struct{ *fakeSettings }
 
-func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []api.SettingResult {
-	out := make([]api.SettingResult, 0, len(edits))
+func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []setupapi.SettingResult {
+	out := make([]setupapi.SettingResult, 0, len(edits))
 	for key := range edits {
-		out = append(out, api.SettingResult{Key: key, Status: "pinned"})
+		out = append(out, setupapi.SettingResult{Key: key, Status: "pinned"})
 	}
 	return out
 }

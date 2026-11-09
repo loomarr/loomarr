@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 // registerSetup mounts /v1/setup/* (§7/§13). These power the operator wizard +
 // Settings troubleshooting; all are admin-only.
-func (s *Server) registerSetup(api huma.API) {
+func (s *Handlers) registerSetup(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setup-status", Method: http.MethodGet, Path: "/v1/setup/status",
 		Summary: "Connection checklist", Description: "Admin only. Per-integration pass/fail (§13).",
@@ -85,7 +85,7 @@ type setupStatusOutput struct {
 // result carries an actionable hint + a Troubleshooting deep-link. Services that
 // aren't wired (unit tests, unconfigured installs) contribute no check rather than
 // a false failure.
-func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutput, error) {
+func (s *Handlers) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutput, error) {
 	out := &setupStatusOutput{}
 	out.Body.Checks = s.runConnectionChecks(ctx)
 	return out, nil
@@ -97,7 +97,7 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 // than a second copy. A reload that disagreed with the wizard's checklist would send an
 // operator chasing a discrepancy that exists only in our code — and two copies of a
 // probe list drift the moment one gains a check.
-func (s *Server) runConnectionChecks(ctx context.Context) []httpcore.SetupCheck {
+func (s *Handlers) runConnectionChecks(ctx context.Context) []httpcore.SetupCheck {
 	// ⚠ make(), not `var` — a nil slice marshals to JSON `null`, and since V53b the spec
 	// declares this array non-nullable. The empty case is not hypothetical here: this function
 	// deliberately contributes no check for services that aren't wired, so an UNCONFIGURED
@@ -162,7 +162,7 @@ func (s *Server) runConnectionChecks(ctx context.Context) []httpcore.SetupCheck 
 // configValue reads a live setting for gating optional checks; empty when the
 // composition root didn't wire liveSettings (unit tests) — then optional checks are
 // simply omitted.
-func (s *Server) configValue(key settings.StringKey) string {
+func (s *Handlers) configValue(key settings.StringKey) string {
 	if s.liveSettings == nil {
 		return ""
 	}
@@ -171,7 +171,7 @@ func (s *Server) configValue(key settings.StringKey) string {
 
 // anyConfigured reports whether any of keys is set. Without live settings (unit tests) it cannot
 // tell, so it answers true: a failure is never softened into "not set up" on a guess.
-func (s *Server) anyConfigured(keys []settings.StringKey) bool {
+func (s *Handlers) anyConfigured(keys []settings.StringKey) bool {
 	if s.liveSettings == nil {
 		return true
 	}
@@ -192,7 +192,7 @@ type tunarrConnectOutput struct {
 
 // tunarrConnectHandler wires the media server as Tunarr's media source + scans it
 // (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
-func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
+func (s *Handlers) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
 	if s.tunarrConnect == nil || s.unconfigured(settings.TunarrURL) || s.libraryUnconfigured() {
 		return nil, httpcore.NotImplemented("Setup incomplete",
 			"Connect Tunarr and your media server in Settings before wiring them together.",
@@ -217,7 +217,7 @@ type livetvReconnectOutput struct {
 // livetvReconnectHandler force-rewires the durably applied tuner (§6): remove + re-add +
 // re-scan, to drop a stale channel→stream binding. The transition coordinator owns the
 // operation so a reconnect cannot interleave with a backend cutover on another replica.
-func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
+func (s *Handlers) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
 	if s.backendTransition == nil || s.libraryUnconfigured() {
 		return nil, httpcore.NotImplemented("Live TV isn't set up",
 			"Connect your media server and configure the selected playout backend before re-wiring the tuner.", "troubleshooting#livetv")
@@ -234,7 +234,7 @@ func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*live
 
 // configInt reads a live INTEGER setting. Unwired ⇒ 0, which callers treat as "no configured
 // value" rather than as a real limit of zero.
-func (s *Server) configInt(key settings.IntKey) int {
+func (s *Handlers) configInt(key settings.IntKey) int {
 	if s.liveSettings == nil {
 		return 0
 	}

@@ -1,4 +1,4 @@
-package api
+package setup
 
 import (
 	"github.com/danielgtaylor/huma/v2"
