@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -21,8 +21,8 @@ import (
 // Store is the slice of the store the playout routes read: channels, and the paired device whose
 // name a play URL's viewer carries.
 type Store interface {
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	GetDeviceToken(ctx context.Context, tokenHash string) (identitystore.DeviceToken, error)
 }
 

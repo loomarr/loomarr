@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // BackendCheckpoint is the transport-layer projection of the durable transition state.
@@ -48,17 +48,17 @@ func (b Backend) legacy() BackendCheckpoint {
 }
 
 // PlaysInternallyAt reports whether ch plays on Loomarr's own engine under the checkpoint.
-func PlaysInternallyAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func PlaysInternallyAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	return schedule.PlaysInternally(ch.Policy, checkpoint.Applied)
 }
 
 // TransportPlayableAt reports whether ch's internal transport may be served under the checkpoint.
-func TransportPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func TransportPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
 }
 
 // InAppPlayableAt reports whether the in-app player can watch ch under the checkpoint.
-func InAppPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func InAppPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	if !PlaysInternallyAt(ch, checkpoint) {
 		return false
 	}

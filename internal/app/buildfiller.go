@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -223,7 +224,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmp
 // the channels' commercial languages (language.IntakeSet). A detached channel no longer airs,
 // so it no longer counts; a paused one resumes with its language, so it does.
 func intakeLanguages(st interface {
-	ListChannels(context.Context) ([]store.Channel, error)
+	ListChannels(context.Context) ([]channelstore.Channel, error)
 }, set resolved) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
 		channels, err := st.ListChannels(ctx)

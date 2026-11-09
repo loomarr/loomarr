@@ -33,6 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -82,7 +83,7 @@ type AiringRecorder interface {
 // forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
 // are reads, and neither path may mutate the channel it observes.
 type ChannelReader interface {
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 }
 
 // CodecWriter persists a channel's computed broadcast codec (§9.1 V50). Narrowed to the one
@@ -562,7 +563,7 @@ type airingCycle struct {
 // reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
 // applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
 // reads Desired again.
-func (r *Resolver) airingCycle(ctx context.Context, ch store.Channel, at time.Time) (airingCycle, error) {
+func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at time.Time) (airingCycle, error) {
 	epoch, err := effectivePlayoutAnchor(ch)
 	if err != nil {
 		return airingCycle{}, err
@@ -612,7 +613,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 		return r.measureChannelCodec(ctx, channelID), nil
 	}
 	if r.channels == nil {
-		return store.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
+		return channelstore.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
 	}
 
 	// Measuring spans cycle construction, library resolution, and several probes. A lineup can
@@ -620,7 +621,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 	// unchanged on both sides of the measurement. The targeted write uses that same revision and
 	// advances it, preventing either a stale probe or a full-row writer from overwriting the other.
 	const maxCodecWriteAttempts = 4
-	codec := store.BroadcastCodecH264
+	codec := channelstore.BroadcastCodecH264
 	for attempt := 0; attempt < maxCodecWriteAttempts; attempt++ {
 		before, err := r.channels.GetChannel(ctx, channelID)
 		if err != nil {
@@ -636,7 +637,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 		}
 		if _, err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, after.Revision, codec); err == nil {
 			return codec, nil
-		} else if !errors.Is(err, store.ErrChannelStale) {
+		} else if !errors.Is(err, channelstore.ErrChannelStale) {
 			return codec, fmt.Errorf("persist broadcast codec for %s: %w", channelID, err)
 		}
 		if err := ctx.Err(); err != nil {
@@ -656,17 +657,17 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 // lookup failure degrades a channel to "plays everywhere", never to a black screen.
 func (r *Resolver) ChannelCodec(ctx context.Context, channelID string) string {
 	if r.channels == nil {
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("codec: channel read failed; defaulting h264", "channel", channelID, "err", err)
 		}
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	if ch.BroadcastCodec == "" {
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	return ch.BroadcastCodec
 }
@@ -708,14 +709,14 @@ const maxCodecProbes = 12
 // (which slots, how many, tiebreak) lives in one place.
 func (r *Resolver) measureChannelCodec(ctx context.Context, channelID string) string {
 	if r.probeFormat == nil {
-		return store.BroadcastCodecH264 // cannot measure → safe default
+		return channelstore.BroadcastCodecH264 // cannot measure → safe default
 	}
 	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("codec: cycle preview failed; defaulting h264", "channel", channelID, "err", err)
 		}
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 
 	var codecs []string
@@ -764,9 +765,9 @@ func majorityBroadcastCodec(codecs []string) string {
 		}
 	}
 	if hevc > other {
-		return store.BroadcastCodecHEVC
+		return channelstore.BroadcastCodecHEVC
 	}
-	return store.BroadcastCodecH264
+	return channelstore.BroadcastCodecH264
 }
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
@@ -1808,7 +1809,7 @@ func (r *Resolver) EncodeHostBytes() int64 {
 
 // effectivePlayoutAnchor enforces the persisted timeline origin. A live channel without
 // one is corrupt control-plane state; guessing would let the encoder and guide diverge.
-func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
+func effectivePlayoutAnchor(ch channelstore.Channel) (time.Time, error) {
 	if ch.PlayoutAnchor.IsZero() {
 		return time.Time{}, fmt.Errorf("channel %s has no playout anchor", ch.ID)
 	}

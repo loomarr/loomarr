@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -23,7 +24,7 @@ type BindInput struct {
 	Proposal store.Proposal
 	// Existing is the channel the proposal's job changes. The zero value means the job has no
 	// channel yet, so Bind creates one.
-	Existing store.Channel
+	Existing channelstore.Channel
 	// Number is the channel number a NEW channel gets. The caller chooses a free one, since
 	// "free" is a question for the store and the backend. Ignored when Existing is set.
 	Number int
@@ -38,7 +39,7 @@ type BindInput struct {
 // Binding is the result of Bind.
 type Binding struct {
 	// Channel is the complete channel state the approval commits.
-	Channel store.Channel
+	Channel channelstore.Channel
 	// Retired are existing titles an auto-curate bind dropped because the proposal's turnstile
 	// rotated them out to make room (§8.2a).
 	Retired []schedule.LineupEntry

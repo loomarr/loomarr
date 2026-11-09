@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -118,7 +119,7 @@ func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	p := proposalFor(t, "p-orphan", "job-orphan", "", proposals.Intent{Description: "90s action"})
 
 	_, err := approval.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
-	if !errors.Is(err, store.ErrJobChannelGone) {
+	if !errors.Is(err, channelstore.ErrJobChannelGone) {
 		t.Fatalf("plan for a removed channel = %v, want ErrJobChannelGone", err)
 	}
 }
@@ -136,7 +137,7 @@ func TestPlan_RefusesToCreateAChannelForAProposalWithNoJob(t *testing.T) {
 	if err == nil {
 		t.Fatalf("planned a channel %q for a proposal whose job does not exist", ch.ID)
 	}
-	if errors.Is(err, store.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, channelstore.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
 		t.Errorf("error %v must not read as 'no channel yet' (which replans) or 'channel gone'", err)
 	}
 }

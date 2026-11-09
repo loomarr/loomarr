@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // POST /v1/channels/{id}/play-url — mint a signed HLS URL for the in-app player (§9.1 Watch).
@@ -83,7 +84,7 @@ type playURLOutput struct {
 // ⚠ Only a channel Tunarr streams may get the Tunarr copy. #1630: an internal channel that was
 // still `empty` shared it, so an internal-only install told its viewer to watch in the media
 // server through a Tunarr the install does not run.
-func playRefusal(ch store.Channel, checkpoint httpcore.BackendCheckpoint) error {
+func playRefusal(ch channelstore.Channel, checkpoint httpcore.BackendCheckpoint) error {
 	if httpcore.InAppPlayableAt(ch, checkpoint) {
 		return nil
 	}

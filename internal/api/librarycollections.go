@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Library → Collections (#2151 step 12, decision 28): the household's own collections, each an
@@ -271,7 +272,7 @@ func (s *Server) collectionUses(ctx context.Context) (map[string][]collectionCha
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
 	}
-	slices.SortFunc(channels, func(a, b store.Channel) int { return a.Number - b.Number })
+	slices.SortFunc(channels, func(a, b channelstore.Channel) int { return a.Number - b.Number })
 	out := map[string][]collectionChannelDTO{}
 	for _, ch := range channels {
 		named := map[string]bool{}

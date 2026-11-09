@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -21,7 +22,7 @@ type quotaStore struct {
 	users     map[string]identitystore.User
 	titles    map[provision.Key]provision.Record
 	proposals map[string]store.Proposal
-	channels  map[string]store.Channel
+	channels  map[string]channelstore.Channel
 	titleErr  error
 	// listErr is what the store reports for a proposal list it cannot decode.
 	listErr error
@@ -39,7 +40,7 @@ func newQuotaStore() *quotaStore {
 		users:     map[string]identitystore.User{},
 		titles:    map[provision.Key]provision.Record{},
 		proposals: map[string]store.Proposal{},
-		channels:  map[string]store.Channel{},
+		channels:  map[string]channelstore.Channel{},
 	}
 }
 
@@ -200,8 +201,8 @@ type quotaChannels struct {
 	after func()
 }
 
-func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (store.Channel, error) {
-	ch := store.Channel{}
+func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (channelstore.Channel, error) {
+	ch := channelstore.Channel{}
 	ch.ID = "ch-" + p.ID
 	ch.IntentRef = p.JobID
 	return ch, nil

@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -36,7 +36,7 @@ func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Handlers {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	ch := store.Channel{Channel: schedule.Channel{
+	ch := channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch-one", Name: "Channel One", Number: 1, Status: schedule.StatusLive,
 	}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}

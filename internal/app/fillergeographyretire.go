@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // fillerGeographyRetirement removes clips no current place can air (#2059 decision 14): a local
@@ -22,7 +22,7 @@ type fillerGeographyRetirement struct {
 		ListSettledGeographyClips(ctx context.Context) ([]records.SettledGeographyClip, error)
 	}
 	store interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 		SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
 	}
 	policy func() pod.Policy

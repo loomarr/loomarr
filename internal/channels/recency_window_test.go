@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -53,7 +54,7 @@ func recencyEngine(st store.Store, avail schedule.Availability, now *time.Time) 
 
 func seedShuffleChannel(t *testing.T, st store.Store, id string, entries []schedule.LineupEntry) {
 	t.Helper()
-	ch := store.Channel{Lineup: entries}
+	ch := channelstore.Channel{Lineup: entries}
 	// #1676: passes are counted from the channel's creation, so the fixture pins it three days
 	// before the tests' clock instead of leaving it to SaveChannel's wall-clock default.
 	ch.CreatedAt = time.Unix(1_800_000_000, 0).UTC().Add(-72 * time.Hour)
@@ -74,7 +75,7 @@ func films(n int, runtime time.Duration) ([]schedule.LineupEntry, runtimeAvail) 
 	return entries, avail
 }
 
-func reconcileDesired(t *testing.T, e *channels.Engine, st store.Store, id string) store.Channel {
+func reconcileDesired(t *testing.T, e *channels.Engine, st store.Store, id string) channelstore.Channel {
 	t.Helper()
 	if err := e.Reconcile(context.Background(), id); err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func reconcileDesired(t *testing.T, e *channels.Engine, st store.Store, id strin
 
 // tuneIn does what playoutresolve.Resolver.AiringAt does when a viewer tunes in: resolve the programme on
 // air from the accepted cycle and record its airing, stamped with the programme's start.
-func tuneIn(t *testing.T, st store.Store, ch store.Channel, now time.Time) playout.Airing {
+func tuneIn(t *testing.T, st store.Store, ch channelstore.Channel, now time.Time) playout.Airing {
 	t.Helper()
 	airing := playout.AiringAt(ch.Desired, ch.PlayoutAnchor, now)
 	if airing.Key == "" {

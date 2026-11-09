@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -124,13 +125,13 @@ func (s *scopeFeedbackSource) Scopes() []string {
 type scopeLookupStore struct {
 	store.Store
 	override bool
-	channel  store.Channel
+	channel  channelstore.Channel
 	err      error
 }
 
-func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	if s.err != nil {
-		return store.Channel{}, s.err
+		return channelstore.Channel{}, s.err
 	}
 	if s.override {
 		return s.channel, nil
@@ -443,7 +444,7 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			name: "auto-curated recurate that is approved", user: grace, picks: onePick,
 			curator: &recordingCurator{decision: proposals.AutoDecision{Approved: true}},
 			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
-				if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+				if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 					ID: "channel-recurate", Number: 72, Name: "Recurate Channel", Status: schedule.StatusLive, IntentRef: "job-origin",
 				}}); err != nil {
 					return err
@@ -789,7 +790,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "channel-a", Number: 71, Name: "Channel A", Status: schedule.StatusLive, IntentRef: "job-origin-a",
 	}}); err != nil {
 		t.Fatal(err)
@@ -861,14 +862,14 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 		{name: "lookup error", configure: func(st *scopeLookupStore) { st.err = errors.New("channel lookup unavailable") }},
 		{name: "blank channel id", configure: func(st *scopeLookupStore) {
 			st.override = true
-			st.channel = store.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
+			st.channel = channelstore.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
 		}},
 		{name: "removed channel", configure: func(st *scopeLookupStore) {
-			st.err = fmt.Errorf("%w: job names channel-gone", store.ErrJobChannelGone)
+			st.err = fmt.Errorf("%w: job names channel-gone", channelstore.ErrJobChannelGone)
 		}},
 		{name: "detached channel", configure: func(st *scopeLookupStore) {
 			st.override = true
-			st.channel = store.Channel{Channel: schedule.Channel{
+			st.channel = channelstore.Channel{Channel: schedule.Channel{
 				ID: "channel-a", IntentRef: "job-recurate", Status: schedule.StatusDetached,
 			}}
 		}},
@@ -889,7 +890,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := base.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+			if _, err := base.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 				ID: "channel-unrelated", Number: 73, Name: "Unrelated Channel",
 				Status: schedule.StatusLive, IntentRef: "job-unrelated",
 			}}); err != nil {
@@ -1464,7 +1465,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "channel-recurate", Number: 72, Name: "Recurate Channel",
 		Status: schedule.StatusLive, IntentRef: "job-origin",
 	}}); err != nil {

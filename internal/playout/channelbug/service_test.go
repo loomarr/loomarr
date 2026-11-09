@@ -20,14 +20,14 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
 
-type staticChannelReader struct{ channel store.Channel }
+type staticChannelReader struct{ channel channelstore.Channel }
 
-func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel, error) {
+func (s staticChannelReader) GetChannel(context.Context, string) (channelstore.Channel, error) {
 	return s.channel, nil
 }
 
@@ -36,12 +36,12 @@ func defaultInstall() schedule.WatermarkInstall {
 	return schedule.WatermarkInstall{Opacity: 0.40, Look: "text"}
 }
 
-func testWatermarks(t *testing.T, ch store.Channel, gatePassed bool) *Service {
+func testWatermarks(t *testing.T, ch channelstore.Channel, gatePassed bool) *Service {
 	return testWatermarksWith(t, defaultInstall, ch, gatePassed)
 }
 
 // testWatermarksWith reads the install-wide opacity and look from install on every bug.
-func testWatermarksWith(t *testing.T, install func() schedule.WatermarkInstall, ch store.Channel, gatePassed bool) *Service {
+func testWatermarksWith(t *testing.T, install func() schedule.WatermarkInstall, ch channelstore.Channel, gatePassed bool) *Service {
 	g := &watermarkGate{}
 	g.works.Store(gatePassed)
 	return &Service{dir: t.TempDir(), channels: staticChannelReader{channel: ch}, log: slog.New(slog.DiscardHandler),
@@ -80,7 +80,7 @@ func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
 	call := watermark.DeriveCallsign(name, number)
 	install := defaultInstall()
 	set := func() schedule.WatermarkInstall { return install }
-	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: name, Number: number}}, true)
+	c := testWatermarksWith(t, set, channelstore.Channel{Channel: schedule.Channel{Name: name, Number: number}}, true)
 	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug")
@@ -94,7 +94,7 @@ func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
 	}
 	sameBug(t, again.Straight, call, watermark.StylePlate, 0.40)
 
-	ch := store.Channel{Channel: schedule.Channel{Name: name, Number: number}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: name, Number: number}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "small-plate"}
 	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	sameBug(t, over.Straight, call, watermark.StyleSmallPlate, 0.40)
@@ -128,7 +128,7 @@ func peakWhite(t *testing.T, path string) uint32 {
 func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 	install := schedule.WatermarkInstall{Opacity: 0.55, Look: "text"}
 	set := func() schedule.WatermarkInstall { return install }
-	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
+	c := testWatermarksWith(t, set, channelstore.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
 	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug")
@@ -146,7 +146,7 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 	}
 	// The channel's own opacity overrides the install setting.
 	own := 0.25
-	ch := store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Opacity: &own}
 	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if got, want := peakWhite(t, over.Straight), uint32(64); got < want-1 || got > want+1 { // 0.25 × 255
@@ -156,7 +156,7 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 
 // ON BY DEFAULT: a channel with no watermark policy gets the generated bug at the approved placement.
 func TestChannelWatermarks_DefaultBug(t *testing.T) {
-	c := testWatermarks(t, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
+	c := testWatermarks(t, channelstore.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
 	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug for a channel on the defaults")
@@ -177,7 +177,7 @@ func TestChannelWatermarks_DefaultBug(t *testing.T) {
 
 func TestChannelWatermarks_OffOrUnverifiedMeansNoBug(t *testing.T) {
 	off := false
-	ch := store.Channel{Channel: schedule.Channel{Name: "Kids", Number: 3}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Kids", Number: 3}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Enabled: &off}
 	if wm := testWatermarks(t, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason); wm != nil {
 		t.Error("a channel that turned the bug off got one")
@@ -201,7 +201,7 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := &recordedEvents{}
-	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: store.Channel{}}, log: slog.New(slog.DiscardHandler),
+	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: channelstore.Channel{}}, log: slog.New(slog.DiscardHandler),
 		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
 		events: events, lifetime: t.Context()}
 	g := &watermarkGate{}
@@ -258,7 +258,7 @@ func sameDesign(t *testing.T, path string, d watermark.Design) {
 // picture choice and "Match the era" take the holiday colours; Ignore holidays and an own image
 // never get one.
 func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Motifs: map[string]string{"halloween": "ghost"}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	c := testWatermarks(t, ch, true)
@@ -312,7 +312,7 @@ func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch", Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Motifs: map[string]string{"halloween": "ghost"}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	c := colour(testWatermarks(t, ch, true))
@@ -354,7 +354,7 @@ func colour(c *Service) *Service {
 // COLOUR FALLBACK (#1659 Q2): a host whose coloured self-check failed airs the same look in white,
 // never no logo, and the white bug is cached apart from the coloured one.
 func TestChannelWatermarks_ColourFallsBackToWhite(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "badge", Color: "pink"}
 	white := testWatermarks(t, ch, true).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if white == nil {
@@ -405,7 +405,7 @@ func TestWatermarkColoursAndMotifs_AgreeAcrossRendererAndPolicy(t *testing.T) {
 // The section's options come from the backend (#1659 W2c): the derived name, the era and its
 // colours, and only the holidays the channel honours, with the scheduler's "in effect today".
 func TestChannelWatermarks_Options(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	ch.Policy.Seasonal = schedule.SeasonalPolicy{Holidays: []string{"christmas", "halloween"}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "ghost"}}
@@ -460,7 +460,7 @@ func TestChannelWatermarks_Options(t *testing.T) {
 // Preview draws the holiday version with the channel's picture, or the one the request names (the
 // section's picture thumbnails), without changing the saved policy; the everyday logo has none.
 func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	read := func(path string, err error) []byte {
 		t.Helper()
 		if err != nil {
@@ -472,7 +472,7 @@ func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
 		}
 		return b
 	}
-	preview := func(c store.Channel, change schedule.WatermarkPolicy, holiday string) []byte {
+	preview := func(c channelstore.Channel, change schedule.WatermarkPolicy, holiday string) []byte {
 		path, _, err := testWatermarks(t, c, true).Preview(context.Background(), "ch-1", change, holiday)
 		return read(path, err)
 	}
@@ -495,7 +495,7 @@ func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
 // PICTURE CHIPS (#1659 W2f): the picture-only preview is the renderer's own motif — the channel's
 // choice, or the asked-for one — white on a host without colour, and nothing for an unknown holiday.
 func TestChannelWatermarks_PreviewMotifIsTheRenderersMotif(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}
 	same := func(path string, m watermark.Motif, white bool) {
 		t.Helper()
@@ -540,7 +540,7 @@ func TestChannelWatermarks_PreviewMotifIsTheRenderersMotif(t *testing.T) {
 // A PREVIEW NEVER DELAYS A TUNE (#1949): a preview renders under its own lock, so a tune's render
 // in progress does not hold it up, and it never takes the tune's lock either.
 func TestChannelWatermarks_PreviewDoesNotWaitOnATunesRender(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	c := testWatermarks(t, ch, true)
 	c.render.Lock() // a tune's render in progress
 	defer c.render.Unlock()
@@ -565,7 +565,7 @@ func TestChannelWatermarks_PreviewDoesNotWaitOnATunesRender(t *testing.T) {
 // BOUNDED PREVIEW CACHE (#1949): previews are kept apart from the bugs that air and pruned to the
 // most recently used previewKeep, so browsing the options never grows the directory without limit.
 func TestChannelWatermarks_PreviewCacheIsPrunedLeastRecentlyUsed(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	c := testWatermarks(t, ch, true)
 	dir := filepath.Join(c.dir, "preview")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -614,7 +614,7 @@ func TestChannelWatermarks_PreviewCacheIsPrunedLeastRecentlyUsed(t *testing.T) {
 // MIXED ENCODERS (#1949): a preview shows the logo white whenever any working encoder airs it white,
 // since For whitens per encoder and the channel may air on that one.
 func TestChannelWatermarks_PreviewIsWhiteWhenAnyWorkingEncoderIs(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "badge", Color: "pink"}
 	c := colour(testWatermarks(t, ch, true))
 	whiteOnly := &watermarkGate{}

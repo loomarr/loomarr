@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -25,7 +26,7 @@ type productNotificationCoordinator struct {
 
 type productNotificationSource interface {
 	ListNotificationReferenceRecipients(context.Context, notifications.ReferenceKind, string) ([]string, error)
-	GetChannel(context.Context, string) (store.Channel, error)
+	GetChannel(context.Context, string) (channelstore.Channel, error)
 }
 
 func (c *productNotificationCoordinator) ProposalSubmitted(ctx context.Context, proposal store.Proposal) {

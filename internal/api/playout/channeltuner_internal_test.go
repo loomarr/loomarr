@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -31,7 +31,7 @@ func TestInAppPlayableUsesEffectiveBackendAndLifecycle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ch := store.Channel{
+			ch := channelstore.Channel{
 				Channel: schedule.Channel{Status: tt.status},
 				Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: tt.policy}},
 			}
@@ -44,7 +44,7 @@ func TestInAppPlayableUsesEffectiveBackendAndLifecycle(t *testing.T) {
 
 func TestTransportChannelsReadDurableCheckpointOnce(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	if _, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: "inherited", Name: "Inherited", Number: 1, Status: schedule.StatusLive,
 	}}); err != nil {
 		t.Fatal(err)
@@ -93,8 +93,8 @@ func TestPreparedInternalPublicationOpensOnlyInheritedDeviceTransport(t *testing
 		Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 		PublishedInternal: true,
 	}
-	channel := func(policy *schedule.PlayoutPolicy) store.Channel {
-		return store.Channel{
+	channel := func(policy *schedule.PlayoutPolicy) channelstore.Channel {
+		return channelstore.Channel{
 			Channel: schedule.Channel{Status: schedule.StatusLive},
 			Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: policy}},
 		}

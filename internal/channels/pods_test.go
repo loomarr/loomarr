@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -334,7 +335,7 @@ func TestReconcile_NoBreaksWhenNoFillerPool(t *testing.T) {
 		}
 		return e
 	}
-	countBreaks := func(ch store.Channel) int {
+	countBreaks := func(ch channelstore.Channel) int {
 		n := 0
 		for _, s := range ch.Desired {
 			if s.Kind == schedule.SlotFiller {
