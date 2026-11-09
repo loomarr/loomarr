@@ -1,5 +1,5 @@
 // The monogram ident (#1659, decision N8): every client draws a channel without a logo as two
-// letters on a tinted, hatched square. The rule lives here so the web rail, the shared guide grid
+// letters on a square washed in its hue (#3011: 14%, letters in the hue's on-tint stop). The rule lives here so the web rail, the shared guide grid
 // and native agree on the letters and the colour for the same channel.
 
 /** Brand hues an ident cycles through by channel number (the web mock's order). */

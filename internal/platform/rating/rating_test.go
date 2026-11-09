@@ -23,6 +23,45 @@ func TestLadder(t *testing.T) {
 	}
 }
 
+// Ladder lists exactly the mapped ratings, in rank order.
+func TestLadderList(t *testing.T) {
+	all := Ladder()
+	if len(all) != len(ladderRank) {
+		t.Fatalf("Ladder() has %d ratings, the rank map %d", len(all), len(ladderRank))
+	}
+	prev := -1
+	for _, r := range all {
+		n, ok := r.Rank()
+		if !ok || n < prev {
+			t.Fatalf("Ladder() out of order or unmapped at %q", r)
+		}
+		prev = n
+	}
+}
+
+// The lowest ceiling that admits a set is the TV rating at its highest rank (#3012).
+func TestLowestCeilingAdmitting(t *testing.T) {
+	cases := []struct {
+		in   []Rating
+		want Rating
+		ok   bool
+	}{
+		{[]Rating{"TV-G"}, "TV-G", true},
+		{[]Rating{"TV-G", "TV-PG", "TV-Y7"}, "TV-PG", true},
+		{[]Rating{"PG-13"}, "TV-14", true}, // film rating → the TV ceiling at its rank
+		{[]Rating{"R", "TV-G"}, "TV-MA", true},
+		{[]Rating{"", "TV-G"}, "TV-G", true}, // unrated is not decided by a ceiling
+		{[]Rating{""}, "", false},
+		{nil, "", false},
+	}
+	for _, c := range cases {
+		got, ok := LowestCeilingAdmitting(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("LowestCeilingAdmitting(%v) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 // Normalize folds the common media-server string variants onto the ladder.
 func TestNormalize(t *testing.T) {
 	cases := map[string]Rating{

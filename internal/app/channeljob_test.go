@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type noDueChannels struct{}
 
-func (noDueChannels) ClaimDueChannels(context.Context, time.Time, time.Duration, int) ([]store.Channel, error) {
+func (noDueChannels) ClaimDueChannels(context.Context, time.Time, time.Duration, int) ([]channelstore.Channel, error) {
 	return nil, nil
 }
 
@@ -25,7 +24,7 @@ func TestChannelMaintenanceConvergesTheTunarrMediaSource(t *testing.T) {
 	runner := channels.NewRunner(nil, noDueChannels{}, time.Minute, 0, 0, nil, slog.New(slog.DiscardHandler))
 	unreachable := errors.New("tunarr unreachable")
 	calls := 0
-	job := channelMaintenanceJob(runner, &provisionbackstop.EpisodeRefresh{}, nil, func(context.Context) error {
+	job := channelMaintenanceJob(runner, nil, func(context.Context) error {
 		calls++
 		return unreachable
 	})

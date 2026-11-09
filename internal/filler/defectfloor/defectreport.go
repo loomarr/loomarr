@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -60,7 +60,7 @@ type DefectReport struct {
 
 // DefectReportRow is one measured clip.
 type DefectReportRow struct {
-	Clip   filler.StoreClip
+	Clip   cliplibrary.StoreClip
 	Record DefectRecord
 	Label  *DefectLabel
 	// LabelCurrent is false when the clip's era was corrected into another band after labelling:

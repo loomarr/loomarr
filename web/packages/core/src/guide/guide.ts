@@ -139,6 +139,31 @@ const guideFillerEntryLabel = (entry: Pick<PodEntryDTO, "role" | "name">): strin
   return name ? `${name} · ${role}` : role.charAt(0).toUpperCase() + role.slice(1);
 };
 
+/**
+ * A channel still downloading its titles, with no programme in the window: the one labelled state
+ * the guide row and Home's card both show instead of a run of unlabelled breaks (#2727).
+ * Undefined for a channel that has a programme to show or nothing on the way.
+ */
+const guideWaitingForTitles = (
+  channel: Pick<GuideChannelTimeline, "airings" | "pendingCount" | "programCount">,
+): string | undefined => {
+  if (channel.pendingCount <= 0 || channel.airings.some((airing) => airing.kind === "program")) {
+    return undefined;
+  }
+  const ready = channel.programCount ?? 0;
+  return `Commercials until titles arrive · ${ready} of ${ready + channel.pendingCount} downloaded`;
+};
+
+/**
+ * The programme a break leads back to: the next programme after it (#2761). A break is a badge on
+ * that programme, never a title of its own. Undefined when no programme follows in the window.
+ */
+const guideBreakProgramme = <A extends Pick<GuideAiring, "kind" | "startMs">>(
+  airings: readonly A[],
+  breakAiring: Pick<GuideAiring, "stopMs">,
+): A | undefined =>
+  airings.find((airing) => airing.kind === "program" && airing.startMs >= breakAiring.stopMs);
+
 /** Broadcast and health answer different questions and must not collapse into one status. */
 const guideChannelState = (channel: GuideChannelTimeline): GuideChannelState => {
   let broadcast: GuideChannelState["broadcast"] = "off";
@@ -346,12 +371,14 @@ export {
   formatGuideTimeRange,
   formatProgrammeTitle,
   GUIDE_BUCKET_MS,
+  guideBreakProgramme,
   guideChannelForTypeahead,
   guideChannelState,
   guideFillerEntryLabel,
   guideFillerNowLabel,
   guideSelectionForChannel,
   guideTimeFormatter,
+  guideWaitingForTitles,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,

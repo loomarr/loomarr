@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  PressableRow,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -60,11 +61,9 @@ const StatusRows = ({
 }) => (
   <div className="divide-border border-border divide-y rounded-lg border">
     {group.rows.map((row) => (
-      <button
+      <PressableRow
         key={row.clipHash}
-        type="button"
-        className="hover:bg-muted/30 focus-visible:ring-ring relative flex min-h-16 w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
-        onClick={(event) => onOpen(row, event.currentTarget)}
+        onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
         <span className="sr-only">View details for</span>{" "}
@@ -79,7 +78,7 @@ const StatusRows = ({
           </span>
         </span>
         <span className="text-muted-foreground shrink-0 text-xs">{row.statusLabel}</span>
-      </button>
+      </PressableRow>
     ))}
     {group.nextCursor ? (
       <div className="p-2">

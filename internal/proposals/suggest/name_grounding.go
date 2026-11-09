@@ -6,14 +6,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 type nameGroundingResult struct {
 	query      nameGroundingQuery
-	candidates []catalog.Candidate
+	candidates []titlesearch.Candidate
 	err        error
 }
 
@@ -32,7 +32,7 @@ func (s *Suggester) groundPickNames(
 	intent Intent,
 	feedback []FeedbackSignal,
 	picks []pick,
-	surfaced map[provision.Key]catalog.Candidate,
+	surfaced map[provision.Key]titlesearch.Candidate,
 	trace *proposals.DecisionTrace,
 ) ([]pick, bool, error) {
 	queries := make([]nameGroundingQuery, 0, min(len(picks), maxPickNameQueries))
@@ -78,7 +78,7 @@ func (s *Suggester) groundPickNames(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			candidates, err := s.catalog.Search(ctx, query.name, catalog.ScopeAll, catalogSearchLimit)
+			candidates, err := s.catalog.Search(ctx, query.name, titlesearch.ScopeAll, catalogSearchLimit)
 			if err != nil {
 				err = fmt.Errorf("ground proposed title %q: %w", query.name, err)
 			}
@@ -105,8 +105,11 @@ func (s *Suggester) groundPickNames(
 				continue
 			}
 			groundedKeys[key] = true
-			ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, feedback)
+			ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []titlesearch.Candidate{candidate}, feedback)
 			mergeDecisionTrace(trace, &ranked.Trace)
+			if len(ranked.Candidates) == 0 {
+				continue // the household said never: naming the title does not bring it back
+			}
 			surfaced[key] = candidate
 			proposed.MediaType = string(candidate.MediaType)
 			proposed.Key = string(key)
@@ -117,9 +120,9 @@ func (s *Suggester) groundPickNames(
 	return grounded, incomplete, nil
 }
 
-func exactCandidateForPick(candidates []catalog.Candidate, proposed pick) (catalog.Candidate, bool) {
+func exactCandidateForPick(candidates []titlesearch.Candidate, proposed pick) (titlesearch.Candidate, bool) {
 	mediaType := provision.MediaType(proposed.MediaType)
-	byKey := make(map[provision.Key]catalog.Candidate)
+	byKey := make(map[provision.Key]titlesearch.Candidate)
 	for _, candidate := range candidates {
 		if candidate.MediaType != mediaType || !sameExactTitle(candidate.Name, proposed.Name) ||
 			(proposed.Year > 0 && candidate.Year != proposed.Year) {
@@ -131,9 +134,9 @@ func exactCandidateForPick(candidates []catalog.Candidate, proposed pick) (catal
 		}
 	}
 	if len(byKey) != 1 {
-		return catalog.Candidate{}, false
+		return titlesearch.Candidate{}, false
 	}
-	var candidate catalog.Candidate
+	var candidate titlesearch.Candidate
 	for _, exact := range byKey {
 		candidate = exact
 	}

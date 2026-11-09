@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
@@ -29,7 +31,7 @@ func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (fi
 		return filler.ReadyEvent{}, false, fmt.Errorf("get filler ready event %s: %w", clipHash, err)
 	}
 	event.Enrollment.Kind = filler.EnrollmentKind(enrollmentKind)
-	event.Placement = filler.Placement(placement)
+	event.Placement = clips.Placement(placement)
 	event.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return event, true, nil
 }
@@ -85,8 +87,8 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	// sides still describe that published result. The immutable event alone is insufficient: a
 	// deliberate restart keeps it while putting the clip on hold and the conveyor back in motion.
 	if readyEventExists && !clip.Held && !clip.Removed && !clip.Composite && clip.Placement == string(e.Placement) &&
-		current.Disposition == filler.DispositionReady && current.Stage == filler.StageFinish &&
-		current.Status == filler.StatusDone {
+		current.Disposition == pipelinestate.DispositionReady && current.Stage == pipelinestate.StageFinish &&
+		current.Status == pipelinestate.StatusDone {
 		return nil
 	}
 	if !clip.Held || clip.Removed || clip.Composite {

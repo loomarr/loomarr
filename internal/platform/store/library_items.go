@@ -43,6 +43,9 @@ type LibraryItem struct {
 	RuntimeMs int64
 	// Season, Episode and EpisodeEnd number an episode (EpisodeEnd for a multi-episode file).
 	Season, Episode, EpisodeEnd int
+	// Unnumbered is an episode the scanner could not number by its show's catalog and nobody has
+	// said which order its show's files follow: it keeps its file's name and number (decision 53).
+	Unnumbered bool
 	// Series is an episode's series by its scan origin; the store fills SeriesID from it once the
 	// series is written.
 	Series   LibraryOrigin
@@ -87,22 +90,31 @@ type LibrarySource struct {
 }
 
 // LibraryCredit is one person credited on a title. Role is what they did (actor, director, writer,
-// creator); Character an actor's part. A person with a TMDB id is one library_people row wherever
-// they are credited; one without is kept by name, unlinked (decision 49).
+// creator); Character an actor's part. A person with a catalog id is one library_people row
+// wherever they are credited; one without is kept by name, unlinked (decision 49).
 type LibraryCredit struct {
 	Name, Role, Character string
-	TMDB                  string
+	// ID is the person's id in a catalog of people; zero when unlinked.
+	ID LibraryID
 	// Photo is an http(s) URL of their headshot.
 	Photo string
 }
 
-// PersonID is the library_people row the credit names: "tmdb:<id>" when linked, else
-// "name:<name>".
+// PersonID is the library_people row the credit names: "<namespace>:<id>" when linked, such as
+// "tmdb:<id>", else "name:<name>".
 func (c LibraryCredit) PersonID() string {
-	if c.TMDB != "" {
-		return "tmdb:" + c.TMDB
+	if id := c.Linked(); id != (LibraryID{}) {
+		return id.Namespace + ":" + id.Value
 	}
 	return "name:" + c.Name
+}
+
+// Linked is the person's catalog id when it names both a catalog and an id; zero otherwise.
+func (c LibraryCredit) Linked() LibraryID {
+	if c.ID.Namespace == "" || c.ID.Value == "" {
+		return LibraryID{}
+	}
+	return c.ID
 }
 
 // LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.
@@ -194,7 +206,7 @@ type LibraryOrigin struct {
 	Key       string
 }
 
-// LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
+// LibraryItemImageOwner is the image owner kind of a library item's artwork (library_item_images). The ref is the
 // one record of which image is its poster: an adopted image changes hash when its bytes arrive,
 // and the image service moves the refs with it.
 const LibraryItemImageOwner = "library_item"
@@ -225,9 +237,20 @@ type LibraryItemQuery struct {
 	// IDs keeps only these items, when not empty.
 	IDs []string
 	// InSet keeps only the movies in a ready-made set.
-	InSet  bool
+	InSet bool
+	// Ready keeps only the titles with every file's details read.
+	Ready bool
+	// Recent lists the titles written last first, instead of by name.
+	Recent bool
 	Limit  int
 	Offset int
+}
+
+// LibraryItemChannel is a channel whose lineup names a title.
+type LibraryItemChannel struct {
+	ID     string
+	Name   string
+	Number int
 }
 
 // LibraryItemPage is one page of items in sort order, and how many match in all.
@@ -245,6 +268,8 @@ type LibraryItemStore interface {
 	ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error)
 	// LibraryItem reads one item with a present file; ErrNotFound otherwise.
 	LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
+	// LibraryItemChannels lists the channels whose lineup names the item, by number.
+	LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
 	LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error)
 	// RecheckLibraryItemFiles puts the header of an item's present, importable files (a series'
@@ -295,8 +320,8 @@ const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
 // countFiles is how many of title i's files hold also, a condition on f ("" for all).
 // itemImage is the image hash a title's ref in role names, or "".
 func itemImage(role string) string {
-	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+	return `COALESCE((SELECT MIN(r.image_hash) FROM library_item_images r
+			WHERE r.item_id = i.id AND r.role = '` + role + `'), '')`
 }
 
 func countFiles(also string) string {
@@ -332,7 +357,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		args = append(args, q.Kind)
 	}
 	if search := strings.TrimSpace(q.Search); search != "" {
-		where = append(where, "LOWER(i.name) LIKE ? ESCAPE '\\'")
+		where = append(where, s.lower("i.name")+" LIKE ? ESCAPE '\\'")
 		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
 	}
 	if q.InSet {
@@ -351,9 +376,16 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	if q.Problems {
 		where = append(where, itemProblems)
 	}
+	if q.Ready {
+		where = append(where, countFiles(` AND f.header = 'pending'`)+` = 0`)
+	}
 	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
 	var page LibraryItemPage
-	query := `SELECT ` + itemColumns + from + ` ORDER BY i.sort_name, i.id`
+	order := ` ORDER BY i.sort_name, i.id`
+	if q.Recent {
+		order = ` ORDER BY i.updated_at_ms DESC, i.id`
+	}
+	query := `SELECT ` + itemColumns + from + order
 	if q.Limit > 0 {
 		// A page counts the whole list on its own; every item is its own count.
 		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
@@ -371,6 +403,26 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		page.Total = len(items)
 	}
 	return page, nil
+}
+
+func (s *sqlStore) LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.number FROM channels c
+		WHERE EXISTS (SELECT 1 FROM channel_lineup l JOIN titles t ON t.key = l.title_key
+			WHERE l.channel_id = c.id AND t.library_id = ?)
+		ORDER BY c.number, c.id`), id)
+	if err != nil {
+		return nil, fmt.Errorf("library item channels: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := []LibraryItemChannel{}
+	for rows.Next() {
+		var c LibraryItemChannel
+		if err := rows.Scan(&c.ID, &c.Name, &c.Number); err != nil {
+			return nil, fmt.Errorf("library item channels: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func (s *sqlStore) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
@@ -411,8 +463,8 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 
 func (s *sqlStore) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
-		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
-		WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
+		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
+		FROM library_files WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
 		ORDER BY path`), id, id)
 	if err != nil {
 		return nil, fmt.Errorf("list library item files: %w", err)

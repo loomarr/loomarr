@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Runner performs the channel-reconcile SWEEP (§9, §18): claim due channels (leased so
@@ -14,8 +14,8 @@ import (
 // makes backfill crash-safe and multi-replica correct: events only reduce latency; the sweep
 // is the guarantee for internal and Tunarr-backed channels alike.
 //
-// The loop that drove it is gone — the sweep is now a scheduler job (§18.1). This type keeps
-// the lease/batch config and the Sweep pass the scheduler calls.
+// The sweep runs as a scheduler job (§18.1). This type holds the lease/batch config and the
+// Sweep pass the scheduler calls.
 type Runner struct {
 	engine *Engine
 	store  claimer
@@ -28,7 +28,7 @@ type Runner struct {
 // claimer is the slice of the store the sweep needs (ClaimDueChannels). Narrowed
 // to an interface so the sweep is testable with a fake.
 type claimer interface {
-	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Channel, error)
+	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]channelstore.Channel, error)
 }
 
 // NewRunner builds the sweep. `every` sizes the default lease (a claimed channel stays leased

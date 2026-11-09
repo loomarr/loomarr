@@ -38,29 +38,10 @@ type User struct {
 	Disabled bool
 }
 
-// Library is the port the provisioner and auth layer depend on (§2). Concrete
-// impl is the flavored Emby/Jellyfin client below.
-type Library interface {
-	// Lookup reports whether a title is present in the library and its item id
-	// (§6). Presence is signaled by a non-empty result, never by status code.
-	Lookup(ctx context.Context, providerKind ProviderKind, providerID string, mediaType MediaType) (itemID string, present bool, err error)
-
-	// AuthenticateByName verifies a user's credentials against the media server
-	// (§11 login). Returns the authenticated User on success. The media-server
-	// access token is used only to confirm + best-effort logout; callers issue
-	// their own session (Phase 9).
-	AuthenticateByName(ctx context.Context, username, password string) (User, error)
-
-	// ListUsers returns all media-server users for import/sync (§11), using the
-	// admin LIBRARY_TOKEN.
-	ListUsers(ctx context.Context) ([]User, error)
-}
-
 // LibraryScanner is the narrow port the poll-based availability scan depends on (§4, §18.1):
 // bulk reads of the library with provider ids, so the scan job confirms every in-flight title
-// in one call instead of an N-lookup storm. Segregated from Library so consumers that only
-// need presence (ingest) or auth don't take on the scan surface; the concrete *Client
-// satisfies both. RecentlyAdded is the incremental path; AllItems the periodic full sweep.
+// in one call instead of an N-lookup storm. The Library's titles satisfy it (#2151 step 16).
+// RecentlyAdded is the incremental path; AllItems the periodic full sweep.
 // Items read before a failure may ride with the error; the scan confirms them.
 type LibraryScanner interface {
 	RecentlyAdded(ctx context.Context, since time.Time) ([]SearchResult, error)

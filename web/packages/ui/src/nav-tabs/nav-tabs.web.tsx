@@ -127,6 +127,9 @@ const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" 
         gap: 4,
         overflowX: "auto",
         paddingBottom: underline ? 0 : 8,
+        // The underline tab's -1px margin overflows the bar by a pixel, which `overflow-x: auto`
+        // turns into a vertical scrollbar; the bar scrolls sideways without drawing one (#2738).
+        scrollbarWidth: "none",
       }}
     >
       {tabs.map((tab) => {

@@ -49,13 +49,46 @@ type Image struct {
 	LastUsedAt      time.Time
 }
 
-// ImageRef records what an image decorates. Its own table so the GC can find orphans without any
-// domain schema referencing images.
+// ImageRef records what an image decorates. OwnerKind picks the owner's table (imageOwners); a
+// kind with no table is refused, because nothing could ever delete its refs.
 type ImageRef struct {
 	ImageHash string
 	OwnerKind string
 	OwnerID   string
 	Role      string
+}
+
+// imageOwner is where one owner kind's image refs live: a table whose owner column is a foreign
+// key to the owner, so deleting the owner deletes its refs and frees its images for the GC.
+type imageOwner struct {
+	kind, table, column string
+}
+
+// imageOwners is every kind of thing an image can decorate (#2793).
+var imageOwners = []imageOwner{
+	{"clip", "clip_images", "clip_hash"},
+	{"filler_split_proposal", "filler_split_proposal_images", "proposal_id"},
+	{"channel", "channel_images", "channel_id"},
+	{"library_item", "library_item_images", "item_id"},
+	{"library_candidate", "library_candidate_images", "item_id"},
+}
+
+// ImageOwnerKinds lists the owner kinds an image ref may name, in table order.
+func ImageOwnerKinds() []string {
+	kinds := make([]string, len(imageOwners))
+	for i, o := range imageOwners {
+		kinds[i] = o.kind
+	}
+	return kinds
+}
+
+func ownerOf(kind string) (imageOwner, error) {
+	for _, o := range imageOwners {
+		if o.kind == kind {
+			return o, nil
+		}
+	}
+	return imageOwner{}, fmt.Errorf("image owner kind %q has no table", kind)
 }
 
 // ImageDerivative is one rendition on disk. Regenerable — deleting a row costs a re-encode.
@@ -113,7 +146,7 @@ type ImageStore interface {
 	// ⚠ This exists for exactly one caller and it is not a convenience. `Adopt` keys a
 	// not-yet-fetched remote row on a hash of its SOURCE URL, because the content hash cannot be
 	// known before the bytes arrive; when the fetch lands, identity becomes the real content hash
-	// or `Cache-Control: immutable` stops being true. Re-keying a row that `image_refs` already
+	// or `Cache-Control: immutable` stops being true. Re-keying a row that an image ref already
 	// points at needs the refs to move with it, and a naive UPDATE collides whenever two source
 	// URLs turn out to hold the same bytes for the same owner — so this is insert-then-delete,
 	// not an update.
@@ -265,9 +298,12 @@ func (s *Store) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, l
 }
 
 func (s *Store) ListOrphanImages(ctx context.Context, limit int) ([]Image, error) {
+	var unowned strings.Builder
+	for _, o := range imageOwners {
+		fmt.Fprintf(&unowned, " AND NOT EXISTS (SELECT 1 FROM %s r WHERE r.image_hash = i.hash)", o.table)
+	}
 	return s.queryImages(ctx,
-		`SELECT `+imageColumns+` FROM images i
-		 WHERE NOT EXISTS (SELECT 1 FROM image_refs r WHERE r.image_hash = i.hash)
+		`SELECT `+imageColumns+` FROM images i WHERE TRUE`+unowned.String()+`
 		 ORDER BY i.created_at LIMIT ?`, limit)
 }
 
@@ -292,11 +328,14 @@ func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format stri
 }
 
 func (s *Store) PutImageRef(ctx context.Context, ref ImageRef) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role)
-		 VALUES (?, ?, ?, ?)
-		 ON CONFLICT (image_hash, owner_kind, owner_id, role) DO NOTHING`),
-		ref.ImageHash, ref.OwnerKind, ref.OwnerID, ref.Role)
+	o, err := ownerOf(ref.OwnerKind)
+	if err != nil {
+		return fmt.Errorf("put image ref %s->%s/%s: %w", ref.ImageHash, ref.OwnerKind, ref.OwnerID, err)
+	}
+	_, err = s.h.ExecContext(ctx, s.h.Rebind(
+		`INSERT INTO `+o.table+` (`+o.column+`, role, image_hash) VALUES (?, ?, ?)
+		 ON CONFLICT (`+o.column+`, role, image_hash) DO NOTHING`),
+		ref.OwnerID, ref.Role, ref.ImageHash)
 	if err != nil {
 		return fmt.Errorf("put image ref %s->%s/%s: %w", ref.ImageHash, ref.OwnerKind, ref.OwnerID, err)
 	}
@@ -304,8 +343,10 @@ func (s *Store) PutImageRef(ctx context.Context, ref ImageRef) error {
 }
 
 func (s *Store) DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`), ownerKind, ownerID)
+	o, err := ownerOf(ownerKind)
+	if err == nil {
+		_, err = s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM `+o.table+` WHERE `+o.column+` = ?`), ownerID)
+	}
 	if err != nil {
 		return fmt.Errorf("delete image refs %s/%s: %w", ownerKind, ownerID, err)
 	}
@@ -313,8 +354,11 @@ func (s *Store) DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) 
 }
 
 func (s *Store) DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ? AND role = ?`), ownerKind, ownerID, role)
+	o, err := ownerOf(ownerKind)
+	if err == nil {
+		_, err = s.h.ExecContext(ctx, s.h.Rebind(
+			`DELETE FROM `+o.table+` WHERE `+o.column+` = ? AND role = ?`), ownerID, role)
+	}
 	if err != nil {
 		return fmt.Errorf("delete %s image refs %s/%s: %w", role, ownerKind, ownerID, err)
 	}
@@ -322,11 +366,15 @@ func (s *Store) DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, r
 }
 
 func (s *Store) ImagesForOwner(ctx context.Context, ownerKind, ownerID string) ([]Image, error) {
+	o, err := ownerOf(ownerKind)
+	if err != nil {
+		return nil, fmt.Errorf("images for %s/%s: %w", ownerKind, ownerID, err)
+	}
 	return s.queryImages(ctx,
 		`SELECT `+prefixed(imageColumns, "i.")+` FROM images i
-		 JOIN image_refs r ON r.image_hash = i.hash
-		 WHERE r.owner_kind = ? AND r.owner_id = ?
-		 ORDER BY i.created_at`, ownerKind, ownerID)
+		 JOIN `+o.table+` r ON r.image_hash = i.hash
+		 WHERE r.`+o.column+` = ?
+		 ORDER BY i.created_at`, ownerID)
 }
 
 func (s *Store) PutImageDerivative(ctx context.Context, d ImageDerivative) error {
@@ -465,20 +513,22 @@ func (s *Store) ListImagesByOrigin(ctx context.Context, origin string, limit int
 }
 
 func (s *Store) RepointImageRefs(ctx context.Context, from, to string) error {
-	// ⚠ INSERT-then-DELETE rather than `UPDATE image_refs SET image_hash = ?`. The update looks
+	// ⚠ INSERT-then-DELETE rather than `UPDATE ... SET image_hash = ?`. The update looks
 	// obviously right and breaks the day two source URLs resolve to the same bytes: both rows
 	// re-key onto one content hash, and the second update violates the primary key
-	// (image_hash, owner_kind, owner_id, role). DO NOTHING makes the collision the no-op it
-	// should be — the ref already says what the update was trying to say.
-	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role)
-		 SELECT ?, owner_kind, owner_id, role FROM image_refs WHERE image_hash = ?
-		 ON CONFLICT (image_hash, owner_kind, owner_id, role) DO NOTHING`), to, from); err != nil {
-		return fmt.Errorf("repoint image refs %s->%s: %w", from, to, err)
-	}
-	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM image_refs WHERE image_hash = ?`), from); err != nil {
-		return fmt.Errorf("clear image refs %s: %w", from, err)
+	// (owner, role, image_hash). DO NOTHING makes the collision the no-op it should be — the ref
+	// already says what the update was trying to say.
+	for _, o := range imageOwners {
+		if _, err := s.h.ExecContext(ctx, s.h.Rebind(
+			`INSERT INTO `+o.table+` (`+o.column+`, role, image_hash)
+			 SELECT `+o.column+`, role, ? FROM `+o.table+` WHERE image_hash = ?
+			 ON CONFLICT (`+o.column+`, role, image_hash) DO NOTHING`), to, from); err != nil {
+			return fmt.Errorf("repoint %s image refs %s->%s: %w", o.kind, from, to, err)
+		}
+		if _, err := s.h.ExecContext(ctx, s.h.Rebind(
+			`DELETE FROM `+o.table+` WHERE image_hash = ?`), from); err != nil {
+			return fmt.Errorf("clear %s image refs %s: %w", o.kind, from, err)
+		}
 	}
 	return nil
 }

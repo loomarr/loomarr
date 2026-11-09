@@ -168,24 +168,29 @@ describe("Channel ideas on a member's Home (#1659)", () => {
 
     await screen.findByText("Picked from your library");
     const editFirst = await within(card("Comedy Movies")).findByRole("link", { name: "Edit first" });
-    expect(editFirst).toHaveAttribute("href", "/guide?manual=%221%22&ideaId=genre%3Acomedy");
+    // The request page's own path, with the flag as a plain 1 (#2746).
+    expect(editFirst).toHaveAttribute("href", "/requests/new?manual=1&ideaId=genre%3Acomedy");
 
     expect(screen.getByRole("link", { name: /describe your own channel/i })).toHaveAttribute(
       "href",
-      "/guide?manual=%221%22",
+      "/requests/new?manual=1",
     );
   });
 
-  it("offers ideas on an empty Home, and says when there are none left", async () => {
+  // #2763: an empty "Channel ideas" section showed on Home with nothing in it.
+  it("leaves Home without the section when there is no idea", async () => {
     stub({ me: MEMBER });
-    serve([]);
+    let asked = false;
+    server.use(
+      http.get("*/v1/discovery/ideas", () => {
+        asked = true;
+        return HttpResponse.json({ ideas: [] });
+      }),
+    );
     renderAt("/dashboard");
 
-    expect(
-      await screen.findByText("Nothing’s on yet. Start with one of these, built from your library."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("That’s every idea for now. New ones appear as your library grows."),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(asked).toBe(true));
+    await screen.findByRole("heading", { name: "Home" });
+    expect(screen.queryByRole("heading", { name: "Channel ideas" })).not.toBeInTheDocument();
   });
 });

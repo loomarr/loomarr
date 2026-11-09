@@ -1,19 +1,5 @@
-import { Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
-import {
-  BadgeInfo,
-  CalendarClock,
-  Clapperboard,
-  House,
-  Inbox,
-  Library as LibraryIcon,
-  ListChecks,
-  LogOut,
-  PlayCircle,
-  Search,
-  Settings,
-  Users,
-} from "lucide-react";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
@@ -36,9 +22,15 @@ const PhoneBottomBar = lazy(() =>
   import("../phone-bottom-bar").then((module) => ({ default: module.PhoneBottomBar })),
 );
 
+// The phone's top row with Search (#2751), lazy for the same reason: its DS Action renders only
+// below `md`.
+const PhoneHeader = lazy(() => import("../phone-header").then((module) => ({ default: module.PhoneHeader })));
+
 // The ios `TabBar`'s own measured height (web always renders that idiom) — holding this row open
 // while the chunk loads keeps the Guide's docked strip (#1795) from jumping up and back down.
 const PHONE_BOTTOM_BAR_HEIGHT = 49;
+// The phone header's height: one 48px touch target plus its 1px bottom rule.
+const PHONE_HEADER_HEIGHT = 49;
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
 // + user menu; content renders in `children`. Admin-only sections are gated by
@@ -54,21 +46,21 @@ const PHONE_BOTTOM_BAR_HEIGHT = 49;
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
   // `dashboard`, and so is the route, so bookmarks keep working).
-  { to: "/dashboard", label: "Home", icon: House },
+  { to: "/dashboard", label: "Home", icon: "home" },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
   // one grid. The fold completed when the grid grew the origination affordance the mock always
   // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
   // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
-  { to: "/guide", label: "Guide", icon: CalendarClock },
+  { to: "/guide", label: "Guide", icon: "schedule" },
   // The titles Loomarr found in its media folders (#2151 decision 22, design/library).
-  { to: "/library", label: "Library", icon: LibraryIcon },
-  { to: "/requests", label: "Requests", icon: Inbox },
-  { to: "/filler", label: "Filler", icon: Clapperboard },
-  { to: "/people", label: "People", icon: Users },
-  { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/help", label: "Help", icon: ListChecks },
+  { to: "/library", label: "Library", icon: "library" },
+  { to: "/requests", label: "Requests", icon: "requests" },
+  { to: "/filler", label: "Filler", icon: "filler" },
+  { to: "/people", label: "People", icon: "people" },
+  { to: "/settings", label: "Settings", icon: "settings" },
+  { to: "/help", label: "Help", icon: "help" },
 ];
 
 // The member's four. Same routes, named for what a member is doing with them — and the
@@ -84,11 +76,11 @@ const ADMIN_NAV: NavItem[] = [
 // Home leads it too (#1659): the member Home carries no machine state, which is what §11 kept
 // from members.
 const MEMBER_NAV: NavItem[] = [
-  { to: "/dashboard", label: "Home", icon: House },
-  { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/requests", label: "Requests", icon: Inbox },
-  { to: "/settings/notifications", label: "Notifications", icon: Settings },
-  { to: "/help", label: "Help", icon: ListChecks },
+  { to: "/dashboard", label: "Home", icon: "home" },
+  { to: "/guide", label: "Guide", icon: "schedule" },
+  { to: "/requests", label: "Requests", icon: "requests" },
+  { to: "/settings/notifications", label: "Notifications", icon: "settings" },
+  { to: "/help", label: "Help", icon: "help" },
 ];
 
 // Watch's rail position (#1817 item 3, decision X2, matching the #1839 phone-bottom-bar draft):
@@ -101,7 +93,7 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
     to: "/watch/$id",
     channelId: watchChannelId,
     label: "Watch",
-    icon: PlayCircle,
+    icon: "play",
   };
   return [base[0], watch, ...base.slice(1)].filter(
     (item): item is NavItem | WatchNavItem => item !== undefined,
@@ -110,8 +102,13 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
 
 const MAIN_ID = "main-content";
 
+// The one focus style: the amber ring the design system's controls draw. Without it a rail
+// control gets the browser's white rectangular outline.
+const FOCUS_RING = "focus-visible:ring-signal focus-visible:ring-2 focus-visible:outline-none";
+
 const AppShell = ({
   children,
+  banner,
   isAdmin = true,
   userName = "Operator",
   serverVersion,
@@ -133,7 +130,7 @@ const AppShell = ({
   // The footer's version line, inside a link to About for an admin and plain text for a member.
   const versionLabel = (
     <>
-      <BadgeInfo className="size-4 shrink-0" aria-hidden />
+      <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
       <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
     </>
   );
@@ -164,15 +161,18 @@ const AppShell = ({
             type="button"
             onClick={onOpenCommand}
             aria-keyshortcuts={commandShortcutAria()}
-            className="border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
+            className={cn(
+              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+              FOCUS_RING,
+            )}
           >
-            <Search className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
             <span>Search…</span>
             <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
-            const { label, icon: Icon } = item;
+            const { label, icon } = item;
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
             // Watch's href always points at ONE channel, but any channel's /watch/$id route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
@@ -188,6 +188,7 @@ const AppShell = ({
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
               "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              FOCUS_RING,
               forcedActive === undefined
                 ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
@@ -195,7 +196,7 @@ const AppShell = ({
             );
             const content = (
               <>
-                <Icon className="size-4" aria-hidden />
+                <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
                 <span>{label}</span>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
@@ -233,7 +234,10 @@ const AppShell = ({
               <Link
                 to="/settings/system/about"
                 aria-label={`Loomarr ${serverVersion} — About`}
-                className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
+                className={cn(
+                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors",
+                  FOCUS_RING,
+                )}
               >
                 {versionLabel}
               </Link>
@@ -253,7 +257,10 @@ const AppShell = ({
               NAV item: it isn't a section of the app, it's you. */}
           <Link
             to="/account"
-            className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors"
+            className={cn(
+              "hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors",
+              FOCUS_RING,
+            )}
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
@@ -266,14 +273,9 @@ const AppShell = ({
           </Link>
           {onLogout && (
             <Tooltip content="Sign out">
-              <button
-                type="button"
-                onClick={onLogout}
-                aria-label="Sign out"
-                className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
-              >
-                <LogOut className="size-4" aria-hidden />
-              </button>
+              <Action compact icon="signOut" layout="icon" onPress={onLogout} variant="ghost">
+                Sign out
+              </Action>
             </Tooltip>
           )}
         </div>
@@ -285,13 +287,29 @@ const AppShell = ({
           non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
           on the region that asked for it. */}
       {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
-      <main
-        id={MAIN_ID}
-        tabIndex={-1}
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto focus:outline-none"
-      >
-        {children}
-      </main>
+      {/* The banner slot sits ABOVE `main`, in a column with it, so its height comes out of main's
+          viewport instead of being added to main's scrollable content (a second scroller at phone
+          width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
+          the document and dragging the whole shell off-screen. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
+            top right on every page (#2751). It opens the same search the rail's button does. */}
+        {phoneWidth && (
+          <Suspense
+            fallback={<div data-testid="phone-header-placeholder" style={{ height: PHONE_HEADER_HEIGHT }} />}
+          >
+            <PhoneHeader onOpenSearch={onOpenCommand} />
+          </Suspense>
+        )}
+        {banner}
+        <main
+          id={MAIN_ID}
+          tabIndex={-1}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
+        >
+          {children}
+        </main>
+      </div>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't

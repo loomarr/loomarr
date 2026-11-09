@@ -618,12 +618,20 @@ func TestMigrateReportsProgress(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = dst.Close() })
 
+	// The seed's titles, plus a pending row for each lineup title nothing records (#2793).
+	var titles int64
+	if err := src.(*sqlStore).db.QueryRowContext(ctx, `SELECT count(*) FROM titles`).Scan(&titles); err != nil {
+		t.Fatal(err)
+	}
+	if titles < 7 {
+		t.Fatalf("seed holds %d titles, want at least 7", titles)
+	}
 	var updates int
 	var sawTitles bool
 	if _, err := MigrateData(ctx, src, dst, func(p MigrationProgress) {
 		updates++
 		for _, st := range p.Tables {
-			if st.Table == "titles" && st.Copied == 7 {
+			if st.Table == "titles" && st.Copied == titles {
 				sawTitles = true
 			}
 		}
@@ -634,7 +642,7 @@ func TestMigrateReportsProgress(t *testing.T) {
 		t.Errorf("progress fired %d times, want per-table updates", updates)
 	}
 	if !sawTitles {
-		t.Error("never saw titles reach its full count of 7")
+		t.Errorf("never saw titles reach its full count of %d", titles)
 	}
 }
 
@@ -642,10 +650,9 @@ func TestMigrateReportsProgress(t *testing.T) {
 // is not valid UTF-8, and `coerce`'s BYTEA/BLOB arm is the two lines that prevent it.
 //
 // ⚠ **This test CREATES ITS OWN TABLE, and that is the whole design rather than a shortcut.**
-// It replaces `TestIconBytesSurviveMigration`, which asserted the same property against
-// `channel_icons.bytes` — the schema's only binary column until V52 phase 8 dropped the table retired-ok
-// (retired-ok). That left the coercion branch defensive but unexercised, and the two obvious fixes
-// are both wrong: deleting the branch means the next binary column silently arrives mangled, and
+// The schema has no binary column of its own (the last one, `channel_icons.bytes`, went with its table retired-ok
+// in V52 phase 8), so the coercion branch would otherwise be defensive but unexercised. The two
+// obvious fixes are both wrong: deleting the branch means the next binary column silently arrives mangled, and
 // adding a binary column to both dialects' migrations puts a table that exists for a test's benefit
 // into every operator's database.
 //

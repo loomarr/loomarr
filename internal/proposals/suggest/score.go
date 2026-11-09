@@ -6,11 +6,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/textmatch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // score describes only surviving grounded picks. Date evidence comes from the
@@ -220,7 +220,7 @@ func themeTerms(intent Intent) []string {
 
 // candidateContradictsExplicitQualifiers distinguishes disproven hard metadata
 // from sparse metadata. Only source-known country/genre facts can reject a pick.
-func candidateContradictsExplicitQualifiers(intent Intent, candidate catalog.Candidate) bool {
+func candidateContradictsExplicitQualifiers(intent Intent, candidate titlesearch.Candidate) bool {
 	if intentRequiresLibraryOnly(intent) && !candidate.InLibrary {
 		return true
 	}

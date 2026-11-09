@@ -1,4 +1,4 @@
-import { Action, type Density, Icon, icons, playerChrome, Text } from "@loomarr/design-system";
+import { Action, BrandMark, type Density, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
 import { webOnly } from "../glass";
@@ -35,9 +35,7 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
       ...webOnly(kind === "error" ? { backdropFilter: "blur(4px)" } : {}),
     }}
   >
-    {kind === "off-air" ? (
-      <Icon color={playerChrome.textMuted} decorative glyph={icons.channels} size="tv" />
-    ) : null}
+    <BrandMark contained={false} decorative size={4} />
     <Text density={density} strong textAlign="center" textRole="reading" tone="primary">
       {title}
     </Text>

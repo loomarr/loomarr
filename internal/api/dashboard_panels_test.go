@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
 func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Store) {
@@ -19,7 +21,7 @@ func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
 	opts.Store = st
-	opts.Auth = api.NewTokenAuthorizer(adminToken)
+	opts.Auth = httpcore.NewTokenAuthorizer(adminToken)
 	opts.Log = slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)
@@ -47,7 +49,7 @@ func TestSystemServices_AlwaysReportsLoomarrItself(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("services → %d, want 200", resp.StatusCode)
 	}
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +78,12 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
 
-	var failing *api.ServiceRow
+	var failing *opsapi.ServiceRow
 	for i := range view.Rows {
 		if view.Rows[i].Name == "requester" {
 			failing = &view.Rows[i]
@@ -106,6 +108,33 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	}
 }
 
+// #2781: on a fresh install an optional service nobody set up is "not set up", not failing. The
+// checklist says so with notSetUp, and a service with any connection setting set is a real failure.
+func TestSetupStatus_UnconfiguredServiceIsNotSetUpRatherThanFailing(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		Settings:     &fakeSettings{},
+		LiveSettings: mapSettings{"seerr.url": "http://seerr.lan:5055"},
+	})
+	resp := do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
+	var body struct{ Checks []httpcore.SetupCheck }
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	checks := map[string]httpcore.SetupCheck{}
+	for _, check := range body.Checks {
+		checks[check.Name] = check
+	}
+	if tmdb, ok := checks["tmdb"]; !ok || tmdb.OK || !tmdb.NotSetUp {
+		t.Errorf("tmdb = %+v (present %t), want not ok and not set up", tmdb, ok)
+	}
+	if requester := checks["requester"]; requester.OK || requester.NotSetUp {
+		t.Errorf("requester = %+v, want a real failure, not 'not set up'", requester)
+	}
+	if media := checks["media_server"]; media.NotSetUp {
+		t.Errorf("media_server = %+v, a passing check is never 'not set up'", media)
+	}
+}
+
 // Sonarr and Radarr are their own optional connections (#2151 decision 29): a connected one is a
 // row that fixes in its own card, and one never connected is no row rather than a red dot.
 func TestSystemServices_ArrRowOnlyWhenConnected(t *testing.T) {
@@ -114,11 +143,11 @@ func TestSystemServices_ArrRowOnlyWhenConnected(t *testing.T) {
 		LiveSettings: mapSettings{"sonarr.url": "http://sonarr.lan:8989"},
 	})
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
-	var view api.ServicesView
+	var view opsapi.ServicesView
 	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
-	rows := map[string]api.ServiceRow{}
+	rows := map[string]opsapi.ServiceRow{}
 	for _, row := range view.Rows {
 		rows[row.Name] = row
 	}
@@ -138,9 +167,9 @@ func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
 	ctx := context.Background()
 
 	for i, text := range []string{"older entry", "newer entry"} {
-		if err := st.RecordActivity(ctx, store.Activity{
-			At: int64(1_700_000_000 + i*60), Kind: store.ActivityKindTitle,
-			Level: store.ActivityInfo, Text: text,
+		if err := st.RecordActivity(ctx, activitystore.Activity{
+			At: int64(1_700_000_000 + i*60), Kind: activitystore.ActivityKindTitle,
+			Level: activitystore.ActivityInfo, Text: text,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +180,7 @@ func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
 		t.Fatalf("activity → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Activity []store.Activity `json:"activity"`
+		Activity []activitystore.Activity `json:"activity"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

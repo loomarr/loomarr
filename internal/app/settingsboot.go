@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/requester"
 )
 
 // envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
@@ -24,7 +24,7 @@ import (
 var envLookup = config.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root
-// reads settings the way it used to read cfg.X. Reads resolve env > db > default
+// reads settings through typed getters. Reads resolve env > db > default
 // through the live snapshot unless freeze pins a generation-scoped key. Connection
 // getters are returned as closures so adapters read them per operation.
 type resolved struct {
@@ -88,8 +88,8 @@ func (r resolved) Value(key string) any {
 }
 
 // homeGeography is the installation's location with its region preference (#2035).
-func (r resolved) homeGeography() filler.Geography {
-	return filler.Geography{
+func (r resolved) homeGeography() pod.Geography {
+	return pod.Geography{
 		Country: settings.FillerHomeCountry.Get(r), Place: settings.FillerHomePlace.Get(r),
 		Fallback: settings.FillerRegionFallback.Joined(r),
 	}.Normalize()

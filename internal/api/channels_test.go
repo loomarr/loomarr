@@ -16,11 +16,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -31,10 +36,10 @@ import (
 type staleOnceChannelStore struct {
 	records.Store
 	once   sync.Once
-	before func(context.Context, store.Channel) error
+	before func(context.Context, channelstore.Channel) error
 }
 
-func (s *staleOnceChannelStore) SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error) {
+func (s *staleOnceChannelStore) SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error) {
 	var hookErr error
 	s.once.Do(func() {
 		if s.before != nil {
@@ -42,7 +47,7 @@ func (s *staleOnceChannelStore) SaveChannel(ctx context.Context, ch store.Channe
 		}
 	})
 	if hookErr != nil {
-		return store.Channel{}, hookErr
+		return channelstore.Channel{}, hookErr
 	}
 	return s.Store.SaveChannel(ctx, ch)
 }
@@ -307,7 +312,7 @@ func TestPurgeConflictReturnsConflictInsteadOfBadGateway(t *testing.T) {
 		t.Fatalf("create → %d", resp.StatusCode)
 	}
 
-	chSvc.err = store.ErrChannelStale
+	chSvc.err = channelstore.ErrChannelStale
 	resp = do(t, srv, http.MethodDelete, "/v1/channels/internal?purge=true", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("stale purge → %d, want 409", resp.StatusCode)
@@ -814,13 +819,13 @@ func TestDeleteChannelDetaches(t *testing.T) {
 func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
 	base := openTestStore(t, t.TempDir()+"/detach-race.db")
 	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	if _, err := base.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: "c1", Name: "Original", Number: 5, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+	wrapped.before = func(ctx context.Context, _ channelstore.Channel) error {
 		winner, err := base.GetChannel(ctx, "c1")
 		if err != nil {
 			return err
@@ -842,7 +847,7 @@ func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
 	if read.StatusCode != http.StatusOK {
 		t.Fatalf("read after stale detach -> %d, want 200", read.StatusCode)
 	}
-	var got api.ChannelDTO
+	var got channelsapi.ChannelDTO
 	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +915,7 @@ func TestRefineChannel_RequiresAdmin(t *testing.T) {
 func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	srv, st, _ := newServerWithSchedulerAndSuggest(t)
 	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
-	ch := store.Channel{}
+	ch := channelstore.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
@@ -928,7 +933,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
 
-	ch := store.Channel{
+	ch := channelstore.Channel{
 		IntentJSON: `{"description":"90s action","era":"1990s","mustExclude":["Slow Burn"],"refineText":"old note","channelName":"Fixed"}`,
 		Lineup: []schedule.LineupEntry{
 			{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
@@ -975,7 +980,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 // never refined from a guess such as its name: the admin is asked to describe it again.
 func TestRefineChannel_UnavailableOriginalRequest422(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
-	ch := store.Channel{}
+	ch := channelstore.Channel{}
 	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
@@ -1471,8 +1476,8 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
 		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (api.BackendCheckpoint, error) {
-			return api.BackendCheckpoint{
+		BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil
@@ -1543,7 +1548,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // they seed the starting state in the store).
 func seedChannelWithLineup(t *testing.T, st records.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
-	_, err := st.SaveChannel(context.Background(), store.Channel{
+	_, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{
 			ID: id, Name: "Seed", Number: 5, Strategy: schedule.Sequential,
 			Status: schedule.StatusBuilding,
@@ -1938,15 +1943,15 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 
 // fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byChannel map[string]api.ChannelNowNext
-	upcoming  map[string][]api.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	byChannel map[string]guideapi.ChannelNowNext
+	upcoming  map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
 }
 
-func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
 	return f.byChannel, nil
 }
 
-func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]api.NowNextEntry, error) {
+func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]guideapi.NowNextEntry, error) {
 	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
@@ -1963,12 +1968,12 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	// A remote-backed channel and one internal-only shape with no Tunarr id.
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-live", Name: "Live", Number: 42, TunarrID: "tunarr-1", Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-new", Name: "New", Number: 43, Status: "building"},
 	}); err != nil {
 		t.Fatal(err)
@@ -1978,9 +1983,9 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]api.ChannelNowNext{
-			"ch-live": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
-			"ch-new":  {Now: &api.NowNextEntry{Title: "Internal Now"}},
+		Guide: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
+			"ch-live": {Now: &guideapi.NowNextEntry{Title: "On Now"}, Next: &guideapi.NowNextEntry{Title: "Up Next", Gap: true}},
+			"ch-new":  {Now: &guideapi.NowNextEntry{Title: "Internal Now"}},
 		}},
 	})
 	srv := httptest.NewServer(h)
@@ -1991,7 +1996,7 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		t.Fatalf("now-next → %d; a 404 means it routed to get-channel with id=now-next", resp.StatusCode)
 	}
 	var body struct {
-		Channels []api.ChannelNowNext `json:"channels"`
+		Channels []guideapi.ChannelNowNext `json:"channels"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 
@@ -2013,14 +2018,14 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/upcoming.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]api.NowNextEntry{
+		Guide: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
 			"ch-internal": {{Title: "Playing locally"}},
 		}},
 	})
@@ -2032,7 +2037,7 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 		t.Fatalf("upcoming for internal-only channel → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Upcoming []api.NowNextEntry `json:"upcoming"`
+		Upcoming []guideapi.NowNextEntry `json:"upcoming"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -2058,13 +2063,13 @@ func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
 func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
-	ch := store.Channel{IntentJSON: `{"description":"90s action"}`}
+	ch := channelstore.Channel{IntentJSON: `{"description":"90s action"}`}
 	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-origin", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-running", Kind: "recurate", Status: "running", ChannelID: "c1",
 	}); err != nil {
 		t.Fatal(err)

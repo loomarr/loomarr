@@ -229,3 +229,14 @@ tables:
         A JSON list of up to 50 things the app did just before the crash, each with a time, a category
         (navigation, http, lifecycle or log) and a short message.
       native_payload: For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise.
+
+  - name: database_table_rows
+    about: >
+      How many rows each table held, counted once a day by the nightly housekeeping task after its
+      clean-up. A table whose count only ever rises is one that nothing trims; "Which tables are
+      growing" near the top of this page shows how to compare the latest count with a month ago.
+    retention: The nightly housekeeping task forgets counts older than 400 days.
+    columns:
+      recorded_at: The day counted, as the Unix time in seconds of that day's midnight (UTC).
+      table_name: The table counted. Every table except goose_db_version and this one.
+      row_count: How many rows the table held after that night's clean-up.

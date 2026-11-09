@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 )
@@ -34,7 +35,7 @@ func (f *fakePasswordRecovery) Redeem(context.Context, string, string, string) e
 	return f.redeemErr
 }
 
-func newPasswordRecoveryHarness(t *testing.T, service api.PasswordRecoveryService) *apiHarness {
+func newPasswordRecoveryHarness(t *testing.T, service people.PasswordRecoveryService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{

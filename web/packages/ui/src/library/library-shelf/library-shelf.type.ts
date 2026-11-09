@@ -32,6 +32,8 @@ interface LibraryShelfStatus {
   held: readonly LibraryHeldRemoval[];
   /** Folders in use that didn't open at their last check. */
   offline: readonly string[];
+  /** Something in Needs you is waiting, so the line can't say every title's ready. */
+  needsYou?: boolean;
 }
 
 interface LibraryShelfProps {

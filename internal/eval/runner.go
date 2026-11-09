@@ -387,7 +387,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.Lineup = len(prop.Lineup)
 				result.Acquisitions = len(prop.Acquisitions)
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
-				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, err))
+				result.SchemaValid = err == nil || errors.Is(err, proposals.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, err))
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
 				result.DateScope = cloneDateScope(prop.Policy.Scope.Dates)
 				result.PolicyAccurate = policyAccuracyMatches(c, result, err)
@@ -725,7 +725,7 @@ func proposalQualityMatches(c Case, proposal proposals.Proposal, err error) bool
 		return true
 	}
 	if c.ExpectedProposalAbstention {
-		return len(allItems(proposal)) == 0 && errors.Is(err, suggest.ErrNoGroundedTitles)
+		return len(allItems(proposal)) == 0 && errors.Is(err, proposals.ErrNoGroundedTitles)
 	}
 	if len(c.ExpectedProposalKeys) == 0 {
 		return true
@@ -751,10 +751,10 @@ func proposalQualityMatches(c Case, proposal proposals.Proposal, err error) bool
 
 func typedFailureTerminal(err error) string {
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || suggest.ValidateDecisionTrace(failure.Trace) != nil {
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || proposals.ValidateDecisionTrace(failure.Trace) != nil {
 		return ""
 	}
-	if failure.Trace.Terminal != suggest.TerminalConstraintsConflict && failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+	if failure.Trace.Terminal != proposals.TerminalConstraintsConflict && failure.Trace.Terminal != proposals.TerminalDateSemanticsUnclear {
 		return ""
 	}
 	return failure.Trace.Terminal

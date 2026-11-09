@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -35,13 +35,44 @@ const downloadSchedulePresets = [
 ];
 
 describe("SettingField", () => {
-  it("labels the field from its key and exposes the doc via a help affordance", () => {
-    render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Library URL")).toBeInTheDocument();
-    // The doc is now a FieldHelp (i) tooltip in the label row (visible on hover) …
-    expect(screen.getByRole("button", { name: /about library url/i })).toBeInTheDocument();
-    // … and still in the DOM (visually hidden) for the control's aria-describedby (a11y).
-    expect(screen.getByText("Base URL of your Emby/Jellyfin server.")).toBeInTheDocument();
+  it("shows the one-sentence summary under the field and keeps the detail behind the info icon", () => {
+    render(
+      <SettingField
+        entry={entry({ doc: "The address of your media server.", detail: "For example http://emby:8096." })}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText("Library URL");
+    expect(input).toHaveAccessibleDescription("The address of your media server.");
+    expect(screen.getByText("The address of your media server.")).toBeVisible();
+    const info = screen.getByRole("button", { name: /about library url/i });
+    expect(info).toHaveAccessibleDescription("For example http://emby:8096.");
+  });
+
+  it("offers no info icon when the summary says it all", () => {
+    render(
+      <SettingField
+        entry={entry({ doc: "The address of your media server." })}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("The address of your media server.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
+  });
+
+  // `sr-only` is `position: absolute`. The info icon's hidden copy of the detail sits in an
+  // unpositioned button, so without a positioned field it lands against the page, below the
+  // viewport, and stretches the document so scroll chains out of main (#2724).
+  it("anchors the info icon's visually hidden detail to the field", () => {
+    const { container } = render(
+      <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
+    );
+    const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
+    const field = container.querySelector(".group");
+    expect(field).toHaveClass("relative");
+    expect(field).toContainElement(detail);
   });
 
   it("uses the registry-owned label instead of deriving product copy from the key", () => {
@@ -60,7 +91,7 @@ describe("SettingField", () => {
     );
     const amount = screen.getByLabelText("Sign-in lifetime");
     expect(amount).toHaveValue("30");
-    expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveTextContent("days");
+    expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveValue("days");
     fireEvent.change(amount, { target: { value: "14" } });
     expect(onChange).toHaveBeenLastCalledWith("1209600s");
   });
@@ -101,16 +132,59 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Every 6 hours");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Every 6 hours");
     expect(screen.queryByLabelText("Custom check interval")).not.toBeInTheDocument();
 
-    await userEvent.click(schedule);
-    expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
+    expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
+    await userEvent.selectOptions(schedule, "Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("6");
     fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });
     expect(onChange).toHaveBeenLastCalledWith("28800s");
+  });
+
+  // The backup default (0 30 3 * * *) is in no preset. It used to render as a raw cron string.
+  it("shows a once-a-day cron as a time, not as cron fields", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "backup.schedule",
+          kind: "cron",
+          label: "Automatic backup schedule",
+          presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+        })}
+        value="0 30 3 * * *"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue(
+      "Every day at a time I choose",
+    );
+    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveDisplayValue(":30");
+    expect(screen.queryByDisplayValue("0 30 3 * * *")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule minute"), ":45");
+    expect(onChange).toHaveBeenLastCalledWith("0 45 3 * * *");
+  });
+
+  it("stores a named schedule's value and keeps an unusual cron behind Custom schedule", async () => {
+    const onChange = vi.fn();
+    const weekly = entry({
+      key: "backup.schedule",
+      kind: "cron",
+      label: "Automatic backup schedule",
+      presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+    });
+    const { unmount } = render(<SettingField entry={weekly} value="0 30 3 * * 1" onChange={onChange} />);
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue("Custom schedule");
+    expect(screen.getByLabelText("Automatic backup schedule custom schedule")).toHaveValue("0 30 3 * * 1");
+    unmount();
+
+    render(<SettingField entry={weekly} value="0 30 3 * * *" onChange={onChange} />);
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule"), "Every hour");
+    expect(onChange).toHaveBeenLastCalledWith("0 0 * * * *");
   });
 
   it("offers the registry's presets and stores a selected one", async () => {
@@ -129,13 +203,13 @@ describe("SettingField", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Look for new clips"));
-    const options = await screen.findAllByRole("option");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       ...downloadSchedulePresets.map((preset) => preset.label),
       "Custom",
     ]);
-    await userEvent.click(screen.getByRole("option", { name: "Every 12 hours" }));
+    await userEvent.selectOptions(schedule, "Every 12 hours");
     expect(onChange).toHaveBeenLastCalledWith("12h0m0s");
   });
 
@@ -156,11 +230,10 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Custom");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("5");
-    await userEvent.click(schedule);
-    const options = await screen.findAllByRole("option");
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Every 3 hours", "Custom"]);
   });
 
@@ -196,6 +269,138 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("60");
   });
 
+  it("edits a whole number of seconds in a unit and still stores seconds", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "filler.cooldown_seconds",
+          kind: "int",
+          unit: "seconds",
+          label: "Repeat spacing",
+        })}
+        value="14400"
+        onChange={onChange}
+      />,
+    );
+    const amount = screen.getByLabelText("Repeat spacing");
+    expect(amount).toHaveValue("4");
+    expect(screen.getByLabelText("Repeat spacing unit")).toHaveValue("hours");
+    fireEvent.change(amount, { target: { value: "6" } });
+    expect(onChange).toHaveBeenLastCalledWith("21600");
+    fireEvent.change(screen.getByLabelText("Repeat spacing unit"), { target: { value: "minutes" } });
+    expect(onChange).toHaveBeenLastCalledWith("240");
+  });
+
+  it("offers only units a stored whole number of hours can hold", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "guide.retention_hours", kind: "int", unit: "hours", label: "Past listings" })}
+        value="48"
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByLabelText("Past listings")).toHaveValue("2");
+    const unit = screen.getByLabelText("Past listings unit");
+    expect(unit).toHaveValue("days");
+    expect([...unit.querySelectorAll("option")].map((option) => option.value)).toEqual(["days", "hours"]);
+    fireEvent.change(screen.getByLabelText("Past listings"), { target: { value: "3" } });
+    expect(onChange).toHaveBeenLastCalledWith("72");
+  });
+
+  it("keeps the chosen unit of a zero duration instead of snapping back to hours", () => {
+    const Controlled = () => {
+      const [raw, setRaw] = useState("0s");
+      return (
+        <SettingField
+          entry={entry({ key: "filler.min_clip_duration", kind: "duration", label: "Shortest clip" })}
+          value={raw}
+          onChange={setRaw}
+        />
+      );
+    };
+    render(<Controlled />);
+    const unit = screen.getByLabelText("Shortest clip unit");
+    expect(unit).toHaveValue("seconds");
+    fireEvent.change(unit, { target: { value: "minutes" } });
+    expect(unit).toHaveValue("minutes");
+    fireEvent.change(screen.getByLabelText("Shortest clip"), { target: { value: "2" } });
+    expect(screen.getByLabelText("Shortest clip")).toHaveValue("2");
+    expect(unit).toHaveValue("minutes");
+  });
+
+  it("picks a timezone from the server's zones and keeps a stored zone the list lacks", () => {
+    const onChange = vi.fn();
+    const presets = [
+      { value: "", label: "Each viewer's device" },
+      { value: "America/New_York", label: "America/New York" },
+      { value: "Europe/London", label: "Europe/London" },
+    ];
+    const { rerender } = render(
+      <SettingField
+        entry={entry({
+          key: "guide.timezone",
+          kind: "string",
+          presentation: "timezone",
+          label: "Timezone",
+          presets,
+        })}
+        value=""
+        onChange={onChange}
+      />,
+    );
+    const zone = screen.getByLabelText("Timezone");
+    expect(zone.tagName).toBe("SELECT");
+    expect(zone).toHaveValue("");
+    fireEvent.change(zone, { target: { value: "Europe/London" } });
+    expect(onChange).toHaveBeenLastCalledWith("Europe/London");
+
+    rerender(
+      <LoomarrProvider theme="dark">
+        <SettingField
+          entry={entry({
+            key: "guide.timezone",
+            kind: "string",
+            presentation: "timezone",
+            label: "Timezone",
+            presets,
+          })}
+          value="US/Eastern"
+          onChange={onChange}
+        />
+      </LoomarrProvider>,
+    );
+    expect(screen.getByLabelText("Timezone")).toHaveValue("US/Eastern");
+  });
+
+  it("names the audio languages in the viewer's language, with the first-track choice first", () => {
+    render(
+      <SettingField
+        entry={entry({
+          key: "playout.audio_language",
+          kind: "string",
+          presentation: "language",
+          label: "Preferred audio language",
+          presets: [
+            { value: "", label: "First track in the file" },
+            { value: "en", label: "en" },
+            { value: "fr", label: "fr" },
+          ],
+        })}
+        value="fr"
+        onChange={vi.fn()}
+      />,
+    );
+    const language = screen.getByLabelText("Preferred audio language");
+    expect(language).toHaveValue("fr");
+    expect([...language.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+      "First track in the file",
+      "English",
+      "French",
+    ]);
+  });
+
   it("emits edits as strings", async () => {
     const onChange = vi.fn();
     render(<SettingField entry={entry()} value="" onChange={onChange} />);
@@ -219,9 +424,15 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("true");
   });
 
-  it("locks an env-pinned field and says so", () => {
+  // #2759: a pinned value is read-only, not disabled. Disabled dims it to placeholder grey, and a
+  // real value must never be mistaken for an empty hint.
+  it("locks an env-pinned field read-only at full strength and says so", () => {
     render(<SettingField entry={entry({ provenance: "env" })} value="http://x" onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Library URL")).toBeDisabled();
+    const input = screen.getByLabelText("Library URL");
+    expect(input).toHaveAttribute("readonly");
+    expect(input).not.toBeDisabled();
+    expect(input).toHaveValue("http://x");
+    expect(input).not.toHaveStyle({ opacity: "0.62" });
     expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
   });
 
@@ -357,14 +568,13 @@ describe("SettingField", () => {
         onChange={onChange}
       />,
     );
-    // The trigger shows the capitalized LABEL, not the raw value.
-    const trigger = screen.getByLabelText("Library flavor");
-    expect(trigger).toHaveTextContent("Jellyfin");
+    // The select shows the capitalized LABEL, not the raw value.
+    const select = screen.getByRole("combobox", { name: "Library flavor" });
+    expect(select).toHaveDisplayValue("Jellyfin");
 
-    await userEvent.click(trigger);
     // Options show labels ("Emby"), not "emby".
-    expect(await screen.findByRole("option", { name: "Emby" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Emby" }));
+    expect(screen.getByRole("option", { name: "Emby" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Emby");
     // …but the stored value stays lowercase (the BE contract).
     expect(onChange).toHaveBeenCalledWith("emby");
   });
@@ -424,5 +634,37 @@ describe("SettingField", () => {
     const field = screen.getByRole("textbox", { name: "Media server address" });
     expect(field).toBeInvalid();
     expect(field).toHaveAccessibleDescription("Base URL of your Emby/Jellyfin server. must include a scheme");
+  });
+
+  // #2736: the audit footer names the person in words, never a raw id.
+  describe("audit footer", () => {
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString();
+
+    it("names the person who changed it, in whole words", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by Sam, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("says you for the caller's own change", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedByYou: true, updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by you, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("leaves an unknown author unnamed", () => {
+      render(<SettingField entry={entry({ updatedAt: nineDaysAgo })} value="http://x" onChange={vi.fn()} />);
+      expect(screen.getByText("Changed 9 days ago")).toBeInTheDocument();
+    });
   });
 });

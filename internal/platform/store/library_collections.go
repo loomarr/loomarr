@@ -22,10 +22,14 @@ type LibraryCollection struct {
 	// Loomarr. An update keeps it.
 	ImportedID string
 	// Members are library item ids, in order. A title that has left the library stays here, so it
-	// comes back in its place.
+	// comes back in its place. Each must name a library_items row (a foreign key): a write naming
+	// one that doesn't is refused with ErrUnknownLibraryItem.
 	Members   []string
 	UpdatedAt time.Time
 }
+
+// ErrUnknownLibraryItem refuses a collection write naming a title the library has no row for.
+var ErrUnknownLibraryItem = errors.New("no such library title")
 
 // LibraryCollectionStore keeps the household's collections.
 type LibraryCollectionStore interface {
@@ -40,40 +44,48 @@ type LibraryCollectionStore interface {
 	UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error
 	// DeleteLibraryCollection deletes a collection and its members; ErrNotFound when there is none.
 	DeleteLibraryCollection(ctx context.Context, id string) error
-	// LibraryCollectionMemberIDs lists each collection's members still in the library, with the
-	// provider ids a channel's lineup knows them by.
+	// LibraryCollectionMemberIDs lists each collection's members, with the provider ids a channel's
+	// lineup knows them by.
 	LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error)
 }
 
-// LibraryCollectionMember is one title of a collection, by its provider ids ("" when it has none).
+// LibraryCollectionMember is one title of a collection, by its external ids (none when it has
+// none).
 type LibraryCollectionMember struct {
 	CollectionID string
 	// Kind is the title's library kind: movie or series.
-	Kind   string
-	TMDBID string
-	TVDBID string
+	Kind string
+	// IDs are every external id the title is known by, by namespace then value.
+	IDs []LibraryID
 }
 
 func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind,
-		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tmdb'), ''),
-		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tvdb'), '')
+	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind, i.id
 		FROM library_collection_members m JOIN library_items i ON i.id = m.inventory_item_id
 		ORDER BY m.collection_id, m.position`)
 	if err != nil {
 		return nil, fmt.Errorf("library collection members: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 	var out []LibraryCollectionMember
+	var items []string
 	for rows.Next() {
 		var m LibraryCollectionMember
-		if err := rows.Scan(&m.CollectionID, &m.Kind, &m.TMDBID, &m.TVDBID); err != nil {
+		var item string
+		if err := rows.Scan(&m.CollectionID, &m.Kind, &item); err != nil {
+			_ = rows.Close()
 			return nil, fmt.Errorf("library collection members: %w", err)
 		}
-		out = append(out, m)
+		out, items = append(out, m), append(items, item)
 	}
-	if err := rows.Err(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	byItem, err := s.libraryIDsOf(ctx, items)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].IDs = byItem[items[i]]
 	}
 	return out, nil
 }
@@ -102,7 +114,7 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.imported_id, c.updated_at_ms,
 		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
-		ORDER BY LOWER(c.name), c.id, m.position`), args...)
+		ORDER BY `+s.lower("c.name")+`, c.id, m.position`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list library collections: %w", err)
 	}
@@ -188,21 +200,25 @@ func (s *sqlStore) writeLibraryCollection(ctx context.Context, id string, c Libr
 			continue
 		}
 		seen[item] = true
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position)
-			VALUES (?, ?, ?)`), id, item, len(seen)); err != nil {
+		// Checked here rather than left to the foreign key, so an unknown title is a refusal the
+		// caller can name instead of a driver error.
+		res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position)
+			SELECT ?, id, ? FROM library_items WHERE id = ?`), id, len(seen), item)
+		if err != nil {
 			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			return fmt.Errorf("%w: %s", ErrUnknownLibraryItem, item)
 		}
 	}
 	return tx.Commit()
 }
 
+// DeleteLibraryCollection deletes the collection row; its members go with it (ON DELETE CASCADE).
 func (s *sqlStore) DeleteLibraryCollection(ctx context.Context, id string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("delete library collection: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_collections WHERE id = ?`), id)
+	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM library_collections WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete library collection: %w", err)
 	}
@@ -210,12 +226,6 @@ func (s *sqlStore) DeleteLibraryCollection(ctx context.Context, id string) error
 		return fmt.Errorf("delete library collection: %w", err)
 	} else if n == 0 {
 		return ErrNotFound
-	}
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_collection_members WHERE collection_id = ?`), id); err != nil {
-		return fmt.Errorf("delete library collection: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("delete library collection: %w", err)
 	}
 	return nil
 }

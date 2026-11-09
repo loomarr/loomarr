@@ -48,15 +48,39 @@ func TestRegisterListsMatchBetweenRouterAndExporter(t *testing.T) {
 	}
 }
 
-// registrarCalls parses one file and returns, sorted, the name of every `srv.registerX(humaAPI,
-// …)` call in it: a call on srv whose method starts with "register" and whose first argument is
-// humaAPI, whatever else it takes (`srv.registerOps(humaAPI, opts.Pprof)` counts).
+// registrarCalls parses one file and returns, sorted, the name of every registrar call in it:
+//
+//   - `srv.registerX(humaAPI, …)`: a call on srv whose method starts with "register" and whose first
+//     argument is humaAPI, whatever else it takes (`srv.registerOps(humaAPI, opts.Pprof)` counts);
+//   - `area.New(…).Register(humaAPI)`: an area package's handlers, named "area.Register". Area
+//     packages (internal/api/people and its siblings) are mounted in exactly this shape, so a new
+//     area is covered by this guard without editing it.
 func registrarCalls(t *testing.T, path string) []string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A handler may be kept in a variable (`h := area.New(…)`) when other routes need its methods;
+	// `h.Register(humaAPI)` then counts as the area's registration.
+	named := map[string]string{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+			return true
+		}
+		name, isIdent := assign.Lhs[0].(*ast.Ident)
+		ctor, isCall := assign.Rhs[0].(*ast.CallExpr)
+		if !isIdent || !isCall {
+			return true
+		}
+		if newSel, ok := ctor.Fun.(*ast.SelectorExpr); ok && newSel.Sel.Name == "New" {
+			if pkg, ok := newSel.X.(*ast.Ident); ok {
+				named[name.Name] = pkg.Name
+			}
+		}
+		return true
+	})
 	var out []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -64,6 +88,21 @@ func registrarCalls(t *testing.T, path string) []string {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "Register" {
+			if area, isIdent := call.Args[0].(*ast.Ident); isIdent && area.Name == "humaAPI" {
+				if ctor, ok := sel.X.(*ast.CallExpr); ok {
+					if newSel, ok := ctor.Fun.(*ast.SelectorExpr); ok && newSel.Sel.Name == "New" {
+						if pkg, ok := newSel.X.(*ast.Ident); ok {
+							out = append(out, pkg.Name+".Register")
+						}
+					}
+				}
+				if recv, ok := sel.X.(*ast.Ident); ok && named[recv.Name] != "" {
+					out = append(out, named[recv.Name]+".Register")
+				}
+			}
+			return true
+		}
 		if !ok || !strings.HasPrefix(sel.Sel.Name, "register") {
 			return true
 		}

@@ -10,17 +10,19 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *testing.T) {
-	resolver := &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{
-		Result: api.MovieCollectionResolution{
+	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{
+		Result: libraryapi.MovieCollectionResolution{
 			Complete: true,
-			Collections: []api.MovieCollection{{
+			Collections: []libraryapi.MovieCollection{{
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
-				Members: []api.SearchCandidate{
+				Members: []httpcore.SearchCandidate{
 					{MediaType: "movie", TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001, InLibrary: true, LibraryItemID: "lib-671"},
 					{MediaType: "movie", TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002},
 				},
@@ -49,8 +51,8 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 		t.Fatalf("requests = %+v, want one bounded request preserving both Keys", requests)
 	}
 	var body struct {
-		Collections []api.MovieCollection `json:"collections"`
-		Complete    bool                  `json:"complete"`
+		Collections []libraryapi.MovieCollection `json:"collections"`
+		Complete    bool                         `json:"complete"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -64,7 +66,7 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 }
 
 func TestMovieCollections_RejectsMissingOrInvalidMovieKeysBeforeCallingService(t *testing.T) {
-	resolver := &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}
+	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth:             testAuthorizer{},
@@ -96,13 +98,13 @@ func TestMovieCollections_DistinguishesUnavailableConfigurationAndUpstreamFailur
 	log := slog.New(slog.DiscardHandler)
 	for _, tc := range []struct {
 		name       string
-		service    api.MovieCollectionService
+		service    libraryapi.MovieCollectionService
 		live       mapSettings
 		wantStatus int
 	}{
 		{name: "service not wired", live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusNotImplemented},
-		{name: "tmdb not configured", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}, live: mapSettings{}, wantStatus: http.StatusNotImplemented},
-		{name: "tmdb failed", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{Err: errors.New("tmdb down")}, live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusBadGateway},
+		{name: "tmdb not configured", service: &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}, live: mapSettings{}, wantStatus: http.StatusNotImplemented},
+		{name: "tmdb failed", service: &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{Err: errors.New("tmdb down")}, live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, MovieCollections: tc.service, LiveSettings: tc.live})
@@ -118,8 +120,8 @@ func TestMovieCollections_DistinguishesUnavailableConfigurationAndUpstreamFailur
 }
 
 func TestMovieCollections_NormalizesEmptyCollectionsToJSONArray(t *testing.T) {
-	resolver := &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{
-		Result: api.MovieCollectionResolution{Complete: true},
+	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{
+		Result: libraryapi.MovieCollectionResolution{Complete: true},
 	}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
@@ -144,7 +146,7 @@ func TestMovieCollections_NormalizesEmptyCollectionsToJSONArray(t *testing.T) {
 }
 
 func TestMovieCollections_BoundsVisibleKeys(t *testing.T) {
-	resolver := &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}
+	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
@@ -170,7 +172,7 @@ func TestMovieCollections_BoundsVisibleKeys(t *testing.T) {
 }
 
 func TestMovieCollections_RequiresAuthentication(t *testing.T) {
-	resolver := &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}
+	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,

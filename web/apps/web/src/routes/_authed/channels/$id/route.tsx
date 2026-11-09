@@ -8,27 +8,26 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Action, Surface } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
-import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
-import { ChannelDetailProvider } from "./-channel-detail-context";
+import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
 // what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,
-// the programming rules, pause/delete) is admin-only and lives inline (§7 PATCH). There is
-// NO manual "rebuild" button: an edit auto-reconciles server-side and the page updates live
-// via the `channel` SSE frame (§9 self-maintaining). The scheduler internals stay tucked in
+// the programming rules, pause/delete) is admin-only and lives inline (§7 PATCH). An edit
+// auto-reconciles server-side and the page updates live via the `channel` SSE frame (§9
+// self-maintaining); the one manual Build schedule is offered only when a live channel has
+// nothing in the guide (#2728). The scheduler internals stay tucked in
 // an admin-only "Advanced" disclosure so the viewer surface reads plainly.
 //
 // ⚠ Split into a layout + one route per section (V-nav-paths): `/channels/$id/info`,
@@ -47,8 +46,6 @@ const SECTIONS = [
 ] as const;
 
 const FLAVOR_NAMES: Record<string, string> = { emby: "Emby", jellyfin: "Jellyfin" };
-
-type AirState = { dot: OnAirState; label: string; detail: string };
 
 // How often the header's minutes-left moves on.
 const NOW_TICK_MS = 30_000;
@@ -73,7 +70,9 @@ const headerAirLine = (
   return { onAir: false, text: air.label };
 };
 
-const airStateOf = (ch: ChannelDTO): AirState => {
+// `scheduled` is whether now/next has anything for the channel: undefined until it answers, so the
+// channel's own status stands until then.
+const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
   // "Broadcasting" is backend-agnostic. Tunarr channels signal it with a pushed projection
   // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
   // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
@@ -99,6 +98,16 @@ const airStateOf = (ch: ChannelDTO): AirState => {
       detail: "Something changed in your library. Loomarr is bringing the lineup back in line.",
     };
   }
+  if (ch.status === "live" && broadcasting && scheduled === false) {
+    // Live, but the guide has nothing for it now or next (#2728): On air here sat beside an empty
+    // guide row and "Programme information isn't available".
+    return {
+      dot: "off",
+      label: "No schedule yet",
+      detail: "Nothing is in the guide for this channel yet.",
+      buildSchedule: true,
+    };
+  }
   if (ch.status === "live" && broadcasting) {
     return { dot: "live", label: "On air", detail: "Playing now in your TV guide." };
   }
@@ -120,6 +129,13 @@ const ChannelDetailLayout = () => {
   const queryClient = useQueryClient();
   // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
   const { pathname } = useLocation();
+  // Every section renders in the one scroller below, so a new tab would open at the last tab's
+  // offset (#2744). Each section starts at its own top.
+  const sectionScroller = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the path is the trigger, not a value read.
+  useLayoutEffect(() => {
+    if (sectionScroller.current) sectionScroller.current.scrollTop = 0;
+  }, [pathname]);
 
   const channel = channelsApi.useGetChannel(id);
   // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
@@ -197,8 +213,10 @@ const ChannelDetailLayout = () => {
   const ch = unwrap(channel.data);
   if (!ch) return <p className="text-muted-foreground p-6 text-sm">Loading channel…</p>;
 
-  const air = airStateOf(ch);
-  const onNow = nowNextBody?.channels.find((entry) => entry.channelId === id)?.now;
+  // The header state comes from now/next (#2728): a channel the guide has nothing for is not On air.
+  const nowNext = nowNextBody?.channels.find((entry) => entry.channelId === id);
+  const air = airStateOf(ch, nowNextBody ? Boolean(nowNext?.now || nowNext?.next) : undefined);
+  const onNow = nowNext?.now;
   const airing = timelineBody?.airings.find(
     (a) => a.kind !== "filler" && a.startMs <= nowMs && nowMs < a.stopMs,
   );
@@ -230,7 +248,7 @@ const ChannelDetailLayout = () => {
           aria-label="Back to channels"
           className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
         >
-          <ArrowLeft className="size-4" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         </Link>
         {ch.logo ? (
           <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">
@@ -335,7 +353,7 @@ const ChannelDetailLayout = () => {
 
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" data-testid="channel-section-scroller" ref={sectionScroller}>
         <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
           <ChannelDetailProvider
             value={{

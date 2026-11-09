@@ -25,6 +25,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "show", Kind: "series", Name: "Show", Rating: "TV-Y", IDs: []LibraryID{{"tvdb", "90000002"}, {"tmdb", "90000003"}}},
+		{ID: "show-e1", Kind: "episode", Name: "Pilot"},
 	}, recent); err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +46,9 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	want := []LibraryTitle{
-		{ID: "film", Kind: "movie", Name: "Film", TMDBID: "90000001", Rating: "PG", SizeBytes: 4_000},
-		{ID: "show", Kind: "series", Name: "Show", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
+		{ID: "film", Kind: "movie", Name: "Film", IDs: []LibraryID{{"imdb", "tt90000001"}, {"tmdb", "90000001"}},
+			Rating: "PG", SizeBytes: 4_000},
+		{ID: "show", Kind: "series", Name: "Show", IDs: []LibraryID{{"tmdb", "90000003"}, {"tvdb", "90000002"}}, Rating: "TV-Y"},
 	}
 	if !slices.EqualFunc(all, want, sameTitle) {
 		t.Errorf("all titles = %+v, want %+v", all, want)
@@ -130,7 +132,8 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	found, err := st.SearchLibraryTitles(ctx, " SHOW ", 10)
-	if err != nil || len(found) != 2 || found[0].ID != "show" || found[1].ID != "showtime" || found[1].TMDBID != "90000005" {
+	if err != nil || len(found) != 2 || found[0].ID != "show" || found[1].ID != "showtime" ||
+		IDIn(found[1].IDs, "tmdb") != "90000005" {
 		t.Errorf("search show = %+v, %v; want Show, then Showtime 100%%", found, err)
 	}
 	if one, err := st.SearchLibraryTitles(ctx, "show", 1); err != nil || len(one) != 1 || one[0].ID != "show" {
@@ -144,9 +147,27 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("search %q = %+v, %v; want nothing", term, got, err)
 		}
 	}
+
+	// Case is ignored in every script, not only ASCII: SQLite's own lower() leaves "Ä" as it is.
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+		{ID: "umlaut", Kind: "movie", Name: "Älpha Ömega", Sources: []LibrarySource{{Path: "/m/umlaut.mkv", Plays: true}}},
+	}, recent); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/m/umlaut.mkv", "umlaut", "")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, term := range []string{"älpha", "ÖMEGA"} {
+		if got, err := st.SearchLibraryTitles(ctx, term, 10); err != nil || len(got) != 1 || got[0].ID != "umlaut" {
+			t.Errorf("search %q = %+v, %v; want Älpha Ömega", term, got, err)
+		}
+		if page, err := st.ListLibraryItems(ctx, LibraryItemQuery{Search: term}); err != nil || page.Total != 1 {
+			t.Errorf("list search %q = %+v, %v; want Älpha Ömega", term, page, err)
+		}
+	}
 }
 
 func sameTitle(a, b LibraryTitle) bool {
-	return a.ID == b.ID && a.Kind == b.Kind && a.Name == b.Name && a.TMDBID == b.TMDBID && a.TVDBID == b.TVDBID &&
+	return a.ID == b.ID && a.Kind == b.Kind && a.Name == b.Name && slices.Equal(a.IDs, b.IDs) &&
 		a.Rating == b.Rating && a.SizeBytes == b.SizeBytes
 }

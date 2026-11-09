@@ -1,5 +1,5 @@
+import { Action } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Button } from "@/components/ui";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
@@ -24,11 +24,7 @@ const fields = (
   </div>
 );
 
-const testBtn = (
-  <Button variant="outline" size="sm">
-    Test connection
-  </Button>
-);
+const testBtn = <Action variant="outline">Test connection</Action>;
 
 // Healthy + collapsed — the resting state of a passing connection: a green dot and the
 // header's one-line summary ("OK"), which is all a collapsed block shows.
@@ -84,5 +80,17 @@ const Untested: Story = {
   args: { title: "Tunarr", open: true, action: testBtn, children: fields },
 };
 
+// An optional service a fresh install has not touched (#2781) — neutral "Not set up", not red.
+const NotSetUp: Story = {
+  args: {
+    title: "TMDB",
+    optional: true,
+    verdict: { ok: false, notSetUp: true, hint: "set your TMDB API key" },
+    open: true,
+    action: testBtn,
+    children: fields,
+  },
+};
+
 export default meta;
-export { BrokenCollapsed, BrokenOpen, HealthyCollapsed, HealthyOpen, Testing, Untested };
+export { BrokenCollapsed, BrokenOpen, HealthyCollapsed, HealthyOpen, NotSetUp, Testing, Untested };

@@ -17,7 +17,7 @@ import (
 func TestRecorderMatchesReviewedMetricManifest(t *testing.T) {
 	recorder := New(Options{
 		Version: "test", Revision: "revision", Database: "sqlite",
-		Store: fakeCounts{}, Now: time.Now, DatabaseStats: func() sql.DBStats { return sql.DBStats{} },
+		Store: fakeCounts{tables: map[string]int64{"clips": 1}}, Now: time.Now, DatabaseStats: func() sql.DBStats { return sql.DBStats{} },
 	})
 	recorder.LoginResult(true)
 	recorder.LLMTokens(1, 1)

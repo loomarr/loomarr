@@ -4,9 +4,8 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
@@ -95,12 +94,12 @@ const WizardAiBlock = () => {
       {liveProvider !== "openai" &&
         (llm.isLoading ? (
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Loader2 className="size-4 animate-spin" aria-hidden />
+            <LoadingStrip decorative width={32} />
             Looking for a local AI model…
           </p>
         ) : status?.reachable ? (
           <p className="text-lock flex items-center gap-2 text-sm">
-            <CheckCircle2 className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.passed} size="compact" tone="inherit" />
             {status.model
               ? `Ollama detected: using ${status.model}.`
               : "Ollama detected. Pick a model below to turn on suggestions."}

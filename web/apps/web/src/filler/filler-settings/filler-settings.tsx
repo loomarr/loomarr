@@ -4,9 +4,9 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ClipDetailsSettings } from "../clip-details-settings";
@@ -60,10 +60,14 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
     );
   }
   const pauseMessage = storagePauseMessage(storage.pausedBy);
+  // The server owns the warning threshold (storage state); a nearly full or full allowance offers
+  // the way out (#2737), which is the allowance field just above.
+  const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
   return (
     <div
+      role="status"
       className={
-        pauseMessage
+        pauseMessage || allowanceFull
           ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3 text-sm"
           : "bg-muted/50 rounded-lg px-4 py-3 text-sm"
       }
@@ -71,11 +75,23 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       <p className="font-medium">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </p>
-      <p className="text-muted-foreground mt-1">
+      <Text as="p" style={{ marginTop: 4 }} textRole="body" tone={allowanceFull ? "warning" : "muted"}>
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
-      </p>
+      </Text>
       {pauseMessage ? <p className="text-caution-foreground mt-2">{pauseMessage}</p> : null}
+      {allowanceFull ? (
+        <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} marginTop={12}>
+          <Action
+            variant="secondary"
+            onPress={() =>
+              document.getElementById(`setting-${SettingKey.FillerStorageLibraryBudgetGb}`)?.focus()
+            }
+          >
+            Raise allowance
+          </Action>
+        </Surface>
+      ) : null}
     </div>
   );
 };
@@ -89,31 +105,23 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
           to="/filler/settings"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
         >
-          <ArrowLeft className="size-3.5" aria-hidden />
+          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
           All filler settings
         </Link>
         <p className="text-muted-foreground mt-2 text-xs">Jump straight to another task.</p>
       </div>
-      <Select
-        value={section}
-        onValueChange={(next) =>
-          void navigate({
-            to: "/filler/settings/$section",
-            params: { section: next as FillerSettingsSection },
-          })
-        }
-      >
-        <SelectTrigger className="w-full sm:w-64" aria-label="Filler settings task">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {SETTINGS_SECTIONS.map((item) => (
-            <SelectItem key={item.id} value={item.id}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="w-full sm:w-64">
+        <BrowserSelectControl
+          appearance="field"
+          label="Filler settings task"
+          labelHidden
+          onValueChange={(next) =>
+            void navigate({ to: "/filler/settings/$section", params: { section: next } })
+          }
+          options={SETTINGS_SECTIONS.map((item) => ({ label: item.label, value: item.id }))}
+          value={section}
+        />
+      </div>
     </div>
   );
 };
@@ -125,7 +133,7 @@ const FillerSettingsIndex = () => (
         to="/filler/manage"
         className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
       >
-        <ArrowLeft className="size-3.5" aria-hidden />
+        <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         Manage
       </Link>
       <h2 className="mt-3 text-xl font-semibold">Filler settings</h2>
@@ -169,10 +177,9 @@ const FillerSettingsIndex = () => (
                   {item.description}
                 </span>
               </span>
-              <ArrowRight
-                className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                aria-hidden
-              />
+              <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
+              </span>
             </Link>
           ))}
         </div>

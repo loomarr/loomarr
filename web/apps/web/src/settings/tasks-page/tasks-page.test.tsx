@@ -271,8 +271,19 @@ describe("TasksPage", () => {
     await expandGroup("Acquisitions");
 
     const row = screen.getByText("Reconcile acquisitions").closest("tr") as HTMLElement;
-    expect(within(row).getByText("overdue")).toBeInTheDocument();
+    expect(within(row).getByText("Overdue")).toHaveAttribute("title", "Due, but waiting for a free worker");
     expect(within(row).queryByText("expired")).not.toBeInTheDocument();
+  });
+
+  it("never shows an overdue task with a green OK dot", async () => {
+    stubJobs([{ ...(jobs[0] as JobView), overdue: true }]);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+    await expandGroup("Acquisitions");
+
+    const row = screen.getByText("Reconcile acquisitions").closest("tr") as HTMLElement;
+    expect(within(row).getByRole("img", { name: "Overdue" })).toBeInTheDocument();
+    expect(within(row).queryByRole("img", { name: "OK" })).not.toBeInTheDocument();
+    expect(screen.getByText("1 task · 1 overdue")).toBeInTheDocument();
   });
 
   it("shows server and client initiated running states", async () => {

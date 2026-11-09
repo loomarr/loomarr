@@ -99,3 +99,27 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		})
 	}
 }
+
+// A format word is not an audience: "90s cartoons" is nostalgia for adults and
+// must not keep a model-proposed kids ceiling (#2739), while a request that
+// names a young audience still does.
+func TestIntentSignalsKidsNeedsAnAudienceNotAFormat(t *testing.T) {
+	t.Parallel()
+	for description, want := range map[string]bool{
+		"90s cartoons":                          false,
+		"classic cartoons and adult animation":  false,
+		"cartoons for kids":                     true,
+		"cartoons for my 5-year-old":            true,
+		"cartoons for my 7 year old":            true,
+		"cartoons my toddler will love":         true,
+		"Saturday morning cartoons":             true,
+		"cartoons for the little ones":          true,
+		"80s action heroes with a 15-year-old":  false,
+		"animated classics for my 12 year olds": true,
+	} {
+		got := intentSignalsKids(Intent{Intent: proposals.Intent{Description: description}})
+		if got != want {
+			t.Errorf("intentSignalsKids(%q) = %v, want %v", description, got, want)
+		}
+	}
+}

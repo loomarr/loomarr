@@ -1,6 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
+import { Action } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SettingField } from "../setting-field";
@@ -82,13 +83,16 @@ const SettingsFields = ({
       )}
 
       {advancedCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm underline-offset-4 hover:underline sm:col-span-2"
-        >
-          {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
-        </button>
+        <div className="sm:col-span-2">
+          <Action
+            layout="text"
+            onPress={() => setShowAdvanced((v) => !v)}
+            style={{ alignSelf: "flex-start" }}
+            variant="link"
+          >
+            {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
+          </Action>
+        </div>
       )}
     </div>
   );

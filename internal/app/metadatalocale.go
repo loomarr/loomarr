@@ -53,14 +53,19 @@ func (s *serverLocale) get() (string, string) {
 		return "", ""
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !s.askedAt.IsZero() && time.Since(s.askedAt) < serverLocaleRetry {
+		defer s.mu.Unlock()
 		return s.language, s.country
 	}
+	// One caller asks, outside the lock; the others keep the last answer meanwhile.
 	s.askedAt = time.Now()
+	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if language, country, err := s.lib.MetadataLocale(ctx); err == nil {
+	language, country, err := s.lib.MetadataLocale(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err == nil {
 		s.language, s.country = language, country
 	}
 	return s.language, s.country

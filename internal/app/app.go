@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -145,7 +146,7 @@ func buildHandler(
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
-	capturePlayoutResolver func(*playoutResolver),
+	capturePlayoutResolver func(*playoutresolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
 	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {
@@ -161,19 +162,19 @@ func buildHandler(
 	refreshSecretRedactor, readGeneratedSecret := foundation.refreshSecretRedactor, foundation.readGeneratedSecret
 	eventBus, emitter := foundation.eventBus, foundation.emitter
 	jobReg, activityRec := foundation.jobs, foundation.activity
-	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
+	// Channel watermarks (#1512): the channel packager asks for a programme's bug. The image
 	// service a custom upload is read from is bound once the suggestions build makes it.
 	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
 	// breaks date holidays alike.
 	calendar := householdCalendar(set, foundation.holidays, log)
 	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
-	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
-		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
+		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
 	)
 	if err != nil {
@@ -211,6 +212,8 @@ func buildHandler(
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
+	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
+		"checked by Current Health once the scheduler is running", scheduledTasksRoute, "")
 
 	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
@@ -220,6 +223,9 @@ func buildHandler(
 	)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if operations.scheduler != nil {
+		healthRunner.watchTasks(operations.scheduler)
 	}
 	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {

@@ -3,7 +3,7 @@ package provision
 import "time"
 
 // EventKind is a provisioning input the state machine reacts to (§4). These are
-// domain events, distinct from the raw webhooks (Phase 6 maps webhooks → these).
+// domain events, distinct from the raw webhooks (a handler maps webhooks → these).
 type EventKind string
 
 const (

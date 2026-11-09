@@ -30,6 +30,23 @@ describe("DocView links", () => {
   });
 });
 
+describe("DocView HTML comments", () => {
+  // An editor note in `<!-- -->` is invisible on GitHub and the docs site; Help must not print it.
+  it("does not render a comment block as body text", () => {
+    render(<DocView markdown={"# Page\n\nBefore.\n\n<!--\nEDITOR NOTE: not for readers.\n-->\n\nAfter."} />);
+    expect(screen.getByText("Before.")).toBeInTheDocument();
+    expect(screen.getByText("After.")).toBeInTheDocument();
+    expect(screen.queryByText(/EDITOR NOTE/)).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("<!--");
+  });
+
+  it("does not render an inline comment as text", () => {
+    render(<DocView markdown="Keep <!-- hidden note --> going." />);
+    expect(document.body).not.toHaveTextContent("hidden note");
+    expect(screen.getByText(/Keep/)).toHaveTextContent("Keep going.");
+  });
+});
+
 describe("DocView images", () => {
   it("shows a page's diagram as an <img> from the binary, not the repo path", () => {
     render(<DocView markdown="![How it flows](../diagrams/generated/architecture.svg)" />);

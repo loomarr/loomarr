@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -67,7 +67,7 @@ var ErrDefectJudgeClip = errors.New("the judge could not rule on this clip")
 // VisionDefectJudge shows a vision model stills from the clip with what the detectors found.
 type VisionDefectJudge struct {
 	provider llm.VisionProvider
-	tools    filler.MediaTools
+	tools    tools.MediaTools
 	ledger   DefectJudgeLedger
 	route    DefectJudgeRoute
 	now      func() time.Time
@@ -75,7 +75,7 @@ type VisionDefectJudge struct {
 }
 
 // NewVisionDefectJudge builds the defect floor's judge.
-func NewVisionDefectJudge(provider llm.VisionProvider, tools filler.MediaTools, ledger DefectJudgeLedger,
+func NewVisionDefectJudge(provider llm.VisionProvider, tools tools.MediaTools, ledger DefectJudgeLedger,
 	route DefectJudgeRoute, now func() time.Time, log *slog.Logger) *VisionDefectJudge {
 	return &VisionDefectJudge{provider: provider, tools: tools, ledger: ledger, route: route, now: now, log: log}
 }

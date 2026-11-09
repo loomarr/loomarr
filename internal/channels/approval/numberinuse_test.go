@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type numSource struct {
@@ -28,7 +29,7 @@ func (n numSource) TakenChannelNumbers(context.Context) (map[int]bool, error) {
 // have no use for.
 func seedNumberedChannel(t *testing.T, st store.Store, id string, number int) {
 	t.Helper()
-	var ch store.Channel
+	var ch channelstore.Channel
 	ch.ID = id
 	ch.Name = id
 	ch.Number = number

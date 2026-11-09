@@ -1,7 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import { formatClipDuration } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
-import { ExternalLink } from "lucide-react";
+import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -26,7 +25,10 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
       : undefined;
   const verifiedLocation =
     clip.geographicScope === "national" || clip.geographicScope === "local"
-      ? [clip.country, clip.geographicScope === "local" ? (clip.stationLabel ?? clip.station) : "National"]
+      ? [
+          clip.country ? countryLabel(clip.country) : undefined,
+          clip.geographicScope === "local" ? (clip.stationLabel ?? clip.station) : "National",
+        ]
           .filter(Boolean)
           .join(" · ")
       : undefined;
@@ -45,7 +47,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
     ["Audience", clip.audience ? AUDIENCE_LABEL[clip.audience] : undefined],
     ["Advertiser", clip.brand],
     ["Location", verifiedLocation ?? (suggestion?.country ? `${suggestion.country} · Likely` : undefined)],
-    ["Topics", clip.assertedTags?.join(", ")],
+    ["Topics", clip.assertedTags?.map(topicLabel).join(", ")],
   ].filter(([, value]) => value);
   const enrichmentMessage =
     clip.enrichment?.state === "adding_details"
@@ -70,9 +72,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <p className="text-muted-foreground text-sm">
               This clip is not ready for channels yet. Open the preview when you are ready.
             </p>
-            <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
-              Preview clip
-            </Action>
+            <div className="flex">
+              <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
+                Preview clip
+              </Action>
+            </div>
           </div>
         )}
       </div>
@@ -106,7 +110,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                       rel="noopener noreferrer"
                       className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                     >
-                      {source.title} <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                      {source.title} <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
                     </a>
                   ))}
                 </div>
@@ -126,7 +130,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                   rel="noopener noreferrer"
                   className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                 >
-                  View original <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                  View original <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
                 </a>
               ) : null}
             </dd>
@@ -140,9 +144,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         </p>
       ) : null}
       {onEdit ? (
-        <Action onPress={onEdit} variant="outline">
-          Edit details
-        </Action>
+        <div className="flex">
+          <Action onPress={onEdit} variant="outline">
+            Edit details
+          </Action>
+        </div>
       ) : null}
     </div>
   );

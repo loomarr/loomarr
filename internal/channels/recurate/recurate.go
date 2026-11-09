@@ -7,7 +7,7 @@
 //   - Curator: the channel-scoped auto-curate GRANT. Given a freshly-produced re-curation
 //     proposal, it approves it because the CHANNEL opted in (schedule.AutoCurate), after
 //     filtering the proposal's net-new acquisitions to those clearing the quality bar and the
-//     title cap. It approves through the ONE suggest.Approver implementation (audit
+//     title cap. It approves through the ONE accept.Approver implementation (audit
 //     "auto-curate") — never a raw `wanted` write. Wired into the suggest worker as its
 //     ChannelAutoCurator, so a re-curation proposal flows through the same persist→approve→bind
 //     pipeline every other proposal does.
@@ -23,7 +23,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -40,34 +44,32 @@ type Thresholds interface {
 type CuratorStore interface {
 	// GetChannelForJob identifies WHICH channel a re-curation proposal authorizes: the channel
 	// the proposal's job names.
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 	// LastAiredByKey says when each lineup title last aired on the channel; retirement ranks
 	// titles by how long they have gone without airing.
 	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
-	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
-	// and the resulting two-writer arrangement was held together by a comment explaining that
-	// this write had to land before the binder's additive union or the union would undo it.
-	// Leaving the method off the interface makes that ordering unexpressible rather than merely
-	// discouraged.
+	// channel's lineup — applies them through schedule.ApplyLineup. Leaving the method off the
+	// interface makes a write that must race the binder's additive union unexpressible rather
+	// than merely discouraged.
 }
 
 // Curator is the channel-scoped auto-curate grant (§8.2). It approves a re-curation proposal
 // only when its channel opted in, and only for acquisitions clearing the quality bar within the
 // title cap — everything else is dropped from the proposal before approval, so an over-bar or
-// over-cap title is never requested. It is the auto-curate analogue of suggest.AutoApprover,
+// over-cap title is never requested. It is the auto-curate analogue of accept.AutoApprover,
 // but authorized by the channel, not a user, and bounded by quality/cap, not a user quota.
 type Curator struct {
 	store      CuratorStore
-	approver   *suggest.Approver
+	approver   *accept.Approver
 	thresholds Thresholds
 	log        *slog.Logger
 	now        func() time.Time
 }
 
 // NewCurator wires the grant.
-func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log *slog.Logger) *Curator {
+func NewCurator(st CuratorStore, approver *accept.Approver, th Thresholds, log *slog.Logger) *Curator {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -78,24 +80,24 @@ func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log 
 // (approved, reason) so the worker can log why a proposal stayed in the queue. The gate is
 // closed by default: any channel that is not opted in, not found, or a proposal that isn't a
 // re-curation of an auto-curate channel simply gets Reason and stays `submitted` for an admin.
-func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decision, error) {
+func (c *Curator) Consider(ctx context.Context, p proposalstore.Proposal) (proposals.AutoDecision, error) {
 	if c == nil || p.JobID == "" {
-		return suggest.Decision{Reason: "not a re-curation proposal"}, nil
+		return proposals.AutoDecision{Reason: "not a re-curation proposal"}, nil
 	}
 	ch, err := c.channelForJob(ctx, p.JobID)
 	if err != nil {
 		// An unreadable channel is not a reason to auto-approve. Fail CLOSED (this gate spends
 		// on acquisitions): the proposal waits for an admin, the safe direction.
-		return suggest.Decision{Reason: "channel unavailable"}, nil
+		return proposals.AutoDecision{Reason: "channel unavailable"}, nil
 	}
 	if ch.ID == "" || ch.Policy.AutoCurate == nil {
-		return suggest.Decision{Reason: "channel not opted into auto-curate"}, nil
+		return proposals.AutoDecision{Reason: "channel not opted into auto-curate"}, nil
 	}
 	// A paused/detached channel is not being managed — don't grow it unattended. Every other
 	// state (live/building/DRIFTED) is managed and curatable — drifted is a transient reconcile
 	// state, not a hands-off one (mirrors runner.eligible's deny-list).
 	if !ch.Status.Reconcilable() {
-		return suggest.Decision{Reason: "channel paused or detached"}, nil
+		return proposals.AutoDecision{Reason: "channel paused or detached"}, nil
 	}
 
 	minScore := effectiveMinScore(ctx, ch.Policy.AutoCurate, c.thresholds)
@@ -109,25 +111,24 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	if err != nil {
 		// Keep is an explicit operator promise. If its state cannot be read, do not
 		// guess which titles are retirable; leave the proposal for manual review.
-		return suggest.Decision{Reason: "discovery feedback unavailable"}, nil
+		return proposals.AutoDecision{Reason: "discovery feedback unavailable"}, nil
 	}
 	// Retirement ranks titles by how long they have gone without airing, so the airing history
 	// is required input. Like the keep feedback above, an unreadable history fails closed: no
 	// guess about what is stale, the proposal waits for a person.
 	lastAired, err := c.store.LastAiredByKey(ctx, ch.ID)
 	if err != nil {
-		return suggest.Decision{Reason: "airing history unavailable"}, nil
+		return proposals.AutoDecision{Reason: "airing history unavailable"}, nil
 	}
 	res := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
 	filtered := res.Proposal
 
-	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitions` wrote them into the
-	// body), not applied to the channel here. This block used to trim `ch.Lineup` and call
-	// UpsertChannel, which made this package a second lineup writer: the binder's additive
-	// union (§8.2) runs moments later and would re-add whatever was removed, so the two were
-	// sequenced against each other by a comment rather than by any checkable contract. The
-	// binder now consumes `Retired` through the same `ApplyOpts.Drop` seam it already uses for
-	// off-intent titles — one writer, one primitive, and the retirement is an input to it.
+	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitionsProtected` wrote them into
+	// the body), not applied to the channel here. Trimming `ch.Lineup` and calling UpsertChannel
+	// would make this package a second lineup writer: the binder's additive union (§8.2) runs
+	// moments later and would re-add whatever was removed. The binder consumes `Retired` through
+	// the same `ApplyOpts.Drop` seam it uses for off-intent titles — one writer, one primitive,
+	// and the retirement is an input to it.
 	// Approve through the ONE gate (audit "auto-curate"). In-library adds land as `available`
 	// records; the surviving acquisitions land as `wanted` — the same code the admin's manual
 	// approve runs, so re-curation can never enqueue by a path the gate doesn't see.
@@ -136,11 +137,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// ApprovalEdit, which models a human's choices at the gate. Different things, deliberately
 	// not conflated.
 	if c.approver == nil {
-		return suggest.Decision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
+		return proposals.AutoDecision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
 	}
-	approval, err := c.approver.Approve(ctx, filtered, nil, suggest.AutoCuratedBy)
+	approval, err := c.approver.Approve(ctx, filtered, nil, accept.AutoCuratedBy)
 	if err != nil {
-		return suggest.Decision{Reason: "approval failed"}, err
+		return proposals.AutoDecision{Reason: "approval failed"}, err
 	}
 	c.log.Info("auto-curated a channel",
 		"channel", ch.ID, "enqueued", approval.Enqueued,
@@ -165,11 +166,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 			"channel", ch.ID, "retired", r.Out, "retired_confidence", r.OutScore,
 			"replaced_by", r.In, "replacement_confidence", r.InScore)
 	}
-	return suggest.Decision{Approved: true, Enqueued: approval.Enqueued}, nil
+	return proposals.AutoDecision{Approved: true, Enqueued: approval.Enqueued}, nil
 }
 
 type discoveryFeedbackReader interface {
-	ListDiscoveryFeedback(context.Context, store.FeedbackFilter) ([]store.DiscoveryFeedback, error)
+	ListDiscoveryFeedback(context.Context, channeldatastore.FeedbackFilter) ([]channeldatastore.DiscoveryFeedback, error)
 }
 
 func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[provision.Key]bool, error) {
@@ -177,11 +178,11 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 	if !ok {
 		return nil, nil
 	}
-	household, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
+	household, err := reader.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		return nil, err
 	}
-	channel, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackChannel, ScopeID: channelID})
+	channel, err := reader.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: channelID})
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +194,7 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 			continue
 		}
 		seen[event.Target] = true
-		protected[event.Target] = event.Action == store.FeedbackKeep
+		protected[event.Target] = event.Action == channeldatastore.FeedbackKeep
 	}
 	return protected, nil
 }
@@ -201,13 +202,13 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 // channelForJob finds the channel a re-curation job names, which identifies the channel to
 // authorize. A zero Channel still means "no channel for this job", which `Consider` reads as
 // not-opted-in and fails closed on.
-func (c *Curator) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (c *Curator) channelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	ch, err := c.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, nil
+		return channelstore.Channel{}, nil
 	}
 	if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	return ch, nil
 }

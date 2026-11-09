@@ -168,6 +168,19 @@ describe("playbarFromTimeline", () => {
     expect(segments).toEqual([]);
   });
 
+  it("carries the channel's decade to the band, for the channel block's colour", () => {
+    const band = (decade?: number) =>
+      playbarFromTimeline({
+        airings: [],
+        channel: decade === undefined ? channel : { ...channel, decade },
+        live,
+        nowMs: NOW,
+        playheadMs: NOW,
+      }).band;
+    expect(band(1990).decade).toBe(1990);
+    expect(band()).not.toHaveProperty("decade");
+  });
+
   it("gives the station-ID card the channel's era and place, saying nothing of an open span", () => {
     const station = (era?: { from?: number; to?: number }, place?: string) =>
       playbarFromTimeline({

@@ -5,6 +5,9 @@ import type { ReactNode } from "react";
 interface ConnectionVerdict {
   ok: boolean;
   hint?: string;
+  // The checklist's `notSetUp`: not OK only because nobody has set this service up yet (#2781).
+  // On an optional block it reads as a neutral "Not set up", never red.
+  notSetUp?: boolean;
 }
 
 interface ConnectionBlockProps {

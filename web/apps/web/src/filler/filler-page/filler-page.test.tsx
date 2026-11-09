@@ -74,7 +74,8 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
       sourcesReady: 4,
       sourcesTotal: 5,
       clips: 200,
-      held: 0,
+      preparing: 0,
+      needsYou: 0,
       health: "healthy",
     }),
     http.get("*/v1/filler/incoming", () =>

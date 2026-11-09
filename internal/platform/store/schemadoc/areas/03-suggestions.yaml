@@ -108,10 +108,10 @@ tables:
       replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
     columns:
       id: Identifies the choice.
-      actor_id: The person who made it (users.id).
+      actor_id: The person who made it (users.id), or `api-token` for a choice sent with the API token.
       scope: >
         Where it applies. `household` for every channel, or `channel` for one channel.
-      scope_id: The channel it applies to (channels.id) when the scope is `channel`; empty for `household`.
+      scope_id: The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`.
       target_key: The title it is about, by its key, such as `movie:tmdb:603`.
       action: >
         `keep` (favour this title), `less` (less like this, which also lowers titles of its genres),

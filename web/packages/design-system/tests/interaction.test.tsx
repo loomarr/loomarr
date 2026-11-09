@@ -20,6 +20,32 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-pressed="true"');
   });
 
+  // #2760: a yes/no pair like Pass and Fail needs two answers of equal weight, green and red.
+  it("draws a success action as the danger action's neutral tile, in the success colour", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action tone="success">Pass</Action>
+        <Action tone="danger">Fail</Action>
+      </LoomarrProvider>,
+    );
+    // The tile's box is inline style on the button; its label colour is an atomic class.
+    const box = (label: string) =>
+      /style="([^"]*)"/.exec(
+        [...markup.slice(0, markup.indexOf(`>${label}<`)).matchAll(/<[a-z]+[^>]*role="button"[^>]*>/g)].at(
+          -1,
+        )?.[0] ?? "",
+      )?.[1];
+
+    expect(box("Pass")).toContain("background-color");
+    expect(box("Pass")).toBe(box("Fail"));
+    expect(declarationsOf(markup, tagBefore(markup, "Pass"))).toContain(
+      `color:${semanticColors.state.success}`,
+    );
+    expect(declarationsOf(markup, tagBefore(markup, "Fail"))).toContain(
+      `color:${semanticColors.state.danger}`,
+    );
+  });
+
   it("draws an icon action's glyph alone and announces its children as the name", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
@@ -32,6 +58,25 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-label="Close player"');
     expect(markup).not.toContain(">Close player<");
     expect(markup).toContain("<svg");
+  });
+
+  // A field row's "Reset to default" sits beside its source badge in a narrow column; a
+  // control-sized box there wraps the reset onto its own line.
+  it("draws a text action as an underlined hint-size line with no control box", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action layout="text" variant="link">
+          Reset to default
+        </Action>
+      </LoomarrProvider>,
+    );
+
+    const styles = declarationsOf(markup, tagBefore(markup, "Reset to default"));
+    expect(styles).toContain("font-size:12px");
+    expect(styles).toContain("line-height:16px");
+    expect(styles).toContain("text-decoration-line:underline");
+    expect(markup).not.toContain("min-height:40px");
+    expect(markup).toContain('role="button"');
   });
 
   it("keeps a toggle action's own aria-pressed when it is off", () => {

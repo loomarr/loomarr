@@ -44,7 +44,7 @@ vi.mock("../use-suggestion-run", async (importActual) => {
   return { useSuggestionRun: (job: SuggestionRunJob) => runOverride ?? useReal(job) };
 });
 
-// The Guide's flow over the harness router's URL, so every step here is a real navigation.
+// The request page's flow over the harness router's URL, so every step here is a real navigation.
 const FlowPanel = ({ onCreated }: { onCreated: (id: string) => void }) => {
   const flow = useOriginationFlow(parseOriginationSearch(useSearch({ strict: false })));
   return <ChannelSuggestPanel flow={flow} onCreated={onCreated} />;
@@ -183,7 +183,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
   });
   const panel = () => (
     <RouterHarness
-      initialPath="/guide?new=1"
+      initialPath="/requests/new"
       content={
         <QueryClientProvider client={client}>
           <FlowPanel onCreated={onCreated} />
@@ -277,7 +277,9 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
     await user.click(await screen.findByRole("button", { name: "Build it manually instead" }));
 
-    expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
+    // The builder names no heading of its own: the page's one header does (#2746).
+    expect(screen.getByText(/No AI service is connected yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Add a channel" })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Channel name"), "My Channel");
     await user.click(screen.getByRole("button", { name: "Search titles" }));
     server.use(
@@ -314,7 +316,7 @@ describe("ChannelSuggestPanel", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Build it manually instead" }));
 
-    expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
+    expect(screen.getByText(/No AI service is connected yet/)).toBeInTheDocument();
   });
 
   // The resume banner with nothing picked yet (#1817): there is no lineup to keep, so "Try AI
@@ -335,7 +337,7 @@ describe("ChannelSuggestPanel", () => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
       render(
         <RouterHarness
-          initialPath="/guide?manual=1"
+          initialPath="/requests/new?manual=1"
           content={
             <LoomarrProvider theme="dark">
               <QueryClientProvider client={client}>
@@ -357,7 +359,7 @@ describe("ChannelSuggestPanel", () => {
       expect(await screen.findByLabelText("Channel intent")).toHaveValue(
         CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
       );
-      expect(screen.queryByRole("heading", { name: "Add a channel" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/No AI service is connected yet/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

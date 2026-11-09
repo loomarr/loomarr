@@ -2,13 +2,14 @@ import { isWeb, useTheme, View } from "@tamagui/core";
 import type {
   ComponentProps,
   ComponentRef,
+  CSSProperties,
   ForwardRefExoticComponent,
   ReactElement,
   ReactNode,
   RefAttributes,
 } from "react";
 import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
-import { Platform, Pressable, TextInput } from "react-native";
+import { type GestureResponderEvent, Platform, Pressable, TextInput } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
@@ -18,6 +19,7 @@ import { TamaguiText } from "../text-base";
 import {
   brandChroma,
   type Density,
+  iconography,
   nativeFontFace,
   semanticRadius,
   semanticSpace,
@@ -41,6 +43,12 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   density?: Density;
   icon?: IconName;
   /**
+   * `end` draws an inline icon after the label, for a glyph that points the way the action goes:
+   * a pager's "Older" with its chevron toward older rows. The icon is decorative either way, so
+   * the name stays the label alone.
+   */
+  iconPlacement?: "end" | "start";
+  /**
    * Keep an inline label on one line by shrinking it to the room beside the icon, rather than
    * breaking a word that cannot fit (a 2×2 tile at an accessibility text size).
    */
@@ -51,8 +59,13 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    *
    * `icon` draws the icon alone on a square the density's target wide; the children, a string,
    * become its accessible name. For a row's Remove, a pane's close, a pager's arrows. Give it an icon.
+   *
+   * `text` draws the label alone as a line of hint-size text, with no box, control height or
+   * padding: a field row's "Reset to default" beside its source badge, where a control-sized
+   * button would wrap a narrow column. Focus is an outline, so the row does not move. Pair it with
+   * `variant="link"`.
    */
-  layout?: "icon" | "inline" | "stacked";
+  layout?: "icon" | "inline" | "stacked" | "text";
   /**
    * Web-only composition escape hatch (Base UI's `render` prop equivalent, #970 PR B checkpoint 3):
    * renders Action's resolved style and content onto this element instead of a `Pressable`, so a
@@ -60,14 +73,27 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    * by Action's `children`; its own event handlers, `style` and `className` are preserved and
    * merged with Action's. Ignored on native, where there is no comparable host-element swap.
    *
-   * Composing this way loses the `Pressable` press-scale micro-interaction (there is no gesture
-   * responder to drive it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
+   * Composing this way loses the `Pressable` press dim (there is no gesture responder to drive
+   * it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
    * un-boxed renderer — this is for a plain `variant` button standing in for a link, not a tile.
    */
   render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
+  /**
+   * Web: a form's submit button. The Action renders onto a native `<button type="submit">` that
+   * carries `disabled` itself, so Enter in a field cannot submit through a disabled one. Ignored
+   * on native, and when `render` is given.
+   */
+  submit?: boolean;
+  /**
+   * With `layout="icon"`, a 24 px square holding the 16 px glyph, for a control that sits inside a
+   * row or a chip: a remove cross, a drag handle, a help mark. It meets 2.5.8 (24 px) and nothing
+   * more; a touch screen gets the full target through the caller's own hit slop.
+   */
+  compact?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
-  tone?: "danger" | "primary" | "secondary";
+  /** `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. */
+  tone?: "danger" | "primary" | "secondary" | "success";
   variant?: ActionVariant;
 };
 
@@ -136,12 +162,15 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       disabled = false,
       fitLabel = false,
       icon,
+      iconPlacement = "start",
       layout = "inline",
       onBlur,
       onFocus,
-      render,
+      render: renderProp,
       selected = false,
       style,
+      submit = false,
+      compact = false,
       tabIndex,
       tone = "primary",
       variant,
@@ -152,11 +181,26 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const theme = useTheme();
     const focusLook = useFocusLook({ onBlur, onFocus });
     const focused = focusLook.focused;
-    const isDisabled = disabled === true;
+    const render: ReactElement<Record<string, unknown>> | undefined =
+      renderProp ??
+      (submit && isWeb ? (
+        <button
+          disabled={disabled === true}
+          // A plain style object carries over (a width, an alignSelf); a function style is native's.
+          style={typeof style === "object" && style !== null ? (style as CSSProperties) : undefined}
+          type="submit"
+        />
+      ) : undefined);
+    // A composed submit button carries its own `disabled` (it must, so Enter in a field cannot
+    // submit through it); the Action greys to match rather than drawing an enabled look over it.
+    const isDisabled =
+      disabled === true || (isWeb && isValidElement(render) && render.props.disabled === true);
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
     const iconOnly = layout === "icon" && icon !== undefined;
+    const compactIcon = compact && iconOnly && !tv;
+    const textOnly = layout === "text";
     const iconLabel = iconOnly && typeof children === "string" ? children : undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
     // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
@@ -205,80 +249,97 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ? variantTextColor(theme, variant)
       : tone === "danger"
         ? theme.stateDanger.val
-        : undefined;
+        : tone === "success"
+          ? theme.stateSuccess.val
+          : undefined;
     // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
     const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "danger"
-        ? "danger"
+      : tone === "danger" || tone === "success"
+        ? tone
         : tone === "secondary"
           ? selected
             ? "content"
             : "secondary"
           : "inverse";
 
-    const content =
-      iconOnly && icon ? (
-        <Icon decorative glyph={icons[icon]} size={tv ? "touch" : "default"} tone={iconTone} />
-      ) : stacked && icon ? (
-        <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
-          <Icon
-            decorative
-            glyph={icons[icon]}
-            size="default"
-            tone={
-              look
-                ? look.iconTone
-                : tone === "danger"
-                  ? "danger"
-                  : tone === "secondary"
-                    ? "content"
-                    : "inverse"
-            }
-          />
-          <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
-            fontFamily="body"
-            fontSize={typography[density].cardMeta.size}
-            fontWeight={pressed ? "600" : undefined}
-            lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
-            numberOfLines={1}
-          >
-            {children}
-          </TamaguiText>
-        </View>
-      ) : icon ? (
-        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
-          <Icon
-            decorative
-            glyph={icons[icon]}
-            size={density === "tv" ? "touch" : "default"}
-            tone={iconTone}
-          />
-          <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
-            fontFamily="body"
-            fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-            flexShrink={fitLabel ? 1 : undefined}
-            fontWeight={labelWeight}
-            textDecorationLine={variant === "link" ? "underline" : undefined}
-            {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
-          >
-            {children}
-          </TamaguiText>
-        </View>
-      ) : (
+    const content = textOnly ? (
+      <TamaguiText
+        color={textColor ?? "contentPrimary"}
+        fontFamily="body"
+        fontSize={typography[density].hint.size}
+        fontWeight={typography[density].hint.weight}
+        lineHeight={lineHeightPx(typography[density].hint.lineHeight)}
+        textDecorationLine={variant === "link" ? "underline" : undefined}
+      >
+        {children}
+      </TamaguiText>
+    ) : iconOnly && icon ? (
+      <Icon
+        decorative
+        glyph={icons[icon]}
+        size={tv ? "touch" : compactIcon ? "compact" : "default"}
+        tone={compactIcon && variant === "ghost" ? "muted" : iconTone}
+      />
+    ) : stacked && icon ? (
+      <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
+        <Icon
+          decorative
+          glyph={icons[icon]}
+          size="default"
+          tone={
+            look
+              ? look.iconTone
+              : tone === "danger" || tone === "success"
+                ? tone
+                : tone === "secondary"
+                  ? "content"
+                  : "inverse"
+          }
+        />
+        <TamaguiText
+          color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
+          fontFamily="body"
+          fontSize={typography[density].cardMeta.size}
+          fontWeight={pressed ? "600" : undefined}
+          lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
+          numberOfLines={1}
+        >
+          {children}
+        </TamaguiText>
+      </View>
+    ) : icon ? (
+      <View
+        alignItems="center"
+        flexDirection={iconPlacement === "end" ? "row-reverse" : "row"}
+        flexShrink={fitLabel ? 1 : undefined}
+        gap="inline"
+      >
+        <Icon decorative glyph={icons[icon]} size={density === "tv" ? "touch" : "default"} tone={iconTone} />
         <TamaguiText
           color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
           fontFamily="body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+          flexShrink={fitLabel ? 1 : undefined}
           fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
+          {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
         >
           {children}
         </TamaguiText>
-      );
+      </View>
+    ) : (
+      <TamaguiText
+        color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+        fontFamily="body"
+        fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+        fontWeight={labelWeight}
+        textDecorationLine={variant === "link" ? "underline" : undefined}
+      >
+        {children}
+      </TamaguiText>
+    );
 
     const boxStyle = {
       alignItems: "center" as const,
@@ -307,6 +368,33 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       paddingHorizontal: iconOnly ? 0 : tv ? 24 : stacked ? 4 : semanticSpace.control,
       paddingVertical: tv && !iconOnly ? 8 : 0,
       ...(iconOnly ? { width: semanticTargets[density] } : {}),
+      ...(compactIcon
+        ? {
+            borderRadius: semanticSpace.inline / 2,
+            height: iconography.size.control,
+            minHeight: 0,
+            width: iconography.size.control,
+          }
+        : {}),
+      // Text alone: no box to fill or border, and an outline for focus so nothing beside it moves.
+      ...(textOnly
+        ? {
+            backgroundColor: "transparent",
+            borderRadius: 2,
+            borderWidth: 0,
+            minHeight: 0,
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            ...(focused
+              ? {
+                  outlineColor: theme.actionFocus.val,
+                  outlineOffset: 2,
+                  outlineStyle: "solid" as const,
+                  outlineWidth: 2,
+                }
+              : {}),
+          }
+        : {}),
     };
 
     if (isWeb && render && isValidElement(render)) {
@@ -315,12 +403,16 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       // unchanged, which would silently never fire. `accessibilityRole` and `accessibilityLabel`
       // are RN's too: they reach the host as `role` and `aria-label`, and spread raw they are
       // unknown DOM attributes that leave the element unnamed.
+      // A composing parent's `onClick` (Base UI's DialogTrigger, which hands its props to the
+      // Action it renders) is chained with `onPress`, not overwritten by it.
       const {
         accessibilityLabel,
         accessibilityRole: _role,
+        onClick: parentClick,
         onPress,
         ...restProps
       } = props as typeof props & {
+        onClick?: (event: unknown) => void;
         onPress?: (event: unknown) => void;
       };
       // The host's `style` is CSS, which has no paddingHorizontal/paddingVertical: spell them out.
@@ -334,7 +426,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             "aria-disabled": isDisabled || undefined,
             "aria-pressed": ariaPressed,
             onBlur: focusLook.onBlur,
-            onClick: onPress,
+            onClick:
+              parentClick && onPress
+                ? (event: unknown) => {
+                    parentClick(event);
+                    onPress(event);
+                  }
+                : (parentClick ?? onPress),
             onFocus: focusLook.onFocus,
             ref,
             role,
@@ -354,10 +452,26 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ) as ReactElement;
     }
 
+    // react-native-web's Pressable answers clicks through its own press responder and never calls
+    // an `onClick` prop, so a composing parent's (see the render branch) runs from onPress here.
+    const {
+      onClick: parentClick,
+      onPress,
+      ...pressableProps
+    } = props as typeof props & { onClick?: (event: GestureResponderEvent) => void };
+    const press =
+      parentClick && isWeb
+        ? (event: GestureResponderEvent) => {
+            parentClick(event);
+            onPress?.(event);
+          }
+        : onPress;
+
     return (
       <Pressable
         accessibilityLabel={iconLabel}
-        {...props}
+        {...pressableProps}
+        onPress={press}
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
         aria-disabled={isDisabled || undefined}
@@ -371,10 +485,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         style={(state) => [
           {
             ...boxStyle,
+            // A press dims; nothing scales (#2789: hover, focus and press are colour and border).
             opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-            transform: [
-              { scale: tv ? (state.pressed ? 0.98 : 1) : focused ? 1.025 : state.pressed ? 0.98 : 1 },
-            ],
           },
           typeof style === "function" ? style(state) : style,
         ]}
@@ -478,6 +590,13 @@ const Field = ({
   const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
   const generatedId = useId();
   const inputId = id ?? generatedId;
+  // The line under the input, error before help, is the input's accessible description. Ids derive
+  // from the input's, so two fields never share one.
+  const messageId = `${inputId}-${error ? "error" : "description"}`;
+  const hasMessage = Boolean(error || description);
+  // A caller's own aria-describedby (outside RN's TextInput types) stays, ahead of the message's.
+  const callerDescribedBy = (props as { "aria-describedby"?: string })["aria-describedby"];
+  const describedBy = [callerDescribedBy, messageId].filter(Boolean).join(" ");
   const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
@@ -501,6 +620,7 @@ const Field = ({
       <View position="relative" width="100%">
         <TextInput
           {...props}
+          {...(hasMessage ? ({ "aria-describedby": describedBy } as object) : {})}
           accessibilityLabel={accessibilityLabel ?? label}
           accessibilityState={{ disabled }}
           aria-disabled={disabled || undefined}
@@ -556,11 +676,11 @@ const Field = ({
         ) : null}
       </View>
       {error ? (
-        <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
+        <Text aria-live="polite" density={density} id={messageId} textRole="metadata" tone="danger">
           {error}
         </Text>
       ) : description ? (
-        <Text density={density} textRole="metadata">
+        <Text density={density} id={messageId} textRole="metadata">
           {description}
         </Text>
       ) : null}

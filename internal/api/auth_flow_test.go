@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -43,7 +44,7 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 
 		return api.Router(defaults.Log, api.Options{
 			Store:        defaults.Store,
-			Auth:         api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Auth:         sessionAuth(mgr, "break-glass-token"),
 			Log:          defaults.Log,
 			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
 			Sessions:     mgr,
@@ -580,7 +581,7 @@ func TestResetUserPassword_ImportedUserConflicts(t *testing.T) {
 
 // seedProposalFor writes a proposal owned by a specific user, with the approval
 // provenance V25/V25b persist so the read path can be asserted end to end.
-func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string, p store.Proposal) {
+func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string, p proposalstore.Proposal) {
 	t.Helper()
 	p.ID, p.CreatedBy, p.Status = id, createdBy, status
 	p.JobID = "job-" + id
@@ -620,8 +621,8 @@ func proposalIDs(t *testing.T, resp *http.Response) []string {
 func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
-	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", proposalstore.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", proposalstore.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted&mine=true", kid, "")
@@ -640,8 +641,8 @@ func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
-	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", proposalstore.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", proposalstore.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", kid, "")
@@ -656,9 +657,9 @@ func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
 func TestListProposals_ResolvesRequesterAndApproverNames(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-done", "u-kid", "approved", store.Proposal{ApprovedBy: "u-boss"})
-	seedProposalFor(t, st, "p-auto", "u-kid", "approved", store.Proposal{ApprovedBy: "auto"})
-	seedProposalFor(t, st, "p-gone", "u-removed", "approved", store.Proposal{ApprovedBy: "u-removed"})
+	seedProposalFor(t, st, "p-done", "u-kid", "approved", proposalstore.Proposal{ApprovedBy: "u-boss"})
+	seedProposalFor(t, st, "p-auto", "u-kid", "approved", proposalstore.Proposal{ApprovedBy: "auto"})
+	seedProposalFor(t, st, "p-gone", "u-removed", "approved", proposalstore.Proposal{ApprovedBy: "u-removed"})
 
 	boss := login(t, srv, "boss", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=approved", boss, "")
@@ -693,8 +694,8 @@ func TestListProposals_ResolvesRequesterAndApproverNames(t *testing.T) {
 func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-open", "u-kid", "submitted", store.Proposal{})
-	seedProposalFor(t, st, "p-denied", "u-kid", "denied", store.Proposal{DenyReason: "over the cap"})
+	seedProposalFor(t, st, "p-open", "u-kid", "submitted", proposalstore.Proposal{})
+	seedProposalFor(t, st, "p-denied", "u-kid", "denied", proposalstore.Proposal{DenyReason: "over the cap"})
 
 	kid := login(t, srv, "kid", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=denied&mine=true", kid, "")
@@ -711,8 +712,8 @@ func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
 func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
-	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", proposalstore.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", proposalstore.Proposal{})
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/proposals?status=submitted&mine=true", nil)
 	req.Header.Set("Authorization", "Bearer break-glass-token")
@@ -732,7 +733,7 @@ func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
 func TestListProposals_CarriesApprovalProvenance(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedProposalFor(t, st, "p-edited", "u-kid", "approved", store.Proposal{
+	seedProposalFor(t, st, "p-edited", "u-kid", "approved", proposalstore.Proposal{
 		ApprovedBy: "u-boss",
 		ModSummary: "dropped 2, added 1",
 		Note:       "swapped Smoke over Calloway for Parallax Garden — we already have that one",

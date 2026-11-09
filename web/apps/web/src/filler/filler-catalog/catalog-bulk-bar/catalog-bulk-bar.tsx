@@ -3,10 +3,8 @@ import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, CompactSelect, Tooltip } from "@loomarr/design-system";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFillerInvalidate } from "../../use-filler-invalidate";
 
 // The bulk bar's dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that field, and the
@@ -69,43 +67,40 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
       <span className="text-signal font-mono text-xs">{pluralize(selected.size, "clip")} selected</span>
 
       {BULK_TAG_FIELDS.map((field) => (
-        <Select
-          key={field.key}
-          value=""
-          onValueChange={(value) =>
-            bulkTag.mutate({
-              data: {
-                hashes: [...selected],
-                [field.key]: field.key === "era" ? Number(value) : value,
-              },
-            })
-          }
-        >
-          <SelectTrigger className="w-auto min-w-32" aria-label={field.label}>
-            <SelectValue placeholder={field.label} />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options.map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        // The wrapper sizes the select to its longest choice instead of the whole bar.
+        <div key={field.key}>
+          <CompactSelect
+            label={field.label}
+            onValueChange={(value) =>
+              bulkTag.mutate({
+                data: {
+                  hashes: [...selected],
+                  [field.key]: field.key === "era" ? Number(value) : value,
+                },
+              })
+            }
+            // The select always rests on its own name: each pick is a one-off command, not a value.
+            options={[
+              { disabled: true, label: field.label, value: "" },
+              ...field.options.map((option) => ({ label: option, value: option })),
+            ]}
+            value=""
+          />
+        </div>
       ))}
 
       {/* ⚠ "Remove from catalog", not "Delete". The server's action is a TOMBSTONE: the
           clip stops appearing here and stops being used in breaks, and the file stays
           exactly where the operator put it. The label has to keep saying catalog. */}
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={removeClips.isPending}
-        onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
-        title="Stop using these clips. The files stay in your folder."
-      >
-        Remove from catalog
-      </Button>
+      <Tooltip content="Stop using these clips. The files stay in your folder.">
+        <Action
+          disabled={removeClips.isPending}
+          onPress={() => removeClips.mutate({ data: { hashes: [...selected] } })}
+          variant="outline"
+        >
+          Remove from catalog
+        </Action>
+      </Tooltip>
 
       <div className="ml-auto">
         <Action onPress={onClear} variant="ghost">

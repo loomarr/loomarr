@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -36,13 +36,13 @@ func setChannelStrategy(t *testing.T, st store.Store, id string, strategy schedu
 
 type highlightsWire struct {
 	Highlights []struct {
-		Reason        string          `json:"reason"`
-		ChannelID     string          `json:"channelId"`
-		ChannelName   string          `json:"channelName"`
-		ChannelNumber int             `json:"channelNumber"`
-		Episodes      int             `json:"episodes"`
-		UntilMs       int64           `json:"untilMs"`
-		Airing        api.GuideAiring `json:"airing"`
+		Reason        string               `json:"reason"`
+		ChannelID     string               `json:"channelId"`
+		ChannelName   string               `json:"channelName"`
+		ChannelNumber int                  `json:"channelNumber"`
+		Episodes      int                  `json:"episodes"`
+		UntilMs       int64                `json:"untilMs"`
+		Airing        guideapi.GuideAiring `json:"airing"`
 	} `json:"highlights"`
 }
 

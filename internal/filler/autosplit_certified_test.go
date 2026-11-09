@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -40,10 +41,10 @@ func allowCertifiedStructure(t *testing.T) *StructureMaterializationPolicy {
 	return &StructureMaterializationPolicy{Authority: &authority}
 }
 
-func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment) *structure.Artifact {
+func passingStructureDecision(t *testing.T, assessment split.Assessment) *structure.Artifact {
 	t.Helper()
 	unit := structure.UnitCompilation
-	if assessment.Kind == StructureProgrammeSpots {
+	if assessment.Kind == split.KindProgrammeSpots {
 		unit = structure.UnitProgrammeSpots
 	}
 	source := structure.Source{SHA256: assessment.Source.SHA256, Bytes: assessment.Source.Bytes, DurationMS: assessment.DurationMs}
@@ -84,22 +85,22 @@ func passingStructureDecision(t *testing.T, assessment SourceStructureAssessment
 
 func certifiedStructureProposal(t *testing.T) SplitProposal {
 	t.Helper()
-	observations := []StructureObservation{
-		structureObservation("black", ObservationBlackInterval, ObservationProposesBoundary, 29_900, 30_100),
-		structureObservation("silence", ObservationSilenceInterval, ObservationProposesBoundary, 29_900, 30_100),
-		structureRoleObservation(t, 60_000, 0, 30_000, SegmentRoleCommercial, "role-left"),
-		structureRoleObservation(t, 60_000, 30_000, 60_000, SegmentRolePromo, "role-right"),
+	observations := []split.Observation{
+		structureObservation("black", split.ObservationBlackInterval, split.ObservationProposesBoundary, 29_900, 30_100),
+		structureObservation("silence", split.ObservationSilenceInterval, split.ObservationProposesBoundary, 29_900, 30_100),
+		structureRoleObservation(t, 60_000, 0, 30_000, split.RoleCommercial, "role-left"),
+		structureRoleObservation(t, 60_000, 30_000, 60_000, split.RolePromo, "role-right"),
 	}
-	assessment := assessStructure(t, 60_000, observations, []StructureRoleClaim{
-		structureClaim(0, 30_000, SegmentRoleCommercial, "role-left"),
-		structureClaim(30_000, 60_000, SegmentRolePromo, "role-right"),
+	assessment := assessStructure(t, 60_000, observations, []split.RoleClaim{
+		structureClaim(0, 30_000, split.RoleCommercial, "role-left"),
+		structureClaim(30_000, 60_000, split.RolePromo, "role-right"),
 	})
-	segments := []SplitSegment{
+	segments := []split.Segment{
 		{StartMs: 0, EndMs: 30_000, Category: "toys", BoundaryConfidence: 90},
 		{StartMs: 30_000, EndMs: 60_000, Category: "television", BoundaryConfidence: 90},
 	}
 	artifact := passingStructureDecision(t, assessment)
-	projected, err := ProjectConfirmedStructureDecision(assessment.Source, &assessment, *artifact)
+	projected, err := split.ProjectConfirmedDecision(assessment.Source, &assessment, *artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +161,7 @@ func TestCertifiedStructureMaterializableRefusesDuplicateAndShortCertifiedCandid
 func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
-	projected, err := ProjectConfirmedStructureDecision(proposal.Source, nil, *proposal.StructureDecision)
+	projected, err := split.ProjectConfirmedDecision(proposal.Source, nil, *proposal.StructureDecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.
 func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
-	projected, err := ProjectConfirmedStructureDecision(proposal.Source, nil, *proposal.StructureDecision)
+	projected, err := split.ProjectConfirmedDecision(proposal.Source, nil, *proposal.StructureDecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +306,7 @@ func TestReassessProposalStructureReplaysPairedProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateStructureDecisionProjection(assessment, *proposal.StructureDecision); err != nil {
+	if err := split.ValidateDecisionProjection(assessment, *proposal.StructureDecision); err != nil {
 		t.Fatalf("reassessed paired projection did not replay: %v", err)
 	}
 }
@@ -323,23 +324,23 @@ func TestCertifiedStructureMaterializableDoesNotInventLegacyBoundaryConfidence(t
 }
 
 func TestCertifiedStructureMaterializableSeparatesProgrammeDiscardFromFiller(t *testing.T) {
-	observations := []StructureObservation{
-		structureObservation("chapter-left", ObservationChapterEdge, ObservationProposesBoundary, 20_000, 20_000),
-		structureObservation("chapter-right", ObservationChapterEdge, ObservationProposesBoundary, 50_000, 50_000),
-		structureRoleObservation(t, 70_000, 0, 20_000, SegmentRoleProgrammeFragment, "programme-left"),
-		structureRoleObservation(t, 70_000, 20_000, 50_000, SegmentRoleCommercial, "commercial"),
-		structureRoleObservation(t, 70_000, 50_000, 70_000, SegmentRoleProgrammeFragment, "programme-right"),
+	observations := []split.Observation{
+		structureObservation("chapter-left", split.ObservationChapterEdge, split.ObservationProposesBoundary, 20_000, 20_000),
+		structureObservation("chapter-right", split.ObservationChapterEdge, split.ObservationProposesBoundary, 50_000, 50_000),
+		structureRoleObservation(t, 70_000, 0, 20_000, split.RoleProgrammeFragment, "programme-left"),
+		structureRoleObservation(t, 70_000, 20_000, 50_000, split.RoleCommercial, "commercial"),
+		structureRoleObservation(t, 70_000, 50_000, 70_000, split.RoleProgrammeFragment, "programme-right"),
 	}
-	assessment := assessStructure(t, 70_000, observations, []StructureRoleClaim{
-		structureClaim(0, 20_000, SegmentRoleProgrammeFragment, "programme-left"),
-		structureClaim(20_000, 50_000, SegmentRoleCommercial, "commercial"),
-		structureClaim(50_000, 70_000, SegmentRoleProgrammeFragment, "programme-right"),
+	assessment := assessStructure(t, 70_000, observations, []split.RoleClaim{
+		structureClaim(0, 20_000, split.RoleProgrammeFragment, "programme-left"),
+		structureClaim(20_000, 50_000, split.RoleCommercial, "commercial"),
+		structureClaim(50_000, 70_000, split.RoleProgrammeFragment, "programme-right"),
 	})
-	proposal := SplitProposal{Source: assessment.Source, Structure: &assessment, Segments: []SplitSegment{
+	proposal := SplitProposal{Source: assessment.Source, Structure: &assessment, Segments: []split.Segment{
 		{StartMs: 20_000, EndMs: 50_000, Category: "toys"},
 	}}
 	proposal.StructureDecision = passingStructureDecision(t, assessment)
-	projected, err := ProjectConfirmedStructureDecision(proposal.Source, &assessment, *proposal.StructureDecision)
+	projected, err := split.ProjectConfirmedDecision(proposal.Source, &assessment, *proposal.StructureDecision)
 	if err != nil {
 		t.Fatal(err)
 	}

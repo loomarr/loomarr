@@ -5,8 +5,8 @@
 // freshness signal, the due-now reconcile deadline, the UpdatedAt stamp, validation, the
 // optimistic revision, the internal-playout lifecycle, and the best-effort reconcile.
 //
-// Proposal approval is NOT here: it plans its channel write through `binder` inside the approval
-// transaction. This package borrows binder's answers (lineup, policy, number in use, id scheme)
+// Proposal approval is NOT here: it plans its channel write through the approval package's Binder
+// inside the approval transaction. This package borrows the Binder's answers (lineup, policy, number in use, id scheme)
 // so the two paths cannot disagree about them.
 package edit
 
@@ -21,6 +21,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -38,9 +40,9 @@ var (
 
 // Store is the channel persistence the service writes through.
 type Store interface {
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	GetChannelByNumber(ctx context.Context, number int) (store.Channel, error)
-	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	GetChannelByNumber(ctx context.Context, number int) (channelstore.Channel, error)
+	SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error)
 }
 
 // Binder is the approval path's number answer, shared so explicit create and approval agree.
@@ -94,8 +96,8 @@ type SeriesScope struct {
 }
 
 // Create validates and saves a new channel, then kicks its first reconcile.
-func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, error) {
-	ch := store.Channel{
+func (s *Service) Create(ctx context.Context, in NewChannel) (channelstore.Channel, error) {
+	ch := channelstore.Channel{
 		ID: in.ID, Name: in.Name, Number: in.Number, Group: in.Group, Logo: in.Logo,
 		Strategy: in.Strategy, Status: schedule.StatusBuilding,
 	}
@@ -104,7 +106,7 @@ func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, err
 	}
 	if in.Series != nil {
 		if !in.Series.Key.IsSeries() {
-			return store.Channel{}, ErrInvalidSeries
+			return channelstore.Channel{}, ErrInvalidSeries
 		}
 		ch.Lineup = []schedule.LineupEntry{{
 			Key: in.Series.Key, Title: in.Series.Title,
@@ -116,22 +118,22 @@ func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, err
 	// is supposed to cover it never comes.
 	ch.ReconcileDeadline = time.Now().UTC()
 	if err := ch.Validate(); err != nil {
-		return store.Channel{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+		return channelstore.Channel{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	if _, err := s.Store.GetChannel(ctx, ch.ID); err == nil {
-		return store.Channel{}, ErrIDTaken
+		return channelstore.Channel{}, ErrIDTaken
 	} else if !errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	if err := s.numberFree(ctx, ch.Number); err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	saved, err := s.Store.SaveChannel(ctx, ch)
 	if err != nil {
-		if errors.Is(err, store.ErrChannelConflict) {
-			return store.Channel{}, ErrClaimed
+		if errors.Is(err, channelstore.ErrChannelConflict) {
+			return channelstore.Channel{}, ErrClaimed
 		}
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	// Go live immediately (§9 "never dead air"). A failure leaves the channel `building` for the
 	// sweep; it does not fail creation.
@@ -140,7 +142,7 @@ func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, err
 			// ERROR + the consequence (§9 V54): the channel exists but has not converged.
 			s.log().Error("initial channel reconcile FAILED — it is not live yet; the next channel sweep will retry",
 				"channel", saved.ID, "name", saved.Name, "number", saved.Number, "err", err)
-			s.Activity.Error(ctx, store.ActivityKindChannel, saved.ID,
+			s.Activity.Error(ctx, activitystore.ActivityKindChannel, saved.ID,
 				fmt.Sprintf("%q couldn't be brought live on its selected playout backend yet: %v. Loomarr will keep retrying.", saved.Name, err))
 		}
 	}
@@ -157,54 +159,54 @@ const maxRetries = 4
 // is ErrStale and nothing is written — the only honest recovery for a whole-form edit is to
 // refresh. revision 0 applies the change to the latest channel and re-reads and re-applies it when
 // another write lands first, so change must be safe to run more than once.
-func (s *Service) Edit(ctx context.Context, backend Backend, id string, revision int64, change func(*store.Channel) error) (store.Channel, error) {
+func (s *Service) Edit(ctx context.Context, backend Backend, id string, revision int64, change func(*channelstore.Channel) error) (channelstore.Channel, error) {
 	for attempt := 1; ; attempt++ {
 		saved, err := s.editOnce(ctx, backend, id, revision, change)
 		if !errors.Is(err, ErrStale) || revision > 0 || attempt == maxRetries {
 			if err != nil {
-				return store.Channel{}, err
+				return channelstore.Channel{}, err
 			}
 			return saved, nil
 		}
 	}
 }
 
-func (s *Service) editOnce(ctx context.Context, backend Backend, id string, revision int64, change func(*store.Channel) error) (store.Channel, error) {
+func (s *Service) editOnce(ctx context.Context, backend Backend, id string, revision int64, change func(*channelstore.Channel) error) (channelstore.Channel, error) {
 	before, err := s.Store.GetChannel(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, ErrNotFound
+		return channelstore.Channel{}, ErrNotFound
 	} else if err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	if revision > 0 && revision != before.Revision {
-		return store.Channel{}, ErrStale
+		return channelstore.Channel{}, ErrStale
 	}
 	ch := before
 	if err := change(&ch); err != nil {
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	// No "except me" for a number: Tunarr's list carries no identity to exclude by, so ask only
 	// when the number actually changes.
 	if ch.Number != before.Number {
 		if err := s.numberFree(ctx, ch.Number); err != nil {
-			return store.Channel{}, err
+			return channelstore.Channel{}, err
 		}
 	}
 	applyEditRules(before, &ch, backend)
 	if err := ch.Validate(); err != nil {
-		return store.Channel{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+		return channelstore.Channel{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	ch.UpdatedAt = time.Now().Unix() // SaveChannel does not stamp this
 	saved, err := s.Store.SaveChannel(ctx, ch)
 	switch {
-	case errors.Is(err, store.ErrChannelStale):
-		return store.Channel{}, ErrStale
+	case errors.Is(err, channelstore.ErrChannelStale):
+		return channelstore.Channel{}, ErrStale
 	case errors.Is(err, store.ErrNotFound):
-		return store.Channel{}, ErrNotFound
-	case errors.Is(err, store.ErrChannelConflict):
-		return store.Channel{}, ErrClaimed
+		return channelstore.Channel{}, ErrNotFound
+	case errors.Is(err, channelstore.ErrChannelConflict):
+		return channelstore.Channel{}, ErrClaimed
 	case err != nil:
-		return store.Channel{}, err
+		return channelstore.Channel{}, err
 	}
 	wasPlayable := schedule.InternalTransportPlayable(before.Status, before.Policy, backend.PublishedInternal)
 	isPlayable := schedule.InternalTransportPlayable(saved.Status, saved.Policy, backend.PublishedInternal)
@@ -226,7 +228,7 @@ func (s *Service) editOnce(ctx context.Context, backend Backend, id string, revi
 // change on a settled channel changes guide data, not the tuner's channel list. Identity and
 // effective-backend changes, and an empty internal channel starting to materialize, change
 // membership or M3U identity and keep the stronger signal.
-func applyEditRules(before store.Channel, ch *store.Channel, backend Backend) {
+func applyEditRules(before channelstore.Channel, ch *channelstore.Channel, backend Backend) {
 	if !ch.Status.Reconcilable() {
 		return
 	}
@@ -266,10 +268,10 @@ func (s *Service) numberFree(ctx context.Context, number int) error {
 }
 
 // reread returns the channel as stored after the reconcile, which may have advanced it.
-func (s *Service) reread(ctx context.Context, id string) (store.Channel, error) {
+func (s *Service) reread(ctx context.Context, id string) (channelstore.Channel, error) {
 	ch, err := s.Store.GetChannel(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Channel{}, ErrNotFound
+		return channelstore.Channel{}, ErrNotFound
 	}
 	return ch, err
 }

@@ -98,7 +98,8 @@ test.describe("phone Guide", () => {
     page,
   }) => {
     await installMockBackend(page, { authed: true, role: "admin", guideChannels: 12 });
-    await page.goto("/guide");
+    // A phone opens on Now & next (#2766); the compact grid is the Full grid view.
+    await page.goto("/guide?view=grid");
     const filters = page.getByRole("toolbar", { name: "Guide filters" });
     await expect(filters.getByRole("button", { name: "All, 12 channels" })).toBeVisible();
     await expect(filters.getByRole("button", { name: "Favorites, 2 channels" })).toBeVisible();

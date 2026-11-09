@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.
@@ -26,7 +27,18 @@ type fakeCatalog struct {
 func (f *fakeCatalog) ID() mp.ID { return mp.IDTMDB }
 
 func (f *fakeCatalog) Capabilities() mp.Capabilities {
-	return mp.Capabilities{Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	return mp.Capabilities{Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB, Resolves: fakeCatalogKeys}
+}
+
+// fakeCatalogKeys is what fakeCatalog fetches, declared as TMDB declares it; the harness's
+// Importer keys its titles by it.
+var fakeCatalogKeys = CatalogKeys{
+	{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
+	{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
+	{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindEpisodeOrder, Namespace: mp.NamespaceTMDB},
 }
 
 func (f *fakeCatalog) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
@@ -250,11 +262,15 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 // details.
 func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
-	series := func(orderings, seasonOne int) mp.Record {
+	series := func(orders, seasonOne int) mp.Record {
+		known := []mp.EpisodeOrder{}
+		for range orders {
+			known = append(known, mp.EpisodeOrder{ID: "90000799a", Name: "DVD Order", Kind: mp.OrderDVD})
+		}
 		return mp.Record{
 			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
 			Descriptive: &mp.Descriptive{
-				Title: "Golf Show", Orderings: &orderings,
+				Title: "Golf Show", Orders: known,
 				Seasons: []mp.SeasonSize{{Number: 0, Episodes: 2}, {Number: 1, Episodes: seasonOne}},
 			},
 		}
@@ -314,6 +330,114 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 			// it was fetched, and again after.
 			if got := reads.reads["tmdb:season:90000701/1"]; askedSeason && got != 2 {
 				t.Errorf("the season record was read %d times over two passes of three episodes, want once a pass", got)
+			}
+		})
+	}
+}
+
+// A show TMDB numbers in more than one order is numbered as the household said its files follow
+// (decision 53): TMDB's own seasons, one of its other orders, or the files. With no answer, its
+// episodes keep their files' names, are marked unnumbered, which puts the show in Needs you with
+// how far each season runs on disk, and TMDB's other orders are asked for.
+func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	seriesKey := store.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
+	entry := func(season, n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title},
+		}
+	}
+	records := map[string]mp.Record{
+		"90000701": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{
+				Title: "Golf Show", Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}},
+				Orders: []mp.EpisodeOrder{{ID: "90000799a", Name: "DVD Order", Kind: mp.OrderDVD, Seasons: 1, Episodes: 3}},
+			},
+		},
+		"90000701/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, 1, "Tee Off"), entry(1, 2, "The Back Nine"), entry(1, 3, "Sudden Death"),
+		}},
+		"90000799a": {Source: src, Kind: mp.KindEpisodeOrder, Children: []mp.Record{
+			entry(1, 1, "Tee Off"), entry(1, 2, "Sudden Death"), entry(1, 3, "The Back Nine"),
+		}},
+	}
+	for _, tc := range []struct {
+		name   string
+		answer *store.LibraryEpisodeOrder
+		want   string
+	}{
+		{"nobody has answered", nil, "Golf Show S01E02"},
+		{"TMDB's own seasons", &store.LibraryEpisodeOrder{Choice: store.OrderByCatalog}, "The Back Nine"},
+		{"TMDB's DVD order", &store.LibraryEpisodeOrder{Choice: store.OrderByOrder, OrderID: "90000799a"}, "Sudden Death"},
+		{"the files", &store.LibraryEpisodeOrder{Choice: store.OrderByFiles}, "Golf Show S01E02"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			h.im.Catalog, h.im.Answers = h.st, h.st
+			if tc.answer != nil {
+				tc.answer.Series = seriesKey
+				if err := h.st.SaveLibraryEpisodeOrder(ctx, *tc.answer); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for n := 1; n <= 3; n++ {
+				h.file(fmt.Sprintf("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E0%d.mkv", n), 10)
+			}
+			h.run()
+			catalog := &fakeCatalog{records: records}
+			e := &Enricher{
+				Store: h.st, Provider: catalog,
+				Rewrite: func(root string, dirs ...string) {
+					if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+						t.Fatal(err)
+					}
+				},
+			}
+			for range 3 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			origin := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv")
+			facts := h.origin(h.item(origin), origin).Observation.Facts
+			if facts.Name != tc.want || facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
+				t.Fatalf("episode = %q S%dE%d, want %q S1E2 (fetched %v)", facts.Name, facts.SeasonNumber, facts.EpisodeNumber,
+					tc.want, catalog.fetched)
+			}
+			// The show's page says which episodes wait on the answer: all of them, until there is one.
+			shows, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{Kind: "series"})
+			if err != nil || len(shows.Items) != 1 {
+				t.Fatalf("shows = %+v, %v", shows, err)
+			}
+			lib := &Library{ItemStore: h.st, Inventory: h.inv}
+			detail, err := lib.Item(ctx, shows.Items[0].ID)
+			if err != nil || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 3 {
+				t.Fatalf("detail = %+v, %v", detail.Seasons, err)
+			}
+			for _, ep := range detail.Seasons[0].Episodes {
+				if ep.FromFile != (tc.answer == nil) {
+					t.Errorf("episode %d from its file = %v, want %v", ep.Number, ep.FromFile, tc.answer == nil)
+				}
+			}
+			needs, err := h.st.LibraryOrderNeeds(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.answer != nil {
+				if len(needs) != 0 {
+					t.Fatalf("needs = %+v, want none once answered", needs)
+				}
+				return
+			}
+			if len(needs) != 1 || needs[0].Name != "Golf Show" || needs[0].Unnumbered != 3 ||
+				!reflect.DeepEqual(needs[0].Last, map[int]int{1: 3}) {
+				t.Fatalf("needs = %+v, want Golf Show with its 3 episodes unnumbered, season 1 running to 3", needs)
+			}
+			if !slices.Contains(catalog.fetched, "episode_order:90000799a") {
+				t.Errorf("fetched %v, want TMDB's other order asked for", catalog.fetched)
 			}
 		})
 	}

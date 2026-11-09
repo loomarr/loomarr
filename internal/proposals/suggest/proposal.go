@@ -21,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -40,7 +40,7 @@ type Intent struct {
 	ReferenceResolved   bool
 	referenceEvidence   webreference.Evidence
 	referenceKeys       map[provision.Key]bool
-	referenceCandidates []catalog.Candidate
+	referenceCandidates []titlesearch.Candidate
 	// membershipKeys contains only Catalog identities grounded from explicit user or
 	// public-reference title anchors. A model's collection-tool roster is a search
 	// hypothesis: catalog identity verifies that title exists, not that it belongs
@@ -68,7 +68,7 @@ var ErrChannelIntentUnavailable = errors.New("suggest: the channel's original re
 
 // IntentOfChannel reads the approved intent a channel stores, ready to seed a refine or a
 // re-curation. It returns ErrChannelIntentUnavailable when the channel has none.
-func IntentOfChannel(ch store.Channel) (proposals.Intent, error) {
+func IntentOfChannel(ch channelstore.Channel) (proposals.Intent, error) {
 	if ch.IntentJSON == "" {
 		return proposals.Intent{}, ErrChannelIntentUnavailable
 	}
@@ -81,7 +81,7 @@ func IntentOfChannel(ch store.Channel) (proposals.Intent, error) {
 
 // fromCandidate builds a ProposalItem from a grounded catalog Candidate, carrying
 // the rationale/confidence the model attached.
-func fromCandidate(c catalog.Candidate, rationale string, confidence float64) proposals.ProposalItem {
+func fromCandidate(c titlesearch.Candidate, rationale string, confidence float64) proposals.ProposalItem {
 	return proposals.ProposalItem{
 		MediaType: c.MediaType, TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,

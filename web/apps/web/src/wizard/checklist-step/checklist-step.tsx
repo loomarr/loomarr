@@ -155,7 +155,9 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
         // Prefer a just-run Test result; fall back to the checklist's standing verdict.
         const live = testResult[block.id];
         const standing = checks.find((c) => c.name === checkName);
-        const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+        const verdict =
+          live ??
+          (standing ? { ok: standing.ok, hint: standing.hint, notSetUp: standing.notSetUp } : undefined);
         const required = requiredChecks(backend).includes(block.id);
 
         return (

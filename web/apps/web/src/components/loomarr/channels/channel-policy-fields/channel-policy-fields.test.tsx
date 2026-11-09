@@ -222,14 +222,14 @@ describe("ChannelPolicyFields", () => {
 
   it("renders source-explicit fallback and no-limit sentinels for an empty policy", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Use channel strategy");
-    expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("No limit");
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveDisplayValue("Use channel strategy");
+    expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveDisplayValue("No limit");
   });
 
   it("renders the current values of a populated policy", () => {
     render(<ChannelPolicyFields policy={POPULATED} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Shuffled");
-    expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("TV-14");
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveDisplayValue("Shuffled");
+    expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveDisplayValue("TV-14");
     expect(screen.getAllByLabelText("From year")[0]).toHaveValue("1990");
     expect(screen.getAllByLabelText("To year")[0]).toHaveValue("1999");
     // Duration strings tidied for display (the wire form the operator reads/types).
@@ -241,8 +241,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Play order" }));
-    await userEvent.click(await screen.findByRole("option", { name: "In order" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Play order" }), "In order");
 
     expect(onChange).toHaveBeenCalledWith({
       ...POPULATED,
@@ -256,8 +255,10 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Play order" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Use channel strategy" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Play order" }),
+      "Use channel strategy",
+    );
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ ordering: "" }));
   });
@@ -266,8 +267,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Audience ceiling" }));
-    await userEvent.click(await screen.findByRole("option", { name: "TV-MA" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Audience ceiling" }), "TV-MA");
 
     expect(onChange).toHaveBeenCalledWith({
       ...POPULATED,
@@ -396,8 +396,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Unrated titles" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Allow unrated" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Unrated titles" }), "Allow unrated");
 
     expect(onChange).toHaveBeenCalledWith({
       ...POPULATED,
@@ -414,8 +413,10 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Unrated titles" }));
-    await userEvent.click(await screen.findByRole("option", { name: /^Automatic/ }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Unrated titles" }),
+      screen.getByRole("option", { name: /^Automatic/ }),
+    );
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ audience: { ceiling: "TV-14", unrated: "" } }),
@@ -427,29 +428,29 @@ describe("ChannelPolicyFields", () => {
   // option names its current resolution, and these two pin that it tracks the ceiling above it.
   it("says Automatic currently SKIPS unrated under a kids ceiling", () => {
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-Y7" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: skipped");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: skipped");
   });
 
   it("says Automatic currently ALLOWS unrated with no ceiling, and above the kids boundary", () => {
     const { unmount } = render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: allowed");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: allowed");
     unmount();
 
     // TV-PG (rank 3) is the LAST kids ceiling; TV-14 (rank 4) is the first that is not.
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-14" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: allowed");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: allowed");
   });
 
   it("treats TV-PG as the last kids ceiling (the rank-3 boundary)", () => {
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-PG" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: skipped");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: skipped");
   });
 
   // Channel.Strategy is provenance for the unset policy value, not a second editable knob.
   it("names the resolved channel strategy in the one play-order control", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} strategy="sequential" />);
 
-    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent(
+    expect(screen.getByRole("combobox", { name: "Play order" })).toHaveDisplayValue(
       "Use channel strategy (In order)",
     );
     expect(screen.queryByLabelText("Playback")).not.toBeInTheDocument();
@@ -477,14 +478,12 @@ describe("ChannelPolicyFields", () => {
 // The source badges and Reset (#1817 item 4). Reset writes the same sentinel the summary counts
 // as a default (lib/policy-overrides covers the full table).
 describe("ChannelPolicyFields defaults and overrides", () => {
-  it("badges every field Default on a fresh channel, with Reset disabled", () => {
+  it("badges every field Default on a fresh channel, with nothing to reset", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
     // ceiling, unrated, dates, runtime, ordering, three spacing windows, block cap.
     expect(screen.getAllByText("Default")).toHaveLength(9);
     expect(screen.queryByText("Channel override")).not.toBeInTheDocument();
-    const resets = screen.getAllByRole("button", { name: /^Reset to default/ });
-    expect(resets).toHaveLength(9);
-    for (const reset of resets) expect(reset).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^Reset to default/ })).not.toBeInTheDocument();
   });
 
   it("badges an overridden field and resets it to its sentinel", async () => {

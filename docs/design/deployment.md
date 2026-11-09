@@ -43,7 +43,7 @@ server; macOS runs the Linux image through Docker Desktop.
   opt-in `filler` tag → one image); each change followed a change in what the tooling was for. The
   cost is size, most of it the whisper model, which is a correctness floor.
 - **Runtime packages** exist because ffmpeg loads them at run time: the vendor-neutral hardware-encode
-  driver set, and `fonts-dejavu-core` for card labels.
+  driver set, and `fonts-dejavu-core` for the demo library's drawtext cards.
 - `/data` is pre-created, owned by uid 65532 and declared a `VOLUME`, so a fresh named volume works.
   The Compose init container chowns bind mounts, which the image cannot pre-seed.
 - Alternative `filler.dir` or `diagnostics.dir` values are in-container paths; the mount must exist

@@ -18,12 +18,10 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Text, Tooltip } from "@loomarr/design-system";
-import { GripVertical, X } from "lucide-react";
+import { Action, Badge, Chip, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
@@ -146,7 +144,7 @@ const SortableLineupRow = ({
         aria-label={`Reorder ${entry.name}`}
         className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <GripVertical className="size-4" aria-hidden />
+        <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
       </button>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
@@ -172,18 +170,21 @@ const SortableLineupRow = ({
 
       {feedback && <div className="col-[2/-1] @md:contents">{feedback}</div>}
 
-      <Tooltip content="Remove from lineup">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
-          disabled={disabled}
-          aria-label={`Remove ${entry.name}`}
-          onClick={onRemove}
-        >
-          <X aria-hidden />
-        </Button>
-      </Tooltip>
+      <div className="col-[2/-1] shrink-0 justify-self-end">
+        <Tooltip content="Remove from lineup">
+          {/* touch density: a narrow row's Remove must be a 44 px target; pointer's 40 is short. */}
+          <Action
+            density="touch"
+            disabled={disabled}
+            icon="close"
+            layout="icon"
+            onPress={onRemove}
+            variant="ghost"
+          >
+            {`Remove ${entry.name}`}
+          </Action>
+        </Tooltip>
+      </div>
     </li>
   );
 };
@@ -294,23 +295,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               ["year", "Year"],
             ] as const
           ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setSort(value)}
-              aria-pressed={sort === value}
-              // 23 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
-              data-touch-target
-              className={cn(
-                "text-2xs cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
-                // Pressed is neutral (#1909 Q2), like the Guide's span picker.
-                sort === value
-                  ? "border-foreground bg-static-800 text-foreground font-semibold"
-                  : "border-border text-static-400 hover:border-static-400",
-              )}
-            >
+            <Chip key={value} mono onPress={() => setSort(value)} selected={sort === value}>
               {label}
-            </button>
+            </Chip>
           ))}
           {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
         </div>
@@ -321,37 +308,44 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           Nothing in the lineup yet. Add a title below.
         </p>
       ) : (
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-          <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
-            {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
+        <>
+          {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}
+          <Text textRole="caption" tone="secondary">
+            Keep, Less, Never and Surprise affect future suggestions only.
+          </Text>
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
+              {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
                 channel with many titles otherwise runs the page off. max-height means a short
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-            <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
-              {shown.map((entry) => (
-                <SortableLineupRow
-                  key={entry.key}
-                  entry={entry}
-                  disabled={!dragEnabled}
-                  onRemove={() => remove(entry.key)}
-                  onSeasonChange={(patch) => updateEntry(entry.key, patch)}
-                  feedback={
-                    <DiscoveryFeedbackControls
-                      compact
-                      name={entry.name}
-                      scope={feedbackScope}
-                      effective={feedback.feedbackFor(entry.key)}
-                      disabled={feedback.isPending}
-                      onSet={(action) => feedback.setFeedback(entry.key, action)}
-                      onClear={() => feedback.clearFeedback(entry.key)}
-                    />
-                  }
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+              <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
+                {shown.map((entry) => (
+                  <SortableLineupRow
+                    key={entry.key}
+                    entry={entry}
+                    disabled={!dragEnabled}
+                    onRemove={() => remove(entry.key)}
+                    onSeasonChange={(patch) => updateEntry(entry.key, patch)}
+                    feedback={
+                      <DiscoveryFeedbackControls
+                        compact
+                        effectNote={false}
+                        name={entry.name}
+                        scope={feedbackScope}
+                        effective={feedback.feedbackFor(entry.key)}
+                        disabled={feedback.isPending}
+                        onSet={(action) => feedback.setFeedback(entry.key, action)}
+                        onClear={() => feedback.clearFeedback(entry.key)}
+                      />
+                    }
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </>
       )}
 
       {adding ? (

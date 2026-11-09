@@ -1,11 +1,7 @@
-import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
-import { CommitField, YearField } from "@loomarr/ui";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Action, CompactSelect, Text } from "@loomarr/design-system";
+import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
+import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
 import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
@@ -19,175 +15,23 @@ import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
 
-const YEAR_MIN = 1900;
-const YEAR_MAX = 2099;
-
-const isValidRange = (range: Range): range is Range & { from: number; to: number } =>
-  Number.isInteger(range.from) &&
-  Number.isInteger(range.to) &&
-  range.from !== undefined &&
-  range.to !== undefined &&
-  range.from >= YEAR_MIN &&
-  range.from <= YEAR_MAX &&
-  range.to >= YEAR_MIN &&
-  range.to <= YEAR_MAX &&
-  range.from <= range.to;
-
-const normalizedRanges = (ranges: Range[] | undefined): Range[] => {
-  const valid = (ranges ?? []).filter(isValidRange).sort((a, b) => a.from - b.from || a.to - b.to);
-  return valid.reduce<Range[]>((merged, range) => {
-    const previous = merged.at(-1);
-    if (previous?.to !== undefined && range.from <= previous.to + 1)
-      previous.to = Math.max(previous.to, range.to);
-    else merged.push({ from: range.from, to: range.to });
-    return merged;
-  }, []);
-};
-
-const DateAxisRow = ({
-  label,
-  range,
-  index,
-  onCommit,
-  onRemove,
-}: {
-  label: string;
-  range: Range;
-  index: number;
-  onCommit: (index: number, next: Range) => void;
-  onRemove: (index: number) => void;
-}) => {
-  const [draft, setDraft] = useState({ from: String(range.from), to: String(range.to) });
-
-  // An invalid endpoint remains visible until its partner makes the pair valid. The actual
-  // committed range is the reset boundary, so drafts neither survive an external replacement
-  // nor slide onto another row when the list changes.
-  useEffect(() => {
-    setDraft({ from: String(range.from), to: String(range.to) });
-  }, [range.from, range.to]);
-
-  // Three axes of rows would otherwise give a screen reader or voice control a list of identical
-  // "From year" boxes and "Remove" buttons, so each name carries its axis and range while the
-  // visible text stays short (and still starts the name), as PolicyFieldSource does for Reset.
-  const where = `(${label}, range ${index + 1})`;
-  const commitDraft = () => onCommit(index, { from: Number(draft.from), to: Number(draft.to) });
-  // The From/To pair never wraps apart: on a phone only Remove drops to the next line, so a
-  // range still reads as one row.
-  return (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="flex gap-2">
-        <YearField
-          accessibilityLabel={`From year ${where}`}
-          id={`policy-dates-${label}-${index}-from`}
-          label="From year"
-          onBlur={commitDraft}
-          onChangeText={(from) => setDraft({ ...draft, from })}
-          value={draft.from}
-        />
-        <YearField
-          accessibilityLabel={`To year ${where}`}
-          id={`policy-dates-${label}-${index}-to`}
-          label="To year"
-          onBlur={commitDraft}
-          onChangeText={(to) => setDraft({ ...draft, to })}
-          value={draft.to}
-        />
-      </div>
-      <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove <span className="sr-only">{where}</span>
-      </Button>
-    </div>
-  );
-};
-
+// One date axis: its title over the shared range list.
 const DateAxisEditor = ({
   label,
   ranges,
   onChange,
 }: {
   label: string;
-  ranges: Range[];
-  onChange: (next: Range[] | undefined) => void;
-}) => {
-  const [draft, setDraft] = useState({ from: "", to: "" });
-  const [error, setError] = useState<string>();
-  const commit = (index: number, next: Range) => {
-    if (!isValidRange(next)) {
-      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
-      return;
-    }
-    setError(undefined);
-    const changed = [...ranges];
-    changed[index] = next;
-    onChange(changed);
-  };
-  const add = () => {
-    const from = Number(draft.from);
-    const to = Number(draft.to);
-    if (
-      !draft.from ||
-      !draft.to ||
-      !Number.isInteger(from) ||
-      !Number.isInteger(to) ||
-      from < YEAR_MIN ||
-      from > YEAR_MAX ||
-      to < YEAR_MIN ||
-      to > YEAR_MAX ||
-      from > to
-    ) {
-      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
-      return;
-    }
-    setError(undefined);
-    setDraft({ from: "", to: "" });
-    onChange([...ranges, { from, to }]);
-  };
-  return (
-    <div className="border-border flex flex-col gap-2 rounded-md border p-3">
-      <div className="flex items-center justify-between gap-3">
-        <Label className="text-sm">{label}</Label>
-      </div>
-      {ranges.length === 0 ? (
-        <p className="text-muted-foreground text-xs">No date requirement.</p>
-      ) : (
-        ranges.map((range, index) => (
-          <DateAxisRow
-            key={`${range.from}-${range.to}`}
-            label={label}
-            range={range}
-            index={index}
-            onCommit={commit}
-            onRemove={(row) => onChange(ranges.filter((_, current) => current !== row))}
-          />
-        ))
-      )}
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex gap-2">
-          <YearField
-            accessibilityLabel={`${label} new range from`}
-            onChangeText={(from) => setDraft({ ...draft, from })}
-            placeholder="From"
-            value={draft.from}
-          />
-          <YearField
-            accessibilityLabel={`${label} new range to`}
-            onChangeText={(to) => setDraft({ ...draft, to })}
-            placeholder="To"
-            value={draft.to}
-          />
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
-          Add range
-        </Button>
-      </div>
-      {error && (
-        <p className="text-onair-300 text-xs" role="alert">
-          {error}
-        </p>
-      )}
+  ranges: { from: number; to: number }[];
+  onChange: (next: { from: number; to: number }[]) => void;
+}) => (
+  <div className="border-border flex flex-col gap-2 rounded-md border p-3">
+    <div className="flex items-center justify-between gap-3">
+      <Text textRole="label">{label}</Text>
     </div>
-  );
-};
+    <YearRangeListField emptyText="No date requirement." label={label} onChange={onChange} ranges={ranges} />
+  </div>
+);
 
 // PolicyField — one defaultable field (#1817 item 4): its label and (i) help on the left, where
 // the value comes from and a Reset on the right, the control below. The (i) icon replaces the
@@ -218,9 +62,9 @@ const PolicyField = ({
     <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <Label id={labelId} htmlFor={htmlFor}>
+          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
-          </Label>
+          </Text>
           <FieldHelp label={label}>{help}</FieldHelp>
         </div>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
@@ -371,8 +215,8 @@ const ChannelPolicyFields = ({
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
-          forbids an empty-string item value, so "inherit" is the sentinel. */}
+      {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
+          choice "inherit". */}
       {showOrdering && (
         <PolicyField
           id="policy-ordering"
@@ -381,24 +225,14 @@ const ChannelPolicyFields = ({
           help="The channel's normal play order. In order plays the list start to finish and starts over. Shuffled plays a random mix. Syndication deals the list like a deck of cards, so everything plays once before anything repeats. Scheduled rules can temporarily override it."
           {...source("ordering")}
         >
-          <Select
-            value={policy.ordering || "inherit"}
+          <CompactSelect
+            aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
+            id="policy-ordering"
+            label="Play order"
             onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
-          >
-            <SelectTrigger
-              id="policy-ordering"
-              aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {orderingOptions(strategy).map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={orderingOptions(strategy)}
+            value={policy.ordering || "inherit"}
+          />
           {orderConsequence && (
             <Text as="p" id="policy-ordering-consequence" textRole="caption" tone="muted">
               {orderConsequence}
@@ -417,26 +251,18 @@ const ChannelPolicyFields = ({
           help="Content stays at or below this, a safety limit Loomarr never loosens."
           {...source("ceiling")}
         >
-          <Select
-            value={policy.audience?.ceiling || "none"}
+          <CompactSelect
+            id="policy-ceiling"
+            label="Audience ceiling"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-ceiling">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CEILING_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={CEILING_OPTIONS}
+            value={policy.audience?.ceiling || "none"}
+          />
         </PolicyField>
       )}
 
@@ -452,31 +278,28 @@ const ChannelPolicyFields = ({
           help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
           {...source("unrated")}
         >
-          <Select
-            value={policy.audience?.unrated || "default"}
+          <CompactSelect
+            id="policy-unrated"
+            label="Unrated titles"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, unrated: v === "default" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-unrated">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNRATED_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {/* "Automatic" alone is not actionable — the operator cannot tell which way it
-                      falls without knowing the kids-ceiling rule. Naming the current resolution
-                      turns it into a real choice. */}
-                  {o.value === "default"
-                    ? `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
-                    : o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            // "Automatic" alone is not actionable — the operator cannot tell which way it falls
+            // without knowing the kids-ceiling rule. Naming the current resolution turns it into a
+            // real choice.
+            options={UNRATED_OPTIONS.map((o) =>
+              o.value === "default"
+                ? {
+                    ...o,
+                    label: `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`,
+                  }
+                : o,
+            )}
+            value={policy.audience?.unrated || "default"}
+          />
         </PolicyField>
       )}
 
@@ -535,14 +358,15 @@ const ChannelPolicyFields = ({
               placeholder="Any"
               width={112}
             />
-            <Button
-              type="button"
+            {/* Lifted 10 px so the line sits level with the year boxes' text, not their bottom edge. */}
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(true)}
+              style={{ marginBottom: 10 }}
               variant="link"
-              className="h-auto p-0 pb-2.5 text-xs underline"
-              onClick={() => setAxesRequested(true)}
             >
               Use separate date windows
-            </Button>
+            </Action>
           </div>
         </PolicyField>
       )}
@@ -572,9 +396,8 @@ const ChannelPolicyFields = ({
             <DateAxisEditor
               key={axis}
               label={label}
-              ranges={normalizedRanges(dates?.[axis])}
-              onChange={(next) => {
-                const nextAxis = normalizedRanges(next);
+              ranges={normalizeYearRanges(dates?.[axis])}
+              onChange={(nextAxis) => {
                 const nextDates = { ...dates, [axis]: nextAxis.length ? nextAxis : undefined };
                 const hasDates = Object.values(nextDates).some(
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
@@ -592,14 +415,14 @@ const ChannelPolicyFields = ({
           ))}
           {/* Back to Era only while that loses nothing: the windows are identical or empty. */}
           {eraShaped && (
-            <Button
-              type="button"
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(false)}
+              style={{ alignSelf: "flex-start" }}
               variant="link"
-              className="h-auto self-start p-0 text-xs underline"
-              onClick={() => setAxesRequested(false)}
             >
               Use a single era
-            </Button>
+            </Action>
           )}
         </PolicyField>
       )}

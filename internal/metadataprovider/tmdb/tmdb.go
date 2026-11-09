@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
+	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // Locale returns the installation's metadata language (such as "en-US") and certification country
@@ -83,18 +83,21 @@ func (*Provider) Capabilities() mp.Capabilities {
 	return mp.Capabilities{
 		Basis:   source.Basis,
 		Catalog: source.Catalog,
-		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection, mp.KindSeason},
+		Kinds: []mp.Kind{
+			mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection, mp.KindSeason, mp.KindEpisodeOrder,
+		},
 		Resolves: []mp.Resolvable{
 			{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 			{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 			{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
+			{Kind: mp.KindEpisodeOrder, Namespace: mp.NamespaceTMDB},
 		},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyArtwork},
 		// TMDB documents roughly 50 requests per second per address and 20 simultaneous
 		// connections. 8 in flight at 25 ms apart stays well under both.
-		Rate: mp.RateHint{MaxConcurrent: 8, MinInterval: 25 * time.Millisecond},
+		Rate: mp.RateHint{MinInterval: 25 * time.Millisecond},
 	}
 }
 
@@ -129,6 +132,9 @@ func (p *Provider) fetch(ctx context.Context, loc locale, ref mp.Ref) (mp.Record
 			return mp.Record{}, fmt.Errorf("tmdb: season %q is not <series id>/<season>: %w", ref.ID.Value, mp.ErrUnsupported)
 		}
 		return p.season(ctx, loc, series, number)
+	}
+	if ref.Kind == mp.KindEpisodeOrder {
+		return p.episodeOrder(ctx, loc, strings.TrimSpace(ref.ID.Value))
 	}
 	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
 	if err != nil || id <= 0 {
@@ -268,7 +274,7 @@ func people(credits wireCredits, creators []wireCrew) []mp.Person {
 		seen[key] = true
 		p := mp.Person{Name: name, Role: role, Character: strings.TrimSpace(character), Photo: tmdbclient.ImageURL(profile)}
 		if id > 0 {
-			p.TMDB = strconv.Itoa(id)
+			p.ID = mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(id)}
 		}
 		out = append(out, p)
 	}
@@ -422,10 +428,13 @@ var selfParts = map[string]bool{"self": true, "himself": true, "herself": true, 
 // Filmography is a person's movies and series by their TMDB person id (#2151 decision 50): every
 // part they played, other than appearing as themselves, and every title they created, directed
 // or wrote, newest first, at most maxFilmography.
-func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCredit, error) {
-	id, err := strconv.Atoi(strings.TrimSpace(person))
+func (p *Provider) Filmography(ctx context.Context, person mp.ExternalID) ([]mp.FilmCredit, error) {
+	if person.Namespace != mp.NamespaceTMDB {
+		return nil, fmt.Errorf("tmdb: person by %s: %w", person.Namespace, mp.ErrUnsupported)
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(person.Value))
 	if err != nil || id <= 0 {
-		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person, mp.ErrUnsupported)
+		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person.Value, mp.ErrUnsupported)
 	}
 	loc, err := p.resolveLocale()
 	if err != nil {
@@ -450,7 +459,7 @@ func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCre
 			return
 		}
 		seen[key] = true
-		out = append(out, mp.FilmCredit{Kind: kind, TMDB: strconv.Itoa(c.ID), Title: title,
+		out = append(out, mp.FilmCredit{Kind: kind, ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(c.ID)}, Title: title,
 			Year: yearOf(firstNonEmpty(c.ReleaseDate, c.FirstAirDate)), Role: role, Character: character})
 	}
 	for _, c := range credits.Cast {
@@ -565,7 +574,11 @@ type wireSeries struct {
 	// EpisodeGroups are the other orderings TMDB knows; nil when the answer did not carry them.
 	EpisodeGroups *struct {
 		Results []struct {
-			ID string `json:"id"`
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			Type         int    `json:"type"`
+			EpisodeCount int    `json:"episode_count"`
+			GroupCount   int    `json:"group_count"`
 		} `json:"results"`
 	} `json:"episode_groups"`
 	Keywords struct {
@@ -577,6 +590,12 @@ type wireSeries struct {
 			Rating  string `json:"rating"`
 		} `json:"results"`
 	} `json:"content_ratings"`
+}
+
+// orderKinds are TMDB's episode group types; an unknown one leaves the kind empty.
+var orderKinds = map[int]mp.OrderKind{
+	1: mp.OrderAired, 2: mp.OrderAbsolute, 3: mp.OrderDVD, 4: mp.OrderDigital,
+	5: mp.OrderStory, 6: mp.OrderProduction, 7: mp.OrderTV,
 }
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
@@ -628,8 +647,13 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 		}
 	}
 	if s.EpisodeGroups != nil {
-		n := len(s.EpisodeGroups.Results)
-		rec.Descriptive.Orderings = &n
+		rec.Descriptive.Orders = []mp.EpisodeOrder{}
+		for _, g := range s.EpisodeGroups.Results {
+			rec.Descriptive.Orders = append(rec.Descriptive.Orders, mp.EpisodeOrder{
+				ID: g.ID, Name: strings.TrimSpace(g.Name), Kind: orderKinds[g.Type],
+				Seasons: g.GroupCount, Episodes: g.EpisodeCount,
+			})
+		}
 	}
 	if len(s.EpisodeRuntime) > 0 && s.EpisodeRuntime[0] > 0 {
 		rec.Descriptive.Runtime = time.Duration(s.EpisodeRuntime[0]) * time.Minute
@@ -721,6 +745,94 @@ func (p *Provider) season(ctx context.Context, loc locale, series, number int) (
 				Runtime:         time.Duration(e.Runtime) * time.Minute,
 			},
 		})
+	}
+	return rec, nil
+}
+
+// ---- episode order ----
+
+type wireEpisodeGroup struct {
+	ID     string      `json:"id"`
+	Groups []wireGroup `json:"groups"`
+}
+
+// wireGroup is one season of an episode order; Order is its number.
+type wireGroup struct {
+	Order    int                `json:"order"`
+	Episodes []wireGroupEpisode `json:"episodes"`
+}
+
+// wireGroupEpisode is one episode of an order's season; Order is its 0-based place there.
+type wireGroupEpisode struct {
+	ID          int     `json:"id"`
+	ShowID      int     `json:"show_id"`
+	Order       int     `json:"order"`
+	Name        string  `json:"name"`
+	Overview    string  `json:"overview"`
+	AirDate     string  `json:"air_date"`
+	Runtime     int     `json:"runtime"`
+	VoteAverage float64 `json:"vote_average"`
+	VoteCount   int     `json:"vote_count"`
+}
+
+// episodeOrder is one of a series' other episode orders (a TMDB episode group): its episodes as
+// Children, numbered as the order numbers them (the group's order is the season, an episode's
+// place in it the episode), and each season's size. An episode TMDB has no id for is left out of
+// Children but keeps its place.
+func (p *Provider) episodeOrder(ctx context.Context, loc locale, id string) (mp.Record, error) {
+	if id == "" || strings.ContainsAny(id, "/?#") {
+		return mp.Record{}, fmt.Errorf("tmdb: episode order %q: %w", id, mp.ErrUnsupported)
+	}
+	var g wireEpisodeGroup
+	q := url.Values{}
+	q.Set("language", loc.language)
+	if err := p.get(ctx, "/tv/episode_group/"+url.PathEscape(id)+"?"+q.Encode(), &g); err != nil {
+		return mp.Record{}, err
+	}
+	if g.ID != id {
+		return mp.Record{}, fmt.Errorf("tmdb episode order %s: answer names %q: %w", id, g.ID, mp.ErrNotFound)
+	}
+	rec := mp.Record{
+		Source: source, Kind: mp.KindEpisodeOrder,
+		IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+		Descriptive: &mp.Descriptive{},
+	}
+	// TMDB lists seasons and episodes in no promised order; each says its place.
+	groups := slices.Clone(g.Groups)
+	slices.SortStableFunc(groups, func(a, b wireGroup) int { return a.Order - b.Order })
+	for _, group := range groups {
+		episodes := slices.Clone(group.Episodes)
+		slices.SortStableFunc(episodes, func(a, b wireGroupEpisode) int { return a.Order - b.Order })
+		for _, e := range episodes {
+			if e.ID <= 0 || e.Order < 0 {
+				continue
+			}
+			if rec.Parent == nil && e.ShowID > 0 {
+				rec.Parent = []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ShowID)}}
+			}
+			rec.Children = append(rec.Children, mp.Record{
+				Source: source, Kind: mp.KindEpisode,
+				IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ID)}},
+				Numbering: &mp.Numbering{Season: group.Order, Episode: e.Order + 1},
+				Descriptive: &mp.Descriptive{
+					Title: e.Name, Overview: e.Overview, PremiereDate: e.AirDate, Year: yearOf(e.AirDate),
+					CommunityRating: communityRating(e.VoteAverage, e.VoteCount),
+					Runtime:         time.Duration(e.Runtime) * time.Minute,
+				},
+			})
+		}
+		// A season's size is its places, an episode TMDB has no id for included: what the last
+		// episode on disk is compared with.
+		if len(episodes) > 0 {
+			rec.Descriptive.Seasons = append(rec.Descriptive.Seasons,
+				mp.SeasonSize{Number: group.Order, Episodes: len(episodes)})
+		}
+	}
+	if len(rec.Children) == 0 {
+		return mp.Record{}, fmt.Errorf("tmdb episode order %s has no episodes: %w", id, mp.ErrNotFound)
+	}
+	for i := range rec.Children {
+		rec.Children[i].Parent = rec.Parent
 	}
 	return rec, nil
 }

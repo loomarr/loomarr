@@ -8,19 +8,20 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/requester"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // settingsAdapter maps the settings subsystem (settings.Service + settings.Secrets
@@ -107,25 +108,25 @@ func (a storeAuditLister) Audit(ctx context.Context) (map[string]settings.AuditR
 	return out, nil
 }
 
-func (a settingsAdapter) List(ctx context.Context) []api.SettingEntry {
+func (a settingsAdapter) List(ctx context.Context) []setupapi.SettingEntry {
 	entries := a.svc.List(ctx, storeAuditLister{st: a.store})
-	out := make([]api.SettingEntry, 0, len(entries))
+	out := make([]setupapi.SettingEntry, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, toAPIEntry(e))
 	}
 	return out
 }
 
-func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, updatedBy string) []api.SettingResult {
+func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, updatedBy string) []setupapi.SettingResult {
 	results, err := a.svc.Patch(ctx, storePersister{st: a.store, protection: a.protection}, edits, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
-	out := make([]api.SettingResult, 0, len(results))
+	out := make([]setupapi.SettingResult, 0, len(results))
 	healthChanged := false
 	saved := false
 	for _, r := range results {
-		out = append(out, api.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
+		out = append(out, setupapi.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
 		saved = saved || r.Status == settings.PatchSaved
 		healthChanged = healthChanged || (r.Status == settings.PatchSaved && isHealthSetting(r.Key))
 	}
@@ -136,7 +137,7 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 	// A persistence error surfaces as an extra synthetic invalid result so the UI
 	// shows the save failed rather than silently reporting nothing.
 	if err != nil {
-		out = append(out, api.SettingResult{Key: "", Status: string(settings.PatchInvalid), Problem: "save failed"})
+		out = append(out, setupapi.SettingResult{Key: "", Status: string(settings.PatchInvalid), Problem: "save failed"})
 	} else if healthChanged && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
@@ -145,13 +146,13 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 
 // Clear is the explicit unset (config-design §8) — the only way to drop a secret,
 // since an empty-string PATCH on one is rejected as replace-only (§9).
-func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResult {
+func (a settingsAdapter) Clear(ctx context.Context, key string) setupapi.SettingResult {
 	res, err := a.svc.Clear(ctx, storePersister{st: a.store, protection: a.protection}, key)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
 	if err != nil {
-		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
+		return setupapi.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
 	if res.Status == settings.PatchSaved {
 		a.announceChange()
@@ -159,17 +160,17 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 	if res.Status == settings.PatchSaved && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
-	return api.SettingResult{Key: res.Key, Status: string(res.Status), Problem: res.Problem}
+	return setupapi.SettingResult{Key: res.Key, Status: string(res.Status), Problem: res.Problem}
 }
 
 // SetEnvOverride is §3.1's unlock: claim a key for the app, or hand it back.
-func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) api.SettingResult {
+func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) setupapi.SettingResult {
 	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store, protection: a.protection}, key, on, updatedBy)
 	if a.refreshRedactor != nil {
 		a.refreshRedactor()
 	}
 	if err != nil {
-		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
+		return setupapi.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
 	}
 	if st == settings.EnvOverrideApplied {
 		a.announceChange()
@@ -177,7 +178,7 @@ func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool
 	if st == settings.EnvOverrideApplied && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
-	return api.SettingResult{Key: key, Status: string(st)}
+	return setupapi.SettingResult{Key: key, Status: string(st)}
 }
 
 func (a settingsAdapter) announceChange() {
@@ -265,6 +266,7 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 func connectionTests(
 	set resolved, libraryClient *library.Client, tmdbClient *tmdb.Client,
 ) map[string]func(ctx context.Context) (bool, string) {
+	hostedModels := &hostedModelCheck{list: checkHostedModels, now: time.Now}
 	return map[string]func(ctx context.Context) (bool, string){
 		"media_server": func(ctx context.Context) (bool, string) {
 			lib := libraryClient.Snapshot()
@@ -305,11 +307,9 @@ func connectionTests(
 			}
 			return true, ""
 		},
-		// requester (§6): Seerr is the implemented requester; the probe validates the
-		// URL + API key. Direct Sonarr/Radarr is a separate requester (not yet a Test
-		// target) — guide the user to Seerr when only that pair is set.
+		// requester (§6): branch on the selected provider: probe the direct arr(s) or Seerr
+		// (URL + API key).
 		"requester": func(ctx context.Context) (bool, string) {
-			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
 			if settings.RequesterProvider.Get(set) == "arr" {
 				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
 					return false, "connect Sonarr and/or Radarr (Where's your media? in setup, Settings → Library later)"
@@ -336,9 +336,9 @@ func connectionTests(
 			return settings.RadarrURL.Get(set), settings.RadarrAPIKey.Get(set)
 		}),
 		// llm (§8/§8.1): local Ollama is probed live (reachable + the selected model
-		// pulled). Hosted providers (openrouter/custom) aren't reachability-probed
-		// here — their key is validated via POST /v1/system/llm/test; the checklist
-		// only confirms a provider + key are configured, and points at the picker.
+		// pulled). A hosted provider must list its models (#2735): when that list cannot be
+		// read the model picker shows "No models returned", and the connection is not OK either.
+		// Its key is validated when a model is selected.
 		"llm": func(ctx context.Context) (bool, string) {
 			sel := resolveSelection(set)
 			provider := sel.Provider
@@ -349,7 +349,17 @@ func connectionTests(
 				if sel.Model == "" {
 					return false, "choose a model for " + provider + " (AI settings)"
 				}
-				return true, "" // key present; live validation is the §8.1 Test button
+				base := sel.URL
+				if hp, ok := llm.HostedProviderByKey(provider); ok && base == "" {
+					base = hp.BaseURL
+				}
+				if base == "" {
+					return false, "set the AI service address (AI settings)"
+				}
+				if err := hostedModels.check(ctx, base, sel.APIKey); err != nil {
+					return false, "no models came back from " + base + "; check the key and address: " + err.Error()
+				}
+				return true, ""
 			}
 			base := sel.URL
 			if base == "" {
@@ -389,7 +399,7 @@ func connectionTests(
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			layout, err := filler.NewLayout(root, settings.FillerWatchDir.Get(set))
+			layout, err := cliplibrary.NewLayout(root, settings.FillerWatchDir.Get(set))
 			if err != nil {
 				return false, "filler storage layout is unsafe: " + err.Error()
 			}
@@ -402,6 +412,40 @@ func connectionTests(
 			return true, ""
 		},
 	}
+}
+
+// checkHostedModels lists a hosted provider's models; a variable so tests never dial out.
+var checkHostedModels = llm.CheckModels
+
+// hostedModelReuse is how long a successful model listing is reused. Current Health runs this
+// probe every 30 seconds by default, and OpenRouter's catalog is large; a changed key or address
+// is a new listing, so a fix is still checked at once.
+const hostedModelReuse = 10 * time.Minute
+
+// hostedModelCheck remembers the last successful listing for one address and key. A failure is
+// never remembered, so a broken provider is re-checked on every probe.
+type hostedModelCheck struct {
+	mu        sync.Mutex
+	base, key string
+	at        time.Time
+	list      func(ctx context.Context, baseURL, apiKey string) error
+	now       func() time.Time
+}
+
+func (h *hostedModelCheck) check(ctx context.Context, base, key string) error {
+	h.mu.Lock()
+	fresh := h.base == base && h.key == key && !h.at.IsZero() && h.now().Sub(h.at) < hostedModelReuse
+	h.mu.Unlock()
+	if fresh {
+		return nil
+	}
+	if err := h.list(ctx, base, key); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.base, h.key, h.at = base, key, h.now()
+	h.mu.Unlock()
+	return nil
 }
 
 // arrCheck is one arr's Test: its address and key answer, nothing else is touched.
@@ -464,38 +508,38 @@ func probeWritableDirectory(dir string) error {
 
 // toAPIPresets carries the registry's common choices for an open-ended setting to the API, so
 // the UI offers them without keeping its own list.
-func toAPIPresets(presets []settings.Preset) []api.SettingPreset {
+func toAPIPresets(presets []settings.Preset) []setupapi.SettingPreset {
 	if len(presets) == 0 {
 		return nil
 	}
-	out := make([]api.SettingPreset, len(presets))
+	out := make([]setupapi.SettingPreset, len(presets))
 	for i, p := range presets {
-		out[i] = api.SettingPreset{Value: p.Value, Label: p.Label}
+		out[i] = setupapi.SettingPreset{Value: p.Value, Label: p.Label}
 	}
 	return out
 }
 
 // toAPIEnumOptions carries the registry's {value, label} enum choices to the API
 // so the UI shows registry-owned labels ("OpenAI") instead of re-deriving them.
-func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
+func toAPIEnumOptions(opts []settings.EnumOption) []setupapi.SettingEnumOption {
 	if len(opts) == 0 {
 		return nil
 	}
-	out := make([]api.SettingEnumOption, len(opts))
+	out := make([]setupapi.SettingEnumOption, len(opts))
 	for i, o := range opts {
-		out[i] = api.SettingEnumOption{Value: o.Value, Label: o.Label}
+		out[i] = setupapi.SettingEnumOption{Value: o.Value, Label: o.Label}
 	}
 	return out
 }
 
 // toAPIEntry converts a settings.Entry to the API view, stringifying the typed
 // value for transport and flattening the setting's declaration fields.
-func toAPIEntry(e settings.Entry) api.SettingEntry {
+func toAPIEntry(e settings.Entry) setupapi.SettingEntry {
 	apply := "live"
 	if e.Setting.Apply == settings.ApplyRestart {
 		apply = "restart"
 	}
-	out := api.SettingEntry{
+	out := setupapi.SettingEntry{
 		Key:          e.Setting.Key,
 		Label:        e.Setting.Label,
 		Group:        string(e.Setting.Group),
@@ -514,6 +558,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		ShowWhen:     e.Setting.ShowWhen,
 		RequiredFor:  string(e.Setting.Required),
 		Doc:          e.Setting.Doc,
+		Detail:       e.Setting.Detail,
 		UpdatedBy:    e.UpdatedBy,
 		Set:          e.Set,
 		Preview:      e.Preview,

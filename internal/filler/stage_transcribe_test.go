@@ -8,7 +8,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The transcribe rung (§10 V44's job, V51b's stage). Its whole risk is COST: Whisper is ~341s a
@@ -16,10 +20,8 @@ import (
 // not apply, an already-transcribed clip does not apply, and a wordless clip is recorded once so
 // it is never re-run.
 //
-// ⚠ **Ported from `transcribejob_test.go` when V51b retired the sweep.** `BoundsOnePass` went with
-// it: the bound is now `filler.pipeline.max_whisper`, enforced by the runner and tested against
-// the runner in `pipeline_test.go`. Asserting it here would be testing a constant this file no
-// longer owns.
+// ⚠ The per-pass bound is `filler.pipeline.max_whisper`, enforced by the runner and tested against
+// the runner in `pipeline_test.go`, not here.
 
 // fakeTranscribeStore records what the rung wrote without a database.
 type fakeTranscribeStore struct {
@@ -44,18 +46,18 @@ func (f *fakeTranscribeStore) SetClipTranscript(_ context.Context, path, transcr
 // scriptedTools is a MediaTools whose only real method is Transcribe, returning a fixed set of
 // utterances (or an error). The rest satisfy the interface and are never called by this rung.
 type scriptedTools struct {
-	segs  []filler.TranscriptSegment
+	segs  []tools.TranscriptSegment
 	err   error
 	calls int
 }
 
-func (s *scriptedTools) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
+func (s *scriptedTools) Transcribe(context.Context, string, int64, int64) ([]tools.TranscriptSegment, error) {
 	s.calls++
 	return s.segs, s.err
 }
 
-func (s *scriptedTools) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedTools) Chapters(context.Context, string) ([]tools.Chapter, error) { return nil, nil }
+func (s *scriptedTools) Boundaries(context.Context, string, int64, int64) ([]tools.Interval, []tools.Interval, error) {
 	return nil, nil, nil
 }
 func (s *scriptedTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
@@ -68,8 +70,8 @@ func (s *scriptedTools) Keyframes(context.Context, string, int) ([][]byte, error
 func (s *scriptedTools) Cut(context.Context, string, int64, int64, string) error  { return nil }
 
 // utter is a one-line whisper utterance.
-func utter(text string) filler.TranscriptSegment {
-	return filler.TranscriptSegment{StartMs: 0, EndMs: 1000, Text: text}
+func utter(text string) tools.TranscriptSegment {
+	return tools.TranscriptSegment{StartMs: 0, EndMs: 1000, Text: text}
 }
 
 // transcribeClip builds a catalog clip. `transcript` seeds the not-yet vs recorded state; era +
@@ -77,25 +79,25 @@ func utter(text string) filler.TranscriptSegment {
 //
 // ⚠ Hash is DERIVED from the path rather than equal to it. A fixture that sets the two to the same
 // string cannot tell a hash-keyed call from a path-keyed one, which is how two shipped bugs
-// survived their own tests (see conformance_filler.go).
-func transcribeClip(path, transcript string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
+// survived their own tests (see records/conformance_filler_test.go).
+func transcribeClip(path, transcript string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,
 		DurationMs: 30_000, Transcript: transcript,
 	}}
 }
 
 // tagged marks a clip fully tagged (era + audience + category), so it is NOT a candidate on the
 // "still untagged" arm — only its source text can make it one.
-func tagged(c filler.StoreClip) filler.StoreClip {
+func tagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 	c.Era = 1994
-	c.Audience = filler.Kids
+	c.Audience = clips.Kids
 	c.Category = "toys"
 	return c
 }
 
 // newTranscribeStage wires the rung with scripted tools and a sidecar FS, always ENABLED.
-func newTranscribeStage(st filler.TranscribeClipStore, tools filler.MediaTools, drop fstest.MapFS) *filler.TranscribeStage {
+func newTranscribeStage(st filler.TranscribeClipStore, tools tools.MediaTools, drop fstest.MapFS) *filler.TranscribeStage {
 	return filler.NewTranscribeStage(tools, st, "/filler", drop,
 		func() bool { return true },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
@@ -109,7 +111,7 @@ func sidecar(clipPath, description string) fstest.MapFS {
 
 // runIfApplies is the two-question shape every rung has: does this apply, and if so what happens.
 // Returning the applied flag lets a test assert "did not run" by COST rather than by outcome.
-func runIfApplies(t *testing.T, s filler.Stage, c filler.StoreClip) (filler.StageResult, bool) {
+func runIfApplies(t *testing.T, s filler.Stage, c cliplibrary.StoreClip) (filler.StageResult, bool) {
 	t.Helper()
 	if applies, _ := s.Applies(context.Background(), c); !applies {
 		return filler.StageResult{}, false
@@ -124,7 +126,7 @@ func runIfApplies(t *testing.T, s filler.Stage, c filler.StoreClip) (filler.Stag
 // THE behaviour: a clip with a thin (empty) source description is transcribed and the text stored.
 func TestTranscribeStage_TranscribesAThinSourceClip(t *testing.T) {
 	st := newFakeTranscribeStore()
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("buy our cereal today")}}
+	tools := &scriptedTools{segs: []tools.TranscriptSegment{utter("buy our cereal today")}}
 	// No sidecar entry ⇒ SidecarText is "" ⇒ thin.
 	_, applied := runIfApplies(t, newTranscribeStage(st, tools, fstest.MapFS{}), transcribeClip("a.mp4", ""))
 	if !applied || tools.calls != 1 {
@@ -140,7 +142,7 @@ func TestTranscribeStage_TranscribesAThinSourceClip(t *testing.T) {
 // candidates — only rich-AND-tagged is skipped, which this asserts by cost (tools.calls == 0).
 func TestTranscribeStage_SkipsARichTaggedClip(t *testing.T) {
 	st := newFakeTranscribeStore()
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("should never run")}}
+	tools := &scriptedTools{segs: []tools.TranscriptSegment{utter("should never run")}}
 	drop := sidecar("rich.mp4",
 		"Original 1994 broadcast commercial for the Turbo Tots toy line, a full two-sentence description.")
 	_, applied := runIfApplies(t, newTranscribeStage(st, tools, drop), tagged(transcribeClip("rich.mp4", "")))
@@ -156,7 +158,7 @@ func TestTranscribeStage_SkipsARichTaggedClip(t *testing.T) {
 // carry what the tagger needed, so the spoken text is the next signal to try (the OR arm).
 func TestTranscribeStage_TranscribesARichButUntaggedClip(t *testing.T) {
 	st := newFakeTranscribeStore()
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("Brightfield's Crunchlings")}}
+	tools := &scriptedTools{segs: []tools.TranscriptSegment{utter("Brightfield's Crunchlings")}}
 	drop := sidecar("untagged.mp4",
 		"A long, genuinely descriptive sentence that clears the thin threshold with room to spare.")
 	_, applied := runIfApplies(t, newTranscribeStage(st, tools, drop), transcribeClip("untagged.mp4", ""))
@@ -169,7 +171,7 @@ func TestTranscribeStage_TranscribesARichButUntaggedClip(t *testing.T) {
 // recorded transcript is a final answer; re-running Whisper on it burns ~341s under QEMU to learn
 // what is already known.
 func TestTranscribeStage_SkipsClipsAlreadyTranscribed(t *testing.T) {
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("hello")}}
+	tools := &scriptedTools{segs: []tools.TranscriptSegment{utter("hello")}}
 	s := newTranscribeStage(newFakeTranscribeStore(), tools, fstest.MapFS{})
 	if applies, _ := s.Applies(context.Background(), transcribeClip("done.mp4", "already has words")); applies {
 		t.Error("a transcribed clip applied — Whisper would run again for nothing")
@@ -191,14 +193,14 @@ func TestTranscribeStage_WordlessRecordsSentinelAndDoesNotRevisit(t *testing.T) 
 	st := newFakeTranscribeStore()
 	tools := &scriptedTools{segs: nil} // whisper heard nothing
 	out, applied := runIfApplies(t, newTranscribeStage(st, tools, fstest.MapFS{}), transcribeClip("silent.mp4", ""))
-	if !applied || out.Verdict != filler.VerdictContinue {
+	if !applied || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("applied=%v verdict=%v, want a wordless clip carried forward", applied, out.Verdict)
 	}
 	// Recorded as the sentinel — present AND non-empty, so an `!= ""` check treats it as handled.
 	got, ok := st.transcripts["silent.mp4"]
-	if !ok || got != filler.TranscriptNone {
+	if !ok || got != clips.TranscriptNone {
 		t.Fatalf("transcripts[silent.mp4] = (%q, present=%v), want (%q, true) so the clip is never re-run",
-			got, ok, filler.TranscriptNone)
+			got, ok, clips.TranscriptNone)
 	}
 	if len(st.setPaths) != 1 {
 		t.Fatalf("SetClipTranscript called %d times, want exactly 1 for the wordless clip", len(st.setPaths))
@@ -238,7 +240,7 @@ func TestTranscribeStage_ABackendFailureIsNotRecorded(t *testing.T) {
 // The opt-in gate: `enabled` false — and a nil closure, the un-opted-in default — make the rung
 // inapplicable rather than panicking, with a note so the ladder says why.
 func TestTranscribeStage_OffStatesAreInapplicableWithAReason(t *testing.T) {
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("hi")}}
+	tools := &scriptedTools{segs: []tools.TranscriptSegment{utter("hi")}}
 	for _, tc := range []struct {
 		name    string
 		enabled func() bool

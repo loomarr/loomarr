@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -29,7 +29,7 @@ func TestDurableInternalTransportPlayableRejectsEveryOffAirShape(t *testing.T) {
 		{id: "tunarr", status: schedule.StatusLive, backend: schedule.PlayoutBackendTunarr},
 	}
 	for i, tc := range tests {
-		channel := store.Channel{Channel: schedule.Channel{
+		channel := channelstore.Channel{Channel: schedule.Channel{
 			ID: tc.id, Name: tc.id, Number: i + 1, Strategy: schedule.Sequential, Status: tc.status,
 		}}
 		channel.Policy.Playout = &schedule.PlayoutPolicy{Backend: tc.backend}

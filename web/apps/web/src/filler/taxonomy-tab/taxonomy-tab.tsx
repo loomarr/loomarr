@@ -4,16 +4,15 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Card, Field } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Icon, icons } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useAppForm } from "@/lib/app-form";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
 const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
@@ -108,19 +107,21 @@ const TaxonTree = ({
       return (
         <li key={taxon.slug}>
           <div className="flex items-start gap-2 px-4 py-3">
-            {nested ? <ChevronRight className="text-static-500 mt-1 size-3 shrink-0" aria-hidden /> : null}
+            {nested ? (
+              <span className="mt-1 flex">
+                <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
+              </span>
+            ) : null}
             <div className="min-w-0 flex-1">
-              <button
-                type="button"
+              <Action
                 disabled={!isAdmin}
-                className={cn(
-                  "text-left text-sm font-medium break-words",
-                  isAdmin && "hover:text-signal cursor-pointer",
-                )}
-                onClick={() => onEdit(taxon)}
+                layout="text"
+                onPress={() => onEdit(taxon)}
+                style={{ alignSelf: "flex-start" }}
+                variant="link"
               >
                 {taxon.label}
-              </button>
+              </Action>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
                 {resolverTermCount > 0 ? (
@@ -172,12 +173,19 @@ const TaxonEditor = ({
 }) => {
   const queryClient = useQueryClient();
   const current = editor.taxon;
-  const [slug, setSlug] = useState(current?.slug ?? "");
-  const [label, setLabel] = useState(current?.label ?? "");
-  const [axis, setAxis] = useState<Axis>(editor.axis);
-  const [parent, setParent] = useState(current?.parent ?? "");
-  const [synonyms, setSynonyms] = useState((current?.synonyms ?? []).join(", "));
-  const [aliases, setAliases] = useState((current?.retiredAliases ?? []).join(", "));
+  // The term's fields. Saving never submits the form: it asks for an impact review first, so the
+  // buttons below run the review and the form only holds the values.
+  const form = useAppForm({
+    defaultValues: {
+      slug: current?.slug ?? "",
+      label: current?.label ?? "",
+      axis: editor.axis as Axis,
+      parent: current?.parent ?? "",
+      synonyms: (current?.synonyms ?? []).join(", "),
+      aliases: (current?.retiredAliases ?? []).join(", "),
+    },
+  });
+  const { slug, label, axis, parent, synonyms, aliases } = useStore(form.store, (state) => state.values);
   const [review, setReview] = useState<Review>();
 
   const refresh = async () => {
@@ -271,22 +279,32 @@ const TaxonEditor = ({
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field
-          id="taxon-label"
-          label="Label"
-          onChangeText={(text) => edit(() => setLabel(text))}
-          value={label}
-        />
-        <Field
-          autoCapitalize="none"
-          autoCorrect={false}
-          disabled={editor.mode === "edit"}
-          id="taxon-slug"
-          label="Slug"
-          onChangeText={(text) => edit(() => setSlug(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))}
-          placeholder="breakfast-cereal"
-          value={slug}
-        />
+        <form.Field name="label">
+          {(field) => (
+            <Field
+              id="taxon-label"
+              label="Label"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Field name="slug">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              autoCorrect={false}
+              disabled={editor.mode === "edit"}
+              id="taxon-slug"
+              label="Slug"
+              onChangeText={(text) =>
+                edit(() => field.handleChange(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
+              }
+              placeholder="breakfast-cereal"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
         <div>
           <BrowserSelectControl
             appearance="field"
@@ -294,8 +312,8 @@ const TaxonEditor = ({
             label="Axis"
             onValueChange={(value) => {
               edit(() => {
-                setAxis(value);
-                setParent("");
+                form.setFieldValue("axis", value);
+                form.setFieldValue("parent", "");
               });
             }}
             options={AXES.map((value) => ({ label: AXIS_COPY[value].label, value }))}
@@ -310,30 +328,38 @@ const TaxonEditor = ({
         <BrowserSelectControl
           appearance="field"
           label="Parent"
-          onValueChange={(value) => edit(() => setParent(value))}
+          onValueChange={(value) => edit(() => form.setFieldValue("parent", value))}
           options={[
             { label: "Top level", value: "" },
             ...parentOptions.map((taxon) => ({ label: `${taxon.label} (${taxon.slug})`, value: taxon.slug })),
           ]}
           value={parent}
         />
-        <Field
-          autoCapitalize="none"
-          id="taxon-synonyms"
-          label="Classifier synonyms"
-          onChangeText={(text) => edit(() => setSynonyms(text))}
-          placeholder="soda, soft drink"
-          value={synonyms}
-        />
-        <Field
-          autoCapitalize="none"
-          autoCorrect={false}
-          id="taxon-aliases"
-          label="Retired slugs"
-          onChangeText={(text) => edit(() => setAliases(text))}
-          placeholder="old-machine-name"
-          value={aliases}
-        />
+        <form.Field name="synonyms">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              id="taxon-synonyms"
+              label="Classifier synonyms"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              placeholder="soda, soft drink"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Field name="aliases">
+          {(field) => (
+            <Field
+              autoCapitalize="none"
+              autoCorrect={false}
+              id="taxon-aliases"
+              label="Retired slugs"
+              onChangeText={(text) => edit(() => field.handleChange(text))}
+              placeholder="old-machine-name"
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
       </div>
       <p className="text-muted-foreground text-xs">
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
@@ -404,27 +430,25 @@ const TaxonEditor = ({
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {current ? (
-          <Button
-            variant="ghost"
-            size="sm"
+          <Action
             disabled={busy}
-            onClick={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            onPress={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            variant="ghost"
           >
             Review removal
-          </Button>
+          </Action>
         ) : (
           <span className="mr-auto" />
         )}
         {review ? (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => setReview(undefined)}>
+            <Action disabled={busy} onPress={() => setReview(undefined)} variant="outline">
               Back
-            </Button>
-            <Button
-              variant={review.action === "delete" ? "destructive" : "default"}
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || review.impact.deleteBlocked}
-              onClick={applyReview}
+              onPress={applyReview}
+              variant={review.action === "delete" ? "destructive" : undefined}
             >
               {busy
                 ? "Applying…"
@@ -433,20 +457,19 @@ const TaxonEditor = ({
                   : editor.mode === "create"
                     ? "Confirm add"
                     : "Confirm update"}
-            </Button>
+            </Action>
           </>
         ) : (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
+            <Action disabled={busy} onPress={onClose} variant="outline">
               Cancel
-            </Button>
-            <Button
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-              onClick={() => requestReview("save", saveCommand())}
+              onPress={() => requestReview("save", saveCommand())}
             >
               {busy ? "Checking impact…" : "Review changes"}
-            </Button>
+            </Action>
           </>
         )}
       </div>
@@ -595,9 +618,13 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                       <p className="text-muted-foreground mt-1 text-xs">{AXIS_COPY[axis].example}</p>
                     </div>
                     {isAdmin ? (
-                      <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
-                        <Plus className="size-4" aria-hidden /> Add
-                      </Button>
+                      <Action
+                        icon="plus"
+                        onPress={() => setEditor({ mode: "create", axis })}
+                        variant="outline"
+                      >
+                        Add
+                      </Action>
                     ) : null}
                   </div>
                   {byAxis[axis].length === 0 ? (

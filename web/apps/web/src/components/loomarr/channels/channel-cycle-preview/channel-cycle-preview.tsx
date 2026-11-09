@@ -6,11 +6,8 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Disclosure } from "@loomarr/design-system";
-import { Clapperboard, Clock, Tv } from "lucide-react";
+import { Action, Badge, DateField, Disclosure, Icon, icons } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
@@ -124,9 +121,9 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
     >
       <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs">{index + 1}</span>
       {pending ? (
-        <Clock className="text-static-400 size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.time} size="compact" tone="muted" />
       ) : (
-        <Tv className="text-muted-foreground size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.channels} size="compact" tone="muted" />
       )}
       <span
         className={cn(
@@ -365,18 +362,14 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="cycle-preview-at" className="text-muted-foreground text-xs">
-            At
-          </Label>
-          <Input
-            id="cycle-preview-at"
-            type="datetime-local"
-            className="w-56"
-            value={toDatetimeLocalValue(at)}
-            onChange={(e) => setAt(fromDatetimeLocalValue(e.target.value))}
-          />
-        </div>
+        <DateField
+          id="cycle-preview-at"
+          kind="datetime"
+          label="At"
+          onValueChange={(value) => setAt(fromDatetimeLocalValue(value))}
+          value={toDatetimeLocalValue(at)}
+          width={224}
+        />
         <div className="flex flex-wrap gap-1.5 pb-0.5">
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
@@ -407,7 +400,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       ) : (
         <div className="flex flex-col gap-3">
           <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-3 py-2.5">
-            <Clapperboard className="text-muted-foreground size-4 shrink-0" aria-hidden />
+            <Icon decorative glyph={icons.filler} size="compact" tone="muted" />
             {body.activeRule.matched ? (
               <p className="text-sm">
                 Active rule: <span className="font-medium">{body.activeRule.label}</span>{" "}

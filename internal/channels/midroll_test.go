@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -55,7 +55,7 @@ func TestReconcile_MidRollSplitsAtMeasuredFadesUnlessSwitchedOff(t *testing.T) {
 				},
 			}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).
 				WithPods(&fakePods{ids: []string{"clip"}, duration: 30_000})
-			ch := store.Channel{Lineup: []schedule.LineupEntry{entry("movie:tmdb:90000001", "Film"), entry("movie:tmdb:90000002", "Other")}}
+			ch := channelstore.Channel{Lineup: []schedule.LineupEntry{entry("movie:tmdb:90000001", "Film"), entry("movie:tmdb:90000002", "Other")}}
 			ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "mid", "Mid", 7, schedule.Sequential, schedule.StatusBuilding
 			ch.Policy.MidRoll = tc.midRoll
 			if _, err := st.SaveChannel(context.Background(), ch); err != nil {

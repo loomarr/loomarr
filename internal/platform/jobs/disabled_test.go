@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
 	"github.com/riverqueue/river"
-
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // pgReason is the shape of a real DisabledReason (backup on Postgres).
@@ -67,7 +66,7 @@ func TestDisabledJob_ReportsNoNextRun(t *testing.T) {
 	// ⚠ A LEFTOVER row from a boot where the job WAS enabled — exactly what a
 	// SQLite → Postgres migration (§18, V11) leaves behind: same install, same row, a
 	// backend that can no longer run it.
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{
 		Name: "backup", LastResult: "ok", NextRun: clk.now().Add(time.Hour),
 	})
 
@@ -108,7 +107,7 @@ func TestDisabledJob_WorkerNeverRunsItEvenWithADueRow(t *testing.T) {
 	ctx := context.Background()
 
 	// Due NOW, as a pre-migration boot would have left it.
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "backup", NextRun: clk.now()})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "backup", NextRun: clk.now()})
 
 	if err := (&riverWorker{s: s}).Work(ctx, &river.Job[jobArgs]{Args: jobArgs{Name: "backup"}}); err != nil {
 		t.Fatal(err)

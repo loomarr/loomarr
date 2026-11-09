@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -132,7 +134,7 @@ func (m *PackagerHLS) Stats(now time.Time) []SessionStat {
 			ChannelID: r.key.channel, Target: string(r.key.format), Viewers: r.n,
 			Encoder: string(r.c.host.Encoder), Hardware: r.c.host.Encoder != encode.EncoderSoftware,
 			BufferedMS: r.c.p.Lead(now).Milliseconds(), UptimeMS: now.Sub(r.c.started).Milliseconds(),
-			TranscodeCost: 1,
+			TranscodeCost: 1, Speed: m.encoderSpeed(r.key),
 		}
 		if ready := r.c.p.ReadyAt(); !ready.IsZero() {
 			s.ColdStartMS = ready.Sub(r.c.started).Milliseconds()
@@ -140,6 +142,22 @@ func (m *PackagerHLS) Stats(now time.Time) []SessionStat {
 		out = append(out, s)
 	}
 	return out
+}
+
+// speedFor is key's speed cell, created on first use.
+func (m *PackagerHLS) speedFor(key packagedKey) *atomic.Uint64 {
+	cell, _ := m.speeds.LoadOrStore(key, new(atomic.Uint64))
+	return cell.(*atomic.Uint64)
+}
+
+// encoderSpeed is the realtime multiple key's item encoder last reported; 0 before its first
+// progress block (and between encoders only until the next one reports).
+func (m *PackagerHLS) encoderSpeed(key packagedKey) float64 {
+	cell, ok := m.speeds.Load(key)
+	if !ok {
+		return 0
+	}
+	return math.Float64frombits(cell.(*atomic.Uint64).Load())
 }
 
 // newestStillSegment is the channel's newest listed baseline segment behind its init, for the

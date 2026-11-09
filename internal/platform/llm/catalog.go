@@ -45,10 +45,9 @@ const (
 // top; we treat "fits" as needing ~1.3× the weight footprint in VRAM, and "tight"
 // as anything from the bare weights up to that. Below the bare weights → won't fit.
 //
-// TODO(maintainer): these multipliers are a judgment call — 1.3× headroom is
-// conservative-ish for an 8k context on an 8B model. If you'd rather bias toward
-// recommending bigger models on a 12GB card (accepting a smaller context), lower
-// fitsHeadroom toward 1.15. Kept explicit so it's easy to tune from real runs.
+// These multipliers are a judgment call: 1.3× headroom is conservative-ish for an 8k context on
+// an 8B model. Lowering fitsHeadroom toward 1.15 would bias toward recommending bigger models on
+// a 12GB card (accepting a smaller context). Kept explicit so it is easy to tune from real runs.
 const (
 	fitsHeadroom = 1.30 // VRAM ≥ weights×this ⇒ "fits"
 )

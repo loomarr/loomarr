@@ -10,7 +10,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/people"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/notifications"
@@ -24,11 +31,10 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
-func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *config.Config) {
-	var service api.RestartService
+func buildRestart(overrides Overrides, log *slog.Logger) (system.RestartService, *config.Config) {
+	var service system.RestartService
 	if overrides.Restart != nil {
 		service = restartAdapter{fn: overrides.Restart}
 	}
@@ -40,7 +46,7 @@ func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *c
 	return service, bootConfig
 }
 
-func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) api.DatabaseService {
+func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) system.DatabaseService {
 	if st == nil {
 		return nil
 	}
@@ -50,27 +56,28 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 }
 
 type residentLLMBuild struct {
-	probe   func(context.Context) (float64, string)
-	reclaim func(context.Context)
+	probe func(context.Context) (float64, string)
 }
 
 type operationsBuild struct {
-	backups                  api.BackupsService
-	restart                  api.RestartService
+	backups                  system.BackupsService
+	restart                  system.RestartService
 	bootConfig               *config.Config
 	auth                     authBuild
-	guide                    api.GuideReader
-	settings                 api.SettingsService
-	notificationDestinations api.NotificationDestinationService
+	guide                    guideapi.GuideReader
+	settings                 setupapi.SettingsService
+	notificationDestinations setupapi.NotificationDestinationService
 	webPushPublicKey         string
 	productNotifications     *productNotificationCoordinator
-	invitationDelivery       api.InvitationDeliveryService
-	passwordRecovery         api.PasswordRecoveryService
+	invitationDelivery       people.InvitationDeliveryService
+	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
-	jobs                     api.JobService
-	database                 api.DatabaseService
-	residentLLM              residentLLMBuild
+	jobs                     system.JobService
+	// scheduler is nil without a store; Current Health reads starved tasks from it.
+	scheduler   *jobs.Scheduler
+	database    system.DatabaseService
+	residentLLM residentLLMBuild
 }
 
 func buildOperations(
@@ -87,7 +94,7 @@ func buildOperations(
 	emitter *eventEmitter,
 	registry *jobs.Registry,
 	owner *generationLifecycle,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	overrides Overrides,
 	log *slog.Logger,
@@ -132,9 +139,13 @@ func buildOperations(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
 	providerValidators = append(accountDelivery.validators, providerValidators...)
-	jobService, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	scheduler, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	if err != nil {
 		return operationsBuild{}, err
+	}
+	var jobService system.JobService
+	if scheduler != nil {
+		jobService = jobsAdapter{s: scheduler}
 	}
 	triggerHealth := func(ctx context.Context) {
 		if jobService == nil {
@@ -159,6 +170,7 @@ func buildOperations(
 		invitationDelivery:   accountDelivery.invitations,
 		passwordRecovery:     accountDelivery.recovery,
 		jobs:                 jobService,
+		scheduler:            scheduler,
 		database:             buildDatabase(st, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
 	}
@@ -225,7 +237,7 @@ func buildNotificationDestinations(
 	repository notifications.Repository,
 	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
-) api.NotificationDestinationService {
+) setupapi.NotificationDestinationService {
 	if repository == nil {
 		return nil
 	}
@@ -252,23 +264,10 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 		}
 		return total, largest.Name
 	}
-	reclaim := func(ctx context.Context) {
-		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
-			return
-		}
-		provider := llm.NewProvider("ollama", settings.LLMURL.Get(set), settings.LLMModel.Get(set), "")
-		evictor, ok := provider.(llm.Evictor)
-		if !ok {
-			return
-		}
-		if err := evictor.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
-			log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
-		}
-	}
-	return residentLLMBuild{probe: probe, reclaim: reclaim}
+	return residentLLMBuild{probe: probe}
 }
 
-func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) api.BackupsService {
+func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
 		service := &backupsService{
 			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
@@ -286,16 +285,16 @@ func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *sl
 }
 
 type authBuild struct {
-	backup               api.BackupStreamer
-	authorizer           api.Authorizer
-	login                api.LoginService
-	sso                  api.SSOService
-	sessions             api.SessionManager
-	userSync             api.UserSyncer
-	provision            api.Provisioner
-	password             api.PasswordService
-	invitations          api.InvitationService
-	invitationRedemption api.InvitationRedemptionService
+	backup               system.BackupStreamer
+	authorizer           httpcore.Authorizer
+	login                people.LoginService
+	sso                  people.SSOService
+	sessions             people.SessionManager
+	userSync             people.UserSyncer
+	provision            people.Provisioner
+	password             people.PasswordService
+	invitations          people.InvitationService
+	invitationRedemption people.InvitationRedemptionService
 	passwordRecovery     *auth.PasswordRecoveryService
 	deviceManager        *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
@@ -320,7 +319,7 @@ func buildAuth(
 			return readGeneratedSecret(ctx, settings.SecretPlayout)
 		}
 	}
-	result.authorizer = api.NewTokenAuthorizer(apiToken)
+	result.authorizer = httpcore.NewTokenAuthorizer(apiToken)
 	if st == nil {
 		return result
 	}
@@ -370,10 +369,10 @@ func buildAuth(
 func buildGuide(
 	st store.Store,
 	set resolved,
-	playoutResolver *playoutResolver,
+	playoutResolver *playoutresolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	metricRecorder *metrics.Recorder,
-) api.GuideReader {
+) guideapi.GuideReader {
 	if st == nil {
 		return nil
 	}
@@ -401,7 +400,7 @@ func buildSettings(
 	triggerHealth func(context.Context),
 	settingsChanged func(),
 	log *slog.Logger,
-) api.SettingsService {
+) setupapi.SettingsService {
 	if st == nil || secrets == nil {
 		return nil
 	}
@@ -421,7 +420,7 @@ func buildScheduler(
 	owner *generationLifecycle,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) (api.JobService, error) {
+) (*jobs.Scheduler, error) {
 	if st == nil {
 		return nil, nil
 	}
@@ -445,5 +444,5 @@ func buildScheduler(
 		return nil, fmt.Errorf("start River job queue: %w", err)
 	}
 	owner.addStop(stop)
-	return jobsAdapter{s: service}, nil
+	return service, nil
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -40,7 +40,7 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	channel := func(id string, number int, intentRef, requestedBy string, created time.Time, status schedule.ChannelStatus, keys ...provision.Key) {
-		ch := store.Channel{Channel: schedule.Channel{ID: id, Name: "Channel " + id, Number: number, IntentRef: intentRef,
+		ch := channelstore.Channel{Channel: schedule.Channel{ID: id, Name: "Channel " + id, Number: number, IntentRef: intentRef,
 			Strategy: schedule.Shuffle, Status: status}, CreatedAt: created, RequestedBy: requestedBy}
 		for _, k := range keys {
 			ch.Lineup = append(ch.Lineup, schedule.LineupEntry{Key: k})

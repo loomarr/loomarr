@@ -1,6 +1,7 @@
 import type { Density } from "@loomarr/design-system";
 import {
   ActivityIndicator,
+  LoadingStrip,
   LoomarrProvider,
   ProgressTrack,
   SignalLoader,
@@ -57,7 +58,30 @@ const LoadingGallery = ({
         </header>
 
         <section style={section}>
-          <p style={label}>INLINE ACTIVITY</p>
+          <p style={label}>PAGE AND SECTION LOADS</p>
+          <div style={{ display: "grid", gap: 20 }}>
+            <LoadingStrip
+              accessibilityLabel="Loading the guide"
+              density={density}
+              reducedMotion={reducedMotion}
+            />
+            <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
+              <LoadingStrip decorative density={density} reducedMotion={reducedMotion} width={40} />
+              <span style={{ color: colors.content.secondary, fontFamily: "sans-serif", fontSize: 13 }}>
+                Checking invitation…
+              </span>
+            </div>
+            <LoadingStrip
+              accessibilityLabel="Loading channels"
+              density={density}
+              reducedMotion={reducedMotion}
+              width="100%"
+            />
+          </div>
+        </section>
+
+        <section style={section}>
+          <p style={label}>INLINE ACTIVITY (BUTTONS)</p>
           <div style={{ alignItems: "center", display: "flex", gap: 28 }}>
             <ActivityIndicator accessibilityLabel="Saving" reducedMotion={reducedMotion} size="compact" />
             <ActivityIndicator accessibilityLabel="Refreshing guide" reducedMotion={reducedMotion} />

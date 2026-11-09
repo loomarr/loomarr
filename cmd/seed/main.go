@@ -7,7 +7,7 @@
 // shapes every line below: seed goes through the SAME domain paths the app does and
 // NEVER writes raw rows that skip a gate. Concretely (AGENTS.md do-nots):
 //
-//   - `available` titles are produced ONLY by suggest.Approver — the single approval
+//   - `available` titles are produced ONLY by accept.Approver — the single approval
 //     gate. Seed builds a submitted proposal and approves it, exactly as the admin's
 //     "approve" button does. It never UpsertTitle's an `available` record directly.
 //   - the channel's desired lineup + any relaxation chips are the REAL output of
@@ -34,7 +34,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -42,8 +42,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -157,7 +158,7 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 //
 //  1. record the suggest job + a submitted proposal (a lineup of in-library picks +
 //     an acquisition list), exactly the shape the suggester emits;
-//  2. suggest.Approver — THE gate — atomically turns in-library picks into
+//  2. accept.Approver — THE gate — atomically turns in-library picks into
 //     `available` records, acquisitions into `wanted` ones, flips the proposal to
 //     approved, and creates its local channel;
 //  3. walk two acquisitions forward through the pure provision.Apply state machine
@@ -225,7 +226,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
 	// pair left no proposal_job_attempts row, so the workflow's own invariant check
 	// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
-	if err := st.CreateSuggestionResult(ctx, store.Job{
+	if err := st.CreateSuggestionResult(ctx, proposalstore.Job{
 		ID:         jobID,
 		Kind:       "suggest",
 		Status:     "done",
@@ -234,7 +235,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedBy:  adminID,
 		CreatedAt:  now,
 		UpdatedAt:  now,
-	}, store.Proposal{
+	}, proposalstore.Proposal{
 		ID:        propID,
 		JobID:     jobID,
 		Status:    "submitted",
@@ -254,7 +255,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
 	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
 	channelPlanner := approval.New(st, nil, nil, slog.New(slog.DiscardHandler))
-	approver := suggest.NewApprover(st, channelPlanner, time.Now)
+	approver := accept.NewApprover(st, channelPlanner, time.Now)
 	approved, err := approver.Approve(ctx, stored, nil, adminID)
 	if err != nil {
 		return fmt.Errorf("approve (the gate): %w", err)
@@ -327,7 +328,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 
 	// Preserve the complete approved lineup, including acquisitions that are still pending.
 	// Only enrich the in-library entries with the deterministic runtime/rating data this dev
-	// fixture owns. Rebuilding from `picks` alone used to erase every wanted/downloading key,
+	// fixture owns. Rebuilding from `picks` alone would erase every wanted/downloading key,
 	// so those titles could never backfill into the channel after landing.
 	entries := append([]schedule.LineupEntry(nil), ch.Lineup...)
 	entryByKey := make(map[provision.Key]int, len(entries))
@@ -381,15 +382,15 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 // titles — so a direct upsert is the correct construction.
 func seedClips(ctx context.Context, st store.Store) error {
 	type seededClip struct {
-		clip filler.Clip
+		clip clips.Clip
 		tags []string
 	}
 	clips := []seededClip{
 		// Invented products and brands (the repo is public, #1587).
-		{clip("clip-starbit-crunch", "Starbit Crunch — Breakfast from Orbit!", filler.Commercial, 1992, filler.Kids, "cereal", "Starbit Foods", 30000), []string{"cereal"}},
-		{clip("clip-blipotron", "Blip-o-Tron — Now You're Blipping", filler.Commercial, 1993, filler.Kids, "toys", "Blipco", 30000), []string{"toys", "kids-cue"}},
-		{clip("clip-loopstep", "Loopstep — Go One More Block", filler.Commercial, 1994, filler.General, "apparel", "Loopstep", 30000), []string{"apparel"}},
-		{clip("clip-bumper-nite", "You're watching 90s Movie Night", filler.Bumper, 0, filler.General, "", "", 8000), []string{"bumper"}},
+		{clip("clip-starbit-crunch", "Starbit Crunch — Breakfast from Orbit!", clips.Commercial, 1992, clips.Kids, "cereal", "Starbit Foods", 30000), []string{"cereal"}},
+		{clip("clip-blipotron", "Blip-o-Tron — Now You're Blipping", clips.Commercial, 1993, clips.Kids, "toys", "Blipco", 30000), []string{"toys", "kids-cue"}},
+		{clip("clip-loopstep", "Loopstep — Go One More Block", clips.Commercial, 1994, clips.General, "apparel", "Loopstep", 30000), []string{"apparel"}},
+		{clip("clip-bumper-nite", "You're watching 90s Movie Night", clips.Bumper, 0, clips.General, "", "", 8000), []string{"bumper"}},
 	}
 	now := time.Now()
 	for _, seeded := range clips {
@@ -472,9 +473,9 @@ func acqItem(id string) proposals.ProposalItem {
 	}
 }
 
-func clip(id, name string, kind filler.Role, era int, aud filler.Audience, cat, brand string, durMs int64) filler.Clip {
+func clip(id, name string, kind clips.Role, era int, aud clips.Audience, cat, brand string, durMs int64) clips.Clip {
 	hash := sha256.Sum256([]byte("loomarr-dev-seed:" + id))
-	return filler.Clip{
+	return clips.Clip{
 		Hash: fmt.Sprintf("%x", hash), Path: "seed/" + id + ".mp4", TunarrProgramID: id,
 		Name: name, Role: kind, Era: era, Audience: aud, Category: cat, Brand: brand,
 		DurationMs: durMs, Source: "seed",

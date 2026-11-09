@@ -581,6 +581,20 @@ describe("ChannelWatch — full-bleed route", () => {
     await userEvent.click(within(cover).getByRole("button", { name: "Leave" }));
     expect(onLeave).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ["server", "Loomarr's server isn't answering"],
+    ["channel", "This channel couldn't start"],
+    ["stream", "The stream stopped."],
+  ] as const)("names the %s as the cause on the stopped cover (#2722)", async (failureCause, title) => {
+    stubTracks();
+    hls.status = "error";
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} player={{ failureCause }} />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(title);
+  });
 });
 
 // The switch readout (#1620 B4). The wash drains the picture under the loader only when there IS one:

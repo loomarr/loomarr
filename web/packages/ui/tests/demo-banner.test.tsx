@@ -78,4 +78,31 @@ describe("DemoBanner", () => {
 
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  // #2750: on a phone the banner wrapped into a message row, a next-step row and a row for the X,
+  // about 100px of an 844px screen. Compact keeps one line: the Demo badge, the next step and the X.
+  it("keeps to the badge, the next step and the X on a phone", async () => {
+    await mount(
+      <DemoBanner
+        compact
+        next={{ label: "Browse the Guide", link: <a href="/guide">placeholder</a> }}
+        onDismiss={vi.fn()}
+        step={2}
+        stepCount={3}
+      />,
+    );
+
+    expect(text()).toContain("Demo");
+    expect(doc.body.querySelector('a[href="/guide"]')?.textContent).toBe("Browse the Guide");
+    expect(doc.body.querySelector('[aria-label="Hide the demo tour"]')).not.toBeNull();
+    expect(text()).not.toContain("You're exploring the Loomarr demo.");
+    expect(text()).not.toContain("Step 2 of 3");
+  });
+
+  it("says the tour is done in a few words on a phone", async () => {
+    await mount(<DemoBanner compact onDismiss={vi.fn()} step={3} stepCount={3} />);
+
+    expect(text()).toContain("That's the tour.");
+    expect(text()).not.toContain("explore freely");
+  });
 });

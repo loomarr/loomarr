@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -52,7 +54,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Fatalf("generation A source target = %q, want %q", got, appliedA)
 	}
-	if appA.playoutResolver == nil || appA.playoutResolver.fillerDir != appliedA {
+	if appA.playoutResolver == nil || appA.playoutResolver.FillerDir() != appliedA {
 		t.Fatalf("generation A playout root = %v, want %q", appA.playoutResolver, appliedA)
 	}
 	patchSettings(t, hA, token, map[string]string{
@@ -62,8 +64,8 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hA, token); got != appliedA {
 		t.Errorf("running generation source target = %q after save, want applied %q", got, appliedA)
 	}
-	if appA.playoutResolver.fillerDir != appliedA {
-		t.Errorf("running generation playout root = %q after save, want applied %q", appA.playoutResolver.fillerDir, appliedA)
+	if appA.playoutResolver.FillerDir() != appliedA {
+		t.Errorf("running generation playout root = %q after save, want applied %q", appA.playoutResolver.FillerDir(), appliedA)
 	}
 	assertPendingLayout(t, restartCost(t, hA, token), true)
 
@@ -109,7 +111,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if got := fillerFolderTarget(t, hB, token); got != desiredB {
 		t.Errorf("generation B source target = %q, want newly applied %q", got, desiredB)
 	}
-	if appB.playoutResolver == nil || appB.playoutResolver.fillerDir != desiredB {
+	if appB.playoutResolver == nil || appB.playoutResolver.FillerDir() != desiredB {
 		t.Errorf("generation B playout root = %v, want newly applied %q", appB.playoutResolver, desiredB)
 	}
 	if got := restartCost(t, hB, token); got.RestartRequired || len(got.PendingKeys) != 0 {
@@ -117,7 +119,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	}
 }
 
-func assertPendingLayout(t *testing.T, restart api.RestartCost, want bool) {
+func assertPendingLayout(t *testing.T, restart system.RestartCost, want bool) {
 	t.Helper()
 	if !want {
 		if restart.RestartRequired || len(restart.PendingKeys) != 0 {
@@ -182,7 +184,7 @@ func fillerFolderTarget(t *testing.T, h http.Handler, token string) string {
 		t.Fatalf("GET /v1/filler/sources = %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Sources []api.FillerSourceDTO `json:"sources"`
+		Sources []fillerapi.FillerSourceDTO `json:"sources"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -196,13 +198,13 @@ func fillerFolderTarget(t *testing.T, h http.Handler, token string) string {
 	return ""
 }
 
-func restartCost(t *testing.T, h http.Handler, token string) api.RestartCost {
+func restartCost(t *testing.T, h http.Handler, token string) system.RestartCost {
 	t.Helper()
 	rec := adminRequest(t, h, token, http.MethodGet, "/v1/system/restart", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/system/restart = %d: %s", rec.Code, rec.Body.String())
 	}
-	var cost api.RestartCost
+	var cost system.RestartCost
 	if err := json.NewDecoder(rec.Body).Decode(&cost); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +218,7 @@ func assertDesiredLayout(t *testing.T, h http.Handler, token, wantRoot, wantWatc
 		t.Fatalf("GET /v1/settings = %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Settings []api.SettingEntry `json:"settings"`
+		Settings []setupapi.SettingEntry `json:"settings"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)

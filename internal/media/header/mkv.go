@@ -4,7 +4,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // Matroska element IDs (with their length-marker bits, as they appear on disk).

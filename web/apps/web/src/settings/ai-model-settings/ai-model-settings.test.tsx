@@ -1,11 +1,7 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
-import {
-  getSystemLlmDiscoverMockHandler,
-  getSystemLlmStatusMockHandler,
-  getSystemLlmTestMockHandler,
-} from "@loomarr/api/msw";
+import { getSystemLlmDiscoverMockHandler, getSystemLlmStatusMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -111,14 +107,14 @@ describe("AiModelSettings", () => {
     expect(discovered).toBe(0);
   });
 
-  it("confirms hosted credentials and asks for a lineup model when none is chosen", async () => {
-    server.use(getSystemLlmStatusMockHandler(openRouter()), getSystemLlmTestMockHandler({ ok: true }));
+  // #2735: the AI card has one test, the connection block's check. A second credentials test
+  // beside it reported a different state from the same card.
+  it("offers no second credentials test beside the connection check", async () => {
+    server.use(getSystemLlmStatusMockHandler(openRouter()));
     mount({ provider: "openai" });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Test provider credentials" }));
-
-    expect(await screen.findByText(/OpenRouter credentials authorized/)).toBeInTheDocument();
-    expect(screen.getByText(/Choose a tool-capable lineup model to finish AI setup/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/OpenRouter/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /test provider credentials/i })).not.toBeInTheDocument();
   });
 
   it("shows only the lineup when the host stages no role settings", async () => {
@@ -157,7 +153,7 @@ describe("AiModelSettings", () => {
       mount({ provider: "ollama", onRoleSettingChange: staged });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /LLaVA 7B/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /LLaVA 7B/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "ollama"],
@@ -173,7 +169,7 @@ describe("AiModelSettings", () => {
       mount({ provider: "openai", onRoleSettingChange: staged });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /GPT-4o/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /GPT-4o/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "inherit"],
@@ -195,7 +191,7 @@ describe("AiModelSettings", () => {
       });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /Reuse the text-role choice/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /Reuse the text-role choice/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "inherit"],
@@ -219,8 +215,8 @@ describe("AiModelSettings", () => {
 
       await openVision();
 
-      expect(screen.getByRole("button", { name: /LLaVA 7B/ })).toBeDisabled();
-      expect(screen.getByRole("button", { name: /Reuse the text-role choice/ })).toBeEnabled();
+      expect(screen.getByRole("radio", { name: /LLaVA 7B/ })).toBeChecked();
+      expect(screen.getByRole("radio", { name: /Reuse the text-role choice/ })).not.toBeChecked();
     });
   });
 });

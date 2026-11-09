@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // ChannelCodecWrite records one revision-checked derived codec write.
@@ -25,9 +25,9 @@ type ChannelCodecStore struct {
 	Writes        []ChannelCodecWrite
 }
 
-func (s *ChannelCodecStore) GetChannel(_ context.Context, id string) (store.Channel, error) {
+func (s *ChannelCodecStore) GetChannel(_ context.Context, id string) (channelstore.Channel, error) {
 	if s.ReadError != nil {
-		return store.Channel{}, s.ReadError
+		return channelstore.Channel{}, s.ReadError
 	}
 	revision := int64(1)
 	if len(s.ReadRevisions) > 0 {
@@ -38,7 +38,7 @@ func (s *ChannelCodecStore) GetChannel(_ context.Context, id string) (store.Chan
 		revision = s.ReadRevisions[index]
 	}
 	s.ReadCalls++
-	return store.Channel{Channel: schedule.Channel{ID: id}, Revision: revision}, nil
+	return channelstore.Channel{Channel: schedule.Channel{ID: id}, Revision: revision}, nil
 }
 
 func (s *ChannelCodecStore) SetChannelBroadcastCodec(

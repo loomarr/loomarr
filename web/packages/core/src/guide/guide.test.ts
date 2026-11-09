@@ -9,11 +9,13 @@ import {
   formatGuideTimeRange,
   formatProgrammeTitle,
   GUIDE_BUCKET_MS,
+  guideBreakProgramme,
   guideChannelForTypeahead,
   guideChannelState,
   guideFillerEntryLabel,
   guideFillerNowLabel,
   guideSelectionForChannel,
+  guideWaitingForTitles,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,
@@ -316,6 +318,42 @@ describe("layoutGuide", () => {
     expect(moveGuideSelection(layout, first, "down")).toEqual({
       selection: { channelId: "empty", scheduleBlockId: undefined, anchorMs: 2_000 },
     });
+  });
+});
+
+describe("breaks and downloading channels (#2727, #2761)", () => {
+  const block = (kind: "program" | "filler" | "pending", startMs: number, stopMs: number) => ({
+    kind,
+    startMs,
+    stopMs,
+  });
+
+  it("names the programme a break leads back to", () => {
+    const airings = [block("program", 0, 10), block("filler", 10, 12), block("program", 12, 40)];
+    expect(guideBreakProgramme(airings, airings[1] as (typeof airings)[number])).toBe(airings[2]);
+  });
+
+  it("has no programme for a break nothing follows", () => {
+    const airings = [block("filler", 0, 2), block("filler", 2, 4)];
+    expect(guideBreakProgramme(airings, airings[0] as (typeof airings)[number])).toBeUndefined();
+  });
+
+  it("labels a channel that is all breaks while its titles download", () => {
+    const channel = {
+      airings: [block("filler", 0, 2), block("filler", 2, 4)] as GuideChannelTimeline["airings"],
+      pendingCount: 9,
+      programCount: 3,
+    };
+    expect(guideWaitingForTitles(channel)).toBe("Commercials until titles arrive · 3 of 12 downloaded");
+  });
+
+  it("doesn't label a channel with a programme, or one with nothing on the way", () => {
+    const withProgramme = [block("program", 0, 30)] as GuideChannelTimeline["airings"];
+    expect(
+      guideWaitingForTitles({ airings: withProgramme, pendingCount: 2, programCount: 1 }),
+    ).toBeUndefined();
+    const breaks = [block("filler", 0, 2)] as GuideChannelTimeline["airings"];
+    expect(guideWaitingForTitles({ airings: breaks, pendingCount: 0, programCount: 4 })).toBeUndefined();
   });
 });
 

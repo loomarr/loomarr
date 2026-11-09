@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -19,63 +16,11 @@ func newClient(t *testing.T, flavor Flavor) (*Client, *testkit.MediaServer) {
 	return New(flavor, ms.URL, ms.AdminToken, "loomarr-test-device"), ms
 }
 
-// Lookup returns present + item id for a title in the library (pinned fixture).
-func TestLookupPresent(t *testing.T) {
-	c, _ := newClient(t, Emby)
-	id, present, err := c.Lookup(context.Background(), TMDB, "90016153", Movie)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !present {
-		t.Fatal("expected present for tmdb.90016153 (pinned present fixture)")
-	}
-	if id == "" {
-		t.Error("present lookup returned empty item id")
-	}
-}
-
-// LookupDetail carries the primary source size on the same presence request, so a
-// discovered-then-owned title reaches the approval summary with its size (#1817).
-func TestLookupDetailParsesPrimarySourceSize(t *testing.T) {
-	c, demo := demoClient(t, Emby)
-	film := testkit.FirstMovie()
-	path := demo.Layout.Item(film.ID())
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, make([]byte, 4096), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, present, err := c.LookupDetail(context.Background(), TMDB, strconv.Itoa(film.ProviderID()), Movie)
-	if err != nil || !present {
-		t.Fatalf("LookupDetail = present %v, err %v", present, err)
-	}
-	if fields := demo.LastQuery(t).Get("Fields"); !strings.Contains(","+fields+",", ",Size,") {
-		t.Errorf("Fields = %q, must request Size", fields)
-	}
-	if got.SizeBytes != 4096 {
-		t.Errorf("SizeBytes = %d, want the file's 4096 bytes", got.SizeBytes)
-	}
-}
-
-// Lookup returns absent (empty Items) for an unknown title.
-func TestLookupAbsent(t *testing.T) {
-	c, _ := newClient(t, Emby)
-	_, present, err := c.Lookup(context.Background(), TMDB, "999999999", Movie)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if present {
-		t.Error("expected absent for an unknown provider id")
-	}
-}
-
 // Flavor auth: Emby uses X-Emby-Token; Jellyfin uses Authorization: MediaBrowser.
 func TestFlavorTokenHeaders(t *testing.T) {
 	t.Run("emby", func(t *testing.T) {
 		c, ms := newClient(t, Emby)
-		_, _, _ = c.Lookup(context.Background(), TMDB, "90016153", Movie)
+		_, _ = c.ListUsers(context.Background())
 		if ms.LastEmbyToken != ms.AdminToken {
 			t.Errorf("Emby X-Emby-Token = %q, want %q", ms.LastEmbyToken, ms.AdminToken)
 		}
@@ -85,7 +30,7 @@ func TestFlavorTokenHeaders(t *testing.T) {
 	})
 	t.Run("jellyfin", func(t *testing.T) {
 		c, ms := newClient(t, Jellyfin)
-		_, _, _ = c.Lookup(context.Background(), TMDB, "90016153", Movie)
+		_, _ = c.ListUsers(context.Background())
 		if !strings.HasPrefix(ms.LastAuthHeader, "MediaBrowser ") {
 			t.Errorf("Jellyfin Authorization = %q, want MediaBrowser scheme", ms.LastAuthHeader)
 		}

@@ -9,6 +9,19 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	"github.com/loomarr/loomarr/internal/api/people"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
+	"github.com/loomarr/loomarr/internal/api/system"
 )
 
 // ExportOpenAPI builds the API's operation definitions and returns the OpenAPI
@@ -19,83 +32,40 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	return humaAPI.OpenAPI().YAML()
 }
 
-// schemaOnlyAPI registers every typed operation against a store-less Server and returns it.
+// schemaOnlyAPI registers every typed operation against store-less dependencies and returns the
+// root Server (for its middleware) with the Huma API.
 //
 // Shared by ExportOpenAPI and the authorization gate so the two cannot disagree about what
 // "every operation" means: a route added to one list and not the other is exactly the drift
-// this centralises away. Adding a register* call here reaches both.
+// this centralises away. Adding a subpackage's New(...).Register call here reaches both.
 func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, humaConfig())
-	// schemaOnly makes the nil-guarded register* funcs (auth, provisioning, users
-	// sync) emit their operation schemas into the spec despite the bare Server —
-	// handlers aren't invoked; only their schemas are read. Without it the exported
-	// spec would omit /v1/auth/*, /v1/setup/bootstrap, /v1/users/{import,sync} and
-	// orval couldn't type them (the FE↔BE seam that 13.0 closes).
-	srv := &Server{log: log, schemaOnly: true}
+	// The `true` passed to people, system, playout and ops is their schemaOnly flag: it makes the
+	// nil-guarded registrars (auth, provisioning, users sync, events) emit their operation
+	// schemas into the spec despite the bare Deps — handlers aren't invoked; only their schemas
+	// are read. Without it the exported spec would omit /v1/auth/*, /v1/setup/bootstrap,
+	// /v1/users/{import,sync} and orval couldn't type them.
+	srv := &Server{log: log}
 	srv.registerMiddleware(humaAPI)
-	srv.registerTitles(humaAPI)
-	srv.registerAuth(humaAPI)
-	srv.registerDeviceAuth(humaAPI)
-	srv.registerUsers(humaAPI)
-	srv.registerInvitations(humaAPI)
-	srv.registerInvitationRedemption(humaAPI)
-	srv.registerPasswordRecovery(humaAPI)
-	srv.registerPasswords(humaAPI)
-	srv.registerChannels(humaAPI)
-	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)
-	srv.registerGuide(humaAPI)
-	srv.registerProgramming(humaAPI)
-	srv.registerHolidays(humaAPI)
-	srv.registerSetup(humaAPI)
-	srv.registerProposals(humaAPI)
-	srv.registerDiscoveryFeedback(humaAPI)
-	srv.registerMyChannels(humaAPI)
-	srv.registerChannelIdeas(humaAPI)
-	srv.registerHouseholdViewing(humaAPI)
-	srv.registerProposalJourneys(humaAPI)
-	srv.registerSearch(humaAPI)
-	srv.registerMovieCollections(humaAPI)
-	srv.registerCollections(humaAPI)
-	srv.registerLibrary(humaAPI)
-	srv.registerFiller(humaAPI)
-	srv.registerFillerDefects(humaAPI)
-	srv.registerFillerSources(humaAPI)
-	srv.registerFillerWatch(humaAPI)
-	srv.registerFillerPulls(humaAPI)
-	srv.registerFillerIncoming(humaAPI)
-	srv.registerFillerBulk(humaAPI)
-	srv.registerFillerResearch(humaAPI)
-	srv.registerTaxonomy(humaAPI)
-	srv.registerImages(humaAPI)
-	srv.registerJobs(humaAPI)
-	srv.registerSystemLLM(humaAPI)
-	srv.registerSystemDatabase(humaAPI)
-	srv.registerSystemSecurity(humaAPI)
-	srv.registerDiscoveryQuality(humaAPI)
-	srv.registerSystemBackups(humaAPI)
-	srv.registerSystemRestart(humaAPI)
-	srv.registerDashboardPanels(humaAPI)
-	srv.registerSettings(humaAPI)
-	srv.registerLocations(humaAPI)
-	srv.registerNotificationDestinations(humaAPI)
-	srv.registerHelp(humaAPI)
-	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
-	// the generated client always has the event types even when this export ran without one.
-	srv.registerEvents(humaAPI)
-	// registerSSO is nil-guarded on the provider, same schemaOnly escape.
-	srv.registerSSO(humaAPI)
-	// pprof=false: the profiler routes are Hidden on both paths anyway (they exist only when a
-	// flag is set, so advertising them would describe a surface most installs do not have), and
-	// the exporter has no Options to read the flag from.
-	srv.registerOps(humaAPI, false, "")
-	srv.registerDashboard(humaAPI)
-	srv.registerDiagnostics(humaAPI)
-	srv.registerPlayoutStatus(humaAPI)
-	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
-	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
-	// spec, matching how /v1/auth/* is handled. Documented via §11.
-	srv.registerProvisioning(humaAPI)
+	catalogapi.New(catalogapi.Deps{}).Register(humaAPI)
+	people.New(people.Deps{Log: log}, true).Register(humaAPI)
+	system.New(system.Deps{Log: log}, true).Register(humaAPI)
+	channelsapi.New(channelsapi.Deps{}).Register(humaAPI)
+	// Hidden ops — present for register-list parity, absent from the spec (§9.1) — plus the play-url
+	// op and the status projection.
+	playoutapi.New(playoutapi.Deps{Log: log}, true).Register(humaAPI)
+	guideapi.New(guideapi.Deps{}).Register(humaAPI)
+	proposalsapi.New(proposalsapi.Deps{}).Register(humaAPI)
+	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
+	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
+	imagesapi.New(imagesapi.Deps{}).Register(humaAPI)
+	setupapi.New(setupapi.Deps{}).Register(humaAPI)
+	// The events frames are nil-guarded on the bus; schemaOnly forces the frame schemas out so the
+	// generated client always has the event types even when this export ran without one. The
+	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
+	// exporter has no Options to read the flag from.
+	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
 	return srv, humaAPI
 }
 
@@ -108,8 +78,8 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 // `event:` line. Every addEventListener keyed to that name stops firing, nothing errors, and
 // the feature just looks broken.
 func EventFrameTypes() map[string]string {
-	out := make(map[string]string, len(eventTypeMap()))
-	for name, v := range eventTypeMap() {
+	out := make(map[string]string, len(opsapi.EventTypeMap()))
+	for name, v := range opsapi.EventTypeMap() {
 		out[name] = reflect.TypeOf(v).Name()
 	}
 	return out
@@ -139,7 +109,7 @@ func OperationsMissingARole() ([]string, error) {
 			if op == nil {
 				continue
 			}
-			if _, ok := op.Metadata[roleMetaKey]; !ok {
+			if _, ok := op.Metadata[httpcore.RoleMetaKey]; !ok {
 				missing = append(missing, fmt.Sprintf("%s %s (%s)", method, path, op.OperationID))
 			}
 		}

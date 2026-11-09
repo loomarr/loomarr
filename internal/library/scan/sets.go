@@ -21,15 +21,32 @@ type Set struct {
 	Titles []store.LibraryItemSummary
 }
 
-// SetRecords reads the cached catalog records of sets.
-type SetRecords interface {
+// RecordReader reads cached catalog records: the ready-made sets', and a show's episode orders.
+type RecordReader interface {
 	LibraryCatalogRecord(ctx context.Context, key store.LibraryCatalogKey) (string, bool, error)
+}
+
+// record is the cached catalog record for key. ok is false when it hasn't been fetched yet, the
+// catalog has no such title, or the cached record can't be read: each says nothing, as it does
+// for a title.
+func (l *Library) record(ctx context.Context, key store.LibraryCatalogKey) (rec mp.Record, ok bool, err error) {
+	if l.Records == nil || key.String() == "" {
+		return mp.Record{}, false, nil
+	}
+	raw, fetched, err := l.Records.LibraryCatalogRecord(ctx, key)
+	if err != nil || !fetched || raw == "" {
+		return mp.Record{}, false, err
+	}
+	if err := json.Unmarshal([]byte(raw), &rec); err != nil || rec.Descriptive == nil {
+		return mp.Record{}, false, nil //nolint:nilerr // an unreadable cached record is skipped, not fatal
+	}
+	return rec, true, nil
 }
 
 // Sets lists the ready-made sets the library has a movie of, by name. A set whose own record has
 // not been fetched yet is left out until it has.
 func (l *Library) Sets(ctx context.Context) ([]Set, error) {
-	if l.SetRecords == nil {
+	if l.Records == nil {
 		return []Set{}, nil
 	}
 	page, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Kind: string(kindMovie), InSet: true})
@@ -82,19 +99,14 @@ func (l *Library) CopySet(ctx context.Context, id string) (string, error) {
 // set reads one set's record and puts the library's movies of it in its order. A movie the record
 // doesn't list (the set changed since) goes last, by year.
 func (l *Library) set(ctx context.Context, key store.LibraryCatalogKey, titles []store.LibraryItemSummary) (Set, bool, error) {
-	raw, fetched, err := l.SetRecords.LibraryCatalogRecord(ctx, key)
-	if err != nil || !fetched || raw == "" {
+	rec, ok, err := l.record(ctx, key)
+	if err != nil || !ok {
 		return Set{}, false, err
-	}
-	var rec mp.Record
-	if err := json.Unmarshal([]byte(raw), &rec); err != nil || rec.Descriptive == nil {
-		// A record that can't be read says nothing, as it does for a title.
-		return Set{}, false, nil //nolint:nilerr // an unreadable cached record is skipped, not fatal
 	}
 	// A movie's place is found by the catalog row its details come from, the key its part names.
 	place := map[store.LibraryCatalogKey]int{}
 	for i, part := range rec.Children {
-		if key := catalogKey(mp.KindMovie, part.IDs); key.String() != "" {
+		if key := l.Keys.For(mp.KindMovie, part.IDs); key.String() != "" {
 			place[key] = i
 		}
 	}

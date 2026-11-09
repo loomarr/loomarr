@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 )
@@ -71,5 +73,25 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.SetLibraryRootScanned(ctx, "/media/none", at); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown root = %v", err)
+	}
+
+	// A first walk writes more rows than one transaction holds; every one lands. A bad row anywhere
+	// writes none of them.
+	many := make([]LibraryFile, 2*libraryFilesChunk+1)
+	for i := range many {
+		many[i] = LibraryFile{Path: fmt.Sprintf("/media/c/%04d.mkv", i), Root: "/media/c", Size: 1, ModifiedNs: 1, SeenAt: at}
+	}
+	bad := append(slices.Clone(many), LibraryFile{Path: "/media/c/no-seen.mkv", Root: "/media/c"})
+	if err := s.SaveLibraryFiles(ctx, bad); err == nil {
+		t.Fatal("a row with no seen time was accepted")
+	}
+	if got, _ := s.LibraryFiles(ctx, "/media/c"); len(got) != 0 {
+		t.Fatalf("a refused save wrote %d rows", len(got))
+	}
+	if err := s.SaveLibraryFiles(ctx, many); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.LibraryFiles(ctx, "/media/c"); err != nil || len(got) != len(many) {
+		t.Fatalf("chunked save wrote %d rows, want %d (%v)", len(got), len(many), err)
 	}
 }

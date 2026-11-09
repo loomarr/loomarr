@@ -6,22 +6,22 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // fillerSyncJob declares the filler catalog sync (§10, §18.1).
 //
-// ⚠ **This one job cannot live with its subsystem, and the reason is structural rather than
-// stylistic.** `internal/filler` may never import `internal/platform/jobs`: the jobs package
-// imports `store`, and `store` imports `filler` for the Clip type — so a `Job()` method on
-// Syncer is an import cycle, not a preference. Verified by trying it.
+// ⚠ **This job's declaration lives in the composition root, not with its subsystem.**
+// `internal/filler` must not reach `internal/platform/store` (Tier 3), and the jobs package
+// imports `store`, so a `Job()` method on Syncer would pull the store into the filler domain.
 //
 // So the declaration sits here, in the one package that may import both, and stays as close
-// to the shape its siblings use as the cycle allows. If `store` ever stops depending on
-// `filler`, this belongs in `internal/filler/jobs.go` beside the rest.
+// to the shape its siblings use as that rule allows.
 func fillerSyncJob(s *filler.Syncer) jobs.Job {
 	return jobs.Job{
 		// A folder walk that hashes every file it finds, so it scales with the catalog rather
@@ -121,7 +121,7 @@ func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 // Each pass first switches the curated sources for the places' nearby stations (#2059 decision
 // 10), so a place set or moved since the last pass is fetched for in this one. A failure there costs
 // only the switch: the pass still runs with the sources as they are.
-func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) jobs.Job {
+func fillerFetchJob(f *acquisition.Fetcher, local localCuratedSources) jobs.Job {
 	return jobs.Job{
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.
@@ -184,8 +184,6 @@ func fillerPipelineJob(runner fillerPipelineRunner) jobs.Job {
 // ⚠ **`Timeout` is not optional here** — the sweep retires proposals and reclaims their source
 // recordings, real file I/O that over a large backlog exceeds River's one-minute default. The
 // ceiling also routes the job to the `long` queue (derived from `Timeout > 0`, `jobs.queueFor`).
-// #304 gave every other job in this file its ceiling but left this one under the default; a stale
-// note here claimed the fix "cannot declare them yet, both land in #304" long after #304 had merged.
 //
 // ⚠ Daily, deliberately off-peak, and NOT more often. The window is measured in weeks, so a faster
 // cadence buys nothing and only widens the chance of a pass landing while an operator is mid-review
@@ -204,7 +202,7 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) jobs.Job {
 // clips, folds every copy of an ad into its best copy, and links variants. Hourly, so a better
 // copy that becomes ready replaces the old one within the hour; a pass only decodes clips it has
 // never measured, bounded to well inside the long-queue ceiling.
-func fillerIdentityJob(ci *filler.CreativeIdentity) jobs.Job {
+func fillerIdentityJob(ci *identity.Job) jobs.Job {
 	return jobs.Job{
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-identity", Group: jobs.GroupFiller, Title: "Keep one copy of each ad",

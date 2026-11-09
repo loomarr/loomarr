@@ -4,25 +4,22 @@ import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
 import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
+  Action,
   Badge,
   ChoiceGroup,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   FieldHint,
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
 import { useStore } from "@tanstack/react-form";
-import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationDialogProps } from "./invitation-dialog.type";
 
@@ -171,252 +168,251 @@ const InvitationDialog = ({
   const terminal = invitation?.status !== undefined && invitation.status !== "pending";
   const title = existing ? `Share ${invitationName(existing)}’s invitation` : "Invite person";
 
+  // The dialog opens from its own state rather than a trigger part, so the opener can be an Action;
+  // the Dialog returns focus to it on close all the same.
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      {controlledOpen === undefined && (
-        <DialogTrigger>
-          <Button>
-            <UserPlus aria-hidden /> Invite person
-          </Button>
-        </DialogTrigger>
-      )}
-      <DialogContent portalContainer={portalContainer} size="form">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Reserve access, then share a short-lived link. Creating an invitation does not activate an
-            account.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {controlledOpen === undefined && <Action onPress={() => changeOpen(true)}>Invite person</Action>}
+      <Dialog open={open} onOpenChange={changeOpen}>
+        <DialogContent portalContainer={portalContainer} size="form">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>
+              Reserve access, then share a short-lived link. Creating an invitation does not activate an
+              account.
+            </DialogDescription>
+          </DialogHeader>
 
-        {!invitation ? (
-          <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
-            <form.Field name="kind">
-              {(field) => (
-                <ChoiceGroup
-                  label="Credential path"
-                  onValueChange={field.handleChange}
-                  options={[
-                    {
-                      disabled: busy,
-                      label: "Local Loomarr account",
-                      value: CreateInvitationInputBodyKind.local,
-                    },
-                    {
-                      disabled: busy || !libraryAvailable,
-                      label: "Emby or Jellyfin account",
-                      value: CreateInvitationInputBodyKind.library,
-                    },
-                  ]}
-                  value={field.state.value}
-                />
-              )}
-            </form.Field>
-
-            {kind === "local" ? (
-              <form.AppField name="username">
+          {!invitation ? (
+            <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+              <form.Field name="kind">
                 {(field) => (
-                  <field.TextField
-                    autoComplete="off"
-                    disabled={busy}
-                    label="Reserved username"
-                    maxLength={200}
+                  <ChoiceGroup
+                    label="Credential path"
+                    onValueChange={field.handleChange}
+                    options={[
+                      {
+                        disabled: busy,
+                        label: "Local Loomarr account",
+                        value: CreateInvitationInputBodyKind.local,
+                      },
+                      {
+                        disabled: busy || !libraryAvailable,
+                        label: "Emby or Jellyfin account",
+                        value: CreateInvitationInputBodyKind.library,
+                      },
+                    ]}
+                    value={field.state.value}
                   />
-                )}
-              </form.AppField>
-            ) : (
-              <form.AppField name="libraryUserId">
-                {(field) => {
-                  const selectedCandidate = candidates?.find(
-                    (candidate) => candidate.id === field.state.value,
-                  );
-                  return (
-                    <div className="flex flex-col gap-1.5">
-                      <field.SelectField
-                        disabled={busy}
-                        label="Library account"
-                        options={(candidates ?? []).map((candidate) => ({
-                          disabled: candidate.imported || candidate.disabled,
-                          label: `${candidate.name}${
-                            candidate.imported
-                              ? " · already imported"
-                              : candidate.disabled
-                                ? " · disabled"
-                                : ""
-                          }`,
-                          value: candidate.id,
-                        }))}
-                        placeholder="Choose one account"
-                      />
-                      {selectedCandidate && (
-                        <FieldHint>
-                          Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
-                        </FieldHint>
-                      )}
-                    </div>
-                  );
-                }}
-              </form.AppField>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <form.AppField name="contactEmail">
-                {(field) => (
-                  <field.TextField
-                    autoComplete="email"
-                    disabled={busy}
-                    label="Contact email (optional)"
-                    maxLength={320}
-                    type="email"
-                  />
-                )}
-              </form.AppField>
-              <form.AppField name="role">
-                {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <field.SelectField disabled={busy} label="Initial role" options={ROLE_OPTIONS} />
-                    <FieldHint>
-                      Initial Loomarr role:{" "}
-                      {field.state.value === CreateInvitationInputBodyRole.admin ? "Administrator" : "Member"}
-                    </FieldHint>
-                  </div>
-                )}
-              </form.AppField>
-            </div>
-
-            {onSendEmail && (
-              <form.Field name="sendEmail">
-                {(field) => (
-                  <div className="rounded-lg border px-3 py-1">
-                    <Toggle
-                      id={emailId}
-                      label="Also send by email"
-                      description="QR and copy remain available even if email is disabled or fails."
-                      checked={field.state.value}
-                      disabled={busy || !contactEmail.trim()}
-                      onCheckedChange={field.handleChange}
-                    />
-                  </div>
                 )}
               </form.Field>
-            )}
 
-            {problem != null && <ErrorState error={problem} className="p-4" />}
-            <DialogFooter>
-              <DialogClose>
-                <Button type="button" variant="outline" disabled={busy}>
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={busy}>
-                {busy ? "Creating…" : "Create invitation"}
-              </Button>
-            </DialogFooter>
-          </form>
-        ) : terminal ? (
-          <div className="space-y-4">
-            <div className="border-border bg-static-900 rounded-lg border p-5">
-              <p className="font-medium">
-                Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
-              </p>
-              <p className="text-muted-foreground mt-1 text-sm">
-                This invitation can no longer issue a QR code or copied link.
-              </p>
-            </div>
-            <DialogFooter>
-              <DialogClose>
-                <Button type="button">Done</Button>
-              </DialogClose>
-            </DialogFooter>
-          </div>
-        ) : grant ? (
-          <div className="space-y-5">
-            <div className="grid items-center gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
-              <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
-                <QrCode
-                  accessibilityLabel={`Scan to accept ${invitationName(invitation)}’s Loomarr invitation`}
-                  size={196}
-                  value={grant.url}
-                />
-              </div>
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <Badge shape="square" tone={invitation.role === "admin" ? "tune" : "neutral"}>
-                    {invitation.role === "admin" ? "Administrator" : "Member"}
-                  </Badge>
-                  <Badge shape="square" tone="neutral">
-                    Expires {expiryLabel(grant.expiresAt)}
-                  </Badge>
-                </div>
-                <p className="text-sm">
-                  Ask {invitationName(invitation)} to scan this code, or copy the same private link.
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Regenerating replaces every outstanding invitation link, including links already emailed.
-                </p>
-              </div>
-            </div>
-
-            {emailProblem && (
-              <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
-                The invitation is ready, but email could not be queued. Share this QR code or copied link.
-              </p>
-            )}
-            {problem != null && <ErrorState error={problem} className="p-4" />}
-
-            <DialogFooter spread>
-              <Button type="button" variant="destructive" disabled={busy} onClick={() => void revoke()}>
-                <Trash2 aria-hidden /> Revoke invitation
-              </Button>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void issue(invitation)}
-                >
-                  <RefreshCw aria-hidden /> Regenerate link
-                </Button>
-                <Button
-                  type="button"
-                  disabled={busy}
-                  aria-label={copied ? "Copied" : "Copy link to this invitation"}
-                  onClick={async () => {
-                    setProblem(undefined);
-                    try {
-                      await navigator.clipboard.writeText(grant.url);
-                      setCopied(true);
-                    } catch {
-                      setCopied(false);
-                      setProblem(
-                        new Error("The invitation link could not be copied. Try again or scan the QR code."),
-                      );
-                    }
+              {kind === "local" ? (
+                <form.AppField name="username">
+                  {(field) => (
+                    <field.TextField
+                      autoComplete="off"
+                      disabled={busy}
+                      label="Reserved username"
+                      maxLength={200}
+                    />
+                  )}
+                </form.AppField>
+              ) : (
+                <form.AppField name="libraryUserId">
+                  {(field) => {
+                    const selectedCandidate = candidates?.find(
+                      (candidate) => candidate.id === field.state.value,
+                    );
+                    return (
+                      <div className="flex flex-col gap-1.5">
+                        <field.SelectField
+                          disabled={busy}
+                          label="Library account"
+                          options={(candidates ?? []).map((candidate) => ({
+                            disabled: candidate.imported || candidate.disabled,
+                            label: `${candidate.name}${
+                              candidate.imported
+                                ? " · already imported"
+                                : candidate.disabled
+                                  ? " · disabled"
+                                  : ""
+                            }`,
+                            value: candidate.id,
+                          }))}
+                          placeholder="Choose one account"
+                        />
+                        {selectedCandidate && (
+                          <FieldHint>
+                            Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
+                          </FieldHint>
+                        )}
+                      </div>
+                    );
                   }}
-                >
-                  <Copy aria-hidden /> {copied ? "Copied" : "Copy link"}
-                </Button>
+                </form.AppField>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <form.AppField name="contactEmail">
+                  {(field) => (
+                    <field.TextField
+                      autoComplete="email"
+                      disabled={busy}
+                      label="Contact email (optional)"
+                      maxLength={320}
+                      type="email"
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField name="role">
+                  {(field) => (
+                    <div className="flex flex-col gap-1.5">
+                      <field.SelectField disabled={busy} label="Initial role" options={ROLE_OPTIONS} />
+                      <FieldHint>
+                        Initial Loomarr role:{" "}
+                        {field.state.value === CreateInvitationInputBodyRole.admin
+                          ? "Administrator"
+                          : "Member"}
+                      </FieldHint>
+                    </div>
+                  )}
+                </form.AppField>
               </div>
-            </DialogFooter>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="border-border bg-static-900 rounded-lg border p-5">
-              <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
-              <p className="text-muted-foreground mt-1 text-sm">
-                Generating a new link invalidates every earlier copied, QR, or email link for this invitation.
-              </p>
+
+              {onSendEmail && (
+                <form.Field name="sendEmail">
+                  {(field) => (
+                    <div className="rounded-lg border px-3 py-1">
+                      <Toggle
+                        id={emailId}
+                        label="Also send by email"
+                        description="QR and copy remain available even if email is disabled or fails."
+                        checked={field.state.value}
+                        disabled={busy || !contactEmail.trim()}
+                        onCheckedChange={field.handleChange}
+                      />
+                    </div>
+                  )}
+                </form.Field>
+              )}
+
+              {problem != null && <ErrorState error={problem} className="p-4" />}
+              <DialogFooter>
+                <Action disabled={busy} onPress={() => changeOpen(false)} variant="outline">
+                  Cancel
+                </Action>
+                <Action disabled={busy} submit>
+                  {busy ? "Creating…" : "Create invitation"}
+                </Action>
+              </DialogFooter>
+            </form>
+          ) : terminal ? (
+            <div className="space-y-4">
+              <div className="border-border bg-static-900 rounded-lg border p-5">
+                <p className="font-medium">
+                  Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
+                </p>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  This invitation can no longer issue a QR code or copied link.
+                </p>
+              </div>
+              <DialogFooter>
+                <Action onPress={() => changeOpen(false)}>Done</Action>
+              </DialogFooter>
             </div>
-            {problem != null && <ErrorState error={problem} className="p-4" />}
-            <DialogFooter>
-              <Button type="button" disabled={busy} onClick={() => void issue(invitation)}>
-                {busy ? "Generating…" : "Generate QR and link"}
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          ) : grant ? (
+            <div className="space-y-5">
+              <div className="grid items-center gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
+                  <QrCode
+                    accessibilityLabel={`Scan to accept ${invitationName(invitation)}’s Loomarr invitation`}
+                    size={196}
+                    value={grant.url}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge shape="square" tone={invitation.role === "admin" ? "tune" : "neutral"}>
+                      {invitation.role === "admin" ? "Administrator" : "Member"}
+                    </Badge>
+                    <Badge shape="square" tone="neutral">
+                      Expires {expiryLabel(grant.expiresAt)}
+                    </Badge>
+                  </div>
+                  <p className="text-sm">
+                    Ask {invitationName(invitation)} to scan this code, or copy the same private link.
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Regenerating replaces every outstanding invitation link, including links already emailed.
+                  </p>
+                </div>
+              </div>
+
+              {emailProblem && (
+                <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
+                  The invitation is ready, but email could not be queued. Share this QR code or copied link.
+                </p>
+              )}
+              {problem != null && <ErrorState error={problem} className="p-4" />}
+
+              <DialogFooter spread>
+                <Action disabled={busy} icon="delete" onPress={() => void revoke()} variant="destructive">
+                  Revoke invitation
+                </Action>
+                <div className="flex flex-wrap gap-2">
+                  <Action
+                    disabled={busy}
+                    icon="refresh"
+                    onPress={() => void issue(invitation)}
+                    variant="outline"
+                  >
+                    Regenerate link
+                  </Action>
+                  <Action
+                    accessibilityLabel={copied ? "Copied" : "Copy link to this invitation"}
+                    disabled={busy}
+                    icon="copy"
+                    onPress={async () => {
+                      setProblem(undefined);
+                      try {
+                        await navigator.clipboard.writeText(grant.url);
+                        setCopied(true);
+                      } catch {
+                        setCopied(false);
+                        setProblem(
+                          new Error(
+                            "The invitation link could not be copied. Try again or scan the QR code.",
+                          ),
+                        );
+                      }
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy link"}
+                  </Action>
+                </div>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="border-border bg-static-900 rounded-lg border p-5">
+                <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Generating a new link invalidates every earlier copied, QR, or email link for this
+                  invitation.
+                </p>
+              </div>
+              {problem != null && <ErrorState error={problem} className="p-4" />}
+              <DialogFooter>
+                <Action disabled={busy} onPress={() => void issue(invitation)}>
+                  {busy ? "Generating…" : "Generate QR and link"}
+                </Action>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

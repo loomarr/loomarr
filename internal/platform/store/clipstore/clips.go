@@ -491,7 +491,9 @@ var clipReferences = []clipReference{
 	{"filler_clip_fingerprints", "clip_hash", rekeyDrop},
 	// So does the defect record (#2034): the new bytes are measured on the next pass.
 	{"filler_clip_defects", "clip_hash", rekeyDrop},
-	{"image_refs", "owner_id", rekeyByCode},
+	// Copied onto the new hash by its own step: a re-key in place moves them by ON UPDATE CASCADE
+	// first, but adopting a conditioned clip deletes the source row, which would cascade them away.
+	{"clip_images", "clip_hash", rekeyByCode},
 	{"filler_airings", "clip_hash", rekeyByCode},
 	{"filler_clip_variants", "a_hash", rekeyByCode},
 	{"filler_clip_variants", "b_hash", rekeyByCode},
@@ -517,9 +519,12 @@ func (s *Store) rekeyClipReferencesTx(ctx context.Context, tx storedb.Tx, oldHas
 			return fmt.Errorf("replace clip identity %s references in %s: %w", oldHash, ref.table, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`),
-		newHash, "clip", oldHash); err != nil {
-		return fmt.Errorf("replace clip identity %s references in image_refs: %w", oldHash, err)
+	// A re-key in place has already moved these (ON UPDATE CASCADE), so this finds none; adopting a
+	// conditioned clip has not, and its source row is deleted next, taking anything left behind.
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO clip_images (clip_hash, role, image_hash)
+		SELECT ?, role, image_hash FROM clip_images WHERE clip_hash = ?
+		ON CONFLICT (clip_hash, role, image_hash) DO NOTHING`), newHash, oldHash); err != nil {
+		return fmt.Errorf("replace clip identity %s references in clip_images: %w", oldHash, err)
 	}
 	for _, step := range identityHistoryMoves(oldHash, newHash) {
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {
@@ -1083,7 +1088,7 @@ func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int
 // a viewer reconnect or retry may resolve it again. One airing is one (channel, clip, start)
 // row, so all callbacks for it are one durable write without process-local memory; only that
 // first write increments the global catalog counter. `recordedAt` is the wall clock of that
-// write, which a break's snapshot needs to stay fixed while it airs (filler.ExposuresBefore).
+// write, which a break's snapshot needs to stay fixed while it airs (pod.ExposuresBefore).
 //
 // A clip keeps its newest fillerAiringsKept airings and every airing younger than
 // fillerAiringsTrimAge: rotation reads the latest airing a break may count, and supply reads every
@@ -1149,7 +1154,7 @@ const (
 )
 
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
-// per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
+// per-break snapshot is cut from them by pod.ExposuresBefore, so one read serves a whole window.
 func (s *Store) FillerAirings(ctx context.Context) ([]clips.Airing, error) {
 	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at_ms, recorded_at_ms FROM filler_airings`)
 	if err != nil {
@@ -1464,7 +1469,7 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 //
 // ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
 // the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
-// (the class [[loomarr-perf-cpu-profile-blind-to-waiting]] warns about). The full leaf+rollup set is
+// (waiting time is invisible to a CPU profile). The full leaf+rollup set is
 // loaded (leaf and rollup rows alike), because that is what curation matches against; `Category` is
 // derived from it separately at write time, not here.
 //
@@ -1503,11 +1508,8 @@ func (s *Store) attachTags(ctx context.Context, clips []Clip) error {
 	return rows.Err()
 }
 
-// ⚠ `boolToInt` was here and is DELETED (V38c). Every bool column is BOOLEAN on Postgres now that
-// 00033 rebuilt `clips`, so binding an int is a 42804 — and this helper was how that mistake kept
-// happening: it sat next to correct code, looked like the local idiom, and was copied onto three
-// columns where it was wrong. A helper whose only remaining use is a bug is worth deleting
-// outright rather than leaving for the next person to reach for.
+// ⚠ There is deliberately no bool-to-int helper here. Every bool column is BOOLEAN on Postgres
+// (00033 rebuilt `clips`), so binding an int is a 42804; bind the Go bool directly.
 
 // nullIfEmpty writes "" as SQL NULL.
 //
@@ -1787,8 +1789,8 @@ func (s *Store) SetClipTranscript(ctx context.Context, path, transcript string, 
 // the persisted transcript); the vision pass grounds one in the on-screen text. Both are legitimate
 // writers of `brand`, and each writes only what it is entitled to.
 //
-// The caller has already applied the grounding rule (validateTags keeps a brand only when it
-// appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
+// The caller has already applied the grounding rule (a brand is kept only when it appears
+// literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
 // and vision writers it sits beside and unlike the hash-keyed classification update — the job carries the
 // path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
 // other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.

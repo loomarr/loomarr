@@ -29,7 +29,7 @@ func hevcFixture(t *testing.T) (init []byte, frags [][]byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := readStream(bytes.NewReader(raw))
+	s := readStream(nil, bytes.NewReader(raw))
 	for f := range s.frags {
 		frags = append(frags, f)
 	}

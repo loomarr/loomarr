@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/diagnosticsstore"
 )
 
 func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -46,6 +47,15 @@ func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	testForeignKeyPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresLibraryLinksMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testLibraryLinksMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresIndexNamesFollowConvention(t *testing.T) {
@@ -410,7 +420,7 @@ func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 		"process":        {ProcessRunID: "x"},
 	} {
 		filter.From, filter.To, filter.Limit = 0, 1<<40, 50
-		sqlText, args := diagnosticEventQuery(filter)
+		sqlText, args := diagnosticsstore.EventQuery(filter)
 		rows, err := tx.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
 		if err != nil {
 			t.Fatalf("%s: %v", column, err)

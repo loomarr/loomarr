@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/diagnosticsstore"
 )
 
 // These tests run against the REAL SQLite store with its production MaxOpenConns(1). #1411 was a
@@ -127,7 +128,7 @@ func TestRetentionCandidatePageIsIndexDriven(t *testing.T) {
 		{"expiry", time.Now().Add(-24 * time.Hour).UnixMilli()}, {"budget", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			query, args := diagnosticRetentionCandidatesQuery(tc.before, 256)
+			query, args := diagnosticsstore.RetentionCandidatesQuery(tc.before, 256)
 			rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+s.ph(query), args...)
 			if err != nil {
 				t.Fatalf("explain: %v", err)

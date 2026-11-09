@@ -95,8 +95,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       }),
       replace: true,
     });
-  // A phone gets the folded toolbar and the 2-up compact grid (#1817, decided on #1908). It's a
-  // render decision, not just an arrangement: the compact card drops its chips and aired line.
+  // A phone gets the folded toolbar and the 2-up grid (#1817, decided on #1908).
   const phone = usePhoneWidth();
 
   const [inspecting, setInspecting] = useState<string>();
@@ -190,7 +189,6 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {...(isAdmin ? { onToggleSelect: () => selection.toggle(clip.hash) } : {})}
       selected={selection.selected.has(clip.hash)}
       onOpen={() => openDetails(clip.hash)}
-      compact={phone}
     />
   );
   const renderComposite = (clip: ClipDTO) => (

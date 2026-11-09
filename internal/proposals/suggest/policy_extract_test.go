@@ -446,3 +446,20 @@ func TestAudienceConstraintsInvalidateUnrestrictedProposalCache(t *testing.T) {
 		t.Fatal("reused proposal cache identity that lost the requested audience restrictions")
 	}
 }
+
+// "90s cartoons" names a format, not an audience (#2739): the model's TV-Y7 cap
+// is dropped so the TV-G and TV-PG cartoons an adult remembers survive, while a
+// cartoon request that names a young child keeps it.
+func TestGroundPolicy_CartoonFormatAloneDropsProposedCeiling(t *testing.T) {
+	for desc, want := range map[string]rating.Rating{
+		"90s cartoons":               "",
+		"cartoons for my 5-year-old": "TV-Y7",
+	} {
+		raw := &pickPolicy{}
+		raw.Audience.Ceiling = "TV-Y7"
+		p := groundPolicy(raw, nil, nil, Intent{Intent: proposals.Intent{Description: desc}}, shipped)
+		if p.Audience.Ceiling != want {
+			t.Errorf("%q: ceiling = %q, want %q", desc, p.Audience.Ceiling, want)
+		}
+	}
+}

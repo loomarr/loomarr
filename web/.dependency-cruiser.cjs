@@ -106,6 +106,14 @@ module.exports = {
     // above controls HOW callers reach them.
     ...layerRules,
     {
+      name: "web-icons-come-from-the-design-system",
+      comment:
+        "The Web app draws every glyph through the design system's Icon and icons registry; it never imports lucide-react itself (#2147).",
+      severity: "error",
+      from: { path: "^apps/web/src/" },
+      to: { path: "node_modules/lucide-react/" },
+    },
+    {
       name: "packages-never-import-apps",
       comment: "A package serves the apps; it never reaches back into one.",
       severity: "error",

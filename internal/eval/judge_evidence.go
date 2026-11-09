@@ -9,7 +9,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -106,7 +105,7 @@ func boundedDecisionTrace(trace proposals.DecisionTrace) (proposals.DecisionTrac
 		trace.Candidates[i].Rank.TieKey = boundedJudgeText(trace.Candidates[i].Rank.TieKey)
 	}
 	trace.Terminal = boundedJudgeText(trace.Terminal)
-	if err := suggest.ValidateDecisionTrace(trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(trace); err != nil {
 		return proposals.DecisionTrace{}, fmt.Errorf("decision trace mismatch: %w", err)
 	}
 	return trace, nil

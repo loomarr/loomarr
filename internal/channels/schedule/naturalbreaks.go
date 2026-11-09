@@ -3,7 +3,7 @@ package schedule
 import (
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // Mid-roll: commercial breaks INSIDE a long programme, placed only at natural scene fades (§10

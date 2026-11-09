@@ -1,5 +1,6 @@
 export {
   accents,
+  onTintVar,
   semanticAliases,
   staticExtras,
   staticScale,

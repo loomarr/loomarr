@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 )
 
 // fakeJobs is a scriptable JobService for the API-layer tests.
 type fakeJobs struct {
-	list      []api.JobView
-	history   api.JobHistoryView
+	list      []system.JobView
+	history   system.JobHistoryView
 	historyOf string
 	triggered []string
 	paused    map[string]bool // name -> last requested pause state
@@ -23,11 +24,11 @@ type fakeJobs struct {
 	disabled  string          // a name that Trigger reports as disabled on this backend
 }
 
-func (f *fakeJobs) List(context.Context) ([]api.JobView, error) { return f.list, nil }
+func (f *fakeJobs) List(context.Context) ([]system.JobView, error) { return f.list, nil }
 
-func (f *fakeJobs) History(_ context.Context, name string) (api.JobHistoryView, error) {
+func (f *fakeJobs) History(_ context.Context, name string) (system.JobHistoryView, error) {
 	if name == f.unknown {
-		return api.JobHistoryView{}, api.ErrJobNotFound
+		return system.JobHistoryView{}, system.ErrJobNotFound
 	}
 	f.historyOf = name
 	return f.history, nil
@@ -35,10 +36,10 @@ func (f *fakeJobs) History(_ context.Context, name string) (api.JobHistoryView, 
 
 func (f *fakeJobs) SetPaused(_ context.Context, name string, paused bool) error {
 	if name == f.unknown {
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	}
 	if name == f.disabled {
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	}
 	if f.paused == nil {
 		f.paused = map[string]bool{}
@@ -48,16 +49,16 @@ func (f *fakeJobs) SetPaused(_ context.Context, name string, paused bool) error 
 }
 func (f *fakeJobs) Trigger(_ context.Context, name string) error {
 	if name == f.unknown {
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	}
 	if name == f.disabled {
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	}
 	f.triggered = append(f.triggered, name)
 	return nil
 }
 
-func serverWithJobs(t *testing.T, svc api.JobService) *httptest.Server {
+func serverWithJobs(t *testing.T, svc system.JobService) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -90,9 +91,9 @@ func TestJobs_RequiresAdmin(t *testing.T) {
 
 func TestJobs_HistoryReturnsRecentExecutionSummary(t *testing.T) {
 	started := time.Date(2026, time.August, 15, 11, 59, 55, 0, time.UTC)
-	svc := &fakeJobs{unknown: "ghost", history: api.JobHistoryView{
+	svc := &fakeJobs{unknown: "ghost", history: system.JobHistoryView{
 		WindowStart: started.Add(-24 * time.Hour), RunCount: 3, FailureCount: 1, AverageDurationMs: 2500,
-		Recent: []api.JobExecutionView{{
+		Recent: []system.JobExecutionView{{
 			StartedAt: started, FinishedAt: started.Add(5 * time.Second), DurationMs: 5000,
 			Result: "error", Error: "media server unavailable", Trigger: "manual",
 		}},
@@ -103,7 +104,7 @@ func TestJobs_HistoryReturnsRecentExecutionSummary(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("history → %d, want 200", resp.StatusCode)
 	}
-	var body api.JobHistoryView
+	var body system.JobHistoryView
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestJobs_HistoryReturnsRecentExecutionSummary(t *testing.T) {
 }
 
 func TestJobs_ListReturnsJobs(t *testing.T) {
-	svc := &fakeJobs{list: []api.JobView{
+	svc := &fakeJobs{list: []system.JobView{
 		{Name: "reconcile", Title: "Reconcile downloads", Schedule: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule", LastResult: "ok"},
 		{Name: "channel-maintenance", Group: "channels", Title: "Maintain live channels", Schedule: "0 */10 * * * *"},
 	}}
@@ -132,7 +133,7 @@ func TestJobs_ListReturnsJobs(t *testing.T) {
 		t.Fatalf("list → %d", resp.StatusCode)
 	}
 	var body struct {
-		Jobs []api.JobView `json:"jobs"`
+		Jobs []system.JobView `json:"jobs"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if len(body.Jobs) != 2 || body.Jobs[0].Name != "reconcile" || body.Jobs[0].Schedule != "0 */5 * * * *" {
@@ -183,7 +184,7 @@ func TestJobs_RunDisabledIsConflictNotFound(t *testing.T) {
 // that looks broken.
 func TestJobs_ListCarriesDisabledReason(t *testing.T) {
 	const reason = "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."
-	srv := serverWithJobs(t, &fakeJobs{list: []api.JobView{
+	srv := serverWithJobs(t, &fakeJobs{list: []system.JobView{
 		{Name: "reconcile", Title: "Reconcile"},
 		{Name: "backup", Title: "Back up the database", DisabledReason: reason},
 	}})
@@ -193,7 +194,7 @@ func TestJobs_ListCarriesDisabledReason(t *testing.T) {
 		t.Fatalf("list → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Jobs []api.JobView `json:"jobs"`
+		Jobs []system.JobView `json:"jobs"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

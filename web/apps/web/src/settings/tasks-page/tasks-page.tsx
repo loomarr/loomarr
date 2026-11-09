@@ -4,9 +4,8 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, Icon, icons, StatusDot, type StatusTone } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ErrorDetails } from "@/components/loomarr/feedback/error-details";
@@ -14,7 +13,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
@@ -35,6 +33,8 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
   if (job.paused) return { tone: "off", label: "Paused" };
   if (job.running) return { tone: "pending", label: "Running" };
   if (job.lastResult === "error") return { tone: "error", label: "Failed last run" };
+  // An overdue task is never green: its last run went fine, but it is waiting on a worker now.
+  if (job.overdue) return { tone: "warn", label: "Overdue" };
   if (job.lastResult === "ok") return { tone: "ok", label: "OK" };
   return { tone: "off", label: "Not run yet" };
 };
@@ -42,11 +42,13 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
 const groupSummary = (jobs: JobView[]) => {
   const running = jobs.filter((job) => job.running).length;
   const failed = jobs.filter((job) => job.lastResult === "error").length;
+  const overdue = jobs.filter((job) => job.overdue && !job.running).length;
   const paused = jobs.filter((job) => job.paused).length;
   const unavailable = jobs.filter((job) => job.disabledReason).length;
   const details = [
     running && `${running} running`,
     failed && `${failed} failed`,
+    overdue && `${overdue} overdue`,
     paused && `${paused} paused`,
     unavailable && `${unavailable} unavailable`,
   ].filter(Boolean);
@@ -213,11 +215,12 @@ const TasksPage = () => {
                 aria-controls={`task-group-${group.id}`}
                 onClick={() => toggleGroup(group.id)}
               >
-                {groupOpen ? (
-                  <ChevronDown className="text-muted-foreground size-4" aria-hidden />
-                ) : (
-                  <ChevronRight className="text-muted-foreground size-4" aria-hidden />
-                )}
+                <Icon
+                  decorative
+                  glyph={groupOpen ? icons.rowCollapse : icons.rowExpand}
+                  size="compact"
+                  tone="muted"
+                />
                 <span className="font-medium">{group.label}</span>
                 <span className="text-muted-foreground ml-auto text-xs">{groupSummary(groupedJobs)}</span>
               </button>
@@ -279,31 +282,29 @@ const TasksPage = () => {
                                 {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
                               </td>
                               <td className="text-muted-foreground px-4 py-3">
-                                {job.disabledReason
-                                  ? "—"
-                                  : job.paused
-                                    ? "Paused"
-                                    : job.running
-                                      ? "running…"
-                                      : isZero(job.nextRun)
-                                        ? "—"
-                                        : job.overdue
-                                          ? "overdue"
-                                          : formatUntil(job.nextRun ?? zero)}
+                                {job.disabledReason ? (
+                                  "—"
+                                ) : job.paused ? (
+                                  "Paused"
+                                ) : job.running ? (
+                                  "running…"
+                                ) : isZero(job.nextRun) ? (
+                                  "—"
+                                ) : job.overdue ? (
+                                  <span title="Due, but waiting for a free worker">Overdue</span>
+                                ) : (
+                                  formatUntil(job.nextRun ?? zero)
+                                )}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                <Button
+                                <Action
+                                  icon={jobOpen ? "rowCollapse" : "rowExpand"}
+                                  layout="icon"
+                                  onPress={() => toggleJob(job.name)}
                                   variant="ghost"
-                                  size="icon"
-                                  aria-label={`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
-                                  onClick={() => toggleJob(job.name)}
                                 >
-                                  {jobOpen ? (
-                                    <ChevronDown className="size-4" />
-                                  ) : (
-                                    <ChevronRight className="size-4" />
-                                  )}
-                                </Button>
+                                  {`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
+                                </Action>
                               </td>
                             </tr>
                             {jobOpen && (

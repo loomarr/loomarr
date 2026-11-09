@@ -56,21 +56,20 @@ describe("AboutPage", () => {
     cleanup();
   });
 
-  // TMDB's terms require their notice word for word, whatever key is in use (decision 51).
-  it("credits TMDB with its required notice, verbatim", () => {
-    expect(TMDB_NOTICE).toBe(
-      "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.",
-    );
+  // TMDB's terms require their notice word for word, whatever key is in use (#2853).
+  it("names TMDB under Data sources with its required notice, verbatim", () => {
+    expect(TMDB_NOTICE).toBe("This product uses the TMDB API but is not endorsed or certified by TMDB.");
     const { host, cleanup } = render();
-    const credits = host.querySelector('[aria-label="Credits"]');
-    expect(credits?.textContent).toContain(TMDB_NOTICE);
-    expect(credits?.textContent).toContain("Film and TV details, posters and artwork come from TMDB.");
+    const sources = host.querySelector('[aria-label="Data sources"]');
+    expect(sources?.textContent).toContain("Data sources");
+    expect(sources?.textContent).toContain(TMDB_NOTICE);
+    expect(sources?.textContent).toContain("Film and TV details, posters and artwork come from TMDB.");
     cleanup();
   });
 
   it("shows TMDB's logo when the host supplies it, and the notice without it", () => {
     const withLogo = render({ tmdbLogo: <img alt="TMDB" src="/tmdb.svg" /> });
-    expect(withLogo.host.querySelector('[aria-label="Credits"] img[alt="TMDB"]')).not.toBeNull();
+    expect(withLogo.host.querySelector('[aria-label="Data sources"] img[alt="TMDB"]')).not.toBeNull();
     withLogo.cleanup();
     const without = render();
     expect(without.host.querySelector("img")).toBeNull();
@@ -81,7 +80,12 @@ describe("AboutPage", () => {
   // The bug-report facts wait behind one disclosure, like a title's technical details.
   it("keeps the technical details closed until asked", () => {
     const { host, cleanup } = render();
-    expect(host.textContent).not.toContain("9871fef2ac10");
+    // Closed, the details are mounted but hidden until found (find-in-page can still reach them).
+    const hiddenCommit = () =>
+      Array.from(host.querySelectorAll('[hidden="until-found"]')).some((n) =>
+        n.textContent?.includes("9871fef2ac10"),
+      );
+    expect(hiddenCommit()).toBe(true);
     const toggle = Array.from(host.querySelectorAll("[aria-expanded]")).find((n) =>
       n.textContent?.includes("Technical details"),
     );
@@ -89,6 +93,7 @@ describe("AboutPage", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     act(() => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(hiddenCommit()).toBe(false);
     expect(host.textContent).toContain("9871fef2ac10");
     cleanup();
   });

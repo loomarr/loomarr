@@ -9,7 +9,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
@@ -62,7 +61,7 @@ func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
 func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
 	t.Parallel()
 
-	trace := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603"}}}
 	proposal := &ProposalRef{Proposal: proposals.Proposal{Trace: trace}}
 	failure := &Failure{Trace: trace}
@@ -79,18 +78,18 @@ func TestSafeFailureMapsKnownTerminalEvidenceAndRemovesPrivateTrace(t *testing.T
 	t.Parallel()
 
 	privateTrace := proposals.DecisionTrace{
-		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Terminal: suggest.TerminalMalformedExhausted,
+		Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Terminal: proposals.TerminalMalformedExhausted,
 		Candidates: []proposals.DecisionCandidate{{
 			Key: "movie:tmdb:90000603", Name: "private-library-title", Ownership: "library",
-			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: proposals.DispositionSelected, Reason: "selected",
 		}},
 	}
 	failure := safeFailure(FailureBudgetExhausted, privateTrace)
 	if failure.Code != FailureBudgetExhausted || failure.Reason != FailureReasonProviderResponseInvalid || failure.RecoveryAction != RecoveryActionRetryLater {
 		t.Fatalf("safe failure = %+v", failure)
 	}
-	if len(failure.Trace.Candidates) != 0 || failure.Trace.Terminal != suggest.TerminalMalformedExhausted || failure.Trace.RecordedTotal != 1 {
+	if len(failure.Trace.Candidates) != 0 || failure.Trace.Terminal != proposals.TerminalMalformedExhausted || failure.Trace.RecordedTotal != 1 {
 		t.Fatalf("public trace leaked private evidence: %+v", failure.Trace)
 	}
 }
@@ -117,26 +116,26 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 		reason        FailureReason
 		action        RecoveryAction
 	}{
-		{"retrieval failure", suggest.TerminalRetrievalFailure, 0, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
-		{"reference unreadable", suggest.TerminalReferenceUnreadable, 0, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
-		{"retrieval empty", suggest.ReasonRetrievalEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
-		{"selection empty", suggest.FailureSelectionEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
-		{"named set", suggest.TerminalNamedSetUnproven, 0, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
-		{"constraints", suggest.TerminalConstraintsConflict, 0, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
-		{"dates", suggest.TerminalDateSemanticsUnclear, 0, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
-		{"invalid tool", suggest.TerminalInvalidToolCalls, 0, FailureReasonInvalidToolCalls, RecoveryActionRetryLater},
-		{"provider timeout", suggest.TerminalProviderTimeout, 0, FailureReasonProviderTimeout, RecoveryActionRetryLater},
-		{"provider unavailable", suggest.TerminalProviderFailure, 0, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
-		{"malformed final json", suggest.TerminalMalformedExhausted, 0, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
-		{"generation", suggest.TerminalGenerationFailure, 0, FailureReasonGenerationFailed, RecoveryActionRetryLater},
-		{"budget before grounding", suggest.FailureBudgetExhausted, 0, FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater},
-		{"budget after grounding", suggest.FailureBudgetExhausted, 1, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
+		{"retrieval failure", proposals.TerminalRetrievalFailure, 0, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
+		{"reference unreadable", proposals.TerminalReferenceUnreadable, 0, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
+		{"retrieval empty", proposals.ReasonRetrievalEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"selection empty", string(FailureSelectionEmpty), 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"named set", proposals.TerminalNamedSetUnproven, 0, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
+		{"constraints", proposals.TerminalConstraintsConflict, 0, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
+		{"dates", proposals.TerminalDateSemanticsUnclear, 0, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
+		{"invalid tool", proposals.TerminalInvalidToolCalls, 0, FailureReasonInvalidToolCalls, RecoveryActionRetryLater},
+		{"provider timeout", proposals.TerminalProviderTimeout, 0, FailureReasonProviderTimeout, RecoveryActionRetryLater},
+		{"provider unavailable", proposals.TerminalProviderFailure, 0, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
+		{"malformed final json", proposals.TerminalMalformedExhausted, 0, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
+		{"generation", proposals.TerminalGenerationFailure, 0, FailureReasonGenerationFailed, RecoveryActionRetryLater},
+		{"budget before grounding", string(FailureBudgetExhausted), 0, FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater},
+		{"budget after grounding", string(FailureBudgetExhausted), 1, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			trace := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal, SurfacedTotal: tt.surfacedTotal, RecordedTotal: tt.surfacedTotal}
-			if err := suggest.ValidateDecisionTrace(trace); err != nil {
+			trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: tt.terminal, SurfacedTotal: tt.surfacedTotal, RecordedTotal: tt.surfacedTotal}
+			if err := proposals.ValidateDecisionTrace(trace); err != nil {
 				t.Fatalf("trace must be valid: %v", err)
 			}
 			workflow := newWorkflow(&recordingRepository{record: Record{
@@ -162,7 +161,7 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 func TestWorkflowInspectCatalogFailureDoesNotSendAdminToAISettings(t *testing.T) {
 	t.Parallel()
 
-	trace := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalRetrievalFailure}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure}
 	workflow := newWorkflow(&recordingRepository{record: Record{
 		Version: WorkflowVersion1, JobID: "job-catalog-failed", OwnerID: "admin-1", Status: JobFailed,
 		FailureCode: FailureGenerationFailed, FailureTrace: trace,
@@ -183,7 +182,7 @@ func TestWorkflowInspectCatalogFailureDoesNotSendAdminToAISettings(t *testing.T)
 func TestWorkflowInspectProviderFailureOffersAdminAISettings(t *testing.T) {
 	t.Parallel()
 
-	trace := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalProviderFailure}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalProviderFailure}
 	workflow := newWorkflow(&recordingRepository{record: Record{
 		Version: WorkflowVersion1, JobID: "job-provider-failed", OwnerID: "admin-1", Status: JobFailed,
 		FailureCode: FailureGenerationFailed, FailureTrace: trace,
@@ -203,9 +202,9 @@ func TestWorkflowInspectProviderFailureOffersAdminAISettings(t *testing.T) {
 func assertFailureCopy(t *testing.T, terminal string, failure *Failure) {
 	t.Helper()
 	want := map[string][2]string{
-		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."},
-		suggest.TerminalReferenceUnreadable: {"Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."},
-		suggest.TerminalInvalidToolCalls:    {"Loomarr couldn't finish searching for titles.", "Try again later. If this keeps happening, ask an administrator to check AI settings."},
+		proposals.TerminalRetrievalFailure:    {"Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."},
+		proposals.TerminalReferenceUnreadable: {"Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."},
+		proposals.TerminalInvalidToolCalls:    {"Loomarr couldn't finish searching for titles.", "Try again later. If this keeps happening, ask an administrator to check AI settings."},
 	}[terminal]
 	if want != [2]string{} && (failure.Message != want[0] || failure.Guidance != want[1]) {
 		t.Fatalf("failure copy = %+v", failure)

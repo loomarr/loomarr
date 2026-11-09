@@ -7,6 +7,7 @@ import {
   semanticSpace,
   semanticTargets,
   Text,
+  useWindowWidth,
 } from "@loomarr/design-system";
 import { ScrollView, View } from "react-native";
 
@@ -20,6 +21,7 @@ import type {
 } from "./guide.type";
 import { GuideProgrammeDetail } from "./guide-detail";
 import { guideFilterText } from "./guide-filter";
+import { guideRailWidth } from "./guide-rail";
 import { TvGuideSurface } from "./guide-tv";
 
 const defaultFilters: readonly GuideFilterOption[] = [
@@ -29,7 +31,8 @@ const defaultFilters: readonly GuideFilterOption[] = [
 ];
 
 const guideRowHeight = (density: Density) => (density === "tv" ? 84 : density === "touch" ? 68 : 60);
-const guideRailWidth = (density: Density) => (density === "tv" ? 280 : density === "touch" ? 168 : 196);
+const railWidthOf = (density: Density, windowWidth: number) =>
+  density === "tv" ? 280 : density === "touch" ? 168 : guideRailWidth(windowWidth);
 
 const GuideSurface = ({
   channelWindow,
@@ -46,6 +49,7 @@ const GuideSurface = ({
   renderChannelLogo,
   selection,
 }: GuideSurfaceProps) => {
+  const windowWidth = useWindowWidth();
   const viewportWidth = Reflect.get(globalThis, "innerWidth");
   // The dedicated ten-foot guide assumes the 1280px canvas used by supported TV hosts.
   // Storybook and browser previews can render TV density in a phone-sized viewport; retain
@@ -70,7 +74,7 @@ const GuideSurface = ({
     );
   }
   const rowHeight = guideRowHeight(density);
-  const railWidth = guideRailWidth(density);
+  const railWidth = railWidthOf(density, windowWidth);
   const minimumGridWidth = railWidth + (density === "tv" ? 900 : density === "touch" ? 560 : 640);
   const tickCount = 5;
   const span = layout.toMs - layout.fromMs;

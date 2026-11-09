@@ -1,6 +1,6 @@
 // Command loomarr is the single-binary media-channel builder (design §2, §21).
-// Phase 1 wires config, structured logging, and an HTTP server exposing /healthz
-// and /readyz with graceful shutdown. Subsystems are added in later phases.
+// It wires config, structured logging, and the application generation loop (internal/app):
+// an HTTP server exposing /healthz and /readyz with graceful shutdown and in-place restart.
 package main
 
 import (
@@ -38,12 +38,10 @@ func main() {
 // dispatch routes the command line. With no arguments — the ENTRYPOINT case — it boots
 // the server, so the shipped image's behaviour is unchanged.
 //
-// ⚠ main() previously ignored os.Args entirely, which meant every argument booted a
-// server. compose.yaml's healthcheck had been calling `/loomarr healthcheck` against
-// that for as long as the file existed: the argument was discarded and a second full
-// instance started, failed to bind the port, and exited non-zero every 30 seconds. The
-// unknown-subcommand error below is the part that keeps this honest — a typo now fails
-// visibly instead of quietly starting something.
+// ⚠ main() must not ignore os.Args: if every argument booted a server, compose.yaml's
+// `/loomarr healthcheck` would start a second full instance that fails to bind the port and
+// exits non-zero every 30 seconds. The unknown-subcommand error below is what keeps this
+// honest — a typo fails visibly instead of quietly starting something.
 func dispatch(args []string) error {
 	if len(args) == 0 {
 		return run()
@@ -124,6 +122,10 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 		// it never goes stale.
 		{Key: diagnostics.StartupCheckPlayoutTonemap, Label: "HDR tone mapping", Required: false,
 			Mode: diagnostics.HealthCheckContinuous, RemediationRoute: "/settings/system/playback"},
+		// Tasks waiting more than twice their own interval for a worker (#2721).
+		{Key: diagnostics.StartupCheckScheduledTasks, Label: "Scheduled tasks", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/system/tasks"},
 	}, time.Now)
 }
 
@@ -159,8 +161,8 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	log.Info("loomarr starting", "listen", cfg.ListenAddr, "log_level", cfg.LogLevel, "generation", generation)
 
 	// Open the store (§5): backend chosen by DATABASE_URL scheme, migrations run
-	// on startup when AUTO_MIGRATE. If unset, run without a store for now (later
-	// phases require it; readiness reflects the truth either way).
+	// on startup when AUTO_MIGRATE. If unset, run without a store (/readyz reports why;
+	// readiness reflects the truth either way).
 	var st store.Store
 	if cfg.DatabaseURL != "" {
 		st, err = records.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)

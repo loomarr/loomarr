@@ -22,7 +22,7 @@ func (s State) Terminal() bool { return s == Available || s == Unavailable }
 func (s State) Emits() bool { return s == Available || s == Unavailable }
 
 // Record is the persisted provisioning state for one Title (§3). The domain
-// operates on it as a value; the store (Phase 3) owns persistence and the epoch
+// operates on it as a value; the store owns persistence and the epoch
 // timestamp encoding (§3 note).
 type Record struct {
 	Key         Key

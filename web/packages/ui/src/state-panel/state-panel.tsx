@@ -1,24 +1,12 @@
-import { Action, ActivityIndicator, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, BrandMark, LoadingStrip, Surface, Text } from "@loomarr/design-system";
 
-import type { StatePanelKind, StatePanelProps } from "./state-panel.type";
+import type { StatePanelProps } from "./state-panel.type";
 
-const statePresentation: Record<
-  Exclude<StatePanelKind, "loading">,
-  {
-    icon: typeof icons.info;
-    iconLabel: string;
-    tone: "danger" | "info" | "muted" | "warning";
-  }
-> = {
-  empty: { icon: icons.info, iconLabel: "No content", tone: "muted" },
-  error: { icon: icons.warning, iconLabel: "Error", tone: "danger" },
-  offline: { icon: icons.warning, iconLabel: "Offline", tone: "warning" },
-  permission: { icon: icons.warning, iconLabel: "Permission required", tone: "warning" },
-};
-
+// One family for every empty list, error, 404, cover and onboarding: the static colour bars (4px), a
+// sentence-case heading, one plain sentence and at most one action. The bars are the test card a set
+// showed when nothing was on, so they stay still; only loading lights them, as the LoadingStrip (#2789).
 const StatePanel = ({ action, description, density = "pointer", icon, kind, title }: StatePanelProps) => {
   const loading = kind === "loading";
-  const presentation = loading ? undefined : statePresentation[kind];
 
   return (
     <Surface
@@ -36,15 +24,10 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
       {icon ??
         (loading ? (
           <Surface alignItems="center" backgroundColor="transparent" borderWidth={0}>
-            <ActivityIndicator accessibilityLabel={title} size={density === "tv" ? "tv" : "control"} />
+            <LoadingStrip accessibilityLabel={title} density={density} />
           </Surface>
         ) : (
-          <Icon
-            accessibilityLabel={presentation?.iconLabel ?? title}
-            glyph={presentation?.icon ?? icons.info}
-            size={density === "tv" ? "tv" : "control"}
-            tone={presentation?.tone ?? "info"}
-          />
+          <BrandMark contained={false} decorative size={4} />
         ))}
       <Surface
         alignItems="center"

@@ -1,6 +1,5 @@
-import { Action } from "@loomarr/design-system";
+import { Action, ActivityIndicator } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -23,13 +22,23 @@ const LABELS: Record<string, string> = {
   loomarr: "Loomarr core",
   media_server: "Media server",
   requester: "Requester",
+  sonarr: "Sonarr",
+  radarr: "Radarr",
   tunarr: "Tunarr",
+  tunarr_library: "Tunarr library",
+  livetv: "Live TV guide",
   llm: "AI provider",
   tmdb: "TMDB",
   filler: "Filler",
 };
 
-const serviceLabel = (name: string): string => LABELS[name] ?? name;
+// An unlisted key still reads as words ("new_probe" → "New probe"), never as the raw key (#2734).
+const serviceLabel = (name: string): string => {
+  const label = LABELS[name];
+  if (label) return label;
+  const words = name.replaceAll("_", " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+};
 
 const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: ServicesPanelProps) => {
   const rows = view.rows ?? [];
@@ -39,7 +48,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
       <div className="border-border flex items-baseline gap-2.5 border-b px-4 py-3.5">
         <h2 className="text-sm font-medium">Services</h2>
         <span className="text-muted-foreground ml-auto flex items-center gap-1.5 font-mono text-xs">
-          {refreshing ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}
+          {refreshing ? <ActivityIndicator decorative size="compact" tone="inherit" /> : null}
           checked every 30s · the same checks Settings runs
         </span>
       </div>
@@ -85,8 +94,9 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
               <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
-                    which reads as a rendering bug rather than an answer. */}
-                {row.target || "not configured"}
+                    which reads as a rendering bug rather than an answer. ⚠ A PASSING row with
+                    no target is not unconfigured: TMDB has no target by design (#2734). */}
+                {row.target || (row.ok ? "" : "not configured")}
               </span>
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}

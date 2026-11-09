@@ -32,6 +32,22 @@ describe("airStateOf", () => {
     expect(state.dot).toBe("reconciling");
   });
 
+  // #2728: "On air" sat beside "Programme information isn't available" and an empty guide row.
+  // A live channel with nothing in now/next has no schedule, whatever its titles say.
+  it("reads No schedule yet for a live channel with nothing in now/next", () => {
+    const state = airStateOf(channel({ status: "live", inAppPlayable: true }), false);
+    expect(state.label).toBe("No schedule yet");
+    expect(state.dot).toBe("off");
+    expect(state.buildSchedule).toBe(true);
+  });
+
+  // Before now/next has answered, the channel's own status stands: no flash of "No schedule".
+  it("keeps On air while now/next hasn't answered", () => {
+    const state = airStateOf(channel({ status: "live", inAppPlayable: true }), undefined);
+    expect(state.label).toBe("On air");
+    expect(state.buildSchedule).toBeFalsy();
+  });
+
   it("reads Not on air yet while building", () => {
     expect(airStateOf(channel({ status: "building", inAppPlayable: false })).label).toBe("Not on air yet");
   });

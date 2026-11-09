@@ -28,6 +28,19 @@ const (
 	News      Role = "news"
 )
 
+// Valid reports whether r is one of the closed set of clip roles, Unclassified included.
+func (r Role) Valid() bool {
+	switch r {
+	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial, Political, News:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidConcrete reports whether r is a valid role that names what the clip is, so not Unclassified.
+func (r Role) ValidConcrete() bool { return r != Unclassified && r.Valid() }
+
 // Placement says where a Ready clip may be scheduled. It is deliberately separate from Role:
 // selecting a source can authorize generic break-body use without claiming that unknown bytes are
 // a commercial.
@@ -308,8 +321,7 @@ func (c Clip) ID() string { return c.Hash }
 // bumper/flex fill, never as a matched commercial.
 //
 // ⚠ `Category` here is the DERIVED product-leaf shadow of the taxonomy tags (§10 V45a), so
-// `Category != ""` means "has at least one product tag" — the same completeness the flat category
-// string used to assert, now sourced from the graph. A clip tagged only on non-product axes
+// `Category != ""` means "has at least one product tag". A clip tagged only on non-product axes
 // (`psa`, `christmas`) is correctly NOT "tagged" for matched-commercial purposes.
 func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""
@@ -381,3 +393,22 @@ type Airing struct {
 	AiredAt    time.Time
 	RecordedAt time.Time
 }
+
+// TranscriptNone is the sentinel a wordless clip records (§10 V44) — the transcript column's
+// analogue of the language gate's language.None.
+//
+// ⚠ **A NON-EMPTY marker is load-bearing.** The transcript column has the same two meanings
+// `language` does — "not yet transcribed" and "transcribed, wordless" — and the row default for
+// BOTH is `""`. Recording a literal `""` for a silent clip could not distinguish them, so every
+// pass would re-run Whisper on every wordless clip forever, ~341s each under QEMU.
+//
+// It is deliberately a bracketed marker, not real speech, so a search over transcripts never
+// surfaces it as content and the tagger — which reads `Transcript` as a text signal — sees a token
+// it will not ground a brand or era on. A wordless clip must still be tagged from its OTHER
+// signals (its filename, its sidecar, or the vision rung), never from this placeholder.
+//
+// ⚠ **A documented tension with 00038's column note**, surfaced rather than papered over: that
+// migration says the row stores `""` for a wordless clip and "does not need to tell [the two
+// meanings] apart". Both cannot hold. This resolves it toward the never-re-run guarantee the same
+// migration states as its whole point.
+const TranscriptNone = "[no speech]"

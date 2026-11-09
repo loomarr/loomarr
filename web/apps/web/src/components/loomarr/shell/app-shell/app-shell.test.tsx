@@ -1,7 +1,7 @@
-import { LoomarrProvider } from "@loomarr/design-system";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
 
@@ -30,6 +30,60 @@ describe("AppShell", () => {
     expect(main).toHaveAttribute("tabindex", "-1");
     await userEvent.tab();
     expect(skip).toHaveFocus();
+  });
+
+  // The banner above the page is not part of the page's scroller: inside `main` it adds its own
+  // height to main's overflow, a second scrollbar at phone width (#2726).
+  it("renders a banner above main, outside its scroll container", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell banner={<section aria-label="Demo tour" />} isAdmin>
+            content
+          </AppShell>
+        }
+      />,
+    );
+    const main = await screen.findByRole("main");
+    const banner = screen.getByRole("region", { name: "Demo tour" });
+
+    expect(main).not.toContainElement(banner);
+    expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Scroll must end at `main`: chaining into the document drags the whole shell off-screen (#2724).
+  it("keeps scroll inside main", async () => {
+    renderShell(true);
+    expect(await screen.findByRole("main")).toHaveClass("overscroll-contain");
+  });
+
+  // One focus style across the app: the amber ring the design system's controls draw. A rail
+  // control with no focus classes falls back to the browser's white rectangular outline (#2780).
+  // The rail's Sign out is a design-system Action, which draws its own amber focus border.
+  it("draws the amber focus ring on every plain rail control", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin onLogout={vi.fn()} serverVersion="v1.0.0">
+            content
+          </AppShell>
+        }
+      />,
+    );
+    await screen.findByRole("main");
+    const rail = [
+      screen.getByRole("button", { name: /search/i }),
+      screen.getByRole("link", { name: "Guide" }),
+      screen.getByRole("link", { name: /About/ }),
+      screen.getByRole("link", { name: /Your account/ }),
+    ];
+    for (const control of rail) {
+      expect(control).toHaveClass(
+        "focus-visible:ring-2",
+        "focus-visible:ring-signal",
+        "focus-visible:outline-none",
+      );
+    }
   });
 
   it("shows the server identity above the account footer and links admins to About", async () => {
@@ -178,11 +232,7 @@ describe("AppShell", () => {
         removeEventListener: vi.fn(),
       }));
       try {
-        render(
-          <LoomarrProvider theme="dark">
-            <RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />
-          </LoomarrProvider>,
-        );
+        render(<RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />);
 
         expect(await screen.findByTestId("phone-bottom-bar-placeholder")).toHaveStyle({ height: "49px" });
 
@@ -192,6 +242,41 @@ describe("AppShell", () => {
         vi.unstubAllGlobals();
       }
     });
+
+    // #2751: Search, top right in a header row on every page, wired to the rail's same handler.
+    it("puts Search in a phone header that opens the shell's search", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        addEventListener: vi.fn(),
+        matches: false,
+        media: query,
+        removeEventListener: vi.fn(),
+      }));
+      const onOpenCommand = vi.fn();
+      try {
+        render(
+          <RouterHarness
+            content={
+              <AppShell isAdmin onOpenCommand={onOpenCommand}>
+                content
+              </AppShell>
+            }
+          />,
+        );
+        const header = await screen.findByRole("banner");
+        await userEvent.click(await within(header).findByRole("button", { name: "Search" }));
+        expect(onOpenCommand).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
+  // Desktop is unchanged: the rail's Search button, and no phone header row.
+  it("renders no phone header at desktop width", async () => {
+    renderShell(true);
+    await screen.findByRole("main");
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phone-header-placeholder")).not.toBeInTheDocument();
   });
 
   // #1817 item 3, decision X2: Watch is the rail's second entry — matching the position the
@@ -251,7 +336,8 @@ describe("AppShell", () => {
       const watch = await screen.findByRole("link", { name: "Watch" });
       // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at 500, never amber.
       expect(watch).toHaveClass("bg-static-800", "font-medium", "text-foreground");
-      expect(watch.className).not.toContain("signal");
+      // Amber is focus only: the focus-visible ring is the one place `signal` may appear.
+      expect(watch.className.replace(/focus-visible:ring-signal/, "")).not.toContain("signal");
       expect(screen.getByRole("link", { name: "Guide" })).not.toHaveClass("bg-static-800");
     });
 
