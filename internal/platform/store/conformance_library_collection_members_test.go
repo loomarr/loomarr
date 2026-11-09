@@ -37,8 +37,8 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := map[string][]LibraryCollectionMember{
 		night: {
-			{CollectionID: night, Kind: "series", TMDBID: "90000003", TVDBID: "90000002"},
-			{CollectionID: night, Kind: "movie", TMDBID: "90000001"},
+			{CollectionID: night, Kind: "series", IDs: []LibraryID{{"tmdb", "90000003"}, {"tvdb", "90000002"}}},
+			{CollectionID: night, Kind: "movie", IDs: []LibraryID{{"imdb", "tt90000001"}, {"tmdb", "90000001"}}},
 		},
 		home: {{CollectionID: home, Kind: "movie"}},
 	}

@@ -17,11 +17,7 @@ func (f libraryTitlesFake) LibraryTitles(_ context.Context, since time.Time) ([]
 
 func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
 	for _, t := range f {
-		id := t.TMDBID
-		if namespace == "tvdb" {
-			id = t.TVDBID
-		}
-		if t.Kind == kind && id == value {
+		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}
@@ -29,8 +25,10 @@ func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, nam
 }
 
 var testLibraryTitles = libraryTitlesFake{
-	{ID: "lib-film", Kind: "movie", Name: "Film", TMDBID: "90000001", Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
-	{ID: "lib-show", Kind: "series", Name: "Show", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
+	{ID: "lib-film", Kind: "movie", Name: "Film", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000001"}},
+		Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
+	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []store.LibraryID{
+		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y"},
 }
 
 // The availability scan reads the Library's titles, so a title confirms with its library item id

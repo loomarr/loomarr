@@ -38,11 +38,7 @@ func (f *fakeLibrary) LibraryTitles(context.Context, time.Time) ([]store.Library
 
 func (f *fakeLibrary) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
 	for _, t := range f.titles {
-		id := t.TMDBID
-		if namespace == "tvdb" {
-			id = t.TVDBID
-		}
-		if t.Kind == kind && id == value {
+		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}

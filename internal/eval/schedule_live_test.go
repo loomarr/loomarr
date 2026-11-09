@@ -662,10 +662,10 @@ func liveScheduleEvidenceFixture(t *testing.T) (*fakeLibrary, *testkit.TMDB, Sch
 	t.Helper()
 	media := newFakeLibrary()
 	media.titles = []store.LibraryTitle{
-		{ID: "show-simpsons", Name: "The Simpsons", Kind: "series", TMDBID: "456"},
-		{ID: "raiders", Name: "Raiders of the Lost Ark", Kind: "movie", TMDBID: "85"},
-		{ID: "temple", Name: "Indiana Jones and the Temple of Doom", Kind: "movie", TMDBID: "87"},
-		{ID: "crusade", Name: "Indiana Jones and the Last Crusade", Kind: "movie", TMDBID: "89"},
+		{ID: "show-simpsons", Name: "The Simpsons", Kind: "series", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "456"}}},
+		{ID: "raiders", Name: "Raiders of the Lost Ark", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "85"}}},
+		{ID: "temple", Name: "Indiana Jones and the Temple of Doom", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "87"}}},
+		{ID: "crusade", Name: "Indiana Jones and the Last Crusade", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "89"}}},
 	}
 	episodeRows := make([]store.LibraryEpisode, 0, 8)
 	evidence := make([]ScheduleEpisodeEvidence, 0, 8)

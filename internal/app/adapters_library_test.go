@@ -27,9 +27,12 @@ func (f ownCollectionsFake) ListLibraryCollections(context.Context) ([]store.Lib
 // The household's collections stamp a title under each key it can be known by (#2151 step 16).
 func TestLibraryBoxSetsIndexesTheHouseholdsCollections(t *testing.T) {
 	own := ownCollectionsFake{members: []store.LibraryCollectionMember{
-		{CollectionID: "own-1", Kind: "series", TMDBID: "90000003", TVDBID: "90000002"},
-		{CollectionID: "own-1", Kind: "movie", TMDBID: "90000001"},
-		{CollectionID: "own-2", Kind: "movie", TMDBID: "90000001"},
+		{CollectionID: "own-1", Kind: "series", IDs: []store.LibraryID{
+			{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}},
+		{CollectionID: "own-1", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000001"}}},
+		// An id only another catalog knows makes no provisioning key.
+		{CollectionID: "own-2", Kind: "movie", IDs: []store.LibraryID{
+			{Namespace: "imdb", Value: "tt90000001"}, {Namespace: "tmdb", Value: "90000001"}}},
 		{CollectionID: "own-2", Kind: "movie"},
 	}}
 	sets := &libraryBoxSets{own: own, ttl: time.Hour}
