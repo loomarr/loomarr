@@ -1,6 +1,5 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
-import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
 import { LibraryStatusOutputBodyHealth } from "@loomarr/api/models/libraryStatusOutputBodyHealth";
 import { ListLibraryItemsKind } from "@loomarr/api/models/listLibraryItemsKind";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -20,14 +19,15 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
+import { useLibraryScanFrames } from "../use-library-scan-frames";
 
 // LIBRARY (#2151 decision 22): the titles Loomarr found in its media folders, as a poster grid
 // under one line about the library. The filter and the search live in the URL; the grid loads a
-// page at a time as it scrolls. While new files are being read, the status and the visible titles
-// refetch every 5 s (decision 35), so "Getting ready" clears on its own.
+// page at a time as it scrolls. Nothing polls: an import's progress arrives as library_scan frames
+// written into the status, and each library_titles frame refetches the titles (the events bus), so
+// new titles appear and "Getting ready" clears on their own.
 
 const PAGE = 60;
-const BUSY_REFETCH_MS = 5000;
 const SEARCH_SETTLE_MS = 250;
 
 // The poster grid is 6 across at most, so a poster is drawn at most about a sixth of the frame.
@@ -42,10 +42,6 @@ const titleOf = (item: LibraryItemDTO): LibraryShelfTitle => ({
   attention: item.unplayable > 0 || item.extraCopies > 0,
   poster: item.poster ? <ServedImage alt="" image={item.poster} sizes={POSTER_SIZES} /> : undefined,
 });
-
-// The scanner is walking or reading, or files are still waiting to be read.
-const isBusy = (status: LibraryStatusOutputBody | undefined) =>
-  status ? status.scan.stage !== "idle" || status.headersPending > 0 : false;
 
 // The search as typed, settled for a moment before it asks the server.
 const useSettled = (value: string) => {
@@ -78,11 +74,9 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const kind =
     filter === ListLibraryItemsKind.movie || filter === ListLibraryItemsKind.series ? filter : undefined;
 
-  const status = libraryApi.useLibraryStatus({
-    query: { refetchInterval: (query) => (isBusy(unwrap(query.state.data)) ? BUSY_REFETCH_MS : false) },
-  });
+  useLibraryScanFrames();
+  const status = libraryApi.useLibraryStatus();
   const current = unwrap(status.data);
-  const busy = isBusy(current);
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
   const roots = libraryApi.useListLibraryRoots({
     query: { enabled: current?.health === LibraryStatusOutputBodyHealth.folder_offline },
@@ -122,7 +116,6 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
       const loaded = pages.reduce((n, page) => n + page.items.length, 0);
       return loaded < last.total && last.items.length > 0 ? loaded : undefined;
     },
-    refetchInterval: busy ? BUSY_REFETCH_MS : false,
   });
   const titles = useMemo(
     () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],

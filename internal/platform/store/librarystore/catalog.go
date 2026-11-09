@@ -75,6 +75,12 @@ type LibraryCatalogStore interface {
 	DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error)
 	// CountLibraryCatalog counts every cached key.
 	CountLibraryCatalog(ctx context.Context) (int, error)
+	// CountDueLibraryCatalog counts the keys DueLibraryCatalog lists with the titles never fetched,
+	// uncapped: every one due as new now. New and Stale are ignored.
+	CountDueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) (int, error)
+	// LibraryCatalogTitle is the name and year (0 unknown) of a title whose details come from key;
+	// "" when no title has it.
+	LibraryCatalogTitle(ctx context.Context, key LibraryCatalogKey) (string, int, error)
 	// SaveLibraryCatalog stores a fetched record, in the shape version and language it was read
 	// in, and reports whether it differs from the one held.
 	SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
@@ -114,24 +120,29 @@ func (s *Store) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogKey)
 	return record, fetched > 0, nil
 }
 
-func (s *Store) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error) {
-	now := due.Now.UnixMilli()
-	var out []LibraryCatalogKey
-	// outdated is a record saved in an older shape than its kind is read in now, or in another
-	// language.
-	outdated, args := fmt.Sprintf(` OR version = %d`, catalogRefresh), []any{}
+// dueAsNew is the condition a key is due with the titles never fetched by, and its arguments: never
+// fetched, or saved in an older shape than its kind is read in now, in another language, or marked
+// by RefreshLibrary; and no failed fetch holding it back past due.Now.
+func dueAsNew(due LibraryCatalogDue) (string, []any) {
+	where, args := fmt.Sprintf(`(fetched_at_ms = 0 OR version = %d`, catalogRefresh), []any{}
 	for _, kind := range slices.Sorted(maps.Keys(due.Versions)) {
-		outdated += ` OR (kind = ? AND version < ?)`
+		where += ` OR (kind = ? AND version < ?)`
 		args = append(args, kind, due.Versions[kind])
 	}
 	if due.Language != "" {
-		outdated += ` OR language <> ?`
+		where += ` OR language <> ?`
 		args = append(args, due.Language)
 	}
+	return where + `) AND retry_at_ms <= ?`, append(args, due.Now.UnixMilli())
+}
+
+func (s *Store) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error) {
+	now := due.Now.UnixMilli()
+	var out []LibraryCatalogKey
 	if due.New > 0 {
+		where, args := dueAsNew(due)
 		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
-			WHERE (fetched_at_ms = 0`+outdated+`) AND retry_at_ms <= ?
-			ORDER BY provider, kind, external_id LIMIT ?`, append(args, now, due.New)...)
+			WHERE `+where+` ORDER BY provider, kind, external_id LIMIT ?`, append(args, due.New)...)
 		if err != nil {
 			return nil, err
 		}
@@ -177,6 +188,29 @@ func (s *Store) CountLibraryCatalog(ctx context.Context) (int, error) {
 	var n int
 	if err := s.h.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_catalog`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count library catalog: %w", err)
+	}
+	return n, nil
+}
+
+func (s *Store) LibraryCatalogTitle(ctx context.Context, key LibraryCatalogKey) (string, int, error) {
+	var name string
+	var year int
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT name, year FROM library_items WHERE catalog = ? ORDER BY id LIMIT 1`),
+		key.String()).Scan(&name, &year)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, nil
+	}
+	if err != nil {
+		return "", 0, fmt.Errorf("library catalog title: %w", err)
+	}
+	return name, year, nil
+}
+
+func (s *Store) CountDueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) (int, error) {
+	where, args := dueAsNew(due)
+	var n int
+	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_catalog WHERE `+where), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count due library catalog: %w", err)
 	}
 	return n, nil
 }

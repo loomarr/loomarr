@@ -105,6 +105,12 @@ type Importer struct {
 	// RootReadability hears when a pass finds a root stopped opening, or opens again (decision
 	// 32). Nil hears nothing.
 	RootReadability func(ctx context.Context, root string, readable bool)
+	// Tracker records the walk's and the header reads' progress, steps 1 and 2 of an import; nil
+	// records none.
+	Tracker *Tracker
+	// TitlesChanged hears each write that changes the Library's titles: an item written, a file's
+	// header read, files marked gone. It must not block; nil hears nothing.
+	TitlesChanged func()
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
@@ -142,15 +148,6 @@ type Importer struct {
 	confirmed map[string]bool
 }
 
-// Stage is what a pass is doing.
-type Stage string
-
-const (
-	StageIdle    Stage = "idle"
-	StageWalking Stage = "walking"
-	StageReading Stage = "reading"
-)
-
 // RootState is how one root's last pass ended.
 type RootState string
 
@@ -171,30 +168,35 @@ type RootResult struct {
 	Held int
 }
 
-// Progress is the scanner's state for the status endpoint.
+// Progress is how the scanner's last passes ended, for the status endpoint. How far a running
+// import is lives in the Tracker.
 type Progress struct {
-	Stage       Stage
-	HeadersDone int
-	HeadersAll  int
-	// Waiting is true while header reads wait for live playout to end.
-	Waiting     bool
-	StartedAt   time.Time
 	CompletedAt time.Time
 	Roots       []RootResult
 	// ArrIncomplete is true when an arr failed to list on the last pass.
 	ArrIncomplete bool
 }
 
-// Progress returns the scanner's current state.
+// Progress returns how the scanner's last passes ended.
 func (im *Importer) Progress() Progress {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	p := im.progress
 	p.Roots = append([]RootResult(nil), p.Roots...)
-	if p.Stage == "" {
-		p.Stage = StageIdle
-	}
 	return p
+}
+
+// Settled reports whether a full pass has completed and neither the walk nor the header reads
+// run now.
+func (im *Importer) Settled() bool {
+	return !im.Progress().CompletedAt.IsZero() && !im.Tracker.Active(StepWalking) && !im.Tracker.Active(StepReading)
+}
+
+// titlesChanged tells TitlesChanged.
+func (im *Importer) titlesChanged() {
+	if im.TitlesChanged != nil {
+		im.TitlesChanged()
+	}
 }
 
 func (im *Importer) setProgress(update func(*Progress)) {
@@ -241,14 +243,10 @@ func (im *Importer) Run(ctx context.Context) error {
 func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 	im.run.Lock()
 	defer im.run.Unlock()
-	now := im.now()
-	im.setProgress(func(p *Progress) {
-		p.Stage, p.StartedAt, p.Roots, p.ArrIncomplete = StageWalking, now, nil, false
-		if !im.reading {
-			p.HeadersDone, p.HeadersAll, p.Waiting = 0, 0, false
-		}
-	})
-	defer im.settle()
+	im.setProgress(func(p *Progress) { p.Roots, p.ArrIncomplete = nil, false })
+	// Its total is known once the roots are listed below.
+	im.Tracker.Begin(StepWalking, 0)
+	defer im.Tracker.End(StepWalking)
 
 	all, err := im.Store.LibraryRoots(ctx)
 	if err != nil {
@@ -268,6 +266,19 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		return nil, err
 	}
 
+	// The walk's total is the top-level entries of every root it walks, listed once up front.
+	reports := map[string]*walkReport{}
+	for _, root := range all.Roots {
+		if root.InUse && roots[root.Path] {
+			r := &walkReport{tracker: im.Tracker, name: filepath.Base(root.Path)}
+			if !im.stalled(root.Path) {
+				r.entries = topEntries(ctx, root.Path)
+			}
+			reports[root.Path] = r
+			im.Tracker.Grow(StepWalking, r.entries)
+		}
+	}
+
 	var queue []pending
 	var results []RootResult
 	for _, root := range all.Roots {
@@ -279,7 +290,9 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		result, waiting, err := im.scanRoot(ctx, root.Path, idx, nil)
+		result, waiting, err := im.scanRoot(ctx, root.Path, idx, nil, reports[root.Path])
+		// However its walk ended, every one of the root's entries is finished with.
+		reports[root.Path].close()
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", root.Path, err)
 		}
@@ -318,9 +331,10 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 		return nil, nil
 	}
 	idx := im.arrIndex(ctx, all.Paths, false)
-	im.setProgress(func(p *Progress) { p.Stage, p.ArrIncomplete = StageWalking, !idx.complete })
-	defer im.settle()
-	result, queue, err := im.scanRoot(ctx, root, idx, dirs)
+	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
+	// A folder pass is a few folders a change named: it is not step 1 of an import, and shows
+	// only the header reads it queues.
+	result, queue, err := im.scanRoot(ctx, root, idx, dirs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", root, err)
 	}
@@ -333,17 +347,6 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 		}
 	})
 	return queue, nil
-}
-
-// settle shows the stage an import leaves the scanner in: reading while a header stage runs,
-// else idle.
-func (im *Importer) settle() {
-	im.setProgress(func(p *Progress) {
-		p.Stage = StageIdle
-		if im.reading {
-			p.Stage = StageReading
-		}
-	})
 }
 
 // ArrChanged notes that an arr changed item, or changed files without naming the item (nil): the
@@ -538,13 +541,15 @@ func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) e
 		if err := im.Store.DeleteLibraryFiles(ctx, root); err != nil {
 			return err
 		}
+		im.titlesChanged()
 	}
 	return nil
 }
 
 // scanRoot walks one root, or only the folders of it in scope when scope is set, and writes what
-// changed. It returns the files whose headers are unread.
-func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex, scope []string) (RootResult, []pending, error) {
+// changed. It returns the files whose headers are unread. report, when not nil, hears how the
+// walk of the whole root goes.
+func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex, scope []string, report *walkReport) (RootResult, []pending, error) {
 	im.gen++
 	gen := im.gen
 	var save []librarystore.LibraryFile
@@ -563,7 +568,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	}
 	walk, done, err := watchedWalk(ctx, orDuration(im.WalkStall, walkStall), func(steps *atomic.Int64) (Walk, error) {
 		if scope == nil {
-			return walkRoot(ctx, root, steps)
+			return walkRoot(ctx, root, steps, report)
 		}
 		scope = existingFolders(root, scope)
 		return walkFolders(ctx, root, scope, steps)
@@ -751,12 +756,16 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
 		return result, nil, err
 	}
+	if len(save) > 0 {
+		im.titlesChanged()
+	}
 	// Origins are marked unseen only after a complete walk, with no removal held and every arr
 	// answering: a file that waited for an arr was not written, and its series not seen.
 	if walk.Complete && result.State != RootHeld && idx.complete {
 		if err := im.markUnseen(ctx, root, b.seen, now); err != nil {
 			return result, nil, err
 		}
+		im.titlesChanged()
 		if scope == nil {
 			if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return result, nil, err
@@ -900,8 +909,13 @@ func (im *Importer) markUnseen(ctx context.Context, root string, seen map[invent
 	return im.Inventory.MarkUnseen(ctx, Authority(root), at, keys)
 }
 
+// apply writes one item. Every item a pass or a header read writes goes through here.
 func (im *Importer) apply(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error) {
-	return im.Inventory.ApplySnapshot(ctx, snapshot)
+	id, err := im.Inventory.ApplySnapshot(ctx, snapshot)
+	if err == nil {
+		im.titlesChanged()
+	}
+	return id, err
 }
 
 // lastHeader is the header facts the inventory holds for a file origin and the header.Version that

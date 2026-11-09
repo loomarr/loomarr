@@ -30,16 +30,25 @@ interface LibraryPathMapping {
   byHand: boolean;
 }
 
-/** What the scanner is doing now. */
+/** What the scanner is doing now: the earliest of an import's three steps still running. */
 interface LibraryScan {
   /** False when reading media folders is turned off. */
   enabled: boolean;
-  /** walking lists folders; reading reads new files' details. */
-  stage: "idle" | "walking" | "reading";
-  headersDone: number;
-  headersTotal: number;
-  /** Reading waits while someone is watching. */
+  /** walking looks through the folders; reading reads each new file; lookingUp looks up details. */
+  step: "idle" | "walking" | "reading" | "lookingUp";
+  /** The step's number, 1 to 3; 0 when idle. */
+  stepNumber: number;
+  done: number;
+  /** 0 while the step is still counting. */
+  total: number;
+  /** The folder, file or title the step is on; absent when unknown. */
+  current?: string;
+  /** Seconds the step has left; absent until it can be told. */
+  etaSeconds?: number;
+  /** The step waits while someone is watching. */
   paused: boolean;
+  /** An hourly pass with nothing to add: one small line, not the progress block. */
+  quiet: boolean;
 }
 
 /** A title that became ready while the import runs (decision 29). */

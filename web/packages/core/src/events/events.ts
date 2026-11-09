@@ -86,6 +86,14 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   settings: {
     prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness"],
   },
+  // How far a library import is, whole and latest-wins: the screens showing it write each frame
+  // into their status read (applyLibraryScanFrame) rather than refetch it a second. Once
+  // everything is idle the status refetches once, for the last scan's time and the counts.
+  library_scan: { prefixes: ["/v1/library/status"], when: (e) => e.step === "idle" },
+  // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
+  // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
+  // frames would lose rows this bus drops.
+  library_titles: { prefixes: ["/v1/library/items", "/v1/library/needs"] },
 };
 
 // The frame types the stream subscribes to: every event the spec declares.

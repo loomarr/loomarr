@@ -13,7 +13,7 @@ import {
 import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
 import { ModalOverlay } from "../../overlay";
-import { LibraryPoster } from "../library-poster";
+import { LibraryPoster, Twirl } from "../library-poster";
 import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
@@ -140,28 +140,63 @@ const Headline = ({
   scan: LibraryScan;
   readySoFar?: readonly LibraryReadyTitle[];
 }) => {
-  const { percent, reading, text: headline, tone } = scanHeadline(scan);
+  const words = scanHeadline(scan);
+  if (words.quiet) {
+    // An hourly pass with nothing to add: one small line, not the block.
+    return (
+      <Line gap="control">
+        <Twirl />
+        <Text textRole="body" tone="secondary">
+          {words.text}
+        </Text>
+      </Line>
+    );
+  }
+  const reading = scan.step === "reading";
   return (
     <>
       <Line gap="control">
-        <StatusDot label={headline} tone={tone} />
-        <Text textRole="headline">{headline}</Text>
+        {/* A step moving twirls; paused, done or off keeps the still dot. */}
+        {words.moving ? <Twirl /> : <StatusDot label={words.text} tone={words.tone} />}
+        <Text textRole="headline">{words.text}</Text>
       </Line>
-      {reading ? (
+      {words.running ? (
         <Stack gap="control">
           {/* Adding media is preparation (`tune`); paused drops to the neutral fill. */}
           <ProgressTrack
             height={6}
-            label={`Adding your media, ${percent} percent`}
-            percent={percent}
+            label={`Adding your media, ${words.percent} percent`}
+            percent={words.percent}
             tone={scan.paused ? "elapsed" : "tune"}
           />
           <Text textRole="body" tone="secondary">
-            {scan.paused
-              ? "Picks up again when everyone's done watching."
-              : "Titles appear as they're ready."}
+            {words.stepLine}
           </Text>
-          {!scan.paused && readySoFar.length > 0 ? <ReadySoFar titles={readySoFar} /> : null}
+          {scan.paused ? (
+            <Text textRole="body" tone="secondary">
+              Picks up again when everyone's done watching.
+            </Text>
+          ) : (
+            <>
+              <Text textRole="body" tone="secondary">
+                {words.timeLine}
+              </Text>
+              {words.current ? (
+                // A clipped, min-width-0 box is what lets the design system truncate.
+                <Stack minWidth={0} overflow="hidden">
+                  <Text numberOfLines={1} textRole="mono" tone="secondary">
+                    {words.current}
+                  </Text>
+                </Stack>
+              ) : null}
+              {reading ? (
+                <Text textRole="body" tone="secondary">
+                  Titles appear as they're ready.
+                </Text>
+              ) : null}
+              {reading && readySoFar.length > 0 ? <ReadySoFar titles={readySoFar} /> : null}
+            </>
+          )}
         </Stack>
       ) : null}
     </>
@@ -228,7 +263,8 @@ const ScanActions = ({
   onRefreshEverything,
 }: Pick<LibrarySettingsProps, "scan" | "onRescan" | "onRefreshEverything">) => {
   const [asking, setAsking] = useState(false);
-  const scanning = scan.stage !== "idle";
+  // Looking up details runs on its own clock and never holds up a scan.
+  const scanning = scan.step === "walking" || scan.step === "reading";
   return (
     <Line gap="control">
       <ModalOverlay

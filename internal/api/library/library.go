@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"time"
 
@@ -29,6 +30,7 @@ type LibraryRootService interface {
 
 	Enabled() bool
 	Progress() scan.Progress
+	Importing() scan.ProgressSnapshot
 	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
 	Rescan() error
 	RefreshEverything(ctx context.Context) error
@@ -292,13 +294,40 @@ func (s *Handlers) setLibraryPathMapping(ctx context.Context, in *setLibraryPath
 	return s.listLibraryRoots(ctx, nil)
 }
 
+// ScanProgress is how far a running import is: the earliest of its three steps still running.
+// It is the status endpoint's scan and, whole, the library_scan live frame, so the two never
+// differ in shape.
+type ScanProgress struct {
+	Step       string `json:"step" enum:"idle,walking,reading,lookingUp" doc:"The earliest step running: walking looks through the folders, reading reads each new file, lookingUp looks up each new title's details; idle when none runs"`
+	StepNumber int    `json:"stepNumber" minimum:"0" maximum:"3" doc:"The step's number, 1 to 3; 0 when idle"`
+	Done       int    `json:"done" doc:"How much of the step is done: top-level folder entries, files or titles"`
+	Total      int    `json:"total" doc:"How much the step has to do; 0 while it is still being counted"`
+	Current    string `json:"current,omitempty" doc:"What the step is on now: a folder, a file or a title; absent when unknown or paused"`
+	// EtaSeconds is absent until the step has run 30 s and done 2% of its total, and while paused.
+	EtaSeconds *int `json:"etaSeconds,omitempty" minimum:"0" doc:"Seconds the step has left; absent until it can be told, and while paused"`
+	Paused     bool `json:"paused" doc:"The step waits while someone is watching"`
+	Quiet      bool `json:"quiet" doc:"A pass nobody asked for, with nothing to read or look up: shown as one small line"`
+}
+
+// ScanProgressOf is the wire shape of p.
+func ScanProgressOf(p scan.ProgressSnapshot) ScanProgress {
+	out := ScanProgress{
+		Step: "idle", StepNumber: p.Number, Done: p.Done, Total: p.Total, Current: p.Current,
+		Paused: p.Paused, Quiet: p.Quiet,
+	}
+	if p.Step != "" {
+		out.Step = string(p.Step)
+	}
+	if p.HasETA {
+		eta := int(math.Ceil(p.ETA.Seconds()))
+		out.EtaSeconds = &eta
+	}
+	return out
+}
+
 type libraryScanDTO struct {
-	Enabled bool   `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
-	Stage   string `json:"stage" enum:"idle,walking,reading" doc:"walking: listing folders; reading: reading new files"`
-	// HeadersDone and HeadersTotal are the reading stage's progress.
-	HeadersDone  int  `json:"headersDone" doc:"Files read so far in this scan"`
-	HeadersTotal int  `json:"headersTotal" doc:"Files this scan reads"`
-	Paused       bool `json:"paused" doc:"Reading waits while someone is watching"`
+	Enabled bool `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
+	ScanProgress
 	// ArrIncomplete is true when Sonarr or Radarr did not answer the last scan.
 	ArrIncomplete bool       `json:"arrIncomplete" doc:"Sonarr or Radarr didn't answer the last scan"`
 	LastScanAt    *time.Time `json:"lastScanAt,omitempty" doc:"When the last scan finished; absent before the first"`
@@ -356,8 +385,7 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 
 	p := svc.Progress()
 	b.Scan = libraryScanDTO{
-		Enabled: svc.Enabled(), Stage: string(p.Stage), HeadersDone: p.HeadersDone, HeadersTotal: p.HeadersAll,
-		Paused: p.Waiting, ArrIncomplete: p.ArrIncomplete,
+		Enabled: svc.Enabled(), ScanProgress: ScanProgressOf(svc.Importing()), ArrIncomplete: p.ArrIncomplete,
 	}
 	if !p.CompletedAt.IsZero() {
 		at := p.CompletedAt

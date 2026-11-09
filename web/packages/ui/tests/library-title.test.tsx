@@ -232,6 +232,8 @@ describe("LibraryTitle", () => {
     // An episode with no name yet reads by its number, and one not read yet says so.
     expect(host.textContent).toContain("Episode 3");
     expect(host.textContent).toContain("Getting ready");
+    // Only the episode getting ready twirls; the ready one beside it doesn't.
+    expect(host.querySelectorAll('[data-testid="library-twirl"]').length).toBe(1);
     cleanup();
   });
 

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/events"
 )
@@ -187,6 +188,8 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"llm_pull", opsapi.LLMPullEvent{JobID: "j1", Model: "llama", Status: "pulling", Percent: 42}},
 		{"database", opsapi.DatabaseEvent{Phase: "migrating", Parity: "unknown"}},
 		{"playout", opsapi.PlayoutEvent{Active: 2}},
+		{"library_scan", opsapi.LibraryScanEvent{ScanProgress: libraryapi.ScanProgress{Step: "walking", StepNumber: 1, Done: 2, Total: 9}}},
+		{"library_titles", opsapi.LibraryTitlesEvent{}},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			srv, bus := newEventsServer(t)
@@ -194,7 +197,12 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/events", nil)
-			req.Header.Set("Authorization", "Bearer "+memberToken)
+			// library_scan is an admin's frame; every other one reaches a member.
+			token := memberToken
+			if tc.want == "library_scan" {
+				token = adminToken
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Fatal(err)
@@ -226,6 +234,37 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 				"streams unnamed, which is exactly this failure", tc.want)
 		})
 	}
+}
+
+// A library_scan frame names the folder or file the scan is on, which, like the status it mirrors,
+// is the household's storage and admin-only: a member's stream leaves it out and carries on.
+func TestMemberStreamLeavesOutLibraryScan(t *testing.T) {
+	srv, bus := newEventsServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+memberToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bus.ch <- events.Event{Type: "library_scan", Payload: opsapi.LibraryScanEvent{
+		ScanProgress: libraryapi.ScanProgress{Step: "walking", StepNumber: 1, Current: "TV / Night Ferry"}}}
+	bus.ch <- events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}}
+
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.Contains(line, "Night Ferry") || line == "event: library_scan" {
+			t.Fatalf("a member's stream carried the scan: %q", line)
+		}
+		if line == "event: library_titles" {
+			return
+		}
+	}
+	t.Fatal("the frame after the left-out one never arrived")
 }
 
 func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {

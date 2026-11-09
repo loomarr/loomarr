@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/tmdb"
@@ -40,6 +42,8 @@ var catalogVersions = map[string]int{string(mp.KindMovie): 2, string(mp.KindSeri
 type EnrichStore interface {
 	DueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) ([]librarystore.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
+	CountDueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) (int, error)
+	LibraryCatalogTitle(ctx context.Context, key librarystore.LibraryCatalogKey) (string, int, error)
 	SaveLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	FailLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, retryAt time.Time) error
 	RewriteLibraryCatalogFiles(ctx context.Context, key librarystore.LibraryCatalogKey) ([]librarystore.LibraryFilePath, error)
@@ -66,6 +70,8 @@ type Enricher struct {
 	Log      *slog.Logger
 	// Sleep waits between fetches, per the provider's rate hint; nil sleeps on the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Tracker records the fetches of new titles, step 3 of an import; nil records none.
+	Tracker *Tracker
 }
 
 // Run fetches until ctx ends.
@@ -85,8 +91,13 @@ func (e *Enricher) Run(ctx context.Context) {
 }
 
 // Tick fetches what is due now. It stops early when the catalog cannot be reached at all.
+//
+// Fetching the titles new to the cache is step 3 of an import ("Looking up details"): it runs
+// from the tick that finds one due as new until the tick that finds none, and counts each fetched.
+// The share of old records refreshed each tick is not part of it.
 func (e *Enricher) Tick(ctx context.Context) error {
 	if e.Enabled != nil && !e.Enabled() {
+		e.Tracker.End(StepLookingUp)
 		return nil
 	}
 	now := e.now()
@@ -94,29 +105,94 @@ func (e *Enricher) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	due, err := e.Store.DueLibraryCatalog(ctx, librarystore.LibraryCatalogDue{
-		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
-		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions, Language: e.language(),
-	})
+	due := e.due(now)
+	if err := e.track(ctx, due); err != nil {
+		return err
+	}
+	due.New = enrichNewBatch
+	fresh, err := e.Store.DueLibraryCatalog(ctx, due)
 	if err != nil {
 		return err
 	}
+	due.New, due.Stale = 0, e.staleShare(total)
+	stale, err := e.Store.DueLibraryCatalog(ctx, due)
+	if err != nil {
+		return err
+	}
+	isNew := map[librarystore.LibraryCatalogKey]bool{}
+	for _, key := range fresh {
+		isNew[key] = true
+	}
+	keys := slices.Concat(fresh, slices.DeleteFunc(stale, func(k librarystore.LibraryCatalogKey) bool { return isNew[k] }))
 	gap := e.Provider.Capabilities().Rate.MinInterval
-	for i, key := range due {
+	for i, key := range keys {
 		if i > 0 && gap > 0 {
 			if err := e.sleep(ctx, gap); err != nil {
 				return err
 			}
 		}
+		if isNew[key] {
+			e.Tracker.Current(StepLookingUp, e.title(ctx, key))
+		}
 		outcome, err := e.fetch(ctx, key, now)
 		if err != nil {
 			return err
 		}
-		if outcome != fetchDone {
+		switch outcome {
+		case fetchUnconfigured:
+			// Nothing is looked up until the catalog has a key, so nothing is shown running.
+			e.Tracker.End(StepLookingUp)
 			return nil
+		case fetchFailed:
+			return e.track(ctx, e.due(e.now()))
+		}
+		if isNew[key] {
+			e.Tracker.Advance(StepLookingUp, 1)
 		}
 	}
+	return e.track(ctx, e.due(e.now()))
+}
+
+// due is what is due at now, uncapped.
+func (e *Enricher) due(now time.Time) librarystore.LibraryCatalogDue {
+	return librarystore.LibraryCatalogDue{
+		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
+		Versions: catalogVersions, Language: e.language(),
+	}
+}
+
+// track counts the titles due as new and tells the Tracker: step 3 begins when there are some,
+// grows as more become due while it runs, and ends when none are left.
+func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue) error {
+	if e.Tracker == nil {
+		return nil
+	}
+	left, err := e.Store.CountDueLibraryCatalog(ctx, due)
+	switch {
+	case err != nil:
+		return err
+	case left == 0:
+		e.Tracker.End(StepLookingUp)
+	case !e.Tracker.Active(StepLookingUp):
+		e.Tracker.Begin(StepLookingUp, left)
+	default:
+		e.Tracker.Due(StepLookingUp, left)
+	}
 	return nil
+}
+
+// title names a title being looked up: its name and year as the Library holds them, else its
+// catalog key.
+func (e *Enricher) title(ctx context.Context, key librarystore.LibraryCatalogKey) string {
+	name, year, err := e.Store.LibraryCatalogTitle(ctx, key)
+	switch {
+	case err != nil || name == "":
+		return key.String()
+	case year > 0:
+		return fmt.Sprintf("%s (%d)", name, year)
+	default:
+		return name
+	}
 }
 
 // staleShare is how many old records one tick refreshes: enough that the whole cache is refreshed
