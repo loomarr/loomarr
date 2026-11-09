@@ -48,7 +48,7 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source a
 		Recipe: tools.EvidenceDerivativeRecipe(enc.profile), Host: enc.host, Tool: tool,
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
 		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
-		OnProgress: func(percent int) { reportProgress(ctx, pipelinestate.StageTranscode, percent*40/100) },
+		OnProgress: func(percent int) { pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, percent*40/100) },
 		Storage:    storage,
 	})
 	if err != nil {

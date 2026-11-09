@@ -27,6 +27,6 @@ func (s *FinishStage) Applies(context.Context, cliplibrary.StoreClip) (bool, str
 
 // Run completes the rung and hands the clip to terminal readiness.
 func (s *FinishStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (StageResult, error) {
-	reportProgress(ctx, pipelinestate.StageFinish, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageFinish, 100)
 	return StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }

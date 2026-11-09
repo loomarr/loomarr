@@ -98,7 +98,7 @@ func (s *LanguageStage) Run(ctx context.Context, c cliplibrary.StoreClip) (Stage
 		// and the clip carries on — a gate we could not run must never strand a commercial.
 		return StageResult{}, fmt.Errorf("detect language for %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, pipelinestate.StageLanguage, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageLanguage, 100)
 
 	if detected == language.Undetermined {
 		// ⚠ **The backend ran and could not tell — treated as a failure so the retry ladder

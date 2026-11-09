@@ -103,7 +103,7 @@ func (s *TranscribeStage) Observe(ctx context.Context, c cliplibrary.StoreClip) 
 		// `fatalStages` for exactly this reason.
 		return StageResult{}, "", fmt.Errorf("transcribe %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, pipelinestate.StageTranscribe, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscribe, 100)
 
 	text := TranscriptText(segs)
 	wordless := text == ""

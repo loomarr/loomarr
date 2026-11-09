@@ -114,7 +114,7 @@ func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (Sta
 	if len(frames) == 0 {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
 	}
-	reportProgress(ctx, pipelinestate.StageVision, NoMeasurement)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, pipelinestate.NoMeasurement)
 
 	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *VisionStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (Sta
 		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
 	}
 
-	reportProgress(ctx, pipelinestate.StageVision, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, 100)
 
 	updated := c
 	updated.VisibleText = v.VisibleText

@@ -80,7 +80,7 @@ func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 	if err != nil {
 		return StageResult{}, fmt.Errorf("probe %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, pipelinestate.StageProbe, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageProbe, 100)
 
 	if v, reason, detail := s.verdict(pr); v == pipelinestate.VerdictReject {
 		return StageResult{Verdict: pipelinestate.VerdictReject, Reason: reason, Detail: detail}, nil

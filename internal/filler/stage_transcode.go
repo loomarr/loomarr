@@ -316,14 +316,14 @@ func (s *TranscodeStage) run(ctx context.Context, c cliplibrary.StoreClip, swap 
 		// still encodes, because its input is the conditioned cut, not the master.
 		quality = evidence.Quality
 		err = asset.CopyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
-		reportProgress(ctx, pipelinestate.StageTranscode, 90)
+		pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, 90)
 	} else {
 		quality, err = s.transcode(transcodeCtx, req, func(pct int) {
 			if evidence != nil {
-				reportProgress(ctx, pipelinestate.StageTranscode, 40+pct*50/100)
+				pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, 40+pct*50/100)
 				return
 			}
-			reportProgress(ctx, pipelinestate.StageTranscode, pct*90/100)
+			pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, pct*90/100)
 		})
 	}
 	if err != nil {
@@ -398,7 +398,7 @@ func (s *TranscodeStage) run(ctx context.Context, c cliplibrary.StoreClip, swap 
 			}
 			return reject, nil
 		}
-		reportProgress(ctx, pipelinestate.StageTranscode, 95)
+		pipelinestate.ReportProgress(ctx, pipelinestate.StageTranscode, 95)
 	}
 	newHash, err := asset.ClipID(stageFull)
 	if err != nil {

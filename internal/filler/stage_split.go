@@ -713,7 +713,7 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 		// someone reasons from when deciding whether a reel can be recovered.
 		return StageResult{}, err
 	}
-	reportProgress(ctx, pipelinestate.StageSplit, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageSplit, 100)
 
 	// ⚠ The segments are SPAWNED, so each one is enrolled at `probe` and runs the whole ladder for
 	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival. Before
