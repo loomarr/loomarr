@@ -70,6 +70,37 @@ describe("WallTile", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it("names who is watching in a pill, and reads the full words on the compact tile", async () => {
+    await mount(
+      <WallTile art={null} channelName="Coast 90s" number="07" title="Coastline" watchers={["Sam", "Jo"]} />,
+    );
+    expect(doc.body.textContent).toContain("Sam, Jo watching");
+    doc.body.replaceChildren();
+    await mount(
+      <WallTile
+        art={null}
+        channelName="Coast 90s"
+        compact
+        number="07"
+        title="Coastline"
+        watchers={["Sam", "Jo"]}
+      />,
+    );
+    expect(doc.body.textContent).toContain("S J");
+    expect(doc.body.textContent).toContain("Sam, Jo watching");
+  });
+
+  it("shows no pill without watchers, and the last-tuned tile keeps its own pill", async () => {
+    await mount(<WallTile art={null} channelName="Coast 90s" number="07" title="Coastline" />);
+    expect(doc.body.textContent).not.toContain("watching");
+    doc.body.replaceChildren();
+    await mount(
+      <WallTile art={null} channelName="Coast 90s" last number="07" title="Coastline" watchers={["Sam"]} />,
+    );
+    expect(doc.body.textContent).toContain("You were here");
+    expect(doc.body.textContent).not.toContain("watching");
+  });
+
   it("renders as the given link", async () => {
     await mount(
       <WallTile

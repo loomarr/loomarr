@@ -11,13 +11,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -92,12 +90,12 @@ func VisionCapability(set settings.Reader, selection llm.Selection) enrichment.C
 
 // TranscriptObserver is the transcribe rung's read-only side.
 type TranscriptObserver interface {
-	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, string, error)
+	Observe(context.Context, clipstore.Clip) (filler.StageResult, string, error)
 }
 
 // VisionObserver is the vision rung's read-only side.
 type VisionObserver interface {
-	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error)
+	Observe(context.Context, clipstore.Clip) (filler.StageResult, filler.VisionObservation, error)
 }
 
 // MediaStore is the slice of the filler store a media executor reads.
@@ -135,12 +133,11 @@ func (e MediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) 
 	if err != nil {
 		return enrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
 	}
-	storeClip := storeadapter.StoreClip(clip)
 	if e.kind == enrichment.CapabilityTranscript {
 		if e.transcript == nil {
 			return enrichment.CapabilityResult{}, nil
 		}
-		_, transcript, err := e.transcript.Observe(ctx, storeClip)
+		_, transcript, err := e.transcript.Observe(ctx, clip)
 		if err != nil {
 			return enrichment.CapabilityResult{}, err
 		}
@@ -159,7 +156,7 @@ func (e MediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) 
 	for _, state := range currentStates {
 		current[state.Axis] = state
 	}
-	_, observation, err := e.vision.Observe(ctx, storeClip)
+	_, observation, err := e.vision.Observe(ctx, clip)
 	if err != nil {
 		return enrichment.CapabilityResult{}, err
 	}

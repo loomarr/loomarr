@@ -44,6 +44,27 @@ const LastWatched: Story = {
   args: { art: <Still hue={28} />, detail: "S1 E12 · 9 min left", last: true, progressPercent: 60 },
 };
 
+// An admin sees who is watching, by name, in the top-right corner (#2785).
+const Watched: Story = { args: { ...OnAir.args, watchers: ["Sam", "Jo"] } };
+const WatchedCompact: Story = {
+  args: {
+    art: <Still hue={142} />,
+    channelName: "Nature Hour",
+    compact: true,
+    detail: "41m left",
+    number: "12",
+    watchers: ["Sam", "Jo"],
+  },
+  decorators: [
+    (Story) => (
+      <div style={{ maxWidth: 180 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+const LightWatched: Story = { ...Watched, globals: { theme: "light" } };
+
 // A channel still downloading its titles is dimmer and says so.
 const FillingUp: Story = {
   args: {
@@ -122,5 +143,8 @@ export {
   LightFillingUp,
   LightLastWatched,
   LightOnAir,
+  LightWatched,
   OnAir,
+  Watched,
+  WatchedCompact,
 };

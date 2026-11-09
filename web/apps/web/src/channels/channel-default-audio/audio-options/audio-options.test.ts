@@ -12,8 +12,13 @@ describe("audioOptions", () => {
     expect(opts).toEqual([
       { value: AUTO_SENTINEL, label: "Auto (default)" },
       { value: "eng", label: "English" },
-      { value: "fra", label: "French · Stereo" },
+      { value: "fra", label: "French" },
     ]);
+  });
+
+  it("never shows a track's raw title (an encoder handler name such as root)", () => {
+    const opts = audioOptions([{ index: 0, language: "eng", title: "root" }]);
+    expect(opts.map((o) => o.label)).toEqual(["Auto (default)", "English"]);
   });
 });
 

@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The TRANSCRIBE stage (§10 V51b): what does the clip SAY?
@@ -71,7 +71,7 @@ func (s *TranscribeStage) ID() pipelinestate.StageID { return pipelinestate.Stag
 func (s *TranscribeStage) Cost() StageCost           { return CostWhisper }
 
 // Applies when transcription is on, the clip has not been heard, and it stands to gain.
-func (s *TranscribeStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
+func (s *TranscribeStage) Applies(_ context.Context, c clipstore.Clip) (bool, string) {
 	if s.tools == nil {
 		return false, "no transcription backend is configured"
 	}
@@ -92,7 +92,7 @@ func (s *TranscribeStage) Applies(_ context.Context, c cliplibrary.StoreClip) (b
 
 // Observe transcribes without persisting. Progressive catch-up uses this half so the transcript,
 // accepted facts, and completion identity can commit atomically in its own store transaction.
-func (s *TranscribeStage) Observe(ctx context.Context, c cliplibrary.StoreClip) (StageResult, string, error) {
+func (s *TranscribeStage) Observe(ctx context.Context, c clipstore.Clip) (StageResult, string, error) {
 	start, end := language.Span(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 
@@ -122,7 +122,7 @@ func (s *TranscribeStage) Observe(ctx context.Context, c cliplibrary.StoreClip) 
 }
 
 // Run is the readiness-stage adapter around Observe.
-func (s *TranscribeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
+func (s *TranscribeStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, error) {
 	result, transcript, err := s.Observe(ctx, c)
 	if err != nil {
 		return StageResult{}, err
@@ -143,7 +143,7 @@ func (s *TranscribeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (Sta
 // A clip with a RICH description that is nonetheless still UNTAGGED is also a candidate — the
 // description did not carry what the tagger needed, so the spoken text is the next signal to try.
 // Only a clip that is BOTH richly-described AND already tagged has nothing to gain.
-func (s *TranscribeStage) needsTranscription(c cliplibrary.StoreClip) bool {
+func (s *TranscribeStage) needsTranscription(c clipstore.Clip) bool {
 	if s.sourceTextThin(c) {
 		return true
 	}
@@ -154,7 +154,7 @@ func (s *TranscribeStage) needsTranscription(c cliplibrary.StoreClip) bool {
 //
 // ⚠ Reads the sidecar via `SidecarText`, the SAME signal the tagger reads, so "thin" here means
 // exactly "thin to the tagger".
-func (s *TranscribeStage) sourceTextThin(c cliplibrary.StoreClip) bool {
+func (s *TranscribeStage) sourceTextThin(c clipstore.Clip) bool {
 	if s.drop == nil || c.Path == "" {
 		return true
 	}
