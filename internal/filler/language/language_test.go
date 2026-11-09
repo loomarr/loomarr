@@ -1,9 +1,9 @@
-package filler_test
+package language_test
 
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/language"
 )
 
 // The language gate's decision logic (§10 V40). These are pure functions on purpose: the two
@@ -28,8 +28,8 @@ func TestNormalizeLanguage(t *testing.T) {
 		// which keeps the clip — the honest outcome for an answer we do not understand.
 		{"klingon", "klingon"},
 	} {
-		if got := filler.NormalizeLanguage(tc.in); got != tc.want {
-			t.Errorf("NormalizeLanguage(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := language.Normalize(tc.in); got != tc.want {
+			t.Errorf("Normalize(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
@@ -48,19 +48,19 @@ func TestLanguageRejects_OnlyOnAPositiveMismatch(t *testing.T) {
 		{"a match through normalisation is kept", "en-US", "EN", false},
 
 		// Every one of these is a state where the gate must NOT fire.
-		{"not yet checked", filler.LangUndetermined, "en", false},
-		{"no speech to judge", filler.LangNone, "en", false},
+		{"not yet checked", language.Undetermined, "en", false},
+		{"no speech to judge", language.None, "en", false},
 		{"gate disabled by an empty setting", "es", "", false},
 		{"an answer we could not parse", "", "en", false},
 
 		// #2030 decision 13: the gate admits a set, the channels' commercial languages.
 		{"a language some channel airs is kept", "es", "en,es", false},
 		{"a language no channel airs is refused", "fr", "en,es", true},
-		{"silence is kept against a set too", filler.LangNone, "en,es", false},
+		{"silence is kept against a set too", language.None, "en,es", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := filler.LanguageRejects(tc.detected, tc.want); got != tc.reject {
-				t.Errorf("LanguageRejects(%q, %q) = %v, want %v", tc.detected, tc.want, got, tc.reject)
+			if got := language.Rejects(tc.detected, tc.want); got != tc.reject {
+				t.Errorf("Rejects(%q, %q) = %v, want %v", tc.detected, tc.want, got, tc.reject)
 			}
 		})
 	}
@@ -85,8 +85,8 @@ func TestIntakeLanguages_IsTheUnionOfTheChannelsLanguages(t *testing.T) {
 		{"codes are mapped and counted once", "eng", []string{"spa", "ES", ""}, "en,es"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := filler.IntakeLanguages(tc.household, tc.channels); got != tc.want {
-				t.Errorf("IntakeLanguages(%q, %q) = %q, want %q", tc.household, tc.channels, got, tc.want)
+			if got := language.IntakeSet(tc.household, tc.channels); got != tc.want {
+				t.Errorf("IntakeSet(%q, %q) = %q, want %q", tc.household, tc.channels, got, tc.want)
 			}
 		})
 	}
@@ -97,7 +97,7 @@ func TestIntakeLanguages_IsTheUnionOfTheChannelsLanguages(t *testing.T) {
 // so `none` is a final answer that KEEPS, not a missing answer.
 func TestLanguageRejects_SilenceIsNeverGroundsForRejection(t *testing.T) {
 	for _, want := range []string{"en", "es", "fr", "ja"} {
-		if filler.LanguageRejects(filler.LangNone, want) {
+		if language.Rejects(language.None, want) {
 			t.Errorf("a clip with no speech was rejected against %q — wordless adverts are filler, "+
 				"not foreign-language clips", want)
 		}
@@ -109,19 +109,19 @@ func TestLanguageRejects_SilenceIsNeverGroundsForRejection(t *testing.T) {
 // Spanish while its complete speech was correctly classified as Spanish.
 func TestLanguageSpan(t *testing.T) {
 	t.Run("takes all of a normal spot", func(t *testing.T) {
-		start, end := filler.LanguageSpan(30_000)
+		start, end := language.Span(30_000)
 		if start != 0 || end != 30_000 {
 			t.Errorf("span = [%d,%d), want the complete [0,30000) commercial", start, end)
 		}
-		if end-start != filler.LanguageSampleMs {
-			t.Errorf("span = %dms, want %dms", end-start, filler.LanguageSampleMs)
+		if end-start != language.SampleMs {
+			t.Errorf("span = %dms, want %dms", end-start, language.SampleMs)
 		}
 	})
 
 	// ⚠ A clip SHORTER than the window is inspected in full. Asking past a 6s bumper would produce
 	// an empty tail and make the result depend on audio that does not exist.
 	t.Run("takes all of a clip shorter than the window", func(t *testing.T) {
-		start, end := filler.LanguageSpan(6_000)
+		start, end := language.Span(6_000)
 		if start != 0 || end != 6_000 {
 			t.Errorf("span = [%d,%d), want the whole 6s clip", start, end)
 		}
@@ -130,7 +130,7 @@ func TestLanguageSpan(t *testing.T) {
 	// The window never runs past the end.
 	t.Run("never runs past the end", func(t *testing.T) {
 		const dur = 10_500
-		_, end := filler.LanguageSpan(dur)
+		_, end := language.Span(dur)
 		if end > dur {
 			t.Errorf("span ends at %dms, past the clip's %dms", end, dur)
 		}
@@ -138,7 +138,7 @@ func TestLanguageSpan(t *testing.T) {
 
 	// Unprobed is a real state — ask for the window and let the backend take what exists.
 	t.Run("still asks for a window when the duration is unknown", func(t *testing.T) {
-		start, end := filler.LanguageSpan(0)
+		start, end := language.Span(0)
 		if end <= start {
 			t.Errorf("span = [%d,%d), want a usable window", start, end)
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -1348,8 +1349,8 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 	}
 	return &getFillerSplitOutput{Body: SplitReviewProposalDTO{
 		ID: p.ID, ClipHash: p.ClipHash, CreatedAt: p.CreatedAt, Segments: segments,
-		CheckedLanguages:   filler.LanguageList(p.LanguagePreference),
-		CurrentLanguages:   filler.LanguageList(current),
+		CheckedLanguages:   language.SplitSet(p.LanguagePreference),
+		CurrentLanguages:   language.SplitSet(current),
 		LanguageExclusions: p.LanguageExclusions,
 	}}, nil
 }

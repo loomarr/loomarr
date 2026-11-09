@@ -1,4 +1,4 @@
-package filler
+package language
 
 import "testing"
 
@@ -36,26 +36,26 @@ func TestParseWhisperLanguage_NoTranscribedTextIsNoneNotAGuess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != LangNone {
+	if got != None {
 		t.Errorf("language = %q, want %q — a wordless clip must not inherit a guessed language",
-			got, LangNone)
+			got, None)
 	}
 
 	// Whitespace-only utterances are the same case, and are what whisper actually emits.
 	raw = []byte(`{"result":{"language":"en"},"transcription":[{"offsets":{"from":0,"to":900},"text":"  "}]}`)
-	if got, _ = parseWhisperLanguage(raw); got != LangNone {
-		t.Errorf("language = %q for whitespace-only text, want %q", got, LangNone)
+	if got, _ = parseWhisperLanguage(raw); got != None {
+		t.Errorf("language = %q for whitespace-only text, want %q", got, None)
 	}
 }
 
 // Unparseable output is UNDETERMINED, never a language. The gate then keeps the clip and retries.
 func TestParseWhisperLanguage_BadOutputIsUndetermined(t *testing.T) {
-	if got, err := parseWhisperLanguage([]byte("not json")); err == nil || got != LangUndetermined {
-		t.Errorf("got (%q, %v), want (%q, an error)", got, err, LangUndetermined)
+	if got, err := parseWhisperLanguage([]byte("not json")); err == nil || got != Undetermined {
+		t.Errorf("got (%q, %v), want (%q, an error)", got, err, Undetermined)
 	}
 	// Valid JSON, no detected language: still undetermined rather than "".
 	got, err := parseWhisperLanguage([]byte(`{"result":{"language":"auto"},"transcription":[{"offsets":{"from":0,"to":1},"text":"hi"}]}`))
-	if err != nil || got != LangUndetermined {
-		t.Errorf("got (%q, %v), want (%q, nil)", got, err, LangUndetermined)
+	if err != nil || got != Undetermined {
+		t.Errorf("got (%q, %v), want (%q, nil)", got, err, Undetermined)
 	}
 }

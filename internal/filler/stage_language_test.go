@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -59,7 +60,7 @@ func langClip(path, language string) filler.StoreClip {
 	}}
 }
 
-func newLangStage(st filler.LanguageClipStore, d filler.LanguageDetector, want string) *filler.LanguageStage {
+func newLangStage(st filler.LanguageClipStore, d language.Detector, want string) *filler.LanguageStage {
 	return filler.NewLanguageStage(d, st, "/filler",
 		func(context.Context) (string, error) { return want, nil },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
@@ -152,7 +153,7 @@ func TestLanguageStage_RejectsAForeignClip(t *testing.T) {
 // the best filler — `none` is a final answer that KEEPS.
 func TestLanguageStage_KeepsASilentClip(t *testing.T) {
 	st := newFakeLangStore()
-	out, err := newLangStage(st, &fixedDetector{lang: filler.LangNone}, "en").
+	out, err := newLangStage(st, &fixedDetector{lang: language.None}, "en").
 		Run(context.Background(), langClip("quiet.mp4", ""))
 	if err != nil {
 		t.Fatal(err)
@@ -161,9 +162,9 @@ func TestLanguageStage_KeepsASilentClip(t *testing.T) {
 		t.Errorf("verdict = %v — a clip with no speech is not a foreign clip", out.Verdict)
 	}
 	// Recorded as `none`, so it is never re-checked.
-	if st.langs["quiet.mp4"] != filler.LangNone {
+	if st.langs["quiet.mp4"] != language.None {
 		t.Errorf("language = %q, want %q recorded so the rung stops re-checking it",
-			st.langs["quiet.mp4"], filler.LangNone)
+			st.langs["quiet.mp4"], language.None)
 	}
 }
 
@@ -197,7 +198,7 @@ func TestLanguageStage_ABackendFailureNeitherRecordsNorRejects(t *testing.T) {
 // bounds it: three attempts, then the rung is skipped and the clip advances.
 func TestLanguageStage_UndeterminedIsNotAVerdict(t *testing.T) {
 	st := newFakeLangStore()
-	out, err := newLangStage(st, &fixedDetector{lang: filler.LangUndetermined}, "en").
+	out, err := newLangStage(st, &fixedDetector{lang: language.Undetermined}, "en").
 		Run(context.Background(), langClip("a.mp4", ""))
 	if err == nil {
 		t.Fatal("want an error so the attempt is counted and eventually given up on")
@@ -236,7 +237,7 @@ func TestLanguageStage_DoesNotApplyToAnAlreadyHeardClip(t *testing.T) {
 	}{
 		{"never heard", langClip("fresh.mp4", ""), true},
 		{"heard, English", langClip("checked.mp4", "en"), false},
-		{"heard, wordless", langClip("silent.mp4", filler.LangNone), false},
+		{"heard, wordless", langClip("silent.mp4", language.None), false},
 	} {
 		if got, _ := stage.Applies(context.Background(), tc.clip); got != tc.want {
 			t.Errorf("%s: applies = %v, want %v", tc.name, got, tc.want)
@@ -310,7 +311,7 @@ func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 	}}
 	model := "stale-model-with-no-audio"
 
-	det := filler.NewHostedLanguage(
+	det := language.NewHosted(
 		func() tools.AudioTranscriptionClient { return rec },
 		func() string { return model }, // read per call, like a settings closure
 		"", t.TempDir())
@@ -346,9 +347,9 @@ func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 
 // A nil recognizer (hosted selected, nothing configured) keeps every clip rather than erroring.
 func TestHostedLanguage_UnconfiguredIsInertNotBroken(t *testing.T) {
-	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
+	det := language.NewHosted(func() tools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
 	got, err := det.DetectLanguage(context.Background(), "/nonexistent.mp4", 0, 10_000)
-	if err != nil || got != filler.LangUndetermined {
+	if err != nil || got != language.Undetermined {
 		t.Errorf("got (%q, %v), want (undetermined, nil) — an unconfigured backend must not reject", got, err)
 	}
 }
@@ -357,7 +358,7 @@ func TestHostedLanguage_UsesTheSpeechServicesDetectedLanguage(t *testing.T) {
 	rec := &recordingRecognizer{result: tools.AudioTranscription{
 		Language: "es", Segments: []tools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "compre ahora"}},
 	}}
-	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
+	det := language.NewHosted(func() tools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
 	dir := t.TempDir()
 	clip := filepath.Join(dir, "c.wav")
 	if err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ac", "1", "-ar", "16000", "-y", clip).Run(); err != nil {

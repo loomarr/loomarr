@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/language"
 )
 
 func spokenClip(id string, kind filler.Role, lang string) filler.Clip {
@@ -19,10 +20,10 @@ func langCatalog() []filler.Clip {
 		spokenClip("en1", filler.Commercial, "en"), spokenClip("en2", filler.Commercial, "en"),
 		spokenClip("en3", filler.Commercial, "en"), spokenClip("en4", filler.Commercial, "en"),
 		spokenClip("es1", filler.Commercial, "es"), spokenClip("es2", filler.Commercial, "es"),
-		spokenClip("mute1", filler.Commercial, filler.LangNone),
-		spokenClip("unknown1", filler.Commercial, filler.LangUndetermined),
+		spokenClip("mute1", filler.Commercial, language.None),
+		spokenClip("unknown1", filler.Commercial, language.Undetermined),
 		spokenClip("en-ident", filler.StationID, "en"),
-		spokenClip("mute-ident", filler.StationID, filler.LangNone),
+		spokenClip("mute-ident", filler.StationID, language.None),
 	}
 }
 
@@ -159,7 +160,7 @@ func TestLanguage_APinnedClipFits(t *testing.T) {
 
 // The undetermined count is of commercials: a bookend of unknown language is not one.
 func TestLanguage_CoverageCountsUndeterminedCommercialsOnly(t *testing.T) {
-	cat := append(langCatalog(), spokenClip("unknown-ident", filler.StationID, filler.LangUndetermined))
+	cat := append(langCatalog(), spokenClip("unknown-ident", filler.StationID, language.Undetermined))
 	if got := langAdapter(cat, "en").CoverageFrom(cat, "ch", filler.Selection{}).UndeterminedLanguage; got != 1 {
 		t.Errorf("undetermined = %d, want 1", got)
 	}

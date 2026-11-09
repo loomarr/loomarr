@@ -18,6 +18,8 @@ package filler
 import (
 	"sort"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/language"
 )
 
 // Criterion names one of the channel's break settings, for the per-criterion breakdown.
@@ -327,7 +329,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	criteria := criterionCoverage(catalog, w, policy)
 	undetermined := 0
 	for _, c := range catalog {
-		if c.EffectivePlacement() == PlacementBreakBody && NormalizeLanguage(c.Language) == LangUndetermined {
+		if c.EffectivePlacement() == PlacementBreakBody && language.Normalize(c.Language) == language.Undetermined {
 			undetermined++
 		}
 	}
