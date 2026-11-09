@@ -60,7 +60,7 @@ type FetchLimits struct {
 // FetchSource is one pollable source.
 type FetchSource struct {
 	ID string
-	// Kind is the ID of the source's provider (sourceprovider.ID). A source whose provider is not
+	// Kind is the ID of the source's provider (source.ID). A source whose provider is not
 	// registered is inert: a pass skips it and leaves the row alone.
 	Kind    string
 	URI     string
