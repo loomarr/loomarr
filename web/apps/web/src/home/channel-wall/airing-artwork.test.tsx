@@ -2,7 +2,7 @@ import type { ImageDTO } from "@loomarr/api/models/imageDTO";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { render } from "@/test/render";
-import { AiringArtwork } from "./on-now";
+import { AiringArtwork } from "./channel-wall";
 
 const image = (src: string, role: string): ImageDTO => ({
   animated: false,
