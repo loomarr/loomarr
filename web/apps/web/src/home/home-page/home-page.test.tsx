@@ -1,10 +1,14 @@
-import { getChannelGuideMockHandler, getGuideHighlightsMockHandler } from "@loomarr/api/msw";
-import { act, screen, waitFor } from "@testing-library/react";
+import {
+  getChannelGuideMockHandler,
+  getGuideHighlightsMockHandler,
+  getJobsListMockHandler,
+} from "@loomarr/api/msw";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
-import { ADMIN, renderAt, stub } from "@/test/requests-harness";
+import { ADMIN, MEMBER, proposal, renderAt, stub } from "@/test/requests-harness";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -121,5 +125,65 @@ describe("HomePage (#1659)", () => {
       releaseSlide();
       vi.useRealTimers();
     }
+  });
+});
+
+// The admin's "Needs you" line above the wall (#2785, layout B): each count a link to its page,
+// gone when every count is zero, and never shown to a member.
+describe("HomePage — Needs you (#2785)", () => {
+  const oneChannel = getChannelGuideMockHandler({
+    channels: [{ airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" }],
+    fromMs: 0,
+    toMs: 0,
+  });
+
+  it("shows an admin what is waiting, each count linking to its page", async () => {
+    stub({ me: ADMIN, proposals: [proposal] });
+    server.use(
+      oneChannel,
+      getJobsListMockHandler({
+        jobs: [
+          {
+            description: "",
+            group: "backup",
+            lastResult: "ok",
+            name: "backup",
+            overdue: true,
+            paused: false,
+            running: false,
+            schedule: "0 3 * * *",
+            scheduleKey: "backup.schedule",
+            title: "Back up",
+          },
+        ],
+      }),
+    );
+    renderAt("/dashboard");
+
+    const line = await screen.findByRole("navigation", { name: "Needs you" });
+    const approve = await within(line).findByRole("link", { name: /1 request to approve/ });
+    expect(approve).toHaveAttribute("href", "/requests/needs-you");
+    expect(await within(line).findByRole("link", { name: /1 task overdue/ })).toHaveAttribute(
+      "href",
+      "/settings/system/tasks",
+    );
+  });
+
+  it("hides the line when nothing needs the admin", async () => {
+    stub({ me: ADMIN });
+    server.use(oneChannel);
+    renderAt("/dashboard");
+
+    expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Needs you" })).not.toBeInTheDocument();
+  });
+
+  it("never shows a member the line", async () => {
+    stub({ me: MEMBER, proposals: [proposal] });
+    server.use(oneChannel);
+    renderAt("/dashboard");
+
+    expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Needs you" })).not.toBeInTheDocument();
   });
 });
