@@ -22,7 +22,7 @@ One area of the [package map](../package-map.md#start-here).
   The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
 - **`filler/capability`** · 1 importer · → `filler`, `filler/asset`, `filler/defectfloor`, `filler/enrichment`, `filler/pod`, `filler/records`, `filler/research`, `filler/station`, `filler/taxonomy`, `media/defects`, `platform/httpx`, `platform/llm`, `platform/metrics`, `platform/openroutermedia`, `platform/settings`, `platform/store/clipstore`
   Resolves what this install can do for the filler detail work right now: which text model, speech-to-text and vision endpoint the settings name, the versions those choices stamp on the observations they produce, and the executors and signal loaders that run them.
-- **`filler/cliplibrary`** · 11 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
+- **`filler/cliplibrary`** · 12 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
   On-disk clip library: the clip folder's layout, the one intake route every clip takes into it, the folder and library scans that find clips, the names derived for them, and the thumbnail and preview artwork rendered from them.
 - **`filler/clips`** · 16 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.

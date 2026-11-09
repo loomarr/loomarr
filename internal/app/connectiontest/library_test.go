@@ -1,4 +1,4 @@
-package app
+package connectiontest
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestMediaServerConnectionTestUsesSharedLibraryClient(t *testing.T) {
 		return library.Connection{Flavor: library.Emby}
 	}, "stable-install-device")
 
-	ok, detail := connectionTests(resolved{}, client, nil)["media_server"](context.Background())
+	ok, detail := New(Config{Library: client})["media_server"](context.Background())
 	if ok || detail != "set the media server URL" {
 		t.Fatalf("media-server Test = %v, %q; want shared client's missing-URL result", ok, detail)
 	}

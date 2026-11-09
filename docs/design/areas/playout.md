@@ -29,7 +29,7 @@ One area of the [package map](../package-map.md#start-here).
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`playout/tunarr`** · 4 importers · → `channels/schedule`, `platform/httpx`, `platform/metrics`
+- **`playout/tunarr`** · 5 importers · → `channels/schedule`, `platform/httpx`, `platform/metrics`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
