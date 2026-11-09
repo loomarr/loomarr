@@ -224,6 +224,40 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 	}
 }
 
+// A settled title whose answer fails to save is searched and settled again on the next tick,
+// rather than left in Needs you as searched.
+func TestMatcherSettlesAgainAfterAFailedAnswer(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Answers = h.st
+	h.file("Mystery Film (2002)/Mystery Film (2002).mkv", 10)
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000311": {Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}},
+	}}
+	search := &fakeSearch{hits: []SearchHit{{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002}}}
+	var answered []string
+	fail := true
+	m := &Matcher{Store: h.st, Search: search.search, Provider: catalog, Inventory: h.inv,
+		Match: func(_ context.Context, itemID string, _ mp.ExternalID) error {
+			if fail {
+				return errors.New("database is locked")
+			}
+			answered = append(answered, itemID)
+			return nil
+		}}
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fail = false
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(answered) != 1 || len(search.terms) != 2 {
+		t.Fatalf("answered %v after %d searches; want it settled by the second", answered, len(search.terms))
+	}
+}
+
 // Linking a title to one already in the library makes its file a copy of that title; taking the
 // link back, by the id the maintainer answered, finds the file there and splits it out again.
 func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {

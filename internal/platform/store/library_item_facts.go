@@ -14,7 +14,8 @@ type LibraryItemFacts struct {
 	Year     int
 	// Rating is the item's own content rating, else its series'.
 	Rating string
-	// RuntimeMs is the playing file's own duration, else the catalog's runtime.
+	// RuntimeMs is the playing file's own duration (the default edition's, when a movie plays one
+	// in each), else the catalog's runtime.
 	RuntimeMs int64
 }
 
@@ -47,7 +48,8 @@ func (s *sqlStore) libraryItemFacts(ctx context.Context, ids []string, out map[s
 	}
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id, i.series_id, i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
-		COALESCE(NULLIF((SELECT MAX(src.duration_ms) FROM library_sources src WHERE src.item_id = i.id AND src.plays), 0), i.runtime_ms)
+		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
+			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
 		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id AND i.series_id <> ''
 		WHERE i.id IN (`+in+`)`), args...)
 	if err != nil {

@@ -76,6 +76,9 @@ var edlActions = map[string]string{"0": "cut", "1": "mute", "2": "scene", "3": "
 // maxEDLBytes bounds an .edl read: a real one is a few lines.
 const maxEDLBytes = 64 << 10
 
+// maxEDLSeconds is the latest time a marker may name, a week: no file runs longer.
+const maxEDLSeconds = 7 * 24 * 60 * 60
+
 // readEDL reads an .edl file's spans: "start end [action]" a line, in seconds. A line that does
 // not parse, or a span that ends before it starts, is skipped; a file that cannot be read has none.
 func readEDL(path string) []marker {
@@ -93,7 +96,8 @@ func readEDL(path string) []marker {
 		}
 		start, errStart := strconv.ParseFloat(fields[0], 64)
 		end, errEnd := strconv.ParseFloat(fields[1], 64)
-		if errStart != nil || errEnd != nil || start < 0 || end < start || math.IsInf(end, 0) {
+		// Written so NaN fails each comparison, and bounded so no time overflows its milliseconds.
+		if errStart != nil || errEnd != nil || !(start >= 0 && end >= start && end <= maxEDLSeconds) {
 			continue
 		}
 		kind := "cut"

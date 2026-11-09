@@ -35,10 +35,10 @@ func TestExternalTracksReadTheirNames(t *testing.T) {
 }
 
 // An .edl's spans are read in milliseconds with their action; a line that does not parse, names
-// no known action or runs backwards is skipped, and a missing file has none.
+// no known action, runs backwards or names no real time is skipped, and a missing file has none.
 func TestReadEDL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Film.edl")
-	body := "12.5 30 3\n0 1.25\n40 41 1\nnot a line\n50 49 0\n60 61 9\n70 71 2\n"
+	body := "12.5 30 3\n0 1.25\n40 41 1\nnot a line\n50 49 0\n60 61 9\n70 71 2\nNaN NaN 0\n1e30 1e31 0\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
