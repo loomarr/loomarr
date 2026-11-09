@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -270,6 +271,41 @@ func TestImportListsMoviesAndSeries(t *testing.T) {
 	h.run()
 	if again, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{}); err != nil || again.Total != 2 {
 		t.Fatalf("after relinking = %+v, %v", again, err)
+	}
+}
+
+// Episodes loose at a root's top, or in a season folder there, are the shows their names give: two
+// shows' loose episodes are two named shows, each episode linked to its own, and "Season 1" names
+// none.
+func TestImportLooseEpisodesAreTheShowsTheirNamesGive(t *testing.T) {
+	h := newHarness(t)
+	h.file("Charlie.Show.S01E01.mkv", 12)
+	h.file("Season 1/Charlie.Show.S01E02.mkv", 12)
+	h.file("Delta Show - S02E01.mkv", 12)
+	h.run()
+
+	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]int{}
+	for _, it := range page.Items {
+		if it.Kind == "series" {
+			names[it.Name] = it.Files
+		}
+	}
+	if len(names) != 2 || names["Charlie Show"] != 2 || names["Delta Show"] != 1 {
+		t.Fatalf("shows = %v, want Charlie Show with 2 files and Delta Show with 1", names)
+	}
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	charlie := h.item(seriesOrigin(h.root, "Charlie Show"))
+	for _, row := range rows {
+		if strings.HasPrefix(filepath.Base(row.Path), "Charlie") && row.SeriesID != string(charlie.ID) {
+			t.Errorf("%s series = %q, want %q", row.Path, row.SeriesID, charlie.ID)
+		}
 	}
 }
 
