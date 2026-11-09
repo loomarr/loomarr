@@ -568,7 +568,8 @@ for (const viewport of [
           sourcesReady: locationReady ? 2 : 1,
           sourcesTotal: 2,
           clips: 3,
-          held: 0,
+          preparing: 0,
+          needsYou: 0,
         }),
       });
     });

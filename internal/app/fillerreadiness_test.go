@@ -20,6 +20,8 @@ type readinessStoreFuncs struct {
 	repairs  func(context.Context) (filler.AcquisitionRepairSummary, error)
 }
 
+func (readinessStoreFuncs) CountReadySplitProposals(context.Context) (int, error) { return 0, nil }
+
 func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
 	return s.pipeline(ctx, at)
 }

@@ -39,15 +39,20 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 2}}
 		}, filler.ReadinessRetryAcquisition},
 		{"failed work before review", func(in *filler.ReadinessInput) {
-			in.Pipeline.Rejected, in.Pipeline.Recoverable, in.Pipeline.NeedsDecision = 4, 2, 3
+			in.Pipeline.Rejected, in.Pipeline.Recoverable, in.NeedsYou = 4, 2, 3
 		}, filler.ReadinessRetryWork},
 		{"terminal refusal is audit only", func(in *filler.ReadinessInput) {
 			in.Pipeline.Rejected = 4
 		}, filler.ReadinessNone},
 		{"review before pool quality", func(in *filler.ReadinessInput) {
-			in.Pipeline.NeedsDecision = 3
+			in.NeedsYou = 3
 			in.Pool.Channels[0].Report.Level = filler.MatchAudience
 		}, filler.ReadinessReviewIncoming},
+		// #2733: Overview sends "review" to Incoming, so only a choice Incoming lists may ask
+		// for one. A review-disposition row with no Incoming task would point at an empty page.
+		{"review rows Incoming does not list are not a choice", func(in *filler.ReadinessInput) {
+			in.Pipeline.NeedsDecision = 3
+		}, filler.ReadinessNone},
 		{"empty eligible pool", func(in *filler.ReadinessInput) { in.Pool.Eligible = 0 }, filler.ReadinessAddFiller},
 		{"weakest channel", func(in *filler.ReadinessInput) {
 			in.Pool.Channels[0].Report.Level = filler.MatchAudience
@@ -61,6 +66,9 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 			got := filler.ProjectReadiness(in)
 			if got.Next != tt.want {
 				t.Fatalf("next = %q, want %q (%+v)", got.Next, tt.want, got)
+			}
+			if tt.want == filler.ReadinessReviewIncoming && got.Count != in.NeedsYou {
+				t.Fatalf("count = %d, want Incoming's %d", got.Count, in.NeedsYou)
 			}
 			if (tt.want == filler.ReadinessNone) != got.Ready {
 				t.Fatalf("ready = %v for %q", got.Ready, tt.want)

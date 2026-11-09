@@ -82,7 +82,8 @@ type watchBody struct {
 	SourcesReady int    `json:"sourcesReady"`
 	SourcesTotal int    `json:"sourcesTotal"`
 	Clips        int    `json:"clips"`
-	Held         int    `json:"held"`
+	Preparing    int    `json:"preparing"`
+	NeedsYou     int    `json:"needsYou"`
 	LastScanAt   string `json:"lastScanAt"`
 	AutoFetch    *struct {
 		Enabled      bool
@@ -267,6 +268,12 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 	}
 	for _, id := range []string{"a.mp4", "b.mp4", "c.mp4"} {
 		seedHeldClip(t, st, id)
+		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
+			ClipHash: id, Stage: filler.StageTranscode, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	body, _ := getWatch(t, srv.URL, adminToken)
@@ -279,8 +286,44 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 	if body.Clips != 0 {
 		t.Errorf("clips = %d, want 0 — nothing has been filed into the catalog yet", body.Clips)
 	}
-	if body.Held != 3 {
-		t.Errorf("held = %d, want 3 — an install holding clips must say so, not report nothing", body.Held)
+	if body.Preparing != 3 {
+		t.Errorf("preparing = %d, want 3 — an install preparing clips must say so, not report nothing", body.Preparing)
+	}
+	if body.NeedsYou != 0 {
+		t.Errorf("needsYou = %d, want 0 — clips being prepared are machine work, not a choice", body.NeedsYou)
+	}
+}
+
+// #2733: the header's "N need you" and "N getting ready" are Incoming's own totals. A held clip
+// that the pipeline is preparing is not a choice, and only a split waiting for an answer is; the
+// header used to count every held clip as "need you" while Incoming listed none of them.
+func TestFillerWatch_CountsAreIncomingsTotals(t *testing.T) {
+	srv, st, _ := newFillerWatchServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	for i, hash := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		seedHeldClip(t, st, hash)
+		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
+			ClipHash: hash, Stage: filler.StageTranscode, Status: filler.StatusQueued,
+			Disposition: filler.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	putClip(t, st, filler.Clip{Hash: "reel", Path: "reel.mp4", Name: "Reel", Held: true, IsComposite: true})
+	if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
+		ID: "split-1", ClipHash: "reel", CreatedAt: now,
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	watch, _ := getWatch(t, srv.URL, adminToken)
+	_, incoming := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
+	if watch.NeedsYou != incoming.NeedsHelp.Total || watch.NeedsYou != 1 {
+		t.Errorf("needsYou = %d, Incoming needs help = %d, want both 1", watch.NeedsYou, incoming.NeedsHelp.Total)
+	}
+	if watch.Preparing != incoming.Preparing.Total || watch.Preparing != 3 {
+		t.Errorf("preparing = %d, Incoming preparing = %d, want both 3", watch.Preparing, incoming.Preparing.Total)
 	}
 }
 
@@ -297,8 +340,8 @@ func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
 	if body.Health != "attention" {
 		t.Errorf("health = %q, want attention — nothing catalogued AND nothing held", body.Health)
 	}
-	if body.Held != 0 {
-		t.Errorf("held = %d, want 0", body.Held)
+	if body.Preparing != 0 || body.NeedsYou != 0 {
+		t.Errorf("preparing = %d, needsYou = %d, want 0 and 0", body.Preparing, body.NeedsYou)
 	}
 }
 

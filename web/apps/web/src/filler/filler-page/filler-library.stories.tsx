@@ -46,7 +46,8 @@ const clips: ClipDTO[] = NAMES.map((name, index) => ({
 const watch: FillerWatchOutputBody = {
   clips: 1284,
   health: "healthy",
-  held: 0,
+  preparing: 0,
+  needsYou: 0,
   sourcesOn: 3,
   sourcesReady: 3,
   sourcesTotal: 4,
