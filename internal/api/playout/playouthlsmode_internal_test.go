@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -28,7 +29,7 @@ type modeProbePlayout struct {
 	speculative  bool
 }
 
-func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
+func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Handlers {
 	t.Helper()
 	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
@@ -42,7 +43,7 @@ func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
-	return &Server{playout: probe, store: st}
+	return &Handlers{playout: probe, store: st}
 }
 
 func (p *modeProbePlayout) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
@@ -130,8 +131,8 @@ func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 func TestHLSMasterAndPlaylistRequestsCarryTheSignedViewer(t *testing.T) {
 	const key = "playout-key"
 	tv := viewing.Viewer{UserID: "u-1", DeviceKey: "device:tv", DeviceLabel: "Living room"}
-	tag := url.QueryEscape(signViewerTag(key, "ch-one", tv))
-	forged := url.QueryEscape(signViewerTag(key, "ch-other", tv))
+	tag := url.QueryEscape(httpcore.SignViewerTag(key, "ch-one", tv))
+	forged := url.QueryEscape(httpcore.SignViewerTag(key, "ch-other", tv))
 	playlist := func() playout.Asset {
 		return playout.Asset{Content: stringAsset{strings.NewReader("#EXTM3U\n")}, Playlist: true}
 	}
@@ -186,7 +187,7 @@ func TestHLSVariantPlaylistAssetIsAuthRewritten(t *testing.T) {
 	probe := &modeProbePlayout{asset: playout.Asset{
 		Content: stringAsset{strings.NewReader(body)}, Modified: time.Unix(1_000, 0), Playlist: true,
 	}, assetOK: true}
-	s := &Server{playout: probe}
+	s := &Handlers{playout: probe}
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/1080p-h264-sdr.m3u8?sig=abc", nil)
 	req.SetPathValue("id", "ch-one")
 	req.SetPathValue("asset", "1080p-h264-sdr.m3u8")

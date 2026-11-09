@@ -6,6 +6,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -117,7 +119,15 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks,
 	}, false).Register(humaAPI)
 	srv.registerChannels(humaAPI)
-	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
+	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
+	playoutapi.New(playoutapi.Deps{
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings,
+		BackendCheckpoint: opts.BackendCheckpoint,
+		Playout:           opts.Playout, PlayoutObserver: opts.PlayoutObserver, PlayoutGuide: opts.PlayoutGuide,
+		PlayoutResolver: opts.PlayoutResolver, PlayoutCapability: opts.PlayoutCapability,
+		PlayoutSecret: opts.PlayoutSecret, PlayoutSecretCurrent: opts.PlayoutSecretCurrent,
+		Viewing: srv.viewing, Now: opts.Now, GPU: systemGPU(opts.SystemLLM), ResidentLLMVRAM: opts.ResidentLLMVRAM,
+	}, false).Register(humaAPI)
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerHolidays(humaAPI)
@@ -144,7 +154,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerImages(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerDiagnostics(humaAPI)
-	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
 	srv.registerDiscoveryQuality(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
@@ -208,6 +217,21 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
 	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
+}
+
+// systemGPU is the GPU name and VRAM the playout status header reads from the language-model
+// service, which already probes them for the model picker; nil without that service.
+func systemGPU(svc system.SystemLLMService) func(context.Context) (string, float64, error) {
+	if svc == nil {
+		return nil
+	}
+	return func(ctx context.Context) (string, float64, error) {
+		status, err := svc.Status(ctx)
+		if err != nil {
+			return "", 0, err
+		}
+		return status.GPUName, status.VRAMGiB, nil
+	}
 }
 
 // storeFacts is the schema version and backend name GET /v1/system/version reports, read from st on

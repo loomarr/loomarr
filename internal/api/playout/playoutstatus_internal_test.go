@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ func TestPlayoutStatusProjectsIdleHardwareCapabilityWithoutVRAM(t *testing.T) {
 	capability := fixedPlayoutCapability{capability: playout.Capacity{
 		Chosen: encode.EncoderVAAPI, MaxChannels: 3,
 	}}
-	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
+	s := &Handlers{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
 
 	got := s.playoutStatus(t.Context(), time.Now())
 	if !got.Capability.Hardware || got.Capability.Encoder != string(encode.EncoderVAAPI) || got.Capability.MaxChannels != 3 {
@@ -39,7 +39,7 @@ func TestPlayoutStatusProjectsIdleSoftwareCapability(t *testing.T) {
 	capability := fixedPlayoutCapability{capability: playout.Capacity{
 		Chosen: encode.EncoderSoftware, MaxChannels: 1,
 	}}
-	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
+	s := &Handlers{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
 
 	got := s.playoutStatus(t.Context(), time.Now())
 	if got.Capability.Hardware || got.Capability.Encoder != string(encode.EncoderSoftware) || got.Capability.MaxChannels != 1 {
