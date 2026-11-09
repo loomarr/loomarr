@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -17,7 +18,7 @@ import (
 
 type invitationHarnessConfig struct {
 	PublicURL string
-	Delivery  api.InvitationDeliveryService
+	Delivery  people.InvitationDeliveryService
 }
 
 type invitationHarness struct {

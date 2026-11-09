@@ -41,7 +41,7 @@ One area of the [package map](../package-map.md#start-here).
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`platform/logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
-- **`platform/metrics`** · 9 importers · → `media/images/rustgen`, `provision`
+- **`platform/metrics`** · 10 importers · → `media/images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`platform/openroutercatalog`** · 2 importers · → `platform/httpx`, `platform/openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
@@ -51,15 +51,15 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 7 importers · → `library`, `platform/buildinfo`, `platform/config`
+- **`platform/settings`** · 8 importers · → `library`, `platform/buildinfo`, `platform/config`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 22 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 23 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/clipstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
-- **`platform/store/identitystore`** · 5 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
+- **`platform/store/identitystore`** · 6 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).

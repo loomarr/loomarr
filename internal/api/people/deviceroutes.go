@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 // The shape is RFC 8628's device-authorization grant: the client starts a pairing and polls; a
 // human approves it from a surface that already has a session. A TV cannot type a password, and the
 // alternative was shipping the household admin token to every device in the house.
-func (s *Server) registerDeviceAuth(api huma.API) {
+func (s *Handlers) registerDeviceAuth(api huma.API) {
 	if s.devices == nil && !s.schemaOnly {
 		return
 	}
@@ -86,7 +86,7 @@ type deviceStartOutput struct {
 // cadence and hammer a homelab box.
 const pollInterval = 5
 
-func (s *Server) handleDeviceStart(ctx context.Context, in *deviceStartInput) (*deviceStartOutput, error) {
+func (s *Handlers) handleDeviceStart(ctx context.Context, in *deviceStartInput) (*deviceStartOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	// Keyed on IP alone: there is no user yet, and the thing being limited is the minting of
 	// pairings. Without this an attacker could farm codes to raise the odds that a guess at the
@@ -124,7 +124,7 @@ type devicePollOutput struct {
 	}
 }
 
-func (s *Server) handleDevicePoll(ctx context.Context, in *devicePollInput) (*devicePollOutput, error) {
+func (s *Handlers) handleDevicePoll(ctx context.Context, in *devicePollInput) (*devicePollOutput, error) {
 	token, name, err := s.devices.Redeem(ctx, in.Body.DeviceCode)
 	if err != nil {
 		switch {
@@ -159,7 +159,7 @@ type deviceApproveOutput struct {
 	}
 }
 
-func (s *Server) handleDeviceApprove(ctx context.Context, in *deviceApproveInput) (*deviceApproveOutput, error) {
+func (s *Handlers) handleDeviceApprove(ctx context.Context, in *deviceApproveInput) (*deviceApproveOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
@@ -205,7 +205,7 @@ type deviceDTO struct {
 	LastSeenAt string `json:"lastSeenAt"`
 }
 
-func (s *Server) handleDeviceList(ctx context.Context, _ *struct{}) (*deviceListOutput, error) {
+func (s *Handlers) handleDeviceList(ctx context.Context, _ *struct{}) (*deviceListOutput, error) {
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to see your devices.")
@@ -231,7 +231,7 @@ type deviceRevokeInput struct {
 	ID string `path:"id" doc:"Device id from the device list"`
 }
 
-func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) (*struct{}, error) {
+func (s *Handlers) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) (*struct{}, error) {
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Sign-in required", "Sign in to revoke a device.")
@@ -248,7 +248,7 @@ func (s *Server) handleDeviceRevoke(ctx context.Context, in *deviceRevokeInput) 
 	return nil, nil
 }
 
-func (s *Server) handleCurrentDeviceRevoke(ctx context.Context, _ *struct{}) (*struct{}, error) {
+func (s *Handlers) handleCurrentDeviceRevoke(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
 		return nil, httpcore.Unauthorized("Paired device required", "Only a paired device can disconnect itself.")

@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/people"
 )
 
 // ExportOpenAPI builds the API's operation definitions and returns the OpenAPI
@@ -36,13 +37,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv := &Server{log: log, schemaOnly: true}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
-	srv.registerAuth(humaAPI)
-	srv.registerDeviceAuth(humaAPI)
-	srv.registerUsers(humaAPI)
-	srv.registerInvitations(humaAPI)
-	srv.registerInvitationRedemption(humaAPI)
-	srv.registerPasswordRecovery(humaAPI)
-	srv.registerPasswords(humaAPI)
+	people.New(people.Deps{Log: log}, true).Register(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)
 	srv.registerGuide(humaAPI)
@@ -84,8 +79,6 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
 	// the generated client always has the event types even when this export ran without one.
 	srv.registerEvents(humaAPI)
-	// registerSSO is nil-guarded on the provider, same schemaOnly escape.
-	srv.registerSSO(humaAPI)
 	// pprof=false: the profiler routes are Hidden on both paths anyway (they exist only when a
 	// flag is set, so advertising them would describe a surface most installs do not have), and
 	// the exporter has no Options to read the flag from.

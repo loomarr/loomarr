@@ -162,7 +162,7 @@ func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapO
 		return nil, httpcore.Conflict("Already set up", "An admin account already exists, so first-run setup is closed.")
 	}
 	if errors.Is(err, auth.ErrWeakPassword) {
-		return nil, errPasswordTooShort()
+		return nil, httpcore.PasswordTooShort(auth.MinPasswordLen)
 	}
 	if errors.Is(err, auth.ErrInvalidBootstrap) {
 		return nil, httpcore.Unprocessable("Details required", "Enter both a username and a password to create the admin account.")

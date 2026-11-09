@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -37,8 +38,8 @@ type httpBuild struct {
 	settings                 api.SettingsService
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string
-	invitationDelivery       api.InvitationDeliveryService
-	passwordRecovery         api.PasswordRecoveryService
+	invitationDelivery       people.InvitationDeliveryService
+	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService

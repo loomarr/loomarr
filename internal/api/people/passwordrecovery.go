@@ -1,4 +1,4 @@
-package api
+package people
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
-func (s *Server) registerPasswordRecovery(api huma.API) {
+func (s *Handlers) registerPasswordRecovery(api huma.API) {
 	if s.passwordRecovery == nil && !s.schemaOnly {
 		return
 	}
@@ -45,7 +45,7 @@ type requestPasswordRecoveryOutput struct {
 	}
 }
 
-func (s *Server) requestPasswordRecovery(
+func (s *Handlers) requestPasswordRecovery(
 	ctx context.Context,
 	in *requestPasswordRecoveryInput,
 ) (*requestPasswordRecoveryOutput, error) {
@@ -73,7 +73,7 @@ type previewPasswordRecoveryOutput struct {
 	}
 }
 
-func (s *Server) previewPasswordRecovery(
+func (s *Handlers) previewPasswordRecovery(
 	ctx context.Context,
 	in *passwordRecoveryBearerInput,
 ) (*previewPasswordRecoveryOutput, error) {
@@ -93,7 +93,7 @@ type redeemPasswordRecoveryInput struct {
 	}
 }
 
-func (s *Server) redeemPasswordRecovery(
+func (s *Handlers) redeemPasswordRecovery(
 	ctx context.Context,
 	in *redeemPasswordRecoveryInput,
 ) (*struct{}, error) {

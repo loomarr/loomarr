@@ -41,15 +41,28 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Collect the field names assigned in the `&Server{…}` composite literal.
+	// Collect the field names assigned in the `&Server{…}` composite literal and in every area's
+	// `area.Deps{…}` literal (the dependencies an area package takes, internal/api/people and its
+	// siblings). A Deps key is exported; it stands for the Server-style name with a lower-case first
+	// letter, which is what an Options field is matched on.
 	assigned := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
 		lit, ok := n.(*ast.CompositeLit)
 		if !ok {
 			return true
 		}
-		id, ok := lit.Type.(*ast.Ident)
-		if !ok || id.Name != "Server" {
+		isDeps := false
+		switch typ := lit.Type.(type) {
+		case *ast.Ident:
+			if typ.Name != "Server" {
+				return true
+			}
+		case *ast.SelectorExpr:
+			if typ.Sel.Name != "Deps" {
+				return true
+			}
+			isDeps = true
+		default:
 			return true
 		}
 		for _, el := range lit.Elts {
@@ -58,7 +71,11 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 				continue
 			}
 			if k, ok := kv.Key.(*ast.Ident); ok {
-				assigned[k.Name] = true
+				name := k.Name
+				if isDeps {
+					name = strings.ToLower(name[:1]) + name[1:]
+				}
+				assigned[name] = true
 			}
 		}
 		return true
@@ -83,8 +100,10 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 		if !ok {
 			target = strings.ToLower(name[:1]) + name[1:]
 		}
-		if _, ok := st.FieldByName(target); !ok {
-			lost = append(lost, name+": no Server field named "+target)
+		// The field is on Server, or an area took it through its Deps literal and Server no longer
+		// holds it.
+		if _, ok := st.FieldByName(target); !ok && !assigned[target] {
+			lost = append(lost, name+": neither a Server field named "+target+" nor an area Deps field assigned in api.go")
 			continue
 		}
 		checked++
