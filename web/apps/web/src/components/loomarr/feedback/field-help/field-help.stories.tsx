@@ -1,5 +1,5 @@
+import { Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Label } from "@/components/ui";
 import { FieldHelp } from "./field-help";
 
 // The tooltip content only appears on hover, so the snapshot captures the (i) trigger in a label
@@ -16,7 +16,7 @@ type Story = StoryObj<typeof meta>;
 const InALabelRow: Story = {
   render: (args) => (
     <div className="flex items-center gap-2">
-      <Label>Ordering</Label>
+      <Text textRole="label">Ordering</Text>
       <FieldHelp {...args} />
     </div>
   ),

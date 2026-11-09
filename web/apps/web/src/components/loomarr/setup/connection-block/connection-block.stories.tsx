@@ -1,5 +1,5 @@
+import { Action } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Button } from "@/components/ui";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
@@ -24,11 +24,7 @@ const fields = (
   </div>
 );
 
-const testBtn = (
-  <Button variant="outline" size="sm">
-    Test connection
-  </Button>
-);
+const testBtn = <Action variant="outline">Test connection</Action>;
 
 // Healthy + collapsed — the resting state of a passing connection: a green dot and the
 // header's one-line summary ("OK"), which is all a collapsed block shows.
