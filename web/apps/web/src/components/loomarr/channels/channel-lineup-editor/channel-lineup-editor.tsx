@@ -173,7 +173,15 @@ const SortableLineupRow = ({
 
       <div className="col-[2/-1] shrink-0 justify-self-end">
         <Tooltip content="Remove from lineup">
-          <Action disabled={disabled} icon="close" layout="icon" onPress={onRemove} variant="ghost">
+          {/* touch density: a narrow row's Remove must be a 44 px target; pointer's 40 is short. */}
+          <Action
+            density="touch"
+            disabled={disabled}
+            icon="close"
+            layout="icon"
+            onPress={onRemove}
+            variant="ghost"
+          >
             {`Remove ${entry.name}`}
           </Action>
         </Tooltip>

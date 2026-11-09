@@ -321,7 +321,8 @@ const WaitingBlock = ({
         overflow="hidden"
         paddingHorizontal={8}
       >
-        <Text numberOfLines={1} textAlign="left" textRole="cardLabel" tone="muted">
+        {/* secondary, not muted: muted on the break fill is 3.3:1, under AA's 4.5:1 for this size. */}
+        <Text numberOfLines={1} textAlign="left" textRole="cardLabel" tone="secondary">
           {label}
         </Text>
       </Surface>
