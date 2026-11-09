@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -864,7 +865,7 @@ func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec 
 			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
 				"channel", spec.Name, "wanted", spec.Number, "using", moved)
 			if e.acts != nil {
-				e.acts.Warn(ctx, store.ActivityKindChannel, spec.Name, fmt.Sprintf(
+				e.acts.Warn(ctx, activitystore.ActivityKindChannel, spec.Name, fmt.Sprintf(
 					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
 					spec.Name, moved, spec.Number))
 			}

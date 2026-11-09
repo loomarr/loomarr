@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`platform/activity`** · 4 importers · → `platform/store`
+- **`platform/activity`** · 4 importers · → `platform/store/activitystore`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`platform/buildinfo`** · 4 importers
   Carries the version stamped into the binary at build time.
@@ -55,8 +55,10 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 21 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 19 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+- **`platform/store/activitystore`** · 8 importers · → `platform/store/storedb`
+  Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
 - **`platform/store/clipstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`platform/store/crashstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
@@ -69,7 +71,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).
-- **`platform/store/storedb`** · 7 importers
+- **`platform/store/storedb`** · 8 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`platform/textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.

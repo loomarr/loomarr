@@ -272,6 +272,13 @@ func TestJobStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/jobstore")
 }
 
+// internal/platform/store/activitystore is the Recent activity feed cluster (the activity table). It
+// builds on the storedb kernel, in the same direction as the clusters above, and store embeds it and
+// re-exports Activity and its value sets.
+func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

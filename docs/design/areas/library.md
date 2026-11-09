@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 16 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **platform** · 17 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
 
 ## Packages
@@ -43,7 +43,7 @@ One area of the [package map](../package-map.md#start-here).
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`provision`** · 28 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `provision`, `requester`
+- **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`, `requester`
   Provisioning backstop (design §4, §7, §18).
 - **`requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.

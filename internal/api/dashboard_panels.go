@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
 // The Dashboard's two lower panels (§12, V31 + V32).
@@ -132,7 +133,7 @@ type listActivityInput struct {
 
 type listActivityOutput struct {
 	Body struct {
-		Activity []store.Activity `json:"activity"`
+		Activity []activitystore.Activity `json:"activity"`
 	}
 }
 
@@ -150,7 +151,7 @@ func (s *Server) listActivity(ctx context.Context, in *listActivityInput) (*list
 	// A nil slice serializes as `null`, which a client must special-case before mapping. A
 	// fresh install legitimately has no activity yet.
 	if out.Body.Activity == nil {
-		out.Body.Activity = []store.Activity{}
+		out.Body.Activity = []activitystore.Activity{}
 	}
 	return out, nil
 }
