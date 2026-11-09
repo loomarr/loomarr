@@ -1,4 +1,4 @@
-import { typography } from "@loomarr/design-system";
+import { Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
 
 const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
@@ -58,35 +58,34 @@ const Typography = () => (
       </div>
     </section>
 
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">The five roles</h2>
-      <p className="text-muted-foreground max-w-2xl text-sm">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control" padding={0}>
+      <Text as="h2" density="pointer" strong textRole="heading">
+        The five roles
+      </Text>
+      <Text density="pointer" textRole="body" tone="muted">
         Display, Heading, Body, Label and Mono, sized per density. Mono is for channel numbers and clocks
         only. Size / weight, read from the tokens.
-      </p>
-      <div className="divide-border flex flex-col divide-y">
-        {TYPE_ROLES.map((role) => (
-          <div key={role} className="flex items-baseline gap-4 py-3">
-            <span className="text-static-400 w-16 shrink-0 font-mono text-[11px]">{role}</span>
-            <span
-              style={{
-                fontFamily: role === "mono" ? webType.fonts.mono : webType.fonts.sans,
-                fontSize: typography.pointer[role].size,
-                fontWeight: Number(typography.pointer[role].weight),
-              }}
-              className="min-w-0 flex-1 truncate"
-            >
-              {role === "mono" ? "CH 42 · 21:30" : "Channels play what's ready"}
-            </span>
-            <span className="text-static-400 shrink-0 font-mono text-[11px] tabular-nums">
-              {(["pointer", "touch", "tv"] as const)
-                .map((d) => `${d} ${typography[d][role].size}/${typography[d][role].weight}`)
-                .join(" · ")}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
+      </Text>
+      {TYPE_ROLES.map((role) => (
+        <Surface
+          key={role}
+          backgroundColor="transparent"
+          borderWidth={0}
+          gap="control"
+          padding={0}
+          paddingVertical={12}
+        >
+          <Text density="pointer" textRole={role}>
+            {role === "mono" ? "CH 42 · 21:30" : "Channels play what's ready"}
+          </Text>
+          <Text density="pointer" textRole="mono" tone="muted">
+            {`${role}: ${(["pointer", "touch", "tv"] as const)
+              .map((d) => `${d} ${typography[d][role].size}/${typography[d][role].weight}`)
+              .join(" · ")}`}
+          </Text>
+        </Surface>
+      ))}
+    </Surface>
 
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Scale</h2>

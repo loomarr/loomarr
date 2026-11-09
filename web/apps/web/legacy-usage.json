@@ -297,7 +297,7 @@
       "tailwindClasses": 46
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 131
+      "tailwindClasses": 108
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 220
