@@ -1,4 +1,4 @@
-package filler
+package cliplibrary
 
 import (
 	"fmt"
@@ -7,7 +7,20 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
+
+// IsHashDisplayName reports whether value is a hash-named file (with or without an extension),
+// which says nothing about what the clip is.
+func IsHashDisplayName(value string) bool {
+	base := filepath.Base(value)
+	return IsOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+// IsOpaqueHash reports whether value is a 40- or 64-character lowercase hex digest.
+func IsOpaqueHash(value string) bool {
+	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
+}
 
 // NameSource records which evidence produced a clip's derived display name (#1452). It is written
 // beside the name in the sidecar, so a derived name is recognisably Loomarr's and can be improved
@@ -34,7 +47,7 @@ const excerptWords = 6
 // marks, so the name states only what the clip itself says (§10 grounding). Summarising it would
 // be the model inventing a title. No step needs the LLM or vision to be on: evidence that was
 // never gathered simply leaves its rung empty.
-func GroundedName(c Clip) (string, NameSource) {
+func GroundedName(c clips.Clip) (string, NameSource) {
 	withEra := func(base string) string {
 		if c.Era > 0 {
 			return fmt.Sprintf("%s — %d", base, c.Era)
@@ -67,7 +80,7 @@ func GroundedName(c Clip) (string, NameSource) {
 // boundary. Whisper's cue markers ("[Music]", "(applause)", "♪") are not speech and are dropped.
 // A wordless clip, or an opening with fewer than two words, yields nothing.
 func transcriptExcerpt(transcript string) string {
-	if transcript == TranscriptNone {
+	if transcript == clips.TranscriptNone {
 		return ""
 	}
 	text := stripCues(transcript)
@@ -140,7 +153,7 @@ func ViewerName(name string, source clips.NameSource) string {
 		}
 		return ""
 	case strings.Contains(name, "_") || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
-		isHashDisplayName(name) || lowerSlug(name):
+		IsHashDisplayName(name) || lowerSlug(name):
 		return ""
 	default:
 		return name

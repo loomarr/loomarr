@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -32,7 +33,7 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 			t.Fatal(err)
 		}
 	}
-	layout, err := filler.NewLayout(clipDir, watchDir)
+	layout, err := cliplibrary.NewLayout(clipDir, watchDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +97,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 			WithRewind(fillerRewindAdapter{st: database}, layout.ClipDir())
 	}
 	pipeline := newPipeline(st, interruptedProbe)
-	syncer := filler.NewSyncer(filler.DirSource{
+	syncer := filler.NewSyncer(cliplibrary.DirSource{
 		Layout: layout, Probe: scanProbe, Artwork: artwork,
 	}, fillerStoreAdapter{st: st}, layout, func() time.Time { return now }, nil).
 		WithAcquisitionManifests(st)

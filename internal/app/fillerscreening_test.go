@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -13,7 +13,7 @@ func TestBuildQualificationSegmentScreeningRuntimeUsesConfiguredFillerStorage(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := filler.NewLayout(filepath.Join(root, "clips"), filepath.Join(root, "watch"))
+	layout, err := cliplibrary.NewLayout(filepath.Join(root, "clips"), filepath.Join(root, "watch"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestBuildQualificationSegmentScreeningRuntimeUsesConfiguredFillerStorage(t 
 }
 
 func TestBuildQualificationSegmentScreeningRuntimeLeavesUnconfiguredInstallInert(t *testing.T) {
-	runtime, err := buildQualificationSegmentScreeningRuntime(nil, filler.Layout{})
+	runtime, err := buildQualificationSegmentScreeningRuntime(nil, cliplibrary.Layout{})
 	if err != nil || runtime != nil {
 		t.Fatalf("unconfigured qualification runtime = %v, error = %v", runtime, err)
 	}

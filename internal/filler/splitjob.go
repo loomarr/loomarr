@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -61,11 +62,11 @@ var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publicat
 // SplitStore is the slice of the store the splitter needs (mirrors sync.go's
 // pattern — declared here so filler doesn't import store; app bridges them).
 type SplitStore interface {
-	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
+	GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error)
+	ListClips(ctx context.Context) ([]cliplibrary.StoreClip, error) // the dedup candidate set
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
-	UpsertClip(ctx context.Context, c StoreClip) error
+	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
 	// RecordFillerEraObservation carries a segment's guessed era onto its child as an uncited
 	// Context suggestion (#2323).
 	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
@@ -910,7 +911,7 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 
 // catalogFingerprint makes whole-catalog dedup incremental. Content hash plus algorithm version
 // is the cache key, so a hit is exact; failures always degrade to recomputation or no verdict.
-func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c cliplibrary.StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
 	if len(cached.Video) > 0 {
 		return cached, true
 	}
@@ -1093,7 +1094,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		if err != nil {
 			return nil, fmt.Errorf("split confirm: hash segment %d: %w", i, err)
 		}
-		dst, err := ClipPath(sp.dropDir, id, ext)
+		dst, err := cliplibrary.ClipPath(sp.dropDir, id, ext)
 		if err != nil {
 			return nil, err
 		}
@@ -1149,10 +1150,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			if err := asset.WriteSidecarTags(dst, childTags, false); err != nil {
 				return nil, fmt.Errorf("split confirm: fence existing segment %d: %w", i, err)
 			}
-			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
+			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: cliplibrary.ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
 			continue
 		}
-		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
+		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: cliplibrary.ClipRelPath(id, ext), staged: tmp, final: dst})
 	}
 	if err := finishStorage(); err != nil {
 		return nil, err
@@ -1178,7 +1179,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			return nil, err
 		}
 		spawned = append(spawned, c.hash)
-		nc := StoreClip{UpdatedAt: now}
+		nc := cliplibrary.StoreClip{UpdatedAt: now}
 		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
 		// so every segment used to insert with `hash=''` and each one overwrote the last — a
 		// 41-segment reel became ONE catalog row. Invisible to the splitter's own tests because

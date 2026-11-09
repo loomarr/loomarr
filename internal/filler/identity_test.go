@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -115,7 +116,7 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 		hash := writeContentAddressedClip(t, dir, []byte{byte(i), 'x'}, ".mp4")
 		hashes[hash] = spec.fp
 		ic := IdentityClip{CreatedAt: t0.Add(time.Duration(i) * time.Hour)}
-		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Role = hash, ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
+		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
 		ic.Placement = PlacementBreakBody
 		clips = append(clips, ic)
 	}
@@ -145,7 +146,7 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	clip := func(body, quality string, a *defects.Assessment) IdentityClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := IdentityClip{CreatedAt: t0, Defects: a}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
 		c.Placement = PlacementBreakBody
 		return c
 	}
@@ -205,7 +206,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	sharp := writeContentAddressedClip(t, dir, []byte("the 480p copy"), ".mp4")
 	soft := writeContentAddressedClip(t, dir, []byte("the 240p copy, admitted first"), ".mp4")
 	cutDown := writeContentAddressedClip(t, dir, []byte("the 15 s cut-down"), ".mp4")
-	softFull := filepath.Join(dir, ClipRelPath(soft, ".mp4"))
+	softFull := filepath.Join(dir, cliplibrary.ClipRelPath(soft, ".mp4"))
 
 	sourceFile := filepath.Join(dir, "soft-source.mkv")
 	if err := os.WriteFile(sourceFile, []byte("the soft copy's downloaded bytes"), 0o644); err != nil {
@@ -228,7 +229,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 
 	clip := func(hash, quality string, durationMs int64, created time.Time) IdentityClip {
 		c := IdentityClip{CreatedAt: created}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, ClipRelPath(hash, ".mp4"), quality, durationMs, Commercial
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, cliplibrary.ClipRelPath(hash, ".mp4"), quality, durationMs, Commercial
 		c.Placement = PlacementBreakBody
 		return c
 	}
@@ -265,7 +266,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 		}
 	}
 	for _, kept := range []string{sharp, cutDown} {
-		if _, err := os.Stat(filepath.Join(dir, ClipRelPath(kept, ".mp4"))); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, cliplibrary.ClipRelPath(kept, ".mp4"))); err != nil {
 			t.Errorf("an ad that stays lost its file: %v", err)
 		}
 	}

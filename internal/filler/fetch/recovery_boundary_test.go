@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
@@ -56,7 +57,7 @@ func seedBoundaryRun(t *testing.T, db records.Store, at time.Time) {
 func moveBoundaryMedia(t *testing.T, watch, catalog string, artifact filler.AcquisitionArtifact, sidecar bool) string {
 	t.Helper()
 	source := filepath.Join(watch, artifact.MediaPath)
-	destination, err := filler.ClipPath(catalog, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
+	destination, err := cliplibrary.ClipPath(catalog, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
 	if err != nil {
 		t.Fatal(err)
 	}

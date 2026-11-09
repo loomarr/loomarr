@@ -1,4 +1,4 @@
-package filler
+package cliplibrary
 
 import (
 	"context"
@@ -71,7 +71,7 @@ type IntakeResult struct {
 //
 // `inferior` holds the identities of copies that lost to a better copy of their ad (#2033). Such a
 // file is left exactly where it is, never filed: it may be an operator's own file.
-func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor, inferior map[string]bool) (IntakeResult, error) {
+func TakeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor, inferior map[string]bool) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {
 		return res, nil

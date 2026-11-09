@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -110,7 +111,7 @@ type Server struct {
 	taxonomy       TaxonomyEditor             // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
-	fillerLayout filler.Layout
+	fillerLayout cliplibrary.Layout
 	// sourceProviders is every provider a filler source can name. It answers what each one is and
 	// can do; nil names none, so no source is fetched and none can be added.
 	sourceProviders *source.Registry
@@ -1000,7 +1001,7 @@ type Options struct {
 	Taxonomy        TaxonomyEditor             // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
-	FillerLayout filler.Layout
+	FillerLayout cliplibrary.Layout
 	// IntakeLanguages is the languages intake admits now, the channels' commercial languages
 	// (language.IntakeSet), read live. Split review compares a proposal with it; nil reports none.
 	IntakeLanguages func(context.Context) (string, error)

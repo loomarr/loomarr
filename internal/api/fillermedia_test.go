@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -64,9 +65,9 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
 			t.Fatal(err)
 		}
 	}
-	layout, err := filler.NewLayout(fillerDir, "")
+	layout, err := cliplibrary.NewLayout(fillerDir, "")
 	if err != nil {
-		t.Fatalf("filler.NewLayout: %v", err)
+		t.Fatalf("cliplibrary.NewLayout: %v", err)
 	}
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{

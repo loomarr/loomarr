@@ -1,9 +1,9 @@
-package filler_test
+package cliplibrary_test
 
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
@@ -12,28 +12,28 @@ import (
 func TestGroundedName_Ladder(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
-		clip       filler.Clip
+		clip       clips.Clip
 		want       string
-		wantSource filler.NameSource
+		wantSource cliplibrary.NameSource
 	}{
-		{"brand wins", filler.Clip{Role: filler.Commercial, Brand: "Acme Tires", Era: 1994,
-			Transcript: "come on down to the big sale"}, "Acme Tires — 1994", filler.NameFromBrand},
-		{"transcript opening is quoted", filler.Clip{Role: filler.Commercial, Era: 1994,
+		{"brand wins", clips.Clip{Role: clips.Commercial, Brand: "Acme Tires", Era: 1994,
+			Transcript: "come on down to the big sale"}, "Acme Tires — 1994", cliplibrary.NameFromBrand},
+		{"transcript opening is quoted", clips.Clip{Role: clips.Commercial, Era: 1994,
 			Transcript: "[Music] true tales of the canyon patrol. Troopers close in on a desperate gunman."},
-			"“True tales of the canyon patrol” — 1994", filler.NameFromTranscript},
-		{"long opening is cut at a word", filler.Clip{Role: filler.Commercial,
+			"“True tales of the canyon patrol” — 1994", cliplibrary.NameFromTranscript},
+		{"long opening is cut at a word", clips.Clip{Role: clips.Commercial,
 			Transcript: "tonight at eight on channel nineteen the whole family gathers for a very special hour"},
-			"“Tonight at eight on channel nineteen…”", filler.NameFromTranscript},
-		{"wordless clip falls through to on-screen text", filler.Clip{Role: filler.Bumper,
-			Transcript: filler.TranscriptNone, VisibleText: "\n  SATURDAY  MORNING FUN \nstay tuned"},
-			"“SATURDAY MORNING FUN”", filler.NameFromScreenText},
-		{"a lone word is not a title", filler.Clip{Role: filler.Commercial, Category: "fast_food",
-			Transcript: "♪ yeah ♪"}, "Fast food commercial", filler.NameFromCategory},
-		{"era only", filler.Clip{Role: filler.StationID, Era: 1988}, "1988 station id", filler.NameFromEra},
-		{"nothing grounded", filler.Clip{Role: filler.Commercial}, "Untitled commercial", filler.NameUntitled},
+			"“Tonight at eight on channel nineteen…”", cliplibrary.NameFromTranscript},
+		{"wordless clip falls through to on-screen text", clips.Clip{Role: clips.Bumper,
+			Transcript: clips.TranscriptNone, VisibleText: "\n  SATURDAY  MORNING FUN \nstay tuned"},
+			"“SATURDAY MORNING FUN”", cliplibrary.NameFromScreenText},
+		{"a lone word is not a title", clips.Clip{Role: clips.Commercial, Category: "fast_food",
+			Transcript: "♪ yeah ♪"}, "Fast food commercial", cliplibrary.NameFromCategory},
+		{"era only", clips.Clip{Role: clips.StationID, Era: 1988}, "1988 station id", cliplibrary.NameFromEra},
+		{"nothing grounded", clips.Clip{Role: clips.Commercial}, "Untitled commercial", cliplibrary.NameUntitled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, source := filler.GroundedName(tc.clip)
+			got, source := cliplibrary.GroundedName(tc.clip)
 			if got != tc.want || source != tc.wantSource {
 				t.Fatalf("GroundedName = %q (%s), want %q (%s)", got, source, tc.want, tc.wantSource)
 			}
@@ -45,7 +45,7 @@ func TestGroundedName_Ladder(t *testing.T) {
 // and capitalised like a title; every other recorded source shows, slug-shaped or not.
 func TestViewerName_ProvenanceDecides(t *testing.T) {
 	for _, name := range []string{"Widgetmax Ad 1991", "Fizzbolt Summer Sale", "commercial-widgetmax-1991"} {
-		if got := filler.ViewerName(name, clips.NameFromFilename); got != "" {
+		if got := cliplibrary.ViewerName(name, clips.NameFromFilename); got != "" {
 			t.Errorf("ViewerName(%q, filename) = %q, want it withheld", name, got)
 		}
 	}
@@ -53,11 +53,11 @@ func TestViewerName_ProvenanceDecides(t *testing.T) {
 		clips.NameFromSource, clips.NameFromSidecar, clips.NameFromGrounded, clips.NameFromCurated,
 	} {
 		for _, name := range []string{"Widgetmax Ad 1991", "zx-qt"} {
-			if got := filler.ViewerName(name, source); got != name {
+			if got := cliplibrary.ViewerName(name, source); got != name {
 				t.Errorf("ViewerName(%q, %s) = %q, want it shown", name, source, got)
 			}
 		}
-		if got := filler.ViewerName("  ", source); got != "" {
+		if got := cliplibrary.ViewerName("  ", source); got != "" {
 			t.Errorf("ViewerName(blank, %s) = %q, want empty", source, got)
 		}
 	}
@@ -80,7 +80,7 @@ func TestViewerName_UnknownProvenanceWithholdsFileShapedNames(t *testing.T) {
 		"",
 	} {
 		for _, unknown := range []clips.NameSource{clips.NameFromUnknown, ""} {
-			if got := filler.ViewerName(name, unknown); got != "" {
+			if got := cliplibrary.ViewerName(name, unknown); got != "" {
 				t.Errorf("ViewerName(%q, %q) = %q, want it withheld", name, unknown, got)
 			}
 		}
@@ -97,7 +97,7 @@ func TestViewerName_UnknownProvenanceWithholdsFileShapedNames(t *testing.T) {
 		"Dr. Fizz",
 		"Loomarr — We'll be right back",
 	} {
-		if got := filler.ViewerName(name, clips.NameFromUnknown); got != name {
+		if got := cliplibrary.ViewerName(name, clips.NameFromUnknown); got != name {
 			t.Errorf("ViewerName(%q, unknown) = %q, want the curated name unchanged", name, got)
 		}
 	}

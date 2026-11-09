@@ -394,3 +394,22 @@ type Airing struct {
 	AiredAt    time.Time
 	RecordedAt time.Time
 }
+
+// TranscriptNone is the sentinel a wordless clip records (§10 V44) — the transcript column's
+// analogue of the language gate's language.None.
+//
+// ⚠ **A NON-EMPTY marker is load-bearing.** The transcript column has the same two meanings
+// `language` does — "not yet transcribed" and "transcribed, wordless" — and the row default for
+// BOTH is `""`. Recording a literal `""` for a silent clip could not distinguish them, so every
+// pass would re-run Whisper on every wordless clip forever, ~341s each under QEMU.
+//
+// It is deliberately a bracketed marker, not real speech, so a search over transcripts never
+// surfaces it as content and the tagger — which reads `Transcript` as a text signal — sees a token
+// it will not ground a brand or era on. A wordless clip must still be tagged from its OTHER
+// signals (its filename, its sidecar, or the vision rung), never from this placeholder.
+//
+// ⚠ **A documented tension with 00038's column note**, surfaced rather than papered over: that
+// migration says the row stores `""` for a wordless clip and "does not need to tell [the two
+// meanings] apart". Both cannot hold. This resolves it toward the never-re-run guarantee the same
+// migration states as its whole point.
+const TranscriptNone = "[no speech]"

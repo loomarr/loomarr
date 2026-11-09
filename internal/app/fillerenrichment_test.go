@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -16,19 +17,19 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type recordingTranscriptObserver struct{ clip filler.StoreClip }
+type recordingTranscriptObserver struct{ clip cliplibrary.StoreClip }
 
-func (s *recordingTranscriptObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, string, error) {
+func (s *recordingTranscriptObserver) Observe(_ context.Context, clip cliplibrary.StoreClip) (filler.StageResult, string, error) {
 	s.clip = clip
 	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, "spoken words", nil
 }
 
 type recordingVisionObserver struct {
-	clip        filler.StoreClip
+	clip        cliplibrary.StoreClip
 	observation filler.VisionObservation
 }
 
-func (s *recordingVisionObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
+func (s *recordingVisionObserver) Observe(_ context.Context, clip cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
 	s.clip = clip
 	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, s.observation, nil
 }

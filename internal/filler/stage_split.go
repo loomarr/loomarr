@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -192,7 +193,7 @@ type TaxaLister interface {
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source split.SourceAsset, segs []split.Segment) groundPass {
+func (s *SplitStage) groundFromSource(ctx context.Context, c cliplibrary.StoreClip, source split.SourceAsset, segs []split.Segment) groundPass {
 	if s.vision == nil {
 		return s.groundAt(ctx, c, "", source, segs)
 	}
@@ -214,7 +215,7 @@ func countPendingGrounding(segs []split.Segment) int {
 	return n
 }
 
-func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
+func (s *SplitStage) groundAt(ctx context.Context, c cliplibrary.StoreClip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
 	pending := func() int {
 		return countPendingGrounding(segs)
 	}
@@ -385,7 +386,7 @@ func (s *SplitStage) structureAssessedAt() time.Time {
 
 // groundSkipped reports a pass that never began. Each caller passes a DIFFERENT reason, which is
 // the entire point: these were four indistinguishable early returns.
-func (s *SplitStage) groundSkipped(ctx context.Context, c StoreClip, why string, args ...any) {
+func (s *SplitStage) groundSkipped(ctx context.Context, c cliplibrary.StoreClip, why string, args ...any) {
 	if s.log == nil {
 		return
 	}
@@ -402,7 +403,7 @@ func (s *SplitStage) groundSkipped(ctx context.Context, c StoreClip, why string,
 // and the reel refused as untagged. Every counter along that path says "fine": no provider error,
 // no parse error, `Looked` incremented 37 times. Only `learned` tells the truth, and only by being
 // compared against `looked`.
-func (s *SplitStage) groundReport(ctx context.Context, c StoreClip, t groundTally) {
+func (s *SplitStage) groundReport(ctx context.Context, c cliplibrary.StoreClip, t groundTally) {
 	if s.log == nil || (t.looked == 0 && t.providerErr == nil) {
 		return
 	}
@@ -512,7 +513,7 @@ func (s *SplitStage) Cost() StageCost           { return CostSplit }
 // the expensive boundary scan be gated on duration in ONE place, and it is why a 16-minute
 // recording is excluded from pods the moment it is measured rather than only once someone splits
 // it — the exact bug §10 V45 describes.
-func (s *SplitStage) Applies(_ context.Context, c StoreClip) (bool, string) {
+func (s *SplitStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
 	if s.splitter == nil {
 		return false, "splitting is not available on this install"
 	}
@@ -523,7 +524,7 @@ func (s *SplitStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 }
 
 // Run detects the cuts and either makes them or leaves them for a human.
-func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	// Already review-pending: re-detecting would replace a proposal an operator may be halfway
 	// through editing. ⚠ Keyed by HASH on both sides — the identity `Propose` takes.
 	// ⚠ An existing proposal is RE-GROUNDED, never re-detected. Until V54 this returned outright,

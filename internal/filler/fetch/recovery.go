@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // ArtifactRecoveryStore is the persistence slice needed to resume staged publication.
@@ -179,7 +180,7 @@ func recoverConsumedArtifact(clipDir string, artifact filler.AcquisitionArtifact
 	if clipDir == "" || artifact.ClipHash == "" {
 		return artifact, errors.New("consumed location unavailable")
 	}
-	media, err := filler.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
+	media, err := cliplibrary.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
 	if err != nil {
 		return artifact, err
 	}
@@ -289,7 +290,7 @@ func manifestedMediaExists(watchDir, clipDir string, artifact filler.Acquisition
 	if clipDir != "" {
 		candidates = append(candidates, filepath.Join(clipDir, artifact.MediaPath))
 		if artifact.ClipHash != "" {
-			if catalog, err := filler.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath)); err == nil {
+			if catalog, err := cliplibrary.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath)); err == nil {
 				candidates = append(candidates, catalog)
 			}
 		}

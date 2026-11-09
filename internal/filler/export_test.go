@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -53,41 +54,6 @@ func SummarizePipelines(rows []pipelinestate.ClipPipeline, at time.Time) pipelin
 	return out
 }
 
-// ScanDir is scanDir with no watch folder excluded. The duration floor is optional because most
-// tests only assert that a file is catalogued.
-func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int64) (clips []RawClip, skipped int, err error) {
-	if dir == "" {
-		return nil, 0, nil
-	}
-	if probe == nil {
-		probe = FFprobe
-	}
-	var minMs int64
-	if len(minDurationMs) > 0 {
-		minMs = minDurationMs[0]
-	}
-	clips, skipped, _, err = scanDir(ctx, dir, "", probe, minMs)
-	return clips, skipped, err
-}
-
-// GenerateArtwork is generateArtwork with no storage governor, returning the failure count.
-func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer) (failed int) {
-	return generateArtwork(ctx, dir, clips, render, nil).Failed
-}
-
-// TakeIn is takeInFrom with no source, binding or storage governor.
-func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil, nil)
-}
-
-func movePath(src, dst string) error {
-	return movePathWithStorage(context.Background(), src, dst, nil)
-}
-
-func moveIfPresent(src, dst string) error {
-	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
-}
-
 func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags asset.SidecarTags) (asset.Identity, error) {
 	return asset.PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
 }
@@ -106,7 +72,7 @@ func structureDecisionSHA256ForInterval(proposal SplitProposal, segment split.Se
 }
 
 // ground is groundFromSource for the clip's own file rather than a proposal's evidence derivative.
-func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []split.Segment) groundPass {
+func (s *SplitStage) ground(ctx context.Context, c cliplibrary.StoreClip, segs []split.Segment) groundPass {
 	file := ""
 	if s.vision != nil {
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
@@ -117,9 +83,9 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []split.Segme
 // AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an
 // NVENC host that re-encodes it, for the library re-encode's pipeline tests. Each replacement's
 // defect check calls check; switches counts the commits.
-func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, StoreClip, func() int) {
+func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, cliplibrary.StoreClip, func() int) {
 	t.Helper()
-	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c StoreClip, staged string) (defects.Record, error) {
+	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c cliplibrary.StoreClip, staged string) (defects.Record, error) {
 		if err := check(ctx); err != nil {
 			return defects.Record{}, err
 		}

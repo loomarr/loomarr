@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // The defect floor (internal/filler/defectfloor) drops an admitted clip's evidence copy by rewriting
@@ -13,13 +14,13 @@ import (
 func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 	dir := t.TempDir()
 	manifest := screeningSubjectManifest(t)
-	clip := func(body string, m asset.Manifest) StoreClip {
+	clip := func(body string, m asset.Manifest) cliplibrary.StoreClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
-		rel := ClipRelPath(hash, ".mp4")
+		rel := cliplibrary.ClipRelPath(hash, ".mp4")
 		if err := asset.WriteSidecarTags(filepath.Join(dir, rel), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
 			t.Fatal(err)
 		}
-		return StoreClip{Clip: Clip{Hash: hash, Path: rel}}
+		return cliplibrary.StoreClip{Clip: Clip{Hash: hash, Path: rel}}
 	}
 	released := manifest
 	released.Evidence = nil
@@ -30,7 +31,7 @@ func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 	if p.evidenceReleased(clip("an ad still holding its evidence", manifest)) {
 		t.Error("a clip still naming its evidence copy was read as released")
 	}
-	if p.evidenceReleased(StoreClip{Clip: Clip{Hash: "no-sidecar", Path: "00/00/" + "0000000000000000000000000000000000000000000000000000000000000000.mp4"}}) {
+	if p.evidenceReleased(cliplibrary.StoreClip{Clip: Clip{Hash: "no-sidecar", Path: "00/00/" + "0000000000000000000000000000000000000000000000000000000000000000.mp4"}}) {
 		t.Error("a clip with no sidecar was read as released")
 	}
 }

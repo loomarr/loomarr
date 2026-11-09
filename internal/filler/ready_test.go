@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -31,8 +32,8 @@ func completedReadyRow(hash string, at time.Time) pipelinestate.ClipPipeline {
 	}
 }
 
-func readyClip(hash string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
+func readyClip(hash string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: filler.Clip{
 		Hash: hash, Path: "clip.mp4", Source: "archive:classic_tv_commercials",
 		Role: filler.Unclassified, Held: true, DurationMs: 30_000,
 	}}

@@ -7,17 +7,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // --- probe -------------------------------------------------------------------
 
 type probeMemStore struct {
-	upserts    []filler.StoreClip
+	upserts    []cliplibrary.StoreClip
 	composites []string
 }
 
-func (m *probeMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
+func (m *probeMemStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error {
 	m.upserts = append(m.upserts, c)
 	return nil
 }
@@ -33,8 +35,8 @@ func proberReturning(p filler.Probed, err error) filler.Prober {
 	return func(context.Context, string) (filler.Probed, error) { return p, err }
 }
 
-func probeClip() filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad"}}
+func probeClip() cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: filler.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad"}}
 }
 
 // The hard gates, each with the MEASURED fact attached — "too short" is an assertion, "8.2s; the
@@ -145,12 +147,12 @@ func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
 	}
 	for _, clip := range []filler.Clip{
 		{Hash: "c1", Path: "a3/f9/c1.mp4", Role: filler.Commercial, Held: true},
-		{Hash: "c2", Path: "b4/e8/c2.mp4", Role: filler.Unclassified, Held: true, Transcript: filler.TranscriptNone},
+		{Hash: "c2", Path: "b4/e8/c2.mp4", Role: filler.Unclassified, Held: true, Transcript: clips.TranscriptNone},
 	} {
-		if ok, why := s.Applies(context.Background(), filler.StoreClip{Clip: clip}); !ok {
+		if ok, why := s.Applies(context.Background(), cliplibrary.StoreClip{Clip: clip}); !ok {
 			t.Fatalf("finish skipped %s (%s) — the ready commit would never validate", clip.Hash, why)
 		}
-		out, err := s.Run(context.Background(), filler.StoreClip{Clip: clip})
+		out, err := s.Run(context.Background(), cliplibrary.StoreClip{Clip: clip})
 		if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Reason != "" {
 			t.Fatalf("finish on %s = %+v, %v; want a plain continue", clip.Hash, out, err)
 		}

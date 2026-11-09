@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -453,7 +453,7 @@ func podToPreviewOutput(pod pod.Pod) *previewPodsOutput {
 func viewerPoolDTO(pod pod.Pod) PodPoolDTO {
 	dto := podToPoolDTO(pod)
 	for i := range dto.Entries {
-		dto.Entries[i].Name = filler.ViewerName(pod.Entries[i].Name, pod.Entries[i].NameSource)
+		dto.Entries[i].Name = cliplibrary.ViewerName(pod.Entries[i].Name, pod.Entries[i].NameSource)
 		dto.Entries[i].Path = ""
 	}
 	return dto

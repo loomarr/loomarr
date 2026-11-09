@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
@@ -1187,7 +1187,7 @@ func (r *Resolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
+			full, perr := cliplibrary.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
 				return gap, "", nil
 			}

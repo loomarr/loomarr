@@ -49,7 +49,7 @@ import (
 // tell them apart. A key-confusion bug is invisible by construction against such a fixture.
 //
 // ⚠ Real 64-hex hashes are still deliberately NOT used. The store does not care what a hash looks
-// like — only `filler.ClipPath` validates the shape, and that is tested where it belongs
+// like — only `cliplibrary.ClipPath` validates the shape, and that is tested where it belongs
 // (`filler/clippath_test.go`). A wall of hex would cost readability without buying coverage. The
 // property that matters is that the two fields are DISTINGUISHABLE, not that the hash is realistic,
 // so the readable path gets a short readable hash beside it.
@@ -73,7 +73,7 @@ func sampleClip(id, name string, kind filler.Role, era int, aud filler.Audience,
 	//
 	// These tests use the READABLE id as the hash — "c1", not 64 hex characters — so assertions
 	// stay legible (`GetClip(ctx, "c1")`) and a failure names a clip a human recognises. The
-	// store does not care what a hash looks like; only `filler.ClipPath` validates the shape, and
+	// store does not care what a hash looks like; only `cliplibrary.ClipPath` validates the shape, and
 	// that is covered where it belongs, in `filler/clippath_test.go`. Using real hashes here
 	// would make every assertion a wall of hex and would test nothing extra.
 	//

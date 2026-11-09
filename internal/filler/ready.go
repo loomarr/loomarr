@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -153,7 +154,7 @@ func NewTerminalReady(repository ReadyRepository, now func() time.Time) *Termina
 }
 
 // Commit makes one completed non-composite playable. It never changes Kind.
-func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row pipelinestate.ClipPipeline) (pipelinestate.ClipPipeline, error) {
+func (t *TerminalReady) Commit(ctx context.Context, clip cliplibrary.StoreClip, row pipelinestate.ClipPipeline) (pipelinestate.ClipPipeline, error) {
 	if t == nil || t.repository == nil {
 		return row, ErrReadyUnavailable
 	}

@@ -85,7 +85,7 @@ declares.
 | Programmer | interface `Programmer.Reconcile(channel, lineup)` | Tunarr |
 | Suggester | struct `suggest.Suggester` | a local model over the Ollama API, or an OpenAI-compatible endpoint |
 | Catalog | struct `catalog.Catalog` | Library + TMDB/TVDB; grounds the model and backs `GET /v1/search` |
-| FillerSource | interface `filler.FillerSource` | `folder`, `youtube`, `archive`, `library` |
+| FillerSource | interface `cliplibrary.FillerSource` | `folder`, `youtube`, `archive`, `library` |
 | StorageGovernor | struct `storagegovernor.Governor` | host filesystem capacity, managed-root usage, atomic reservations |
 | Store | interface `Store` | Postgres, SQLite |
 | Events | struct `events.Bus` | internal (to the scheduler) and optional outbound webhook |

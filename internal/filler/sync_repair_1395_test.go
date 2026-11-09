@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 const missingMediaReason = "manifested media is missing, symlinked, or not a regular file"
@@ -28,7 +29,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 	if err != nil {
 		t.Fatal(err)
 	}
-	media, err := filler.ClipPath(dir, clipHash, ".mp4")
+	media, err := cliplibrary.ClipPath(dir, clipHash, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 		ClipHash: clipHash, State: filler.ArtifactRepair, RepairReason: reason,
 		CompletedAt: now, UpdatedAt: now,
 	}}
-	source = &fakeSource{clips: []filler.RawClip{raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0)}}
+	source = &fakeSource{clips: []cliplibrary.RawClip{raw(clipHash, "Downloaded ad", filler.Commercial, 30_000, 0)}}
 	source.clips[0].Path = filepath.ToSlash(relative)
 	return dir, authority, source, now
 }
