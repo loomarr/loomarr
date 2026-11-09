@@ -68,7 +68,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		auth: opts.Auth, log: log,
 		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
 		channels: opts.Channels,
-		viewing:  viewing.New(),
+		viewing:  opts.Viewing,
+	}
+	if srv.viewing == nil {
+		srv.viewing = viewing.New()
 	}
 	srv.registerMiddleware(humaAPI)
 	setupRoutes := setupapi.New(setupapi.Deps{

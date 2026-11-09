@@ -86,6 +86,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FavouriteChannels", func(t *testing.T) { testFavouriteChannels(t, newStore) })
 		t.Run("RecentChannels", func(t *testing.T) { testRecentChannels(t, newStore) })
 		t.Run("HiddenIdeas", func(t *testing.T) { testHiddenIdeas(t, newStore) })
+		t.Run("Viewings", func(t *testing.T) { testViewings(t, newStore) })
 	})
 
 	t.Run("Jobs", func(t *testing.T) {
