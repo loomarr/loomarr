@@ -732,7 +732,6 @@ type Store interface {
 	LibraryEpisodeOrderStore
 	LibraryCollectionStore
 	LibraryPeopleStore
-	LibraryIDMapStore
 	LibraryItemFactsReader
 	LibraryEpisodeReader
 	LibraryTitleReader

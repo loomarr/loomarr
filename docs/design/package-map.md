@@ -95,7 +95,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/structure` | — |
 | `filler/structure/window` | `filler/structure` |
 | `filler/taxonomy` | — |
-| `library` | `library/inventory`, `platform/httpx`, `platform/metrics` |
+| `library` | `platform/httpx`, `platform/metrics` |
 | `library/inventory` | — |
 | `library/titlesearch` | `library`, `platform/store/librarystore`, `provision` |
 | `library/tmdb` | `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision` |
