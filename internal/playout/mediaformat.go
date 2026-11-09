@@ -7,8 +7,8 @@ import (
 
 // MediaFormat is everything a probe tells us about a source that playout might use — the class
 // each item airs as (formats.go) needs the codecs; the rest (dimensions, framerate, HDR, bit depth,
-// duration, bitrate, container) is captured in the SAME probe so later features (framerate-aware
-// transcode, HDR tone-mapping, quality display, subtitle burn-in) need no second ffprobe. Probe
+// duration, bitrate, container) is captured in the SAME probe so consumers (framerate-aware
+// transcode, HDR tone-mapping, quality display) need no second ffprobe. Probe
 // once, keep it all. It is probed from the actual media (probe.go), never the media server's
 // metadata.
 type MediaFormat struct {
@@ -56,7 +56,7 @@ func (f MediaFormat) TenBit() bool {
 }
 
 // HDR reports whether the video carries an HDR transfer function (PQ/HLG) — SDR clients need
-// tone-mapping on transcode. Captured now so the transcode path can act on it later.
+// tone-mapping on transcode.
 func (f MediaFormat) HDR() bool {
 	t := strings.ToLower(f.ColorTransfer)
 	return t == "smpte2084" || t == "arib-std-b67"

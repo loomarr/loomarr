@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// "What is airing right now?" — the question the block supervisor asks at each finite EOF (§9.1).
+// "What is airing right now?" — the question the channel packager asks at each item boundary (§9.1).
 // The wall-clock answer, including its stable identity and start time, is what advances the
 // long-lived mux; process timing is never treated as scheduling truth.
 //
@@ -76,7 +76,7 @@ type Airing struct {
 	// that begins when someone watches.
 	Offset time.Duration
 	// Remaining is how much of the item is left. The child encode is bounded by it, so the
-	// process exits at the item boundary and the block supervisor resolves again.
+	// process exits at the item boundary and the packager resolves again.
 	Remaining time.Duration
 }
 
@@ -90,9 +90,9 @@ type Airing struct {
 //     resolver returns its path directly.
 //
 // Source is what distinguishes them: it is set for a resolved filler clip and empty for a
-// library program (whose input is derived from LibraryItemID instead). An earlier version
-// required LibraryItemID unconditionally, which made every resolved commercial fall through to
-// the offline card — the ad was picked correctly and then silently never played.
+// library program (whose input is derived from LibraryItemID instead). Requiring LibraryItemID
+// unconditionally would make every resolved commercial fall through to the offline card — the
+// ad picked correctly and then silently never played.
 func (a Airing) Playable() bool {
 	if a.Kind == schedule.SlotFiller {
 		return a.Source != ""
@@ -273,8 +273,7 @@ func (b Broadcast) ClipTo(from, to time.Time) (Broadcast, bool) {
 }
 
 // ContentIdentity is the same scheduler-owned identity used by live Airings and ScheduleBlockID.
-// Prepared raw delivery carries it into the existing block supervisor without re-deriving it in
-// the composition layer.
+// A caller holding a Broadcast gets the identity without re-deriving it in the composition layer.
 func (b Broadcast) ContentIdentity() string { return broadcastIdentity(b) }
 
 // ScheduledBlockID is the one schedule-to-diagnostics correlation function. Callers provide the

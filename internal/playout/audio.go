@@ -6,7 +6,7 @@ import "github.com/loomarr/loomarr/internal/platform/langcode"
 //
 // # The bug this exists for
 //
-// ProgramArgs mapped `0:a:0`: the FIRST audio track, unconditionally. That is not "the
+// Mapping `0:a:0` unconditionally takes the FIRST audio track. That is not "the
 // original language" and not "the default track" — it is whatever the muxer happened to write
 // first. A dev-install channel played Star Wars in RUSSIAN for exactly this reason: the release
 // carried a Russian dub ahead of the English track, and `0:a:0` took it every time.
@@ -29,7 +29,7 @@ import "github.com/loomarr/loomarr/internal/platform/langcode"
 //  2. Even if it parsed, the two maps are not mutually exclusive. A file WITH an English track
 //     would match both and emit TWO audio tracks, while a file without would emit one — and a
 //     varying track count across programs breaks the parent's `-c copy` exactly like a varying
-//     resolution does (see the map comment in ProgramArgs). The invariant is one video and
+//     resolution does (see the map comment in Pipeline.itemInput). The invariant is one video and
 //     exactly one audio, always.
 //
 // So the decision is resolved to a concrete index BEFORE the args are built, and the args keep
