@@ -328,7 +328,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 
 	// Preserve the complete approved lineup, including acquisitions that are still pending.
 	// Only enrich the in-library entries with the deterministic runtime/rating data this dev
-	// fixture owns. Rebuilding from `picks` alone used to erase every wanted/downloading key,
+	// fixture owns. Rebuilding from `picks` alone would erase every wanted/downloading key,
 	// so those titles could never backfill into the channel after landing.
 	entries := append([]schedule.LineupEntry(nil), ch.Lineup...)
 	entryByKey := make(map[provision.Key]int, len(entries))
