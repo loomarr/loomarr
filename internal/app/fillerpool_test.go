@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -41,7 +42,7 @@ func newPoolAdapter(t *testing.T, clips []clips.Clip, chans []channelstore.Chann
 			t.Fatal(err)
 		}
 	}
-	pods := pod.NewAdapter(clipCatalogAdapter{st: st}, nil, nil, slog.New(slog.DiscardHandler))
+	pods := pod.NewAdapter(storeadapter.NewCatalog(st), nil, nil, slog.New(slog.DiscardHandler))
 	return podPreviewAdapter{store: st, pods: pods}, st
 }
 

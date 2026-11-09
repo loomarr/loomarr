@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
-
-const splitProposalArtworkOwner = "filler_split_proposal"
 
 // fillerSplitArtworkAdapter is the composition seam between span extraction and the shared image
 // service. The filler domain supplies exact source-bound JPEG bytes; the image service owns byte
@@ -34,19 +32,10 @@ func (a fillerSplitArtworkAdapter) IngestSplitArtwork(
 	}
 	image, err := a.images.Ingest(ctx, bytes.NewReader(jpeg), images.IngestRequest{
 		Role: images.RoleThumb, Visibility: images.VisibilityMember, Origin: images.OriginExtracted,
-		OwnerKind: splitProposalArtworkOwner, OwnerID: proposalID, Meta: string(meta),
+		OwnerKind: storeadapter.SplitProposalArtworkOwner, OwnerID: proposalID, Meta: string(meta),
 	})
 	if err != nil {
 		return "", err
 	}
 	return image.Hash, nil
-}
-
-func deleteSplitProposalArtwork(ctx context.Context, st store.Store, proposalID string) {
-	if st == nil || proposalID == "" {
-		return
-	}
-	// Best effort, matching channel deletion: the image GC is intentionally eventual and a
-	// temporary orphan must never turn a successful proposal transaction into a false failure.
-	_ = st.DeleteImageRefs(ctx, splitProposalArtworkOwner, proposalID)
 }

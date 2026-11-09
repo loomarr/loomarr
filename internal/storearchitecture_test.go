@@ -19,6 +19,8 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/internal/app":     "is the composition root that narrows the store for domain modules",
 	modulePath + "/internal/filler/records": "is the aggregate's filler half: it extends the core store.Store " +
 		"with filler persistence (#1747)",
+	modulePath + "/internal/filler/storeadapter": "is where the aggregate store is narrowed to the persistence roles " +
+		"the filler seams declare, as the composition root did before these adapters moved here",
 	modulePath + "/internal/proposals/accept": "contains compile-time conformance assertions for its narrow store roles",
 	modulePath + "/internal/testkit":          "owns shared complete-store factories for tests",
 }

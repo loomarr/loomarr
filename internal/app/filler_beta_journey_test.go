@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -92,17 +93,17 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	newPipeline := func(database records.Store, probe tools.Prober) *filler.Pipeline {
-		clipStore := fillerPipelineClipAdapter{st: database}
+		clipStore := storeadapter.NewPipelineClips(database)
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),
 			filler.NewFinishStage(),
 		}, testFillerBudget(), nil, func() time.Time { return clock }, nil).
-			WithRewind(fillerRewindAdapter{st: database}, layout.ClipDir())
+			WithRewind(storeadapter.NewRewind(database), layout.ClipDir())
 	}
 	pipeline := newPipeline(st, interruptedProbe)
 	syncer := filler.NewSyncer(cliplibrary.DirSource{
 		Layout: layout, Probe: scanProbe, Artwork: artwork,
-	}, fillerStoreAdapter{st: st}, layout, func() time.Time { return now }, nil).
+	}, storeadapter.NewSync(st), layout, func() time.Time { return now }, nil).
 		WithAcquisitionManifests(st)
 	governor, err := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
 		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
@@ -153,7 +154,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if held[0].Role != clips.Unclassified {
 		t.Fatalf("downloaded clip kind = %q, want descriptively unclassified", held[0].Role)
 	}
-	if playable, err := (clipCatalogAdapter{st: st}).AllClips(ctx); err != nil || len(playable) != 0 {
+	if playable, err := (storeadapter.NewCatalog(st)).AllClips(ctx); err != nil || len(playable) != 0 {
 		t.Fatalf("playable catalog before readiness = %+v, %v; want empty", playable, err)
 	}
 	row, found, err := st.GetClipPipeline(ctx, held[0].Hash)
@@ -192,7 +193,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatalf("restarted pipeline = %+v, want one automatic Ready completion", result)
 	}
 
-	playable, err := (clipCatalogAdapter{st: reopened}).AllClips(ctx)
+	playable, err := (storeadapter.NewCatalog(reopened)).AllClips(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +204,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil || !found || event.AcquisitionID != jobID || event.Enrollment.Kind != filler.EnrollmentAcquisition {
 		t.Fatalf("Ready event = %+v, found=%v, err=%v", event, found, err)
 	}
-	pool, err := pod.NewAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
+	pool, err := pod.NewAdapter(storeadapter.NewCatalog(reopened), nil, nil, nil).PoolCounts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

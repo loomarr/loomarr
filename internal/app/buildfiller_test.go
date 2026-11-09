@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
@@ -62,10 +63,10 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfCountrySo
 			t.Fatal(err)
 		}
 	}
-	adapter := fetchStoreAdapter{
-		st: st, fetchEvery: func() time.Duration { return time.Hour },
-		home: func() pod.Geography { return pod.Geography{Country: "US", Place: "4560349"} },
-	}
+	adapter := storeadapter.NewFetch(
+		st, func() time.Duration { return time.Hour },
+		func() pod.Geography { return pod.Geography{Country: "US", Place: "4560349"} })
+
 	sources, err := adapter.ListFetchSources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -90,10 +91,10 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
-	adapter := fetchStoreAdapter{
-		st: st, fetchEvery: func() time.Duration { return time.Hour },
-		home: func() pod.Geography { return pod.Geography{} },
-	}
+	adapter := storeadapter.NewFetch(
+		st, func() time.Duration { return time.Hour },
+		func() pod.Geography { return pod.Geography{} })
+
 	sources, err := adapter.ListFetchSources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -184,11 +185,11 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		t.Fatal(err)
 	}
 	fetcher := acquisition.NewFetcher(
-		fetchStoreAdapter{
-			st:         st,
-			fetchEvery: func() time.Duration { return 6 * time.Hour },
-			home:       func() pod.Geography { return pod.Geography{Country: "US"} },
-		},
+		storeadapter.NewFetch(
+			st,
+			func() time.Duration { return 6 * time.Hour },
+			func() pod.Geography { return pod.Geography{Country: "US"} }),
+
 		providers,
 		fetchIngestorFunc(func(context.Context, string, string, []string) (string, error) {
 			t.Fatal("an empty provider listing must not enqueue an ingest")

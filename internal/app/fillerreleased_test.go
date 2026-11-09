@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -56,7 +57,7 @@ func releasedClipPipeline(st records.Store) *filler.Pipeline {
 	for _, id := range pipelinestate.StageOrder {
 		stages = append(stages, passStage{id: id})
 	}
-	return filler.NewPipeline(st, fillerPipelineClipAdapter{st}, stages, testFillerBudget(), nil, time.Now, nil)
+	return filler.NewPipeline(st, storeadapter.NewPipelineClips(st), stages, testFillerBudget(), nil, time.Now, nil)
 }
 
 // testFillerBudget is the historical per-pass batch sizes; production reads them from settings.
@@ -133,7 +134,7 @@ func TestTerminalReady_HashMismatchStillFailsStale(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	releasedClipRunningRow(t, st, "mismatch")
-	clip, found, err := fillerPipelineClipAdapter{st}.GetClip(ctx, "mismatch")
+	clip, found, err := storeadapter.NewPipelineClips(st).GetClip(ctx, "mismatch")
 	if err != nil || !found {
 		t.Fatalf("clip missing: found=%v err=%v", found, err)
 	}

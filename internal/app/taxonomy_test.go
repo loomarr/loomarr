@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -139,7 +140,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	if _, err := st.SaveChannel(t.Context(), channel); err != nil {
 		t.Fatal(err)
 	}
-	pods := pod.NewAdapter(clipCatalogAdapter{st: st}, nil, func() pod.Policy {
+	pods := pod.NewAdapter(storeadapter.NewCatalog(st), nil, func() pod.Policy {
 		return pod.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
 	engine := channels.New(st, nil, taxonomyAvailability{

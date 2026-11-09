@@ -30,6 +30,7 @@ import (
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -95,7 +96,7 @@ func buildFillerSubsystem(
 	}
 	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
 	result.intakeLanguages = intakeLanguages(st, set)
-	result.defects = defectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
+	result.defects = defectfloor.NewDefectReports(storeadapter.NewDefects(st), time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.
@@ -158,7 +159,7 @@ func buildFillerSubsystem(
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		home:     set.homeGeography,
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		splitter: splitter, splitClips: storeadapter.NewSplit(st, wake),
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return settings.FillerStorageLibraryBudgetGb.Get(set) == 0 },
 		storageCleanup:   fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
@@ -184,7 +185,7 @@ func buildFillerSubsystem(
 	defectJudge := defectfloor.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
 	defectFloor := defectfloor.NewDefectFloor(
-		fillerDefectStoreAdapter{st}, cliplibrary.FFprobeNextTo(ffmpegPath),
+		storeadapter.NewDefects(st), cliplibrary.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return tools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
 		},
@@ -301,11 +302,11 @@ func buildFillerSubsystem(
 		return err
 	}
 	registry.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
-		fillerSweepStoreAdapter{st}, layout.ClipDir(),
+		storeadapter.NewSweep(st), layout.ClipDir(),
 		func() time.Duration { return settings.FillerSplitReviewWindow.Get(set) }, time.Now, log,
 	)))
 	registry.Add(fillerIdentityJob(identity.NewJob(
-		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
+		storeadapter.NewIdentity(st), buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no
 			// target, NaN makes the loudness rung a tie for every pair rather than ranking toward 0.
@@ -318,11 +319,11 @@ func buildFillerSubsystem(
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
 	autoFetch := acquisition.NewFetcher(
-		fetchStoreAdapter{
-			st:         st,
-			fetchEvery: func() time.Duration { return settings.FillerFetchEvery.Get(set) },
-			home:       set.homeGeography,
-		},
+		storeadapter.NewFetch(
+			st,
+			func() time.Duration { return settings.FillerFetchEvery.Get(set) },
+			set.homeGeography),
+
 		providers, adapter,
 		acquisition.FetchLimits{
 			MaxPerRun:         func() int { return settings.FillerFetchMaxPerRun.Get(set) },
