@@ -302,7 +302,9 @@ const OrderRadio = ({ option }: { option: OrderOption }) => (
           marginTop={1}
           width={18}
         >
-          {checked ? <Stack backgroundColor="actionPrimary" borderRadius="round" height={8} width={8} /> : null}
+          {checked ? (
+            <Stack backgroundColor="actionPrimary" borderRadius="round" height={8} width={8} />
+          ) : null}
         </Stack>
         <Stack flexShrink={1} gap={2} minWidth={0}>
           <Line columnGap="control" flexWrap="wrap" rowGap={4}>
@@ -415,7 +417,12 @@ const OrderCard = ({
                 value={picked}
               >
                 {options.map((o, i) => (
-                  <Stack borderColor="borderDecorative" borderRadius={0} borderTopWidth={i === 0 ? 0 : 1} key={o.key}>
+                  <Stack
+                    borderColor="borderDecorative"
+                    borderRadius={0}
+                    borderTopWidth={i === 0 ? 0 : 1}
+                    key={o.key}
+                  >
                     <OrderRadio option={o} />
                   </Stack>
                 ))}
