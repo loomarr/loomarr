@@ -292,7 +292,7 @@ const ApprovalQueueItem = ({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
           >
-            <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} aria-hidden />
+            <ChevronDown className={cn("size-4", open && "rotate-180")} aria-hidden />
             {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
           </button>
           {open &&

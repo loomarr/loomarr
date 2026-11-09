@@ -71,8 +71,8 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    * by Action's `children`; its own event handlers, `style` and `className` are preserved and
    * merged with Action's. Ignored on native, where there is no comparable host-element swap.
    *
-   * Composing this way loses the `Pressable` press-scale micro-interaction (there is no gesture
-   * responder to drive it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
+   * Composing this way loses the `Pressable` press dim (there is no gesture responder to drive
+   * it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
    * un-boxed renderer — this is for a plain `variant` button standing in for a link, not a tile.
    */
   render?: ReactElement<Record<string, unknown>>;
@@ -445,10 +445,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         style={(state) => [
           {
             ...boxStyle,
+            // A press dims; nothing scales (#2789: hover, focus and press are colour and border).
             opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-            transform: [
-              { scale: tv ? (state.pressed ? 0.98 : 1) : focused ? 1.025 : state.pressed ? 0.98 : 1 },
-            ],
           },
           typeof style === "function" ? style(state) : style,
         ]}

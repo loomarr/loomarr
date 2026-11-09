@@ -408,11 +408,11 @@ const SettingField = ({
                 icon={
                   <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
                     <Lock
-                      className="absolute size-3 transition-all duration-200 group-hover/unlock:scale-90 group-hover/unlock:opacity-0 group-focus-visible/unlock:scale-90 group-focus-visible/unlock:opacity-0"
+                      className="absolute size-3 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
                       aria-hidden
                     />
                     <LockOpen
-                      className="absolute size-3 scale-90 opacity-0 transition-all duration-200 group-hover/unlock:scale-100 group-hover/unlock:opacity-100 group-focus-visible/unlock:scale-100 group-focus-visible/unlock:opacity-100"
+                      className="absolute size-3 opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100"
                       aria-hidden
                     />
                   </span>
