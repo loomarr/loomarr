@@ -10,7 +10,6 @@ import { BellRing } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Label } from "@/components/ui/label";
 import { useAppForm } from "@/lib/app-form";
 
 const words = (value: string) =>
@@ -65,10 +64,10 @@ const FieldInput = ({
   }
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={inputId}>
+      <Text as="label" htmlFor={inputId} textRole="label">
         {field.label}
         {field.required ? " *" : ""}
-      </Label>
+      </Text>
       {field.kind === "select" ? (
         <CompactSelect
           aria-describedby={error ? errorId : undefined}

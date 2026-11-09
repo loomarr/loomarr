@@ -3,11 +3,10 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, CompactSelect, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { Badge, CompactSelect, Field, FieldHint, Surface, Text, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { CronField } from "./cron-field";
@@ -329,7 +328,9 @@ const SettingField = ({
       )}
     >
       <div className="flex items-center gap-2">
-        <Label htmlFor={id}>{label}</Label>
+        <Text as="label" htmlFor={id} textRole="label">
+          {label}
+        </Text>
         {/* The registry's one plain sentence sits under the field; the rest of the help (trade-offs,
             units, edge cases) waits behind this (i), so the form reads at a glance (#2741). */}
         {entry.detail && <FieldHelp label={label}>{entry.detail}</FieldHelp>}

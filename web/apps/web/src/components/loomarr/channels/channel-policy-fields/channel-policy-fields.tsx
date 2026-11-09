@@ -1,10 +1,8 @@
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { CompactSelect, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Text } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { eraDates, eraOf } from "@/lib/era-dates";
 import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
@@ -92,9 +90,9 @@ const DateAxisRow = ({
           value={draft.to}
         />
       </div>
-      <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove <span className="sr-only">{where}</span>
-      </Button>
+      <Action accessibilityLabel={`Remove ${where}`} onPress={() => onRemove(index)} variant="ghost">
+        Remove
+      </Action>
     </div>
   );
 };
@@ -144,7 +142,7 @@ const DateAxisEditor = ({
   return (
     <div className="border-border flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-3">
-        <Label className="text-sm">{label}</Label>
+        <Text textRole="label">{label}</Text>
       </div>
       {ranges.length === 0 ? (
         <p className="text-muted-foreground text-xs">No date requirement.</p>
@@ -175,9 +173,9 @@ const DateAxisEditor = ({
             value={draft.to}
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
+        <Action accessibilityLabel={`Add range for ${label}`} onPress={add} variant="outline">
           Add range
-        </Button>
+        </Action>
       </div>
       {error && (
         <p className="text-onair-300 text-xs" role="alert">
@@ -217,9 +215,9 @@ const PolicyField = ({
     <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <Label id={labelId} htmlFor={htmlFor}>
+          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
-          </Label>
+          </Text>
           <FieldHelp label={label}>{help}</FieldHelp>
         </div>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
@@ -513,14 +511,15 @@ const ChannelPolicyFields = ({
               placeholder="Any"
               width={112}
             />
-            <Button
-              type="button"
+            {/* Lifted 10 px so the line sits level with the year boxes' text, not their bottom edge. */}
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(true)}
+              style={{ marginBottom: 10 }}
               variant="link"
-              className="h-auto p-0 pb-2.5 text-xs underline"
-              onClick={() => setAxesRequested(true)}
             >
               Use separate date windows
-            </Button>
+            </Action>
           </div>
         </PolicyField>
       )}
@@ -570,14 +569,14 @@ const ChannelPolicyFields = ({
           ))}
           {/* Back to Era only while that loses nothing: the windows are identical or empty. */}
           {eraShaped && (
-            <Button
-              type="button"
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(false)}
+              style={{ alignSelf: "flex-start" }}
               variant="link"
-              className="h-auto self-start p-0 text-xs underline"
-              onClick={() => setAxesRequested(false)}
             >
               Use a single era
-            </Button>
+            </Action>
           )}
         </PolicyField>
       )}

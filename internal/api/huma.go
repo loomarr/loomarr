@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
@@ -23,9 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
@@ -53,24 +52,13 @@ type Server struct {
 	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
 	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
 	backupSQLite BackupStreamer
-	// login/sessions wire /v1/auth/* (§11); nil until Phase 9 is configured.
-	login     LoginService
-	sessions  SessionManager
-	passwords PasswordService
-	userSync  UserSyncer
-	// invitations owns administrator admission decisions and one-time sharing grants (§11).
-	invitations          InvitationService
-	invitationDelivery   InvitationDeliveryService
-	invitationRedemption InvitationRedemptionService
-	passwordRecovery     PasswordRecoveryService
-	accessPublicURL      func() string
-	// devices wires /v1/auth/device/* — the pairing handshake a keyboard-less native client uses
-	// (§11, Shield P1). Nil until configured, which 404s the routes rather than half-mounting them.
+	// The /v1/auth/*, user, invitation, password and SSO routes are served by people.Handlers,
+	// built from the same Options in Router.
+	//
+	// devices is the pairing handshake's manager (§11, Shield P1), also read by the request
+	// middleware. Nil until configured.
 	devices *auth.DeviceManager
-	// deviceLimiter bounds pairing starts and code-approval attempts. The user code is short by
-	// design (a human reads it off a TV), so a bounded attempt count is what makes it safe.
-	deviceLimiter *auth.RateLimiter
-	origin        httpcore.Origin // COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11)
+	origin  httpcore.Origin // COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11)
 	// devLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
 	// development (§11). Set from LOOMARR_DEV_LOGIN at boot and read ONCE here, when
 	// routes are registered: an unset flag means the route never exists, which is a
@@ -159,7 +147,7 @@ type Server struct {
 	// sso wires /v1/auth/sso/* — the OIDC credential path (§11, V8). nil ⇒ the routes are
 	// NOT MOUNTED, which is the honest posture for an unconfigured provider: a
 	// sign-in-with button that 501s is worse than one that is not offered.
-	sso SSOService
+	sso people.SSOService
 	// activity records Dashboard feed lines (§12, V32). Nil-safe on the Recorder itself, so
 	// a handler built without one (unit tests) records nothing rather than needing a guard
 	// at every write point.
@@ -955,12 +943,6 @@ type ChannelBinder interface {
 	NumberInUse(ctx context.Context, number int) (bool, error)
 }
 
-// UserSyncer refreshes already-imported users from the media server (§11).
-// Returns the count synced. It never ADDS users (import defines the allowlist).
-type UserSyncer interface {
-	Sync(ctx context.Context) (int, error)
-}
-
 // Provisioner owns first-run bootstrap + explicit import (§11). Together with
 // PasswordService.CreateLocal these are the ONLY paths that create users — every
 // one of them an explicit admin action, never a side effect of someone signing in.
@@ -978,75 +960,6 @@ type Provisioner interface {
 	Bootstrapped(ctx context.Context) (bool, error)
 }
 
-// LoginService verifies credentials and issues a session (Phase 9, §11).
-type LoginService interface {
-	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error)
-	// DevLogin issues a session for an existing admin with no credential (§11).
-	// Only ever called when the server was started with LOOMARR_DEV_LOGIN=1 — the
-	// route is not registered otherwise.
-	DevLogin(ctx context.Context) (token string, expires time.Time, u identitystore.User, err error)
-	Disable(ctx context.Context, userID string) error
-}
-
-// PasswordService owns LOCAL credential mutations (§11). Kept separate from
-// LoginService because verifying a credential and changing one are different
-// authority: the first is what any signed-in user does constantly, the second is
-// what an account owner (or an admin) does deliberately.
-// Implemented by auth.PasswordService.
-type PasswordService interface {
-	// ChangePassword is the SELF path: proves the current password, then replaces it
-	// and revokes every session for that user.
-	ChangePassword(ctx context.Context, userID, current, next string) error
-	// CreateLocal mints a local account — an allowlist row carrying an Argon2id hash.
-	// Admin-only at the route layer; the same kind of explicit write as Import.
-	CreateLocal(ctx context.Context, username, password string, role identitystore.Role, quota int) (identitystore.User, error)
-	// ResetPassword is the ADMIN path: no current password (that's the point), so it
-	// relies entirely on the caller's role. Deliberately not the same call as
-	// ChangePassword — sharing one would make the "prove you know it" check optional.
-	ResetPassword(ctx context.Context, targetUserID, next string) error
-}
-
-// InvitationService is the narrow administrator-facing seam of the Invitation module.
-// Durable grant hashes and provider lookup mechanics remain behind it.
-type InvitationService interface {
-	Create(context.Context, access.CreateCommand) (access.Invitation, error)
-	Get(context.Context, string) (access.Invitation, error)
-	List(context.Context) ([]access.Invitation, error)
-	Contact(context.Context, string) (contact.Address, error)
-	Regenerate(context.Context, string, access.Conveyance) (access.IssuedGrant, error)
-	Revoke(context.Context, string) error
-}
-
-// InvitationDeliveryService composes provider-neutral delivery work beside the Invitation
-// lifecycle. Sending mail never creates or redeems an allowlist row.
-type InvitationDeliveryService interface {
-	SendEmail(context.Context, string, string) (notifications.DeliverySummary, error)
-	LatestEmail(context.Context, string) (notifications.DeliverySummary, error)
-}
-
-// InvitationRedemptionService is the public credential-proof seam. Bearers are
-// accepted only in request bodies and never enter a route, query, or durable DTO.
-type InvitationRedemptionService interface {
-	Preview(context.Context, string) (access.Invitation, error)
-	RedeemLocal(context.Context, string, string) (string, time.Time, identitystore.User, error)
-	RedeemLibrary(context.Context, string, string, string) (string, time.Time, identitystore.User, error)
-}
-
-// PasswordRecoveryService is the public, enumeration-safe local credential recovery seam.
-// Bearers remain body-only and successful reset deliberately issues no replacement session.
-type PasswordRecoveryService interface {
-	Request(context.Context, string, string) error
-	Preview(context.Context, string, string) (access.RecoveryRecord, error)
-	Redeem(context.Context, string, string, string) error
-}
-
-// SessionManager revokes sessions (logout) and exposes them for admin review (§11).
-type SessionManager interface {
-	Revoke(ctx context.Context, token string) error
-	List(ctx context.Context, userID string) ([]identitystore.Session, error)
-	RevokeHash(ctx context.Context, tokenHash string) error
-}
-
 // BackupStreamer streams a consistent DB snapshot (§16). Implemented by the
 // SQLite backend via VACUUM INTO. Matches store.SQLiteBackuper's return type.
 type BackupStreamer interface {
@@ -1061,16 +974,16 @@ type Options struct {
 	Metrics              *metrics.Recorder
 	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready                ReadyFunc
-	Now                  func() time.Time            // optional deterministic request clock for tests
-	Login                LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords            PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions             SessionManager              // /v1/auth/logout (Phase 9)
-	UserSync             UserSyncer                  // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	Invitations          InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
-	InvitationRedemption InvitationRedemptionService // public preview and explicit activation (§11)
-	PasswordRecovery     PasswordRecoveryService     // public local-password recovery (§11)
+	Now                  func() time.Time                   // optional deterministic request clock for tests
+	Login                people.LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords            people.PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions             people.SessionManager              // /v1/auth/logout (Phase 9)
+	UserSync             people.UserSyncer                  // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	Invitations          people.InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
+	InvitationRedemption people.InvitationRedemptionService // public preview and explicit activation (§11)
+	PasswordRecovery     people.PasswordRecoveryService     // public local-password recovery (§11)
 	// InvitationDelivery adds explicit email send/resend and provider-safe delivery summaries.
-	InvitationDelivery InvitationDeliveryService
+	InvitationDelivery people.InvitationDeliveryService
 	// AccessPublicURL supplies the recipient-reachable browser origin. It is read
 	// at grant issuance so a hot-applied setting takes effect without restart.
 	AccessPublicURL func() string
@@ -1128,7 +1041,7 @@ type Options struct {
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
 	Backups BackupsService
 	// SSO backs /v1/auth/sso/* (§11, V8); nil ⇒ the routes are not mounted.
-	SSO SSOService
+	SSO people.SSOService
 	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
 	Activity *activity.Recorder
 	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.

@@ -16,7 +16,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`proposals`** · 11 importers · → `channels/schedule`, `platform/storagegovernor`, `provision`
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
-- **`proposals/accept`** · 5 importers · → `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
+- **`proposals/accept`** · 6 importers · → `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
   How a proposal becomes a channel: a person's approval (with optional edits), the per-user auto-approve grant, and the pending-acquisition quota that bounds the grant.
 - **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/accept`, `provision`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.

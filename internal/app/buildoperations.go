@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/access"
@@ -66,8 +67,8 @@ type operationsBuild struct {
 	notificationDestinations api.NotificationDestinationService
 	webPushPublicKey         string
 	productNotifications     *productNotificationCoordinator
-	invitationDelivery       api.InvitationDeliveryService
-	passwordRecovery         api.PasswordRecoveryService
+	invitationDelivery       people.InvitationDeliveryService
+	passwordRecovery         people.PasswordRecoveryService
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService
@@ -297,14 +298,14 @@ func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *sl
 type authBuild struct {
 	backup               api.BackupStreamer
 	authorizer           httpcore.Authorizer
-	login                api.LoginService
-	sso                  api.SSOService
-	sessions             api.SessionManager
-	userSync             api.UserSyncer
+	login                people.LoginService
+	sso                  people.SSOService
+	sessions             people.SessionManager
+	userSync             people.UserSyncer
 	provision            api.Provisioner
-	password             api.PasswordService
-	invitations          api.InvitationService
-	invitationRedemption api.InvitationRedemptionService
+	password             people.PasswordService
+	invitations          people.InvitationService
+	invitationRedemption people.InvitationRedemptionService
 	passwordRecovery     *auth.PasswordRecoveryService
 	deviceManager        *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter

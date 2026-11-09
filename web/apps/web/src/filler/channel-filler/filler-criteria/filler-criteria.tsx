@@ -4,19 +4,20 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, CompactSelect, Toggle } from "@loomarr/design-system";
+import { Action, CompactSelect, Text, Toggle } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
 // control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.
 const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
   <div className="flex items-center gap-1.5">
-    <Label htmlFor={htmlFor}>{children}</Label>
+    <Text as="label" htmlFor={htmlFor} textRole="label">
+      {children}
+    </Text>
     <FieldHelp label={children}>{help}</FieldHelp>
   </div>
 );

@@ -6,15 +6,22 @@ import { SearchCommand } from "@/components/loomarr/shell/search-command";
 // The design-system Dialog's `top` placement, open, holding the ⌘K palette's search: near the top
 // of the screen, no panel or corner close of its own, named by its label. It portals into the story
 // root so the visual suite snapshots the real popup.
-const CommandSurfaceWorkshop = ({ query = "" }: { query?: string }) => (
+// `fill` is the phone's full-screen search: it covers the screen and the search draws its own close.
+const CommandSurfaceWorkshop = ({ query = "", fill = false }: { query?: string; fill?: boolean }) => (
   <div style={{ height: "100vh", width: "100vw" }}>
     <Dialog defaultOpen>
       <DialogContent
         accessibilityLabel="Search Loomarr"
-        placement="top"
+        placement={fill ? "fill" : "top"}
         portalContainer={document.getElementById("storybook-root")}
       >
-        <SearchCommand onQueryChange={() => undefined} query={query} results={query ? searchResults : []} />
+        <SearchCommand
+          fill={fill}
+          onClose={fill ? () => undefined : undefined}
+          onQueryChange={() => undefined}
+          query={query}
+          results={query ? searchResults : []}
+        />
       </DialogContent>
     </Dialog>
   </div>
@@ -30,6 +37,7 @@ type Story = StoryObj<typeof meta>;
 
 const Idle: Story = {};
 const Results: Story = { args: { query: "a" } };
+const PhoneFullScreen: Story = { args: { query: "a", fill: true } };
 
 export default meta;
-export { Idle, Results };
+export { Idle, PhoneFullScreen, Results };
