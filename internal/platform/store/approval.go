@@ -318,7 +318,7 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 // the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
 // channel the job originated. A job with no channel yet may only create one it originates.
 func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.DB, p Proposal, ch Channel) error {
-	bound, err := s.ChannelForJobIn(ctx, q, p.JobID)
+	bound, err := channelstore.ChannelForJobIn(ctx, s.channelCluster, q, p.JobID)
 	switch {
 	case err == nil:
 		if bound.ID != ch.ID {

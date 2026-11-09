@@ -246,7 +246,7 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 			}
 		}
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(s.Select()+` ORDER BY number`))
+	rows, err := tx.QueryContext(ctx, s.ph(channelstore.Select(s.channelCluster)+` ORDER BY number`))
 	if err != nil {
 		return 0, fmt.Errorf("channels: %w", err)
 	}
