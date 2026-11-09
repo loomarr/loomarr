@@ -7,14 +7,14 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // LibraryEpisodeResolver expands a series lineup entry into the Library's episodes (§9, #2151
 // step 16), mapping each to a schedule.ResolvedProgram so the schedule domain stays free of a
 // library dependency. An episode that could not play is dropped and its editorial evidence is
 // bounded. An id that is no library series expands to nothing: the media server is never asked.
-func LibraryEpisodeResolver(st store.LibraryEpisodeReader) EpisodeResolver {
+func LibraryEpisodeResolver(st librarystore.LibraryEpisodeReader) EpisodeResolver {
 	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
 		rows, _, err := st.LibraryEpisodes(ctx, showItemID)
 		if err != nil {

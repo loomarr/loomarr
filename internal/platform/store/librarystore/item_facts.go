@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -29,7 +29,7 @@ type LibraryItemFactsReader interface {
 // libraryFactsChunk bounds one IN list, under SQLite's variable limit.
 const libraryFactsChunk = 500
 
-func (s *sqlStore) LibraryItemFacts(ctx context.Context, ids []string) (map[string]LibraryItemFacts, error) {
+func (s *Store) LibraryItemFacts(ctx context.Context, ids []string) (map[string]LibraryItemFacts, error) {
 	out := make(map[string]LibraryItemFacts, len(ids))
 	for start := 0; start < len(ids); start += libraryFactsChunk {
 		chunk := ids[start:min(start+libraryFactsChunk, len(ids))]
@@ -40,13 +40,13 @@ func (s *sqlStore) LibraryItemFacts(ctx context.Context, ids []string) (map[stri
 	return out, nil
 }
 
-func (s *sqlStore) libraryItemFacts(ctx context.Context, ids []string, out map[string]LibraryItemFacts) error {
+func (s *Store) libraryItemFacts(ctx context.Context, ids []string, out map[string]LibraryItemFacts) error {
 	in := strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ")
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
 		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
 			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
@@ -79,7 +79,7 @@ func (s *sqlStore) libraryItemFacts(ctx context.Context, ids []string, out map[s
 		genreIDs = append(genreIDs, sid)
 	}
 	gin := strings.TrimSuffix(strings.Repeat("?, ", len(genreIDs)), ", ")
-	grows, err := s.db.QueryContext(ctx, s.ph(`SELECT item_id, name FROM library_genres WHERE item_id IN (`+gin+`)
+	grows, err := s.h.QueryContext(ctx, s.ph(`SELECT item_id, name FROM library_genres WHERE item_id IN (`+gin+`)
 		ORDER BY item_id, position`), genreIDs...)
 	if err != nil {
 		return err

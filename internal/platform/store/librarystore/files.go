@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // Header states of a library file.
@@ -91,9 +93,9 @@ type LibraryFileStore interface {
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
 }
 
-func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error) {
+func (s *Store) LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error) {
 	var path string
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
 		JOIN library_files f ON f.path = s.path
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
 		ORDER BY s.edition <> '', s.path LIMIT 1`), itemID).Scan(&path)
@@ -106,9 +108,9 @@ func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (strin
 	return path, true, nil
 }
 
-func (s *sqlStore) LibraryPlayingVideo(ctx context.Context, itemID string) (LibraryStream, bool, error) {
+func (s *Store) LibraryPlayingVideo(ctx context.Context, itemID string) (LibraryStream, bool, error) {
 	v := LibraryStream{Kind: "video"}
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
 		st.pixel_format, st.color_transfer FROM library_sources s
 		JOIN library_files f ON f.path = s.path
 		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
@@ -124,9 +126,9 @@ func (s *sqlStore) LibraryPlayingVideo(ctx context.Context, itemID string) (Libr
 	return v, true, nil
 }
 
-func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+func (s *Store) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
 	var listed int
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
+	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
 		JOIN library_sources src ON src.path = f.path
 		WHERE f.path = ? AND f.size_bytes = ? AND f.modified_ns = ? AND f.header = ? AND f.missing_at_ms = 0`),
 		path, sizeBytes, modifiedNs, LibraryHeaderRead).Scan(&listed); err != nil {
@@ -135,7 +137,7 @@ func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeByte
 	if listed == 0 {
 		return nil, false, nil
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT stream_index, language, is_default, commentary, descriptive,
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT stream_index, language, is_default, commentary, descriptive,
 		codec, channels FROM library_streams WHERE path = ? AND kind = 'audio' AND external_ref = ''
 		ORDER BY stream_index`), path)
 	if err != nil {
@@ -156,17 +158,17 @@ func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeByte
 	return tracks, true, nil
 }
 
-// libraryLink writes a link to another library_items row: NULL for "" (not known yet), which the
+// LibraryLink writes a link to another library_items row: NULL for "" (not known yet), which the
 // foreign key allows, since no row has "" as its id. Reads turn it back with COALESCE(col, ”).
-func libraryLink(id string) any {
+func LibraryLink(id string) any {
 	if id == "" {
 		return nil
 	}
 	return id
 }
 
-func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
+func (s *Store) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
 		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
 		FROM library_files WHERE root = ? ORDER BY path`), root)
 	if err != nil {
@@ -193,26 +195,26 @@ func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile
 	return out, nil
 }
 
-// libraryFilesChunk is how many file rows one transaction writes: small enough that playout's
+// LibraryFilesChunk is how many file rows one transaction writes: small enough that playout's
 // writes wait milliseconds behind a walk, large enough that a first walk is not a commit per row.
-const libraryFilesChunk = 500
+const LibraryFilesChunk = 500
 
-func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) error {
+func (s *Store) SaveLibraryFiles(ctx context.Context, files []LibraryFile) error {
 	for _, f := range files {
 		if f.Path == "" || f.Root == "" || f.SeenAt.IsZero() {
 			return fmt.Errorf("save library files: path, root and seen time are required")
 		}
 	}
-	for start := 0; start < len(files); start += libraryFilesChunk {
-		if err := s.saveLibraryFiles(ctx, files[start:min(start+libraryFilesChunk, len(files))]); err != nil {
+	for start := 0; start < len(files); start += LibraryFilesChunk {
+		if err := s.saveLibraryFiles(ctx, files[start:min(start+LibraryFilesChunk, len(files))]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *sqlStore) saveLibraryFiles(ctx context.Context, files []LibraryFile) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) saveLibraryFiles(ctx context.Context, files []LibraryFile) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save library files: %w", err)
 	}
@@ -240,7 +242,7 @@ func (s *sqlStore) saveLibraryFiles(ctx context.Context, files []LibraryFile) er
 			missing = f.MissingAt.UnixMilli()
 		}
 		if _, err := stmt.ExecContext(ctx, f.Path, f.Root, f.Size, f.ModifiedNs, f.Identity, f.Kind, header,
-			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, libraryLink(f.ItemID), libraryLink(f.SeriesID)); err != nil {
+			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, LibraryLink(f.ItemID), LibraryLink(f.SeriesID)); err != nil {
 			return fmt.Errorf("save library file: %w", err)
 		}
 	}
@@ -250,8 +252,8 @@ func (s *sqlStore) saveLibraryFiles(ctx context.Context, files []LibraryFile) er
 	return nil
 }
 
-func (s *sqlStore) LibraryFileRoots(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT root FROM library_files ORDER BY root`)
+func (s *Store) LibraryFileRoots(ctx context.Context) ([]string, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT DISTINCT root FROM library_files ORDER BY root`)
 	if err != nil {
 		return nil, fmt.Errorf("list library file roots: %w", err)
 	}
@@ -270,15 +272,15 @@ func (s *sqlStore) LibraryFileRoots(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (s *sqlStore) DeleteLibraryFiles(ctx context.Context, root string) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM library_files WHERE root = ?`), root); err != nil {
+func (s *Store) DeleteLibraryFiles(ctx context.Context, root string) error {
+	if _, err := s.h.ExecContext(ctx, s.ph(`DELETE FROM library_files WHERE root = ?`), root); err != nil {
 		return fmt.Errorf("delete library files: %w", err)
 	}
 	return nil
 }
 
-func (s *sqlStore) SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_roots SET scanned_at_ms = ? WHERE path = ?`),
+func (s *Store) SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error {
+	result, err := s.h.ExecContext(ctx, s.ph(`UPDATE library_roots SET scanned_at_ms = ? WHERE path = ?`),
 		at.UnixMilli(), root)
 	if err != nil {
 		return fmt.Errorf("set library root scanned: %w", err)
@@ -286,14 +288,14 @@ func (s *sqlStore) SetLibraryRootScanned(ctx context.Context, root string, at ti
 	if n, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("set library root scanned: %w", err)
 	} else if n == 0 {
-		return ErrNotFound
+		return storedb.ErrNotFound
 	}
 	return nil
 }
 
-func (s *sqlStore) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error) {
+func (s *Store) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error) {
 	var c LibraryFileCounts
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN header = ? AND problem = '' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN problem <> '' THEN 1 ELSE 0 END), 0)
@@ -302,7 +304,7 @@ func (s *sqlStore) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, er
 	if err != nil {
 		return c, fmt.Errorf("count library files: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT root, kind, COUNT(*) FROM library_files
+	rows, err := s.h.QueryContext(ctx, `SELECT root, kind, COUNT(*) FROM library_files
 		WHERE held AND missing_at_ms = 0 GROUP BY root, kind ORDER BY root, kind`)
 	if err != nil {
 		return c, fmt.Errorf("count held library files: %w", err)

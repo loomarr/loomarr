@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // countingInventory counts snapshot writes on top of the real inventory.
@@ -83,7 +84,7 @@ func newHarness(t *testing.T, managers ...Manager) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.st.AddLibraryRoot(context.Background(), store.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+	if err := h.st.AddLibraryRoot(context.Background(), librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	h.im = &Importer{
@@ -144,7 +145,7 @@ func (h *harness) origin(item inventory.Item, key inventory.OriginKey) inventory
 }
 
 // fileRow is the library_files row the last pass left for path.
-func (h *harness) fileRow(path string) store.LibraryFile {
+func (h *harness) fileRow(path string) librarystore.LibraryFile {
 	h.t.Helper()
 	rows, err := h.st.LibraryFiles(context.Background(), h.root)
 	if err != nil {
@@ -156,7 +157,7 @@ func (h *harness) fileRow(path string) store.LibraryFile {
 		}
 	}
 	h.t.Fatalf("no file row for %s", path)
-	return store.LibraryFile{}
+	return librarystore.LibraryFile{}
 }
 
 func hasID(ids []inventory.ExternalID, ns, value string) bool {
@@ -237,7 +238,7 @@ func TestImportListsMoviesAndSeries(t *testing.T) {
 	h.file("Bravo Show {tvdb-90081189}/Season 01/Bravo Show S01E03.mkv", 12)
 	h.run()
 
-	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	page, err := h.st.ListLibraryItems(context.Background(), librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +247,7 @@ func TestImportListsMoviesAndSeries(t *testing.T) {
 	}
 	movie := h.item(fileOrigin(h.root, "Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv"))
 	series := h.item(seriesOrigin(h.root, "Bravo Show {tvdb-90081189}"))
-	got := map[string]store.LibraryItemSummary{}
+	got := map[string]librarystore.LibraryItemSummary{}
 	for _, it := range page.Items {
 		got[it.ID] = it
 	}
@@ -269,7 +270,7 @@ func TestImportListsMoviesAndSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.run()
-	if again, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{}); err != nil || again.Total != 2 {
+	if again, err := h.st.ListLibraryItems(context.Background(), librarystore.LibraryItemQuery{}); err != nil || again.Total != 2 {
 		t.Fatalf("after relinking = %+v, %v", again, err)
 	}
 }
@@ -284,7 +285,7 @@ func TestImportLooseEpisodesAreTheShowsTheirNamesGive(t *testing.T) {
 	h.file("Delta Show - S02E01.mkv", 12)
 	h.run()
 
-	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	page, err := h.st.ListLibraryItems(context.Background(), librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,8 +317,8 @@ func TestImportMultiEpisodeFileCarriesEveryEpisodeID(t *testing.T) {
 	sonarr := &fakeLister{}
 	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -414,8 +415,8 @@ func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
 	var asked int
 	h.im.Discover = func(ctx context.Context) error {
 		asked++
-		return h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-			Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+		return h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+			Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 		}, time.Now())
 	}
 	h.run()
@@ -459,8 +460,8 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
 	h.file("Delta (1999)/Delta.mkv", 10)
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +483,7 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := store.LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/90000612"}
+	want := librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/90000612"}
 	if listed.Match != want {
 		t.Fatalf("match = %+v, want %+v", listed.Match, want)
 	}
@@ -632,8 +633,8 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	radarr := &fakeLister{}
 	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -689,11 +690,11 @@ func TestImportArrOutageHoldsOnlyItsOwnFolders(t *testing.T) {
 	ctx := context.Background()
 	movies := t.TempDir()
 	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, movies: true}}
-	if err := h.st.AddLibraryRoot(ctx, store.LibraryRootCheck{Path: movies, Readable: true}, time.Now()); err != nil {
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: movies, Readable: true}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: movies}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: movies}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -759,8 +760,8 @@ func TestImportOriginFollowsLaterIDs(t *testing.T) {
 	radarr := &fakeLister{}
 	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -796,7 +797,7 @@ func TestImportNestedRootIsWalkedOnce(t *testing.T) {
 	h := newHarness(t)
 	inner := filepath.Join(h.root, "Kids")
 	h.file("Kids/Quebec/Quebec.mkv", 10)
-	if err := h.st.AddLibraryRoot(context.Background(), store.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
+	if err := h.st.AddLibraryRoot(context.Background(), librarystore.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
@@ -825,7 +826,7 @@ func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
 	}
 	h.run()
 	rows, err := h.st.LibraryFiles(context.Background(), h.root)
-	if err != nil || len(rows) != 1 || rows[0].Header != store.LibraryHeaderPending {
+	if err != nil || len(rows) != 1 || rows[0].Header != librarystore.LibraryHeaderPending {
 		t.Fatalf("rows = %+v, %v", rows, err)
 	}
 	h.im.Header = read
@@ -865,7 +866,7 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 		t.Fatal("a folder pass waited for playback to end")
 	}
 	h.item(fileOrigin(h.root, "Xray (2002)/Xray.mkv"))
-	if r := h.fileRow(added); r.Header != store.LibraryHeaderPending {
+	if r := h.fileRow(added); r.Header != librarystore.LibraryHeaderPending {
 		t.Errorf("new file's header = %q while playback runs, want pending", r.Header)
 	}
 
@@ -874,7 +875,7 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{added, filepath.Join(h.root, "Whiskey (2001)", "Whiskey.mkv")} {
-		if r := h.fileRow(path); r.Header != store.LibraryHeaderRead {
+		if r := h.fileRow(path); r.Header != librarystore.LibraryHeaderRead {
 			t.Errorf("%s header = %q after playback, want read", filepath.Base(path), r.Header)
 		}
 	}
@@ -922,7 +923,7 @@ func TestAPassDuringAStageStartIsNotHeldUp(t *testing.T) {
 	if err := <-full; err != nil {
 		t.Fatal(err)
 	}
-	if r := h.fileRow(added); r.Header != store.LibraryHeaderRead {
+	if r := h.fileRow(added); r.Header != librarystore.LibraryHeaderRead {
 		t.Errorf("handed-over file's header = %q, want read", r.Header)
 	}
 }
@@ -951,7 +952,7 @@ func TestHeaderReadOfAReplacedFileIsDropped(t *testing.T) {
 	if err := <-full; err != nil {
 		t.Fatal(err)
 	}
-	if r := h.fileRow(path); r.Size != 20 || r.Header != store.LibraryHeaderRead {
+	if r := h.fileRow(path); r.Size != 20 || r.Header != librarystore.LibraryHeaderRead {
 		t.Errorf("row = size %d header %q, want 20 read", r.Size, r.Header)
 	}
 	if n := h.reads.Load(); n != 1 {

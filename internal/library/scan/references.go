@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -25,9 +26,9 @@ type ServerCollection struct {
 type ReferenceStore interface {
 	store.LibraryReferenceStore
 	store.LibraryIDMapStore
-	store.LibraryCollectionStore
-	store.LibraryItemFactsReader
-	store.LibraryTitleReader
+	librarystore.LibraryCollectionStore
+	librarystore.LibraryItemFactsReader
+	librarystore.LibraryTitleReader
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
 }
@@ -126,7 +127,7 @@ func (r *ReferenceRewriter) Rewrite(ctx context.Context) (ReferenceReport, error
 // for: a media server that re-added its library gave every item a new id, and the old one names
 // nothing, but its title's provider ids still name the Library's.
 func (r *ReferenceRewriter) mapByTitle(
-	ctx context.Context, refs store.LibraryReferences, library map[string]store.LibraryItemFacts, items map[string]string,
+	ctx context.Context, refs store.LibraryReferences, library map[string]librarystore.LibraryItemFacts, items map[string]string,
 ) error {
 	for id, key := range refs.Keys {
 		if _, ok := library[id]; ok || items[id] != "" {
@@ -199,7 +200,7 @@ func (r *ReferenceRewriter) importCollections(ctx context.Context, named []strin
 				titles = append(titles, item)
 			}
 		}
-		if _, err := r.Store.CreateLibraryCollection(ctx, store.LibraryCollection{
+		if _, err := r.Store.CreateLibraryCollection(ctx, librarystore.LibraryCollection{
 			Name: c.Name, ImportedFrom: r.flavor(), ImportedID: c.ID, Members: titles,
 		}, r.now()); err != nil {
 			return imported, fmt.Errorf("import collection %s: %w", c.ID, err)

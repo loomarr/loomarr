@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The extra-copy trash (#2151 decision 37, step 10e). Remove extra copy moves a copy that never
@@ -56,7 +57,7 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 		if err := l.ItemStore.RemoveLibraryFile(ctx, f.Path, now); err != nil {
 			return err
 		}
-		l.pass([]store.LibraryFilePath{{Root: f.Root, Path: f.Path}})
+		l.pass([]librarystore.LibraryFilePath{{Root: f.Root, Path: f.Path}})
 		return nil
 	}
 	return store.ErrNotFound

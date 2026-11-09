@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -81,12 +81,12 @@ type LibraryCatalogStore interface {
 	RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCatalogKey) ([]LibraryFilePath, error)
 }
 
-func (s *sqlStore) WantLibraryCatalog(ctx context.Context, keys []LibraryCatalogKey) error {
+func (s *Store) WantLibraryCatalog(ctx context.Context, keys []LibraryCatalogKey) error {
 	for _, k := range keys {
 		if k.String() == "" {
 			return fmt.Errorf("want library catalog: provider, kind and id are required")
 		}
-		if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id)
+		if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id)
 			VALUES (?, ?, ?) ON CONFLICT (provider, kind, external_id) DO NOTHING`),
 			k.Provider, k.Kind, k.ExternalID); err != nil {
 			return fmt.Errorf("want library catalog: %w", err)
@@ -95,10 +95,10 @@ func (s *sqlStore) WantLibraryCatalog(ctx context.Context, keys []LibraryCatalog
 	return nil
 }
 
-func (s *sqlStore) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogKey) (string, bool, error) {
+func (s *Store) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogKey) (string, bool, error) {
 	var record string
 	var fetched int64
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
 		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&record, &fetched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
@@ -109,7 +109,7 @@ func (s *sqlStore) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogK
 	return record, fetched > 0, nil
 }
 
-func (s *sqlStore) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error) {
+func (s *Store) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error) {
 	now := due.Now.UnixMilli()
 	var out []LibraryCatalogKey
 	// outdated is a record saved in an older shape than its kind is read in now, or in another
@@ -148,8 +148,8 @@ func (s *sqlStore) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue)
 	return out, nil
 }
 
-func (s *sqlStore) catalogKeys(ctx context.Context, query string, args ...any) ([]LibraryCatalogKey, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
+func (s *Store) catalogKeys(ctx context.Context, query string, args ...any) ([]LibraryCatalogKey, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("due library catalog: %w", err)
 	}
@@ -168,19 +168,19 @@ func (s *sqlStore) catalogKeys(ctx context.Context, query string, args ...any) (
 	return out, nil
 }
 
-func (s *sqlStore) CountLibraryCatalog(ctx context.Context) (int, error) {
+func (s *Store) CountLibraryCatalog(ctx context.Context) (int, error) {
 	var n int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_catalog`).Scan(&n); err != nil {
+	if err := s.h.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_catalog`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count library catalog: %w", err)
 	}
 	return n, nil
 }
 
-func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error) {
+func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error) {
 	if key.String() == "" {
 		return false, fmt.Errorf("save library catalog: provider, kind and id are required")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
@@ -206,8 +206,8 @@ func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey
 	return held != record, nil
 }
 
-func (s *sqlStore) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_catalog SET retry_at_ms = ?
+func (s *Store) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.ph(`UPDATE library_catalog SET retry_at_ms = ?
 		WHERE provider = ? AND kind = ? AND external_id = ?`),
 		retryAt.UnixMilli(), key.Provider, key.Kind, key.ExternalID); err != nil {
 		return fmt.Errorf("fail library catalog: %w", err)
@@ -215,7 +215,7 @@ func (s *sqlStore) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey
 	return nil
 }
 
-func (s *sqlStore) RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCatalogKey) ([]LibraryFilePath, error) {
+func (s *Store) RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCatalogKey) ([]LibraryFilePath, error) {
 	catalog := key.String()
 	if catalog == "" {
 		return nil, nil

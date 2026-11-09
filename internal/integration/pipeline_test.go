@@ -38,6 +38,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -68,7 +69,7 @@ func (a clipCatalog) AllClips(ctx context.Context) ([]clips.Clip, error) {
 // libraryDurationResolver reads an item's runtime from the Library's facts (mirrors the app's
 // itemMetadata), so a program slot gets its real runtime — which is what makes the
 // commercial-break interleave fire.
-func libraryDurationResolver(facts store.LibraryItemFactsReader) channels.DurationResolver {
+func libraryDurationResolver(facts librarystore.LibraryItemFactsReader) channels.DurationResolver {
 	return func(ctx context.Context, itemID string) (int64, error) {
 		got, err := facts.LibraryItemFacts(ctx, []string{itemID})
 		return got[itemID].RuntimeMs, err

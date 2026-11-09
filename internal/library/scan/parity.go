@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The parity report (#2151 decision 8) is the gate before the cutover: what the scanner found on
@@ -297,8 +297,8 @@ func underAny(path string, roots []string) bool {
 
 // ParityStore is what ParityFiles reads.
 type ParityStore interface {
-	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
-	LibraryFiles(ctx context.Context, root string) ([]store.LibraryFile, error)
+	LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
+	LibraryFiles(ctx context.Context, root string) ([]librarystore.LibraryFile, error)
 }
 
 // ParityFiles reads every present file under the folders in use, with what its inventory item
@@ -344,7 +344,7 @@ func rootsInUse(ctx context.Context, st ParityStore) ([]string, library.PathMap,
 		}
 	}
 	paths := slices.Clone(all.Paths)
-	slices.SortStableFunc(paths, func(a, b store.LibraryRootPath) int {
+	slices.SortStableFunc(paths, func(a, b librarystore.LibraryRootPath) int {
 		return cmp.Compare(appRank(a.Authority), appRank(b.Authority))
 	})
 	var rules []string
@@ -365,7 +365,7 @@ func appRank(authority string) int {
 
 // readItem fills what the file's inventory item says: its scan origin's facts and its source's
 // header duration.
-func (f *ParityFile) readItem(ctx context.Context, inv inventory.Service, row store.LibraryFile) error {
+func (f *ParityFile) readItem(ctx context.Context, inv inventory.Service, row librarystore.LibraryFile) error {
 	item, ok, err := inv.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(row.ItemID)})
 	if err != nil {
 		return fmt.Errorf("read inventory item of %s: %w", row.Path, err)

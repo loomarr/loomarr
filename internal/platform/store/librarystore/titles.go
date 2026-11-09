@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func IDIn(ids []LibraryID, namespace string) string {
 const libraryIDsChunk = 500
 
 // libraryIDsOf is every external id of each item, by namespace then value.
-func (s *sqlStore) libraryIDsOf(ctx context.Context, itemIDs []string) (map[string][]LibraryID, error) {
+func (s *Store) libraryIDsOf(ctx context.Context, itemIDs []string) (map[string][]LibraryID, error) {
 	out := map[string][]LibraryID{}
 	for start := 0; start < len(itemIDs); start += libraryIDsChunk {
 		chunk := itemIDs[start:min(start+libraryIDsChunk, len(itemIDs))]
@@ -58,7 +58,7 @@ func (s *sqlStore) libraryIDsOf(ctx context.Context, itemIDs []string) (map[stri
 		for i, id := range chunk {
 			args[i] = id
 		}
-		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT item_id, namespace, value FROM library_ids
+		rows, err := s.h.QueryContext(ctx, s.ph(`SELECT item_id, namespace, value FROM library_ids
 			WHERE item_id IN (?`+strings.Repeat(`, ?`, len(chunk)-1)+`) ORDER BY item_id, namespace, value`), args...)
 		if err != nil {
 			return nil, fmt.Errorf("library ids: %w", err)
@@ -80,7 +80,7 @@ func (s *sqlStore) libraryIDsOf(ctx context.Context, itemIDs []string) (map[stri
 }
 
 // withLibraryIDs fills each title's external ids.
-func (s *sqlStore) withLibraryIDs(ctx context.Context, titles []LibraryTitle) error {
+func (s *Store) withLibraryIDs(ctx context.Context, titles []LibraryTitle) error {
 	ids := make([]string, len(titles))
 	for i, t := range titles {
 		ids[i] = t.ID
@@ -100,12 +100,12 @@ const libraryTitleColumns = `i.id, i.kind, i.name, i.rating,
 		WHERE s.item_id = i.id AND s.plays), 0) ELSE 0 END
 	FROM library_items i`
 
-func (s *sqlStore) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTitle, error) {
+func (s *Store) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTitle, error) {
 	var sinceMs int64
 	if !since.IsZero() {
 		sinceMs = since.UnixMilli()
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
 		WHERE i.kind IN ('movie', 'series') AND i.updated_at_ms >= ? AND `+itemListed+`
 		ORDER BY i.id`), sinceMs)
 	if err != nil {
@@ -132,9 +132,9 @@ func (s *sqlStore) LibraryTitles(ctx context.Context, since time.Time) ([]Librar
 	return out, nil
 }
 
-func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace, value string) (LibraryTitle, bool, error) {
+func (s *Store) LibraryTitleByProviderID(ctx context.Context, kind, namespace, value string) (LibraryTitle, bool, error) {
 	var t LibraryTitle
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
 		WHERE i.kind = ? AND i.id IN (SELECT item_id FROM library_ids WHERE namespace = ? AND value = ?)
 		AND `+itemListed+` ORDER BY i.id LIMIT 1`), kind, namespace, value).Scan(
 		&t.ID, &t.Kind, &t.Name, &t.Rating, &t.SizeBytes)
@@ -166,14 +166,14 @@ type LibraryTitleSearcher interface {
 	SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error)
 }
 
-func (s *sqlStore) SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error) {
+func (s *Store) SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error) {
 	term = strings.ToLower(strings.TrimSpace(term))
 	if term == "" || limit <= 0 {
 		return nil, nil
 	}
 	escaped := likeEscape(term)
 	name := s.lower("i.name")
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
 		WHERE i.kind IN ('movie', 'series') AND `+name+` LIKE ? ESCAPE '\' AND `+itemListed+`
 		ORDER BY CASE WHEN `+name+` = ? THEN 0 WHEN `+name+` LIKE ? ESCAPE '\' THEN 1 ELSE 2 END,
 			i.sort_name, i.id
@@ -221,7 +221,7 @@ type LibraryArtReader interface {
 	LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (map[LibraryProviderID]LibraryTitleArt, error)
 }
 
-func (s *sqlStore) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (map[LibraryProviderID]LibraryTitleArt, error) {
+func (s *Store) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (map[LibraryProviderID]LibraryTitleArt, error) {
 	out := map[LibraryProviderID]LibraryTitleArt{}
 	if len(ids) == 0 {
 		return out, nil
@@ -234,7 +234,7 @@ func (s *sqlStore) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID)
 	}
 	// Ordered by item id so two titles sharing a provider id resolve as LibraryTitleByProviderID
 	// does: the first one wins.
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.kind, d.namespace, d.value,
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.kind, d.namespace, d.value,
 		`+itemImage("backdrop")+`, `+itemImage("logo")+`
 		FROM library_items i JOIN library_ids d ON d.item_id = i.id
 		WHERE (`+strings.Join(match, ` OR `)+`) AND `+itemListed+`
@@ -264,8 +264,8 @@ func (s *sqlStore) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID)
 	return out, nil
 }
 
-func (s *sqlStore) libraryGenres(ctx context.Context, itemID string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT name FROM library_genres WHERE item_id = ? ORDER BY position`), itemID)
+func (s *Store) libraryGenres(ctx context.Context, itemID string) ([]string, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT name FROM library_genres WHERE item_id = ? ORDER BY position`), itemID)
 	if err != nil {
 		return nil, fmt.Errorf("library genres: %w", err)
 	}

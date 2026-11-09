@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryAnswer is the answer for a title nothing grounds (#2151 step 11): the catalog title it is
@@ -84,8 +86,8 @@ type LibraryNeedsStore interface {
 	NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error
 }
 
-func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id FROM library_items i
+func (s *Store) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id FROM library_items i
 		WHERE `+needWhere+` AND `+itemListed+` AND i.needs_noticed = FALSE ORDER BY i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("unnoticed library needs: %w", err)
@@ -105,9 +107,9 @@ func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) 
 	return ids, nil
 }
 
-func (s *sqlStore) NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error {
+func (s *Store) NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error {
 	for _, id := range itemIDs {
-		if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_items SET needs_noticed = TRUE WHERE id = ?`), id); err != nil {
+		if _, err := s.h.ExecContext(ctx, s.ph(`UPDATE library_items SET needs_noticed = TRUE WHERE id = ?`), id); err != nil {
 			return fmt.Errorf("notice library needs: %w", err)
 		}
 	}
@@ -120,8 +122,8 @@ const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.or
 	AND NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key)`
 
-func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
+func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
 		FROM library_items i WHERE `+needWhere+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
@@ -146,10 +148,10 @@ func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	return out, nil
 }
 
-func (s *sqlStore) LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error) {
+func (s *Store) LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error) {
 	out := map[string][]LibraryCandidate{}
 	for _, id := range itemIDs {
-		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, namespace, external_id, name, year, overview, poster,
+		rows, err := s.h.QueryContext(ctx, s.ph(`SELECT kind, namespace, external_id, name, year, overview, poster,
 			name_match, year_match, length_match FROM library_candidates WHERE inventory_item_id = ? ORDER BY rank`), id)
 		if err != nil {
 			return nil, fmt.Errorf("library candidates: %w", err)
@@ -170,8 +172,8 @@ func (s *sqlStore) LibraryCandidates(ctx context.Context, itemIDs []string) (map
 	return out, nil
 }
 
-func (s *sqlStore) SaveLibraryCandidates(ctx context.Context, itemID, searched string, candidates []LibraryCandidate) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) SaveLibraryCandidates(ctx context.Context, itemID, searched string, candidates []LibraryCandidate) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save library candidates: %w", err)
 	}
@@ -197,13 +199,13 @@ func (s *sqlStore) SaveLibraryCandidates(ctx context.Context, itemID, searched s
 	return nil
 }
 
-func (s *sqlStore) LibraryItemOrigin(ctx context.Context, itemID string) (string, LibraryOrigin, error) {
+func (s *Store) LibraryItemOrigin(ctx context.Context, itemID string) (string, LibraryOrigin, error) {
 	var kind string
 	var o LibraryOrigin
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, origin_authority, origin_key FROM library_items WHERE id = ?`),
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, origin_authority, origin_key FROM library_items WHERE id = ?`),
 		itemID).Scan(&kind, &o.Authority, &o.Key)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", LibraryOrigin{}, ErrNotFound
+		return "", LibraryOrigin{}, storedb.ErrNotFound
 	}
 	if err != nil {
 		return "", LibraryOrigin{}, fmt.Errorf("library item origin: %w", err)
@@ -211,10 +213,10 @@ func (s *sqlStore) LibraryItemOrigin(ctx context.Context, itemID string) (string
 	return kind, o, nil
 }
 
-func (s *sqlStore) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
+func (s *Store) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
 	a := LibraryAnswer{Origin: origin}
 	var at int64
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, answered_at_ms, answered_by
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, answered_at_ms, answered_by
 		FROM library_answers WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(
 		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &at, &a.By)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -227,7 +229,7 @@ func (s *sqlStore) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (
 	return a, true, nil
 }
 
-func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
+func (s *Store) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
 	if a.Origin.Authority == "" || a.Origin.Key == "" || a.Kind == "" || a.AnsweredAt.IsZero() {
 		return fmt.Errorf("save library answer: origin, kind and time are required")
 	}
@@ -245,7 +247,7 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 	}
 	// A search never replaces the maintainer's answer (decision 58), even one given between the
 	// Matcher's look and this write.
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO library_answers
+	if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_answers
 		(origin_authority, origin_key, kind, namespace, external_id, ignored, answered_at_ms, answered_by)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
@@ -259,27 +261,27 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 	return nil
 }
 
-func (s *sqlStore) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
+func (s *Store) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin) error {
+	if _, err := s.h.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
 		origin.Authority, origin.Key); err != nil {
 		return fmt.Errorf("delete library answer: %w", err)
 	}
 	return nil
 }
 
-func (s *sqlStore) RewriteLibraryItemFiles(ctx context.Context, itemID string) ([]LibraryFilePath, error) {
+func (s *Store) RewriteLibraryItemFiles(ctx context.Context, itemID string) ([]LibraryFilePath, error) {
 	return s.rewriteFiles(ctx, `inventory_item_id = ? OR inventory_series_id = ?`, itemID, itemID)
 }
 
 // rewriteFiles forgets the identity digest of the present files matching where, and lists them.
-func (s *sqlStore) rewriteFiles(ctx context.Context, where string, args ...any) ([]LibraryFilePath, error) {
+func (s *Store) rewriteFiles(ctx context.Context, where string, args ...any) ([]LibraryFilePath, error) {
 	return s.resetFiles(ctx, `identity = ''`, where, args...)
 }
 
 // resetFiles applies set to the present files matching where, and lists them, so a pass over
 // their folders takes them up again.
-func (s *sqlStore) resetFiles(ctx context.Context, set, where string, args ...any) ([]LibraryFilePath, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) resetFiles(ctx context.Context, set, where string, args ...any) ([]LibraryFilePath, error) {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}

@@ -7,6 +7,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The file table keeps whole rows per root, counts present files, and records a root's last walk.
@@ -77,7 +79,7 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 
 	// A first walk writes more rows than one transaction holds; every one lands. A bad row anywhere
 	// writes none of them.
-	many := make([]LibraryFile, 2*libraryFilesChunk+1)
+	many := make([]LibraryFile, 2*librarystore.LibraryFilesChunk+1)
 	for i := range many {
 		many[i] = LibraryFile{Path: fmt.Sprintf("/media/c/%04d.mkv", i), Root: "/media/c", Size: 1, ModifiedNs: 1, SeenAt: at}
 	}

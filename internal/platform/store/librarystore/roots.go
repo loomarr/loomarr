@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryRoot is one local folder Loomarr may walk for media (#2151 decision 6).
@@ -84,9 +86,9 @@ type LibraryRootStore interface {
 	CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (flipped bool, err error)
 }
 
-func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
+func (s *Store) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	var out LibraryRoots
-	rows, err := s.db.QueryContext(ctx, `SELECT path, in_use, readable, checked_at_ms, by_hand, added_at_ms, scanned_at_ms
+	rows, err := s.h.QueryContext(ctx, `SELECT path, in_use, readable, checked_at_ms, by_hand, added_at_ms, scanned_at_ms
 		FROM library_roots ORDER BY path`)
 	if err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
@@ -110,7 +112,7 @@ func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT authority, authority_path, root_path, by_hand, seen_at_ms
+	rows, err = s.h.QueryContext(ctx, `SELECT authority, authority_path, root_path, by_hand, seen_at_ms
 		FROM library_root_paths ORDER BY authority, authority_path`)
 	if err != nil {
 		return out, fmt.Errorf("list library root paths: %w", err)
@@ -131,12 +133,12 @@ func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	return out, nil
 }
 
-func (s *sqlStore) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRootDiscovery, at time.Time) error {
+func (s *Store) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRootDiscovery, at time.Time) error {
 	if at.IsZero() {
 		return fmt.Errorf("record library root discovery: time is required")
 	}
 	ms := at.UnixMilli()
-	return s.libraryRootTx(ctx, "record library root discovery", func(tx *sql.Tx) error {
+	return s.libraryRootTx(ctx, "record library root discovery", func(tx storedb.Tx) error {
 		for _, f := range d.Found {
 			if f.Authority == "" || f.AuthorityPath == "" {
 				return fmt.Errorf("found path needs an authority and a path")
@@ -169,7 +171,7 @@ func (s *sqlStore) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRoot
 	})
 }
 
-func (s *sqlStore) applyLibraryRootChecks(ctx context.Context, tx *sql.Tx, checks []LibraryRootCheck, ms int64) error {
+func (s *Store) applyLibraryRootChecks(ctx context.Context, tx storedb.Tx, checks []LibraryRootCheck, ms int64) error {
 	for _, c := range checks {
 		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET readable = ?, checked_at_ms = ?
 			WHERE path = ?`), c.Readable, ms, c.Path); err != nil {
@@ -179,18 +181,18 @@ func (s *sqlStore) applyLibraryRootChecks(ctx context.Context, tx *sql.Tx, check
 	return nil
 }
 
-func (s *sqlStore) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (bool, error) {
+func (s *Store) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (bool, error) {
 	if check.Path == "" || at.IsZero() {
 		return false, fmt.Errorf("check library root: path and time are required")
 	}
 	flipped := false
-	err := s.libraryRootTx(ctx, "check library root", func(tx *sql.Tx) error {
+	err := s.libraryRootTx(ctx, "check library root", func(tx storedb.Tx) error {
 		var readable bool
 		var checkedAt int64
 		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, checked_at_ms FROM library_roots WHERE path = ?`), check.Path).
 			Scan(&readable, &checkedAt)
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		if err != nil {
 			return err
@@ -201,12 +203,12 @@ func (s *sqlStore) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck,
 	return flipped, err
 }
 
-func (s *sqlStore) AddLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) error {
+func (s *Store) AddLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) error {
 	if check.Path == "" || at.IsZero() {
 		return fmt.Errorf("add library root: path and time are required")
 	}
 	ms := at.UnixMilli()
-	return s.libraryRootTx(ctx, "add library root", func(tx *sql.Tx) error {
+	return s.libraryRootTx(ctx, "add library root", func(tx storedb.Tx) error {
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, in_use, by_hand, added_at_ms)
 			VALUES (?, TRUE, TRUE, ?) ON CONFLICT (path) DO UPDATE SET in_use = TRUE`), check.Path, ms); err != nil {
 			return err
@@ -215,8 +217,8 @@ func (s *sqlStore) AddLibraryRoot(ctx context.Context, check LibraryRootCheck, a
 	})
 }
 
-func (s *sqlStore) SetLibraryRootInUse(ctx context.Context, path string, inUse bool) error {
-	return s.libraryRootTx(ctx, "set library root in use", func(tx *sql.Tx) error {
+func (s *Store) SetLibraryRootInUse(ctx context.Context, path string, inUse bool) error {
+	return s.libraryRootTx(ctx, "set library root in use", func(tx storedb.Tx) error {
 		result, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET in_use = ? WHERE path = ?`), inUse, path)
 		if err != nil {
 			return err
@@ -224,7 +226,7 @@ func (s *sqlStore) SetLibraryRootInUse(ctx context.Context, path string, inUse b
 		if n, err := result.RowsAffected(); err != nil {
 			return err
 		} else if n == 0 {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		_, err = tx.ExecContext(ctx, s.ph(`DELETE FROM library_roots WHERE path = ? AND NOT in_use AND by_hand
 			AND path NOT IN (SELECT root_path FROM library_root_paths)`), path)
@@ -232,11 +234,11 @@ func (s *sqlStore) SetLibraryRootInUse(ctx context.Context, path string, inUse b
 	})
 }
 
-func (s *sqlStore) SetLibraryRootPath(ctx context.Context, authority, authorityPath, rootPath string, at time.Time) error {
+func (s *Store) SetLibraryRootPath(ctx context.Context, authority, authorityPath, rootPath string, at time.Time) error {
 	if at.IsZero() {
 		return fmt.Errorf("set library root path: time is required")
 	}
-	return s.libraryRootTx(ctx, "set library root path", func(tx *sql.Tx) error {
+	return s.libraryRootTx(ctx, "set library root path", func(tx storedb.Tx) error {
 		result, err := tx.ExecContext(ctx, s.ph(`UPDATE library_root_paths SET root_path = ?, by_hand = ?
 			WHERE authority = ? AND authority_path = ?`), rootPath, rootPath != "", authority, authorityPath)
 		if err != nil {
@@ -245,7 +247,7 @@ func (s *sqlStore) SetLibraryRootPath(ctx context.Context, authority, authorityP
 		if n, err := result.RowsAffected(); err != nil {
 			return err
 		} else if n == 0 {
-			return ErrNotFound
+			return storedb.ErrNotFound
 		}
 		if rootPath == "" {
 			return nil
@@ -256,15 +258,15 @@ func (s *sqlStore) SetLibraryRootPath(ctx context.Context, authority, authorityP
 	})
 }
 
-func (s *sqlStore) libraryRootTx(ctx context.Context, op string, write func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) libraryRootTx(ctx context.Context, op string, write func(storedb.Tx) error) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: begin: %w", op, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := write(tx); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return ErrNotFound
+		if errors.Is(err, storedb.ErrNotFound) {
+			return storedb.ErrNotFound
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}

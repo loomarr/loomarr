@@ -27,24 +27,25 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
 type libraryStore interface {
-	store.LibraryRootStore
-	store.LibraryFileStore
-	store.LibraryItemStore
+	librarystore.LibraryRootStore
+	librarystore.LibraryFileStore
+	librarystore.LibraryItemStore
 	store.LibraryProjection
-	store.LibraryCatalogStore
-	store.LibraryNeedsStore
-	store.LibraryEpisodeOrderStore
-	store.LibraryCollectionStore
-	store.LibraryPeopleStore
+	librarystore.LibraryCatalogStore
+	librarystore.LibraryNeedsStore
+	librarystore.LibraryEpisodeOrderStore
+	librarystore.LibraryCollectionStore
+	librarystore.LibraryPeopleStore
 	store.LibraryIDMapStore
 	store.LibraryReferenceStore
-	store.LibraryItemFactsReader
-	store.LibraryTitleReader
+	librarystore.LibraryItemFactsReader
+	librarystore.LibraryTitleReader
 	store.SettingStore
 	inventory.Repository
 	artRefs

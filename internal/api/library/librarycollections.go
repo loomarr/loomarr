@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Collections (#2151 step 12, decision 28): the household's own collections, each an
@@ -117,7 +118,7 @@ func (s *Handlers) listCollections(ctx context.Context, _ *struct{}) (*listColle
 	if err != nil {
 		return nil, err
 	}
-	var titles []store.LibraryItemSummary
+	var titles []librarystore.LibraryItemSummary
 	for _, c := range list {
 		titles = append(titles, c.Titles...)
 	}
@@ -170,7 +171,7 @@ func (s *Handlers) createCollection(ctx context.Context, in *struct{ Body collec
 		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
 	}
 	id, err := svc.CreateCollection(ctx, name, strings.TrimSpace(in.Body.Description), in.Body.Titles)
-	if errors.Is(err, store.ErrUnknownLibraryItem) {
+	if errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		return nil, unknownCollectionTitle()
 	}
 	if err != nil {
@@ -195,7 +196,7 @@ func (s *Handlers) updateCollection(ctx context.Context, in *struct {
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, collectionNotFound()
 	}
-	if errors.Is(err, store.ErrUnknownLibraryItem) {
+	if errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		return nil, unknownCollectionTitle()
 	}
 	if err != nil {
