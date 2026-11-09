@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -134,7 +135,7 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -218,11 +219,11 @@ func (s *Server) attachTimelinePods(
 		return
 	}
 	var idx []int
-	var slots []filler.BreakSlot
+	var slots []pod.BreakSlot
 	for i, b := range bs {
 		if b.Kind == schedule.SlotFiller {
 			idx = append(idx, i)
-			slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
+			slots = append(slots, pod.BreakSlot{Start: b.Start, Length: b.BreakLength()})
 		}
 	}
 	if len(slots) == 0 {

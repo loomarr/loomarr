@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -23,7 +24,7 @@ func TestSettingsAuditNamesTheAuthorAndNeverAnID(t *testing.T) {
 		}
 	}
 	s := &Server{store: st}
-	ctx := context.WithValue(context.Background(), userCtxKey{}, identitystore.User{ID: "90000002bbbbbbbbbbbbbbbbbbbbbbbb"})
+	ctx := httpcore.WithUser(context.Background(), identitystore.User{ID: "90000002bbbbbbbbbbbbbbbbbbbbbbbb"})
 
 	got, err := s.withAuditNames(ctx, []SettingEntry{
 		{Key: "a", UpdatedBy: "90000001aaaaaaaaaaaaaaaaaaaaaaaa"},

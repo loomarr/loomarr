@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
@@ -42,35 +43,35 @@ type fillerResearchTestOutput struct {
 }
 
 func (s *Server) registerFillerResearch(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-research-status", Method: http.MethodGet, Path: "/v1/filler/research/status",
 		Summary:     "Clip-detail research status",
 		Description: "Admin only. Reports trusted-source and optional web-search availability and bounded monthly usage. Provider secrets are never returned.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerResearchStatus)
+	}, httpcore.RoleAdmin), s.fillerResearchStatus)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-research-test", Method: http.MethodPost, Path: "/v1/filler/research/test",
 		Summary:     "Test a clip-detail web-search provider",
 		Description: "Admin only. Validates proposed Brave Search or SearXNG details before they are saved. The check consumes one bounded monthly request and never returns the credential.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerResearchTest)
+	}, httpcore.RoleAdmin), s.fillerResearchTest)
 }
 
 func (s *Server) fillerResearchStatus(ctx context.Context, _ *struct{}) (*fillerResearchStatusOutput, error) {
 	if s.fillerResearch == nil {
-		return nil, errNotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
+		return nil, httpcore.NotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
 	}
 	status, err := s.fillerResearch.Status(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Could not check clip-detail research", "Loomarr couldn't read the current research status. Try again.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Could not check clip-detail research", "Loomarr couldn't read the current research status. Try again.", err)
 	}
 	return &fillerResearchStatusOutput{Body: fillerResearchStatusDTO(status)}, nil
 }
 
 func (s *Server) fillerResearchTest(ctx context.Context, in *fillerResearchTestInput) (*fillerResearchTestOutput, error) {
 	if s.fillerResearch == nil {
-		return nil, errNotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
+		return nil, httpcore.NotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
 	}
 	config := research.WebConfig{
 		Provider:    research.WebProvider(in.Body.Provider),
@@ -79,7 +80,7 @@ func (s *Server) fillerResearchTest(ctx context.Context, in *fillerResearchTestI
 	}
 	status, ok, message, err := s.fillerResearch.Test(ctx, config)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Could not test web search", "Loomarr couldn't complete the provider check. Try again.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Could not test web search", "Loomarr couldn't complete the provider check. Try again.", err)
 	}
 	out := &fillerResearchTestOutput{}
 	out.Body.OK = ok

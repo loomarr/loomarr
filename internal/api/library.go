@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -44,6 +45,9 @@ type LibraryRootService interface {
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
+	// Episode orders (#2151 decision 53).
+	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
+	ChooseOrder(ctx context.Context, seriesID string, choice store.LibraryOrderChoice, orderID string) error
 	// Collections (#2151 step 12, decision 28).
 	Collections(ctx context.Context) ([]scan.Collection, error)
 	Collection(ctx context.Context, id string) (scan.Collection, error)
@@ -55,58 +59,58 @@ type LibraryRootService interface {
 }
 
 func (s *Server) registerLibrary(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryRoots", Method: http.MethodGet, Path: "/v1/library/roots",
 		Summary:     "List media folders",
 		Description: "The folders Loomarr reads media from, where each was found, its last readability check, and the path map.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryRoots)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.listLibraryRoots)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discoverLibraryRoots", Method: http.MethodPost, Path: "/v1/library/roots/discover",
 		Summary: "Look for media folders again",
 		Description: "Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder " +
 			"can be opened. A source that fails keeps the folders it reported last time.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.discoverLibraryRoots)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.discoverLibraryRoots)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "addLibraryRoot", Method: http.MethodPost, Path: "/v1/library/roots",
 		Summary:     "Add a media folder by hand",
 		Description: "Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.addLibraryRoot)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.addLibraryRoot)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setLibraryRootInUse", Method: http.MethodPut, Path: "/v1/library/roots/in-use",
 		Summary:     "Use or stop using a media folder",
 		Description: "Confirms a folder for scanning, or releases it. Releasing a folder added by hand removes it.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.setLibraryRootInUse)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.setLibraryRootInUse)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setLibraryPathMapping", Method: http.MethodPut, Path: "/v1/library/path-map",
 		Summary: "Map another app's folder to a folder here",
 		Description: "Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. " +
 			"An empty localPath hands the row back to discovery.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.setLibraryPathMapping)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.setLibraryPathMapping)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "libraryStatus", Method: http.MethodGet, Path: "/v1/library/status",
 		Summary: "Library status",
 		Description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, " +
 			"what the scanner is doing, and any removal waiting for the maintainer.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.libraryStatus)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.libraryStatus)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "rescanLibrary", Method: http.MethodPost, Path: "/v1/library/scan",
 		Summary:     "Check the media folders again",
 		Description: "Starts a scan of every folder in use now. 409 when the scanner is turned off.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.rescanLibrary)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.rescanLibrary)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirmLibraryRemoval", Method: http.MethodPost, Path: "/v1/library/roots/confirm-removal",
 		Summary: "Remove the titles a scan no longer found",
 		Description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. " +
 			"404 when nothing is waiting for that folder; 409 when the scanner is turned off.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.confirmLibraryRemoval)
+	}, httpcore.RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
 	s.registerLibraryItems(api)
 	s.registerLibraryNeeds(api)
@@ -183,7 +187,7 @@ func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libr
 
 func (s *Server) libraryRootsService() (LibraryRootService, error) {
 	if s.libraryRoots == nil {
-		return nil, errFeatureNotConfigured("Media folders unavailable", "The library scanner is not set up on this server.")
+		return nil, httpcore.FeatureNotConfigured("Media folders unavailable", "The library scanner is not set up on this server.")
 	}
 	return s.libraryRoots, nil
 }
@@ -195,7 +199,7 @@ func (s *Server) listLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRoo
 	}
 	all, err := svc.List(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read media folders", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read media folders", "Try again in a moment.", err)
 	}
 	return libraryRootsView(all, nil), nil
 }
@@ -207,7 +211,7 @@ func (s *Server) discoverLibraryRoots(ctx context.Context, _ *struct{}) (*librar
 	}
 	all, results, err := svc.Discover(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't look for media folders", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't look for media folders", "Try again in a moment.", err)
 	}
 	return libraryRootsView(all, results), nil
 }
@@ -225,11 +229,11 @@ func (s *Server) addLibraryRoot(ctx context.Context, in *addLibraryRootInput) (*
 	}
 	switch err := svc.Add(ctx, in.Body.Path); {
 	case errors.Is(err, scan.ErrNotAbsolute):
-		return nil, errUnprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
+		return nil, httpcore.Unprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
 	case errors.Is(err, scan.ErrUnreadable):
-		return nil, errUnprocessable("Loomarr can't open that folder", "Check the folder exists here and Loomarr is allowed to read it.")
+		return nil, httpcore.Unprocessable("Loomarr can't open that folder", "Check the folder exists here and Loomarr is allowed to read it.")
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't add the folder", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't add the folder", "Try again in a moment.", err)
 	}
 	return s.listLibraryRoots(ctx, nil)
 }
@@ -248,9 +252,9 @@ func (s *Server) setLibraryRootInUse(ctx context.Context, in *setLibraryRootInUs
 	}
 	switch err := svc.SetInUse(ctx, in.Body.Path, in.Body.InUse); {
 	case errors.Is(err, store.ErrNotFound):
-		return nil, errNotFound("No such folder", "Loomarr doesn't know that folder. Look for folders again.")
+		return nil, httpcore.NotFound("No such folder", "Loomarr doesn't know that folder. Look for folders again.")
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't change the folder", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't change the folder", "Try again in a moment.", err)
 	}
 	return s.listLibraryRoots(ctx, nil)
 }
@@ -270,11 +274,11 @@ func (s *Server) setLibraryPathMapping(ctx context.Context, in *setLibraryPathMa
 	}
 	switch err := svc.SetMapping(ctx, in.Body.Authority, in.Body.AuthorityPath, in.Body.LocalPath); {
 	case errors.Is(err, scan.ErrNotAbsolute):
-		return nil, errUnprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
+		return nil, httpcore.Unprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
 	case errors.Is(err, store.ErrNotFound):
-		return nil, errNotFound("No such folder", "That app hasn't reported this folder. Look for folders again.")
+		return nil, httpcore.NotFound("No such folder", "That app hasn't reported this folder. Look for folders again.")
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't change the folder map", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't change the folder map", "Try again in a moment.", err)
 	}
 	return s.listLibraryRoots(ctx, nil)
 }
@@ -322,15 +326,15 @@ func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatus
 	}
 	all, err := svc.List(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
 	counts, err := svc.Counts(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
 	needsYou, err := svc.NeedCount(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
@@ -379,9 +383,9 @@ func (s *Server) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStatus
 		return nil, err
 	}
 	if err := svc.Rescan(); errors.Is(err, scan.ErrScannerOff) {
-		return nil, errConflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
 	} else if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't start a scan", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't start a scan", "Try again in a moment.", err)
 	}
 	return s.libraryStatus(ctx, nil)
 }
@@ -399,11 +403,11 @@ func (s *Server) confirmLibraryRemoval(ctx context.Context, in *confirmLibraryRe
 	}
 	switch err := svc.ConfirmRemovals(ctx, in.Body.Path); {
 	case errors.Is(err, scan.ErrNothingHeld):
-		return nil, errNotFound("Nothing is waiting", "No removal is waiting for that folder.")
+		return nil, httpcore.NotFound("Nothing is waiting", "No removal is waiting for that folder.")
 	case errors.Is(err, scan.ErrScannerOff):
-		return nil, errConflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
 	case err != nil:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't remove them", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't remove them", "Try again in a moment.", err)
 	}
 	return s.libraryStatus(ctx, nil)
 }

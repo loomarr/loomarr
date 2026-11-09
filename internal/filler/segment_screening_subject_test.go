@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -64,8 +65,8 @@ func TestSegmentScreeningSubjectBindsRenderedChildAndExactParentInterval(t *test
 	manifest := screeningSubjectManifest(t)
 	lineage := ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: strings.Repeat("7", 64),
-		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
-		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: SegmentRoleCommercial,
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: strings.Repeat("8", 64),
+		StructureDecisionSHA256: strings.Repeat("a", 64), StructureRole: split.RoleCommercial,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)

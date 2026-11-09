@@ -19,6 +19,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -75,7 +78,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	fixtures := testkit.FillerConditioningMedia(t, dir)
 	mediaTools := tools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
 
-	parentHash, err := filler.ClipID(fixtures.Compilation)
+	parentHash, err := asset.ClipID(fixtures.Compilation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +95,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{ClipHash: parentHash, Stage: filler.StageSplit, Status: filler.StatusQueued, Disposition: filler.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{ClipHash: parentHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, realReviewedSplitTools{
@@ -107,7 +110,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	}
 	// Detection produced the candidate; the reviewed operator edit trims its transition tail to the
 	// measured content interval used by this fixture. No chapter is supplied to Propose.
-	reviewed := append([]filler.SplitSegment(nil), proposal.Segments[0])
+	reviewed := append([]split.Segment(nil), proposal.Segments[0])
 	reviewed[0].EndMs = reviewedEnd
 	childHashes, err := splitter.Confirm(ctx, proposal.ID, reviewed)
 	if err != nil || len(childHashes) != 1 {
@@ -161,8 +164,8 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	// Since #1255 an enrolled clip whose ladder finishes clean is published automatically: the
 	// conditioned child settles Ready, released from hold, with a playable placement.
 	pipelineRow, found, err := st.GetClipPipeline(ctx, conditioned.Hash)
-	if err != nil || !found || pipelineRow.Status != filler.StatusDone ||
-		pipelineRow.Disposition != filler.DispositionReady || conditioned.Held ||
+	if err != nil || !found || pipelineRow.Status != pipelinestate.StatusDone ||
+		pipelineRow.Disposition != pipelinestate.DispositionReady || conditioned.Held ||
 		conditioned.Placement == filler.PlacementNotPlayable {
 		t.Fatalf("durable conditioned publication = %+v, held=%v placement=%q found=%v err=%v",
 			pipelineRow, conditioned.Held, conditioned.Placement, found, err)

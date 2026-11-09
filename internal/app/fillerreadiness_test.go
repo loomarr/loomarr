@@ -9,20 +9,22 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type readinessStoreFuncs struct {
-	pipeline func(context.Context, time.Time) (filler.PipelineOverview, error)
+	pipeline func(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
 	runs     func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
 	repairs  func(context.Context) (filler.AcquisitionRepairSummary, error)
 }
 
 func (readinessStoreFuncs) CountReadySplitProposals(context.Context) (int, error) { return 0, nil }
 
-func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
+func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
 	return s.pipeline(ctx, at)
 }
 
@@ -51,17 +53,17 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 	}
 	a := fillerServiceAdapter{
 		readiness: readinessStoreFuncs{
-			pipeline: func(context.Context, time.Time) (filler.PipelineOverview, error) {
-				return filler.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
+			pipeline: func(context.Context, time.Time) (pipelinestate.PipelineOverview, error) {
+				return pipelinestate.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
 			},
 			runs: func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error) { return nil, nil },
 			repairs: func(context.Context) (filler.AcquisitionRepairSummary, error) {
 				return filler.AcquisitionRepairSummary{}, nil
 			},
 		},
-		pool: func(context.Context) (filler.PoolReport, error) {
+		pool: func(context.Context) (pod.PoolReport, error) {
 			poolAsked = true
-			return filler.PoolReport{Eligible: 12}, nil
+			return pod.PoolReport{Eligible: 12}, nil
 		},
 		now:              func() time.Time { return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC) },
 		storage:          governor,
@@ -109,7 +111,7 @@ func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 			}
 		}
 	}
-	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (filler.PoolReport, error) { return filler.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
+	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (pod.PoolReport, error) { return pod.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
 	got, err := a.Readiness(ctx)
 	if err != nil {
 		t.Fatal(err)

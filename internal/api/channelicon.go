@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -38,7 +39,7 @@ const maxIconBytes = 2 << 20
 // (images.RoleIcon.Widths() = 92, 185, 500). See channelLogoURL for why this rung and why JPEG.
 const channelLogoWidth = 500
 
-// ownerKindChannel is the image_refs owner kind for a channel icon. A Ref is what keeps the GC
+// ownerKindChannel is the image owner kind for a channel icon (channel_images). A Ref is what keeps the GC
 // from collecting the icon as an orphan while a channel still points at it (§22).
 const ownerKindChannel = "channel"
 
@@ -91,22 +92,22 @@ type uploadIconOutput struct {
 // eventsHandler ended up disagreeing about nil authorizers.
 func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 
 	file := in.RawBody.Data().File
 	if file.Size > maxIconBytes {
-		return nil, apiErr(http.StatusRequestEntityTooLarge, "Image too large",
+		return nil, httpcore.Problem(http.StatusRequestEntityTooLarge, "Image too large",
 			"Channel icons must be under 2 MB.")
 	}
 	// Still bounded on read: Size is the multipart header's claim, and the operation's
 	// MaxBodyBytes is the outer fence. This is the inner one.
 	data, err := io.ReadAll(io.LimitReader(file, maxIconBytes+1))
 	if err != nil {
-		return nil, errBadRequest("Couldn't read the image", "The upload was incomplete. Try again.")
+		return nil, httpcore.BadRequest("Couldn't read the image", "The upload was incomplete. Try again.")
 	}
 	if len(data) > maxIconBytes {
-		return nil, apiErr(http.StatusRequestEntityTooLarge, "Image too large",
+		return nil, httpcore.Problem(http.StatusRequestEntityTooLarge, "Image too large",
 			"Channel icons must be under 2 MB.")
 	}
 
@@ -118,12 +119,12 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	// own origin. Raster-only removes the class instead of trying to sanitize it.
 	ct := iconContentType("", data)
 	if !allowedIconTypes[ct] {
-		return nil, apiErr(http.StatusUnsupportedMediaType, "Unsupported image type",
+		return nil, httpcore.Problem(http.StatusUnsupportedMediaType, "Unsupported image type",
 			"Use a PNG, JPEG, WebP, or GIF image. SVG isn't accepted.")
 	}
 
 	if s.images == nil {
-		return nil, apiErr(http.StatusServiceUnavailable, "Images aren't available",
+		return nil, httpcore.Problem(http.StatusServiceUnavailable, "Images aren't available",
 			"The image service isn't configured on this instance.")
 	}
 
@@ -140,7 +141,7 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 		OwnerID:    in.ID,
 	})
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the icon",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the icon",
 			"Something went wrong storing the image. Try again.", err)
 	}
 

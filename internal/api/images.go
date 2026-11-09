@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/images"
 )
 
@@ -57,7 +58,7 @@ func (s *Server) registerImages(api huma.API) {
 	// while a clip still must not be. A fixed role cannot express both, and two routes over one
 	// serve path would be two authorization implementations to keep in step — which is how
 	// `backupHandler` and `eventsHandler` ended up disagreeing about nil authorizers.
-	rawOp[serveImageInput](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[serveImageInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "serve-image",
 		Method:      http.MethodGet,
 		Path:        "/v1/images/{hash}/{rendition}",
@@ -66,9 +67,9 @@ func (s *Server) registerImages(api huma.API) {
 			"Content-addressed, so the response is immutable and cacheable forever.",
 		Tags: []string{"Images"},
 	}, "The image bytes", "image/avif", "image/webp", "image/jpeg"),
-		RolePublic, s.serveImage)
+		httpcore.RolePublic, s.serveImage)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-image",
 		Method:      http.MethodGet,
 		Path:        "/v1/images/{hash}",
@@ -76,16 +77,16 @@ func (s *Server) registerImages(api huma.API) {
 		Description: "Dimensions, placeholder and per-format srcset strings for one image — " +
 			"everything an <img> needs to render without layout shift.",
 		Tags: []string{"Images"},
-	}, RoleMember), s.getImage)
+	}, httpcore.RoleMember), s.getImage)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "upload-image",
 		Method:      http.MethodPost,
 		Path:        "/v1/images",
 		Summary:     "Upload an image",
 		Description: "Stores an image and returns its record. Raster only — SVG is refused.",
 		Tags:        []string{"Images"},
-	}, RoleAdmin), s.uploadImage)
+	}, httpcore.RoleAdmin), s.uploadImage)
 }
 
 type serveImageInput struct {
@@ -125,7 +126,7 @@ func (s *Server) serveImage(w http.ResponseWriter, r *http.Request) {
 	// operation sees — not a second auth implementation.
 	//
 	// A member-visible image without a session is a 404 for the same reason as above, never a 403.
-	if rec.Visibility != images.VisibilityPublic && roleFrom(r.Context()) == RoleAnonymous {
+	if rec.Visibility != images.VisibilityPublic && httpcore.RoleFrom(r.Context()) == httpcore.RoleAnonymous {
 		http.NotFound(w, r)
 		return
 	}
@@ -228,11 +229,11 @@ type getImageOutput struct{ Body ImageDTO }
 
 func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutput, error) {
 	if s.images == nil {
-		return nil, errNotFound("Image not found", "That image doesn't exist.")
+		return nil, httpcore.NotFound("Image not found", "That image doesn't exist.")
 	}
 	rec, err := s.images.Get(ctx, in.Hash)
 	if err != nil {
-		return nil, errNotFound("Image not found", "That image doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Image not found", "That image doesn't exist — it may have been removed.")
 	}
 	return &getImageOutput{Body: s.imageToDTO(ctx, rec)}, nil
 }
@@ -290,7 +291,7 @@ type imageUploadForm struct {
 type uploadImageInput struct {
 	Role       string `query:"role" doc:"poster | backdrop | icon | thumb" example:"icon"`
 	Visibility string `query:"visibility" doc:"public | member" example:"member"`
-	OwnerKind  string `query:"ownerKind" doc:"What this image decorates, e.g. channel"`
+	OwnerKind  string `query:"ownerKind" enum:"clip,filler_split_proposal,channel,library_item,library_candidate" doc:"What kind of thing this image decorates; ownerId names which one, and it must exist"`
 	OwnerID    string `query:"ownerId" doc:"The id of the thing it decorates"`
 	RawBody    huma.MultipartFormFiles[imageUploadForm]
 }
@@ -299,7 +300,7 @@ type uploadImageOutput struct{ Body ImageDTO }
 
 func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*uploadImageOutput, error) {
 	if s.images == nil {
-		return nil, apiErr(http.StatusNotImplemented, "Images aren't configured",
+		return nil, httpcore.Problem(http.StatusNotImplemented, "Images aren't configured",
 			"The image service isn't wired on this instance.")
 	}
 
@@ -314,7 +315,7 @@ func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*upload
 	if err != nil {
 		// Ingest refuses on size and on format, and both are the caller's problem rather than
 		// ours — a 4xx with the reason, never a 500.
-		return nil, apiErr(http.StatusUnsupportedMediaType, "Couldn't accept that image",
+		return nil, httpcore.Problem(http.StatusUnsupportedMediaType, "Couldn't accept that image",
 			"Use a PNG, JPEG, WebP or GIF under the size limit. SVG isn't accepted.")
 	}
 

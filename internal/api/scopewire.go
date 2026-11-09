@@ -5,6 +5,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
@@ -25,6 +26,6 @@ type scopePolicy struct {
 // (schedule.ErrEraAndDates): era is a shortcut for dates, so the request does not say
 // which one it means.
 func ambiguousDatesError(err error) huma.StatusError {
-	return apiErrWithCause(http.StatusUnprocessableEntity, "Era and dates both set",
+	return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Era and dates both set",
 		"Send either an era or programming dates, not both. An era is a shortcut for the same year range on movie release, series premiere and episode airing.", err)
 }

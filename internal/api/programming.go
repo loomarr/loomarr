@@ -8,35 +8,36 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // registerProgramming mounts the programming authoring surface's read endpoints (§6.6/§8.1,
 // P6): the BE-authoritative rule vocabulary, and the whole-definition draft preview.
 func (s *Server) registerProgramming(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-programming-vocabulary", Method: http.MethodGet, Path: "/v1/programming/vocabulary",
 		Summary:     "The closed rule authoring vocabulary",
 		Description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.getProgrammingVocabulary)
+	}, httpcore.RoleMember), s.getProgrammingVocabulary)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-channel-programming", Method: http.MethodPost, Path: "/v1/channels/{id}/programming/preview",
 		Summary:     "Preview an unsaved programming draft",
 		Description: "Previews what a DRAFT {lineup?, policy?} would air — the cycle slots (which rule wins at `at`, the rolling window) AND the assembled break pool — WITHOUT saving or touching Tunarr. Runs the same ComputeDesiredAt + pod assembler as reconcile, so the preview cannot drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool).",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.previewChannelProgramming)
+	}, httpcore.RoleMember), s.previewChannelProgramming)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-channel-programming-changes", Method: http.MethodPost, Path: "/v1/channels/{id}/programming/changes",
 		Summary:     "List the upcoming slots an unsaved programming draft changes",
 		Description: "Compares the SAVED channel with a DRAFT {lineup?, policy?} (the same body and validation as programming/preview) over the next `horizonHours`, and returns only the slots where they air something different: when, what airs before → after, and which rule wins on each side. Both sides are forecast by the same engine calls from the same instant, so a slot the draft does not touch compares equal. Read-only; nothing is saved and no backend is called.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.previewChannelProgrammingChanges)
+	}, httpcore.RoleMember), s.previewChannelProgrammingChanges)
 }
 
 type programmingVocabularyOutput struct {
@@ -110,7 +111,7 @@ func excludedToDTO(r schedule.ExclusionReport) ExcludedDTO {
 // preview can't disagree with what applying the draft would ship. Read-only.
 func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgrammingInput) (*previewProgrammingOutput, error) {
 	if s.channels == nil {
-		return nil, errNotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
+		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
 	}
 	at, err := parsePreviewInstant("at", in.At)
 	if err != nil {
@@ -123,7 +124,7 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 
 	cycle, err := s.channels.CyclePreviewDraft(ctx, in.ID, at, draftLineup, draftPolicy)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -132,7 +133,7 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 	// draft is given). Same assembler + seed as reconcile, so preview == reality.
 	pool := PodPoolDTO{Entries: []PodEntryDTO{}}
 	if s.pods != nil {
-		var pod filler.Pod
+		var pod pod.Pod
 		if draftPolicy != nil {
 			var sel schedule.FillerSelection
 			if draftPolicy.Filler != nil {
@@ -183,7 +184,7 @@ func parsePreviewInstant(name, raw string) (time.Time, error) {
 	}
 	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
-		return time.Time{}, errBadRequest("Invalid time", "`"+name+"` must be an RFC3339 timestamp like 2026-12-25T09:00:00Z.")
+		return time.Time{}, httpcore.BadRequest("Invalid time", "`"+name+"` must be an RFC3339 timestamp like 2026-12-25T09:00:00Z.")
 	}
 	return t, nil
 }
@@ -198,7 +199,7 @@ func lowerProgrammingDraft(lineup []LineupEntryDTO, policy *schedule.ChannelPoli
 	if lineup != nil {
 		entries, err := lineupEntriesFromDTOs(lineup)
 		if err != nil {
-			return nil, nil, errBadRequest("Invalid lineup", err.Error())
+			return nil, nil, httpcore.BadRequest("Invalid lineup", err.Error())
 		}
 		draftLineup = entries
 	}
@@ -209,7 +210,7 @@ func lowerProgrammingDraft(lineup []LineupEntryDTO, policy *schedule.ChannelPoli
 			return nil, nil, ambiguousDatesError(err)
 		}
 		if err := policy.Validate(); err != nil {
-			return nil, nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
+			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)
 		}
 	}
@@ -269,7 +270,7 @@ const programmingChangesCap = 100
 // authorization as programming/preview; the comparison is the engine's (ScheduleDiffDraft).
 func (s *Server) previewChannelProgrammingChanges(ctx context.Context, in *previewProgrammingChangesInput) (*previewProgrammingChangesOutput, error) {
 	if s.channels == nil {
-		return nil, errNotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
+		return nil, httpcore.NotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview programming.")
 	}
 	from, err := parsePreviewInstant("from", in.From)
 	if err != nil {
@@ -282,7 +283,7 @@ func (s *Server) previewChannelProgrammingChanges(ctx context.Context, in *previ
 
 	diff, err := s.channels.ScheduleDiffDraft(ctx, in.ID, from, time.Duration(in.HorizonHours)*time.Hour, draftLineup, draftPolicy)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}

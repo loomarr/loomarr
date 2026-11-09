@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -81,23 +82,23 @@ func (s *Server) registerSSO(api huma.API) {
 	if s.sso == nil && !s.schemaOnly {
 		return
 	}
-	rawOp[struct{}](api, redirectResponse(huma.Operation{
+	httpcore.RawOp[struct{}](api, redirectResponse(huma.Operation{
 		OperationID: "sso-start", Method: http.MethodGet, Path: "/v1/auth/sso/start",
 		Summary: "Begin an SSO login",
 		Description: "Public — this is how you sign in. Redirects to the identity provider and sets " +
 			"a short-lived state cookie binding the callback to this browser. `next` may be a PATH " +
 			"only; an absolute URL would make this an open redirector.",
 		Tags: []string{"auth"},
-	}, "Redirect to the identity provider."), RolePublic, s.ssoStart)
+	}, "Redirect to the identity provider."), httpcore.RolePublic, s.ssoStart)
 
-	rawOp[struct{}](api, redirectResponse(huma.Operation{
+	httpcore.RawOp[struct{}](api, redirectResponse(huma.Operation{
 		OperationID: "sso-callback", Method: http.MethodGet, Path: "/v1/auth/sso/callback",
 		Summary: "Complete an SSO login",
 		Description: "Public. The provider redirects here; Loomarr verifies the state cookie and the " +
 			"code, mints a session, and redirects onward. §11's allowlist decides access — this " +
 			"route cannot create a user.",
 		Tags: []string{"auth"},
-	}, "Redirect back into the app, with a session cookie on success."), RolePublic, s.ssoCallback)
+	}, "Redirect back into the app, with a session cookie on success."), httpcore.RolePublic, s.ssoCallback)
 }
 
 // redirectResponse declares a 302 for a route whose whole job is the Location header, so the
@@ -136,15 +137,7 @@ const ssoStateTTL = 10 * time.Minute
 // the same COOKIE_SECURE policy as the session cookie (§11) — a plain-HTTP LAN install must
 // still be able to sign in.
 func (s *Server) stateCookie(r *http.Request, state string, expires time.Time) http.Cookie {
-	return http.Cookie{
-		Name:     ssoStateCookie,
-		Value:    state,
-		Path:     "/v1/auth/sso",
-		Expires:  expires,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   s.secureCookie(r),
-	}
+	return s.origin.Cookie(r, ssoStateCookie, state, "/v1/auth/sso", http.SameSiteLaxMode, expires)
 }
 
 // clearStateCookie expires the state cookie. Called on every callback outcome, so one

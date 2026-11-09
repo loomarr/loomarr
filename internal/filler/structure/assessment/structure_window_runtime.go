@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -76,7 +76,7 @@ func NewStructureWindowAssessmentRuntime(assessors []CompleteWindowStructureAsse
 // adapters use this seam after local preparation succeeds, so capability refresh and paid calls
 // cannot happen before media preflight. The full source and plan are rederived here rather than
 // trusting the adapter that supplied prepared.
-func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, input filler.StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) (structure.Artifact, error) {
+func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, input split.AssessmentSource, prepared StructureAssessmentWindowMediaSet) (structure.Artifact, error) {
 	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.evidence == nil || r.now == nil {
 		return structure.Artifact{}, errors.New("structure window runtime is unavailable")
 	}
@@ -115,7 +115,7 @@ func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, i
 
 // ValidatePreparedStructureAssessmentWindows closes the local preflight boundary shared by
 // provider-neutral execution and hosted adapters. It performs no inference, persistence, or I/O.
-func ValidatePreparedStructureAssessmentWindows(input filler.StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) error {
+func ValidatePreparedStructureAssessmentWindows(input split.AssessmentSource, prepared StructureAssessmentWindowMediaSet) error {
 	if err := input.Source.Validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
 		return errors.New("structure window runtime source is invalid")
 	}

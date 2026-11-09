@@ -68,6 +68,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         else void navigate({ to: "/library" });
       }}
       onCheckFiles={() => act(libraryApi.checkLibraryItemFiles(id))}
+      onChooseOrder={() => void navigate({ to: "/library/needs" })}
       onForget={() => act(libraryApi.unanswerLibraryItem(id))}
       onLink={(externalId) => act(libraryApi.linkLibraryItem(id, { externalId }))}
       onOpenApp={page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined}

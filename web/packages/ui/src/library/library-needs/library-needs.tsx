@@ -1,7 +1,10 @@
 import { formatBytes } from "@loomarr/core/format";
 import {
   Action,
+  Badge,
   Disclosure,
+  RadioGroup,
+  RadioItem,
   StatusDot,
   Surface,
   Text,
@@ -17,8 +20,14 @@ import type {
   LibraryNeed,
   LibraryNeedCandidate,
   LibraryNeedSearch,
+  LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderAnswer,
+  LibraryOrderChoice,
+  LibraryOrderFile,
+  LibraryOrderKind,
+  LibraryOrderNeed,
   LibraryProblem,
 } from "./library-needs.type";
 
@@ -126,11 +135,11 @@ const LockIn = ({ children, onDone }: { children: ReactNode; onDone: () => void 
 // refetches after the answer no longer holds it, so it is kept where it was until it has left. A
 // failed answer puts the question back.
 type Phase = "added" | "ignored" | "gone";
-const useAnswers = (needs: readonly LibraryNeed[]) => {
+const useAnswers = <T extends { id: string }>(needs: readonly T[]) => {
   const [phases, setPhases] = useState<Record<string, Phase>>({});
-  const last = useRef<readonly LibraryNeed[]>([]);
+  const last = useRef<readonly T[]>([]);
   const fresh = new Map(needs.map((n) => [n.id, n]));
-  const kept: LibraryNeed[] = [];
+  const kept: T[] = [];
   for (const n of last.current) {
     const now = fresh.get(n.id);
     if (now) kept.push(now);
@@ -152,6 +161,303 @@ const useAnswers = (needs: readonly LibraryNeed[]) => {
     save.catch(() => set(id));
   };
   return { list, phases, answer, done: (id: string) => set(id, "gone") };
+};
+
+// ── Episode order (#2151 decision 53, the approved mock in project/prototypes) ──────────────────
+// TMDB lists some shows in more than one order (its episode groups). Each is named in plain words
+// by its kind; TMDB's own name is kept for a kind with no plain name, or when two share one.
+
+const PLAIN_ORDER: Partial<Record<LibraryOrderKind, string>> = {
+  absolute: "One long run",
+  dvd: "DVD order",
+  digital: "Digital order",
+  story: "Story order",
+  production: "Production order",
+  tv: "TV order",
+};
+
+const FILES = "files";
+const choiceKey = (c: LibraryOrderChoice) =>
+  c.choice === "catalog" ? "catalog" : `order:${c.orderId ?? ""}`;
+
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+interface OrderOption {
+  key: string;
+  answer: LibraryOrderAnswer;
+  name: string;
+  sub: string;
+  fits: boolean;
+  /** How the done line says it: "Harbor Lights {done}." */
+  done: string;
+}
+
+const orderOptions = (need: LibraryOrderNeed): OrderOption[] => {
+  const kinds = need.choices.map((c) => c.kind);
+  const options = need.choices.map((c): OrderOption => {
+    const shared = kinds.filter((k) => k === c.kind).length > 1;
+    const plain = c.kind && !shared ? PLAIN_ORDER[c.kind] : undefined;
+    const seasons = c.seasons.filter((s) => s.season > 0 && s.episodes > 0).length;
+    const episodes = plural(c.episodes, "episode");
+    const sub =
+      c.kind === "absolute"
+        ? `${episodes}, no seasons`
+        : seasons > 0
+          ? `${plural(seasons, "season")} · ${episodes}`
+          : episodes;
+    if (c.choice === "catalog")
+      return {
+        key: choiceKey(c),
+        answer: { choice: "catalog" },
+        name: "As first aired",
+        sub,
+        fits: c.fits,
+        done: "uses the order it first aired in",
+      };
+    const name = plain ?? c.name ?? "Another order";
+    return {
+      key: choiceKey(c),
+      answer: { choice: "order", orderId: c.orderId ?? "" },
+      name,
+      sub,
+      fits: c.fits,
+      done: c.kind === "absolute" && plain ? "plays as one long run" : `uses ${name}`,
+    };
+  });
+  options.push({
+    key: FILES,
+    answer: { choice: "files" },
+    name: "Keep the file names",
+    sub: "Each episode keeps the name and number in its file. We won't ask again.",
+    fits: false,
+    done: "keeps the names in its files",
+  });
+  return options;
+};
+
+// One order besides the files' own: nothing to choose, only that a season doesn't line up.
+const onlyCatalog = (need: LibraryOrderNeed) => need.choices.length <= 1;
+
+// The first season on disk that doesn't end where TMDB's does, said in a line.
+const mismatchLine = (need: LibraryOrderNeed): string => {
+  const waiting = need.files.length;
+  const sizes = new Map((need.choices[0]?.seasons ?? []).map((s) => [s.season, s.episodes]));
+  const off = need.disk.find((d) => sizes.get(d.season) !== d.episodes);
+  const one = waiting === 1;
+  const still = one
+    ? "It still plays, named as it is in its file."
+    : `Those ${waiting} still play, named as they are in their files.`;
+  if (!off)
+    return one
+      ? "1 episode still plays, named as it is in its file."
+      : `${waiting} episodes still play, named as they are in their files.`;
+  const listed = sizes.get(off.season) ?? 0;
+  return listed === 0
+    ? `Season ${off.season} on your disk isn't one TMDB lists. ${still}`
+    : `Season ${off.season} on your disk has ${plural(off.episodes, "episode")}; TMDB lists ${listed}. ${still}`;
+};
+
+const FILES_SHOWN = 3;
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const OrderFiles = ({ files }: { files: readonly LibraryOrderFile[] }) => {
+  const [open, setOpen] = useState(false);
+  if (files.length === 0) return null;
+  return (
+    <Disclosure expanded={open} label={plural(files.length, "episode")} onExpandedChange={setOpen}>
+      <Stack gap={4} padding="control">
+        {files.slice(0, FILES_SHOWN).map((f) => (
+          <Text key={f.path} textRole="compact" tone="secondary">
+            {`S${pad(f.season)}E${pad(f.episode)} — ${fileName(f.path)}`}
+          </Text>
+        ))}
+        {files.length > FILES_SHOWN ? (
+          <Text textRole="hint" tone="muted">{`and ${files.length - FILES_SHOWN} more`}</Text>
+        ) : null}
+      </Stack>
+    </Disclosure>
+  );
+};
+
+const OrderRadio = ({ option }: { option: OrderOption }) => (
+  <RadioItem label={option.name} ringRadius={0} value={option.key}>
+    {({ checked }) => (
+      <Line
+        alignItems="flex-start"
+        backgroundColor={checked ? "surfaceFocus" : "transparent"}
+        borderRadius={0}
+        columnGap="control"
+        flexWrap="nowrap"
+        paddingHorizontal={14}
+        paddingVertical={12}
+      >
+        <Stack
+          alignItems="center"
+          borderColor={checked ? "actionPrimary" : "borderControl"}
+          borderRadius="round"
+          borderWidth={1.5}
+          flexShrink={0}
+          height={18}
+          justifyContent="center"
+          marginTop={1}
+          width={18}
+        >
+          {checked ? (
+            <Stack backgroundColor="actionPrimary" borderRadius="round" height={8} width={8} />
+          ) : null}
+        </Stack>
+        <Stack flexShrink={1} gap={2} minWidth={0}>
+          <Line columnGap="control" flexWrap="wrap" rowGap={4}>
+            <Text strong textRole="body">
+              {option.name}
+            </Text>
+            {option.fits ? <Badge tone="success">Fits your files</Badge> : null}
+          </Line>
+          <Text textRole="compact" tone="muted">
+            {option.sub}
+          </Text>
+        </Stack>
+      </Line>
+    )}
+  </RadioItem>
+);
+
+const orderLine = (need: LibraryOrderNeed) =>
+  onlyCatalog(need)
+    ? `${need.name} — ${need.files.length === 1 ? "1 episode keeps its file name" : `${need.files.length} episodes keep their file names`}`
+    : `${need.name} — which order are the episodes in?`;
+
+// The strip asks in one line; Choose opens Needs you, since the question has more than two answers.
+const OrderRow = ({ need, onOpenNeeds }: { need: LibraryOrderNeed; onOpenNeeds: () => void }) => (
+  <Line columnGap="control" flexWrap="wrap" paddingVertical="control" rowGap="inline">
+    <Line flexBasis={240} flexGrow={1} flexWrap="nowrap" minWidth={0}>
+      <Thumb art={need.poster} name={need.name} width={36} />
+      <Stack flexShrink={1} minWidth={0}>
+        <Text textRole="body">{orderLine(need)}</Text>
+      </Stack>
+    </Line>
+    <Action onPress={onOpenNeeds} variant="secondary">
+      {onlyCatalog(need) ? "See why" : "Choose"}
+    </Action>
+  </Line>
+);
+
+const OrderCard = ({
+  need,
+  primary,
+  done,
+  onChoose,
+  onDone,
+  onOpenTitle,
+}: {
+  need: LibraryOrderNeed;
+  primary: boolean;
+  /** The answer given, as the done line says it; absent while it is asked. */
+  done?: { line: string; fromTmdb: boolean };
+  onChoose: (option: OrderOption) => void;
+  onDone: () => void;
+  onOpenTitle: (id: string) => void;
+}) => {
+  const options = orderOptions(need);
+  const [picked, setPicked] = useState(() => (options.find((o) => o.fits) ?? options[0])?.key ?? FILES);
+  const wide = useWindowWidth() >= 640;
+  const waiting = need.files.length;
+  const chosen = options.find((o) => o.key === picked);
+  const tone = primary ? { tone: "primary" as const } : { variant: "secondary" as const };
+  const files = options.find((o) => o.key === FILES);
+  const card = (
+    <Surface gap="control" padding="section">
+      <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
+        <Stack flexShrink={0} width={wide ? 144 : 112}>
+          <LibraryPoster art={need.poster} big name={need.name} />
+        </Stack>
+        <Stack flexBasis={240} flexGrow={1} gap="control" minWidth={0}>
+          {done ? (
+            <>
+              <Line paddingTop="section">
+                <StatusDot label="Done" tone="ok" />
+                <Text textRole="title">{`Done — ${need.name} ${done.line}.`}</Text>
+              </Line>
+              {done.fromTmdb ? (
+                <Text textRole="compact" tone="muted">
+                  {`${plural(waiting, "episode")} now ${waiting === 1 ? "has its" : "have their"} names and details from TMDB.`}
+                </Text>
+              ) : null}
+            </>
+          ) : onlyCatalog(need) ? (
+            <>
+              <Text textRole="title">{`Some ${need.name} episodes don't line up with TMDB`}</Text>
+              <Text textRole="body" tone="secondary">
+                {mismatchLine(need)}
+              </Text>
+              <Line>
+                <Action onPress={() => files && onChoose(files)} {...tone}>
+                  That's fine
+                </Action>
+                <Action onPress={() => onOpenTitle(need.id)} variant="secondary">
+                  See the show
+                </Action>
+              </Line>
+              <OrderFiles files={need.files} />
+            </>
+          ) : (
+            <>
+              <Text textRole="title">{`Which order are your ${need.name} episodes in?`}</Text>
+              <Text textRole="body" tone="secondary">
+                {`TMDB lists this show in more than one order, and your files don't say which they follow. Until you choose, ${plural(waiting, "episode")} use the name and number in ${waiting === 1 ? "its" : "their"} file.`}
+              </Text>
+              <RadioGroup
+                borderColor="borderDecorative"
+                borderRadius="control"
+                borderWidth={1}
+                label="Episode order"
+                onValueChange={setPicked}
+                overflow="hidden"
+                values={options.map((o) => o.key)}
+                value={picked}
+              >
+                {options.map((o, i) => (
+                  <Stack
+                    borderColor="borderDecorative"
+                    borderRadius={0}
+                    borderTopWidth={i === 0 ? 0 : 1}
+                    key={o.key}
+                  >
+                    <OrderRadio option={o} />
+                  </Stack>
+                ))}
+              </RadioGroup>
+              <Line>
+                <Action onPress={() => chosen && onChoose(chosen)} {...tone}>
+                  {picked === FILES ? "Keep the file names" : "Use this order"}
+                </Action>
+              </Line>
+              <OrderFiles files={need.files} />
+            </>
+          )}
+        </Stack>
+      </Line>
+    </Surface>
+  );
+  return done ? <LockIn onDone={onDone}>{card}</LockIn> : card;
+};
+
+// The answers given to order needs: the shared lock-in, and what each said for its done line.
+const useOrderAnswers = (
+  orders: readonly LibraryOrderNeed[],
+  onChooseOrder: LibraryNeedsAnswers["onChooseOrder"],
+) => {
+  const answers = useAnswers(orders);
+  const [said, setSaid] = useState<Record<string, OrderOption>>({});
+  const choose = (need: LibraryOrderNeed, option: OrderOption) => {
+    setSaid((all) => ({ ...all, [need.id]: option }));
+    answers.answer(need.id, "added", onChooseOrder(need.id, option.answer));
+  };
+  const doneOf = (id: string) => {
+    const option = said[id];
+    return answers.phases[id] && option ? { line: option.done, fromTmdb: option.key !== FILES } : undefined;
+  };
+  return { ...answers, choose, doneOf };
 };
 
 // ── The strip ─────────────────────────────────────────────────────────────────────────────────
@@ -218,12 +524,24 @@ const ProblemRow = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle: 
   </Line>
 );
 
-const LibraryNeedsStrip = ({ needs, problems, onLink, onOpenNeeds, onOpenTitle }: LibraryNeedsStripProps) => {
+const LibraryNeedsStrip = ({
+  needs,
+  orders,
+  problems,
+  onLink,
+  onOpenNeeds,
+  onOpenTitle,
+}: LibraryNeedsStripProps) => {
   const { list: open, phases, answer, done } = useAnswers(needs);
   const [all, setAll] = useState(false);
   const entries = problemEntries(problems);
-  // The titles to answer first, then the ones that need a look, as the mock lists them.
+  // The shows whose order to say, the titles to answer, then the ones that need a look, as the
+  // mocks list them.
   const rows: { key: string; row: ReactNode }[] = [
+    ...orders.map((need) => ({
+      key: `order:${need.id}`,
+      row: <OrderRow need={need} onOpenNeeds={onOpenNeeds} />,
+    })),
     ...open.map((need) => ({
       key: need.id,
       row: (
@@ -245,7 +563,7 @@ const LibraryNeedsStrip = ({ needs, problems, onLink, onOpenNeeds, onOpenTitle }
   ];
   if (rows.length === 0) return null;
   const shown = all ? rows : rows.slice(0, STRIP_FIRST);
-  const waiting = open.filter((n) => !phases[n.id]).length + entries.length;
+  const waiting = orders.length + open.filter((n) => !phases[n.id]).length + entries.length;
   return (
     <Surface aria-label="Needs you" borderColor="stateWarning" gap="inline" padding="control" role="region">
       <Text textRole="headline">{`Needs you (${waiting})`}</Text>
@@ -398,23 +716,40 @@ const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle:
 
 const LibraryNeedsCards = ({
   needs,
+  orders,
   problems,
   onLink,
   onIgnore,
+  onChooseOrder,
   onSearch,
   onOpenTitle,
 }: LibraryNeedsCardsProps) => {
   const { list: open, phases, answer, done } = useAnswers(needs);
+  const shows = useOrderAnswers(orders, onChooseOrder);
   const entries = problemEntries(problems);
-  const waiting = open.filter((n) => !phases[n.id]).length + entries.length;
+  const waiting =
+    shows.list.filter((n) => !shows.phases[n.id]).length +
+    open.filter((n) => !phases[n.id]).length +
+    entries.length;
   return (
     <Surface aria-label="Needs you" backgroundColor="transparent" borderWidth={0} gap="control" role="region">
       <Text as="h2" textRole="headline">{`Needs you (${waiting})`}</Text>
-      {open.length + entries.length === 0 ? (
+      {shows.list.length + open.length + entries.length === 0 ? (
         <Text textRole="body" tone="secondary">
           Nothing needs you.
         </Text>
       ) : null}
+      {shows.list.map((need, i) => (
+        <OrderCard
+          done={shows.doneOf(need.id)}
+          key={need.id}
+          need={need}
+          onChoose={(option) => shows.choose(need, option)}
+          onDone={() => shows.done(need.id)}
+          onOpenTitle={onOpenTitle}
+          primary={i === 0}
+        />
+      ))}
       {open.map((need, i) => (
         <NeedCard
           key={need.id}
@@ -427,7 +762,7 @@ const LibraryNeedsCards = ({
             if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
           }}
           phase={phases[need.id]}
-          primary={i === 0}
+          primary={shows.list.length === 0 && i === 0}
         />
       ))}
       {entries.map((entry) => (

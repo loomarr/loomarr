@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -24,20 +26,20 @@ import (
 
 // PullPlanRowDTO is one exact remote item a pull would acquire.
 type PullPlanRowDTO struct {
-	CandidateID  string           `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
-	SourceID     string           `json:"sourceId" doc:"The registered collection this item came from"`
-	Provider     string           `json:"provider,omitempty"`
-	RemoteID     string           `json:"remoteId,omitempty"`
-	URL          string           `json:"url,omitempty" doc:"Exact remote item URL; absent only on historical source-level pulls"`
-	License      string           `json:"license,omitempty" doc:"Provider/source-declared rights evidence; empty means unknown"`
-	ObservedYear int              `json:"observedYear,omitempty" doc:"Weak remote observation; never grounded clip era"`
-	PublishedAt  string           `json:"publishedAt,omitempty" doc:"Provider publication/upload date; never clip era"`
-	DurationMS   int              `json:"durationMs,omitempty"`
-	Height       int              `json:"height,omitempty"`
-	Geography    filler.Geography `json:"geography,omitempty"`
-	Tag          string           `json:"tag" doc:"Short label for the row's chip (an era, an audience)"`
-	Name         string           `json:"name"`
-	Why          string           `json:"why" doc:"Why THIS source is in the plan"`
+	CandidateID  string        `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
+	SourceID     string        `json:"sourceId" doc:"The registered collection this item came from"`
+	Provider     string        `json:"provider,omitempty"`
+	RemoteID     string        `json:"remoteId,omitempty"`
+	URL          string        `json:"url,omitempty" doc:"Exact remote item URL; absent only on historical source-level pulls"`
+	License      string        `json:"license,omitempty" doc:"Provider/source-declared rights evidence; empty means unknown"`
+	ObservedYear int           `json:"observedYear,omitempty" doc:"Weak remote observation; never grounded clip era"`
+	PublishedAt  string        `json:"publishedAt,omitempty" doc:"Provider publication/upload date; never clip era"`
+	DurationMS   int           `json:"durationMs,omitempty"`
+	Height       int           `json:"height,omitempty"`
+	Geography    pod.Geography `json:"geography,omitempty"`
+	Tag          string        `json:"tag" doc:"Short label for the row's chip (an era, an audience)"`
+	Name         string        `json:"name"`
+	Why          string        `json:"why" doc:"Why THIS source is in the plan"`
 	// ⚠ An estimate, never a promise: what a source yields depends on what is still there,
 	// what deduplicates against the catalog, and what the splitter makes of a compilation.
 	EstimateClips int  `json:"estimateClips" doc:"Expected clips from this row. An ESTIMATE — render it as one."`
@@ -126,15 +128,15 @@ func (n personNames) applyPull(dto PullDTO) PullDTO {
 }
 
 func (s *Server) registerFillerPulls(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-pulls", Method: http.MethodGet, Path: "/v1/filler/pulls",
 		Summary: "List pulls awaiting a decision",
 		Description: "Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. " +
 			"Decided pulls are KEPT — the queue's History answers what was agreed to and who said so.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerPulls)
+	}, httpcore.RoleAdmin), s.listFillerPulls)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "approve-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/approve",
 		Summary: "Approve a pull — the commit point",
 		Description: "Admin only (§10 V66). THE gate: this is the only path on which a pull downloads anything, " +
@@ -142,21 +144,21 @@ func (s *Server) registerFillerPulls(api huma.API) {
 			"operator's edits — exact candidates dropped, and a note narrowing what to fetch. Dropped rows are recorded, not " +
 			"erased. Approving an already-decided pull returns 409.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.approveFillerPull)
+	}, httpcore.RoleAdmin), s.approveFillerPull)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "dismiss-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/dismiss",
 		Summary:     "Decline a pull",
 		Description: "Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.dismissFillerPull)
+	}, httpcore.RoleAdmin), s.dismissFillerPull)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-approve-filler-pulls", Method: http.MethodPost, Path: "/v1/filler/pulls/approve",
 		Summary:     "Approve several pulls (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a " + "per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659).",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.bulkApproveFillerPulls)
+	}, httpcore.RoleAdmin), s.bulkApproveFillerPulls)
 }
 
 type pullOutput struct {
@@ -195,11 +197,11 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	return out, nil
 }
 
-func (s *Server) fillerHomeGeography() filler.Geography {
+func (s *Server) fillerHomeGeography() pod.Geography {
 	if s.liveSettings == nil {
-		return filler.Geography{}
+		return pod.Geography{}
 	}
-	return filler.Geography{
+	return pod.Geography{
 		Country:  settings.FillerHomeCountry.Get(s.liveSettings),
 		Place:    settings.FillerHomePlace.Get(s.liveSettings),
 		Fallback: settings.FillerRegionFallback.Joined(s.liveSettings),

@@ -229,7 +229,7 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	if !foundEngines {
 		t.Error("the real grounded pick (Quiet Engines) should survive as an acquisition")
 	}
-	if !traceHas(prop.Trace, "movie:tmdb:90000100", suggest.DispositionSelected, "selected") {
+	if !traceHas(prop.Trace, "movie:tmdb:90000100", proposals.DispositionSelected, "selected") {
 		t.Fatalf("trace must preserve selected decision: %+v", prop.Trace)
 	}
 }
@@ -368,9 +368,9 @@ func TestSuggest_StopsAfterAlternateEmptyCatalogSearches(t *testing.T) {
 			if !errors.As(err, &failure) {
 				t.Fatalf("alternate empty searches returned %v, want typed failure", err)
 			}
-			if failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+			if failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.ReasonRetrievalEmpty {
 				t.Fatalf("alternate empty searches returned code/terminal %q/%q, want %q/%q",
-					failure.Code, failure.Trace.Terminal, suggest.FailureCodeNoGroundedTitles, suggest.ReasonRetrievalEmpty)
+					failure.Code, failure.Trace.Terminal, suggest.FailureCodeNoGroundedTitles, proposals.ReasonRetrievalEmpty)
 			}
 			if model.Calls != 2 {
 				t.Fatalf("model calls = %d, want the initial and alternate searches only", model.Calls)
@@ -390,7 +390,7 @@ func TestSuggest_EmptyRetrievalLimitSurvivesGroundingRetry(t *testing.T) {
 	s := suggest.New(model, catalog.New(nil, nil), nil, 10)
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "definitely absent"})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.ReasonRetrievalEmpty {
 		t.Fatalf("empty searches across grounding retry returned %v / %+v, want retrieval-empty typed failure", err, failure)
 	}
 	if model.Calls != 3 {
@@ -435,10 +435,10 @@ func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(prop.Trace); err != nil {
 		t.Fatalf("adjacency proposal emitted an invalid trace: %+v: %v", prop.Trace, err)
 	}
-	if !traceHas(prop.Trace, "movie:tmdb:90000603", suggest.DispositionSelected, "selected") {
+	if !traceHas(prop.Trace, "movie:tmdb:90000603", proposals.DispositionSelected, "selected") {
 		t.Fatalf("adjacency selection is absent from trace: %+v", prop.Trace)
 	}
 	decision := prop.Trace.Candidates[0]
@@ -459,7 +459,7 @@ func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prop.Trace.Terminal != "" || !traceHas(prop.Trace, "movie:tmdb:90000603", suggest.DispositionSelected, "selected") {
+	if prop.Trace.Terminal != "" || !traceHas(prop.Trace, "movie:tmdb:90000603", proposals.DispositionSelected, "selected") {
 		t.Fatalf("successful run retained an intermediate terminal outcome: %+v", prop.Trace)
 	}
 }
@@ -475,7 +475,7 @@ func TestSuggest_RetrievalEmptyRemainsDistinctFromSelectionEmpty(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("retrieval-empty result did not return typed failure: %v", err)
 	}
-	if failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+	if failure.Trace.Terminal != proposals.ReasonRetrievalEmpty {
 		t.Fatalf("retrieval-empty terminal was overwritten: %+v", failure.Trace)
 	}
 }
@@ -494,7 +494,7 @@ func TestSuggest_RetrievalFailureIsNotReportedAsEmpty(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("retrieval failure did not return typed failure: %v", err)
 	}
-	if failure.Trace.Terminal != suggest.TerminalRetrievalFailure {
+	if failure.Trace.Terminal != proposals.TerminalRetrievalFailure {
 		t.Fatalf("retrieval failure was mislabeled: %+v", failure.Trace)
 	}
 }
@@ -1614,7 +1614,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	if len(prop.Alternates) != 1 {
 		t.Fatalf("the over-cap pick should become an alternate, got %d", len(prop.Alternates))
 	}
-	if !traceHas(prop.Trace, "movie:tmdb:90000101", suggest.DispositionAlternate, suggest.ReasonAcquisitionCap) {
+	if !traceHas(prop.Trace, "movie:tmdb:90000101", proposals.DispositionAlternate, proposals.ReasonAcquisitionCap) {
 		t.Fatalf("trace must explain acquisition cap: %+v", prop.Trace)
 	}
 }
@@ -1749,7 +1749,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 			responses[i] = testkit.ToolCallResponse("unsupported", nil)
 		}
 		_, err := buildSuggester(t, testkit.NewLLM(responses...)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
-		terminal(t, err, suggest.TerminalInvalidToolCalls)
+		terminal(t, err, proposals.TerminalInvalidToolCalls)
 	})
 	t.Run("six malformed catalog calls are invalid", func(t *testing.T) {
 		arguments := []map[string]any{
@@ -1766,7 +1766,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		}
 		model := testkit.NewLLM(responses...)
 		_, err := buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
-		terminal(t, err, suggest.TerminalInvalidToolCalls)
+		terminal(t, err, proposals.TerminalInvalidToolCalls)
 		if model.Calls != len(arguments) {
 			t.Fatalf("model calls = %d, want %d malformed calls", model.Calls, len(arguments))
 		}
@@ -1783,13 +1783,13 @@ func TestSuggest_FailureProducers(t *testing.T) {
 		_, err := buildSuggester(t, testkit.NewLLM(
 			finalResponseWithNone("not json"), finalResponseWithNone("still not json"), finalResponseWithNone("again not json"),
 		)).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
-		terminal(t, err, suggest.TerminalMalformedExhausted)
+		terminal(t, err, proposals.TerminalMalformedExhausted)
 	})
 	t.Run("provider deadline", func(t *testing.T) {
 		model := testkit.NewLLM()
 		model.Errors = []error{context.DeadlineExceeded}
 		_, err := buildSuggester(t, model).Suggest(context.Background(), proposals.Intent{Description: "science fiction"})
-		terminal(t, err, suggest.TerminalProviderTimeout)
+		terminal(t, err, proposals.TerminalProviderTimeout)
 	})
 	t.Run("caller cancellation with provider cancellation is not provider timeout", func(t *testing.T) {
 		model := testkit.NewLLM()
@@ -1801,7 +1801,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 			t.Fatalf("error = %v, want cancellation", err)
 		}
 		var failure *suggest.Failure
-		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalProviderTimeout {
+		if !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalProviderTimeout {
 			t.Fatalf("cancellation was relabeled as provider timeout: %#v", err)
 		}
 	})
@@ -1815,7 +1815,7 @@ func TestSuggest_FailureProducers(t *testing.T) {
 			t.Fatalf("error = %v, want cancellation", err)
 		}
 		var failure *suggest.Failure
-		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalProviderTimeout || failure.Trace.Terminal == suggest.TerminalProviderFailure {
+		if !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalProviderTimeout || failure.Trace.Terminal == proposals.TerminalProviderFailure {
 			t.Fatalf("cancellation was assigned provider blame: %#v", err)
 		}
 	})
@@ -1827,7 +1827,7 @@ func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
 		Description: "science fiction", MustInclude: []string{"  Marigold   Protocol "}, MustExclude: []string{"marigold protocol"},
 	})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalConstraintsConflict {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalConstraintsConflict {
 		t.Fatalf("error = %#v, want constraints conflict", err)
 	}
 	if model.Calls != 0 || len(prop.Lineup) != 0 || len(prop.Acquisitions) != 0 {
@@ -1848,12 +1848,12 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 	model := testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 	_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: errors.New("page unavailable")}).Suggest(context.Background(), intent)
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalReferenceUnreadable || model.Calls != 1 {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalReferenceUnreadable || model.Calls != 1 {
 		t.Fatalf("read failure = %#v, calls=%d", err, model.Calls)
 	}
 	model = testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
 	_, err = buildSuggester(t, model).Suggest(context.Background(), intent)
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalRetrievalFailure || model.Calls != 1 {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalRetrievalFailure || model.Calls != 1 {
 		t.Fatalf("missing resolver = %#v, calls=%d", err, model.Calls)
 	}
 
@@ -1865,7 +1865,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 	_, err = suggest.New(model, catalog.New(lib, tm), tm, 10).
 		WithReferences(&testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}).
 		Suggest(context.Background(), intent)
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalRetrievalFailure || model.Calls != 1 {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalRetrievalFailure || model.Calls != 1 {
 		t.Fatalf("catalog failure after successful reference read = %#v, calls=%d", err, model.Calls)
 	}
 	t.Run("wrapped lookup cancellation is not page unreadable", func(t *testing.T) {
@@ -1874,7 +1874,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("error = %v, want cancellation", err)
 		}
-		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalReferenceUnreadable || model.Calls != 1 {
+		if !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalReferenceUnreadable || model.Calls != 1 {
 			t.Fatalf("lookup cancellation was assigned page blame: %#v, calls=%d", err, model.Calls)
 		}
 	})
@@ -1886,7 +1886,7 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("error = %v, want cancellation", err)
 		}
-		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalReferenceUnreadable || model.Calls != 1 {
+		if !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalReferenceUnreadable || model.Calls != 1 {
 			t.Fatalf("caller cancellation was assigned page blame: %#v, calls=%d", err, model.Calls)
 		}
 	})
@@ -1949,7 +1949,7 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
 			}
 			var failure *suggest.Failure
-			if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+			if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.TerminalNamedSetUnproven {
 				t.Fatalf("unsubstantiated members = %#v, want named-set recovery terminal", err)
 			}
 		})
@@ -1969,7 +1969,7 @@ func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(
 
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Larkspur Collection"})
 	var failure *suggest.Failure
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != proposals.TerminalNamedSetUnproven {
 		t.Fatalf("direct final unproven member = %#v, want named-set recovery terminal", err)
 	}
 }
@@ -2010,7 +2010,7 @@ func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t 
 			s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			var failure *suggest.Failure
-			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalNamedSetUnproven {
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == proposals.TerminalNamedSetUnproven {
 				t.Fatalf("failure = %#v, must retain its non-membership classification", err)
 			}
 		})
@@ -2721,7 +2721,7 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 	if len(prop.Refused) != 1 || prop.Refused[0].Item.TMDBID != 90005004 || prop.Refused[0].Reason != "over_ceiling" {
 		t.Fatalf("refused = %+v, want the TV-MA pick as over_ceiling", prop.Refused)
 	}
-	if !traceHas(prop.Trace, "movie:tmdb:90005004", suggest.DispositionRefused, suggest.ReasonOverCeiling) {
+	if !traceHas(prop.Trace, "movie:tmdb:90005004", proposals.DispositionRefused, proposals.ReasonOverCeiling) {
 		t.Fatalf("trace omitted refusal: %+v", prop.Trace)
 	}
 }
@@ -2943,7 +2943,7 @@ func TestSuggest_ExplicitPGMaximumAndUnratedExclusionReachReview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !traceHas(p.Trace, string(key), suggest.DispositionRefused, suggest.ReasonOverCeiling) {
+		if !traceHas(p.Trace, string(key), proposals.DispositionRefused, proposals.ReasonOverCeiling) {
 			t.Fatalf("missing refusal trace: %+v", p.Trace)
 		}
 	}

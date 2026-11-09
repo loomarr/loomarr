@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -100,7 +101,7 @@ func (w *airingSwap) admit(ctx context.Context, c StoreClip, staged, newHash str
 	if newHash == c.Hash {
 		return fmt.Errorf("%w: the re-encode reproduced the airing bytes", ErrReplacementRefused)
 	}
-	if verdict, _, detail := EvaluateMediaQuality(quality); verdict != VerdictContinue {
+	if verdict, _, detail := EvaluateMediaQuality(quality); verdict != pipelinestate.VerdictContinue {
 		return fmt.Errorf("%w: %s", ErrReplacementRefused, detail)
 	}
 	record, err := w.check(ctx, c, staged)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -83,7 +84,7 @@ func newPlayoutGuideHarness(t *testing.T, guide api.PlayoutGuide) *playoutGuideH
 		}
 		return api.Router(defaults.Log, api.Options{
 			Store:         defaults.Store,
-			Auth:          api.NewTokenAuthorizer(adminToken),
+			Auth:          httpcore.NewTokenAuthorizer(adminToken),
 			Log:           defaults.Log,
 			PlayoutSecret: func() string { return playoutToken },
 			PlayoutGuide:  guide,

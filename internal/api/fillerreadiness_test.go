@@ -9,6 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) {
@@ -22,15 +24,15 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			SoftBudgetBytes: 20 << 30, HardReserveBytes: 10 << 30, AvailableBytes: 18 << 30,
 			Automatic: true,
 		},
-		Pipeline: filler.PipelineOverview{
+		Pipeline: pipelinestate.PipelineOverview{
 			Runnable: 2, NeedsDecision: 3, Ready: 9, Complete: 2, Rejected: 4, Recoverable: 1,
 		},
-		Pool: filler.PoolReport{
+		Pool: pod.PoolReport{
 			Clips: 12, BreakBody: 10, Eligible: 8,
-			Channels: []filler.ChannelCoverage{{
+			Channels: []pod.ChannelCoverage{{
 				ChannelID: "ch-7", Name: "Saturday Morning", Number: 7,
-				Report: filler.CoverageReport{
-					Level: filler.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
+				Report: pod.CoverageReport{
+					Level: pod.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
 				},
 			}},
 		},

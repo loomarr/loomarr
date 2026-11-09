@@ -4,7 +4,7 @@ import { widthFrame, withRouter } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 
 // How well the catalog covers a channel's breaks (§10 fallback ladder, V29b). Every number
-// comes from `filler.Coverage`, which calls the same pools `Assemble` calls — the meter cannot
+// comes from `pod.Coverage`, which calls the same pools `Assemble` calls — the meter cannot
 // disagree with what airs, and a Go test pins that.
 // withRouter because the "Find clips" CTA is a TanStack Link, which needs a RouterProvider
 // even in isolation.
@@ -71,7 +71,7 @@ const Widened: Story = {
 };
 
 // ⚠ **`EraStrict` (retired-ok) was DELETED here (§10 V51f), story and setting together.** It documented a rung
-// being absent under the strict-era policy — a `filler.Policy` field that was set in tests and
+// being absent under the strict-era policy — a `pod.Policy` field that was set in tests and
 // nowhere else: no settings key, no env var, no policy field, no way for an operator to reach it.
 // A narrow era range is how a channel gets strictness now, and unlike the flag it is a control
 // that appears on screen. Its replacement below is the state operators actually hit.

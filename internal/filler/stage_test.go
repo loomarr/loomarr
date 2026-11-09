@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // --- probe -------------------------------------------------------------------
@@ -43,14 +44,14 @@ func TestProbeStage_RefusesWhatIsNotAClip(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		probed filler.Probed
-		reason filler.RejectReason
+		reason pipelinestate.RejectReason
 	}{
-		{"no duration", filler.Probed{}, filler.ReasonUnprobeable},
-		{"under the floor", filler.Probed{DurationMs: 8_200, Height: 480}, filler.ReasonTooShort},
+		{"no duration", filler.Probed{}, pipelinestate.ReasonUnprobeable},
+		{"under the floor", filler.Probed{DurationMs: 8_200, Height: 480}, pipelinestate.ReasonTooShort},
 		// ⚠ A video-only file plays as dead air in the middle of a break, which reads to a viewer
 		// as the stream having dropped. That is why silence is a REJECT and not a warning.
-		{"no audio stream", filler.Probed{DurationMs: 30_000, Height: 480, Silent: true}, filler.ReasonNoAudio},
-		{"no video stream", filler.Probed{DurationMs: 30_000, NoVideo: true}, filler.ReasonNoVideo},
+		{"no audio stream", filler.Probed{DurationMs: 30_000, Height: 480, Silent: true}, pipelinestate.ReasonNoAudio},
+		{"no video stream", filler.Probed{DurationMs: 30_000, NoVideo: true}, pipelinestate.ReasonNoVideo},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := &probeMemStore{}
@@ -60,7 +61,7 @@ func TestProbeStage_RefusesWhatIsNotAClip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out.Verdict != filler.VerdictReject || out.Reason != tc.reason {
+			if out.Verdict != pipelinestate.VerdictReject || out.Reason != tc.reason {
 				t.Fatalf("verdict = %v / %q, want reject / %q", out.Verdict, out.Reason, tc.reason)
 			}
 			if out.Detail == "" {
@@ -83,7 +84,7 @@ func TestProbeStage_AProbeFailureIsRetryableNotFatal(t *testing.T) {
 	if err == nil {
 		t.Fatal("a probe failure returned no error — the runner would treat it as a clean pass")
 	}
-	if out.Verdict == filler.VerdictReject {
+	if out.Verdict == pipelinestate.VerdictReject {
 		t.Error("a probe failure rejected the clip outright, skipping every retry")
 	}
 }
@@ -97,7 +98,7 @@ func TestProbeStage_PersistsWhatItMeasured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue {
+	if out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("verdict = %v, want continue", out.Verdict)
 	}
 	if len(st.upserts) != 1 || st.upserts[0].DurationMs != 30_000 || st.upserts[0].Quality != "480p" {
@@ -139,8 +140,8 @@ func TestProbeStage_OverlongClipBecomesCompositeFromDuration(t *testing.T) {
 // a clip nothing has looked at is never rejected here.
 func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
 	s := filler.NewFinishStage()
-	if s.ID() != filler.StageFinish || filler.StageOrder[len(filler.StageOrder)-1] != filler.StageFinish {
-		t.Fatalf("finish is not the terminal rung: id=%s order=%v", s.ID(), filler.StageOrder)
+	if s.ID() != pipelinestate.StageFinish || pipelinestate.StageOrder[len(pipelinestate.StageOrder)-1] != pipelinestate.StageFinish {
+		t.Fatalf("finish is not the terminal rung: id=%s order=%v", s.ID(), pipelinestate.StageOrder)
 	}
 	for _, clip := range []filler.Clip{
 		{Hash: "c1", Path: "a3/f9/c1.mp4", Role: filler.Commercial, Held: true},
@@ -150,7 +151,7 @@ func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
 			t.Fatalf("finish skipped %s (%s) — the ready commit would never validate", clip.Hash, why)
 		}
 		out, err := s.Run(context.Background(), filler.StoreClip{Clip: clip})
-		if err != nil || out.Verdict != filler.VerdictContinue || out.Reason != "" {
+		if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Reason != "" {
 			t.Fatalf("finish on %s = %+v, %v; want a plain continue", clip.Hash, out, err)
 		}
 	}

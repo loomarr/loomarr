@@ -153,10 +153,23 @@ func testImageUpsertPreservesCreatedAt(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// saveImageChannels saves the channels a test's refs name: an image ref's owner is a foreign key
+// (#2793), so a ref to a channel that doesn't exist is refused.
+func saveImageChannels(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for i, id := range ids {
+		mustSaveChannel(t, s, sampleChannel(id, 900+i, time.Time{}))
+	}
+}
+
 func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
+	saveImageChannels(t, s, "ch_1", "ch_2")
+	if err := s.SaveLibraryItems(ctx, []LibraryItem{{ID: "title_1", Kind: "movie", Name: "A Film"}}, at); err != nil {
+		t.Fatal(err)
+	}
 
 	a, b := imageAt("gamma", at), imageAt("delta", at)
 	for _, img := range []Image{a, b} {
@@ -221,6 +234,7 @@ func testImageOrphanDetection(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
 
+	saveImageChannels(t, s, "ch_1")
 	kept, orphan := imageAt("epsilon", at), imageAt("zeta", at)
 	for _, img := range []Image{kept, orphan} {
 		if err := s.PutImage(ctx, img); err != nil {
@@ -457,6 +471,7 @@ func testImageDeleteCascades(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
 
+	saveImageChannels(t, s, "ch_9")
 	img := imageAt("sigma", at)
 	if err := s.PutImage(ctx, img); err != nil {
 		t.Fatal(err)
@@ -625,6 +640,7 @@ func testImageRefsRepoint(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
 
+	saveImageChannels(t, s, "ch-repoint")
 	placeholderA := imageAt("upsilon", at)
 	placeholderB := imageAt("phi", at)
 	content := imageAt("chi", at)

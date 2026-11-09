@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -26,7 +28,7 @@ func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := filler.ClipID(tmp)
+	hash, err := asset.ClipID(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,11 +46,11 @@ func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string
 // filler's pipeline keeps it, and returns the identity a sidecar names it by. The real routine is
 // unexported; the defect floor only needs the file to exist at a valid path with a valid identity.
 func preserveSourceMaster(clipDir, sourcePath, clipHash string) (filler.MediaAssetIdentity, error) {
-	digest, size, err := filler.FileSHA256(sourcePath)
+	digest, size, err := asset.FileSHA256(sourcePath)
 	if err != nil {
 		return filler.MediaAssetIdentity{}, err
 	}
-	rel := path.Join(filler.MediaAssetRootName, "masters", digest[:2], digest[2:4], digest+strings.ToLower(filepath.Ext(sourcePath)))
+	rel := path.Join(split.MediaAssetRootName, "masters", digest[:2], digest[2:4], digest+strings.ToLower(filepath.Ext(sourcePath)))
 	full := filepath.Join(clipDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return filler.MediaAssetIdentity{}, err

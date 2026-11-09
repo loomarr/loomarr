@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -17,14 +17,14 @@ import (
 func TestResolvingTheAiringRecordsNothing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
 	probed := func(context.Context, string) (playout.MediaTracks, error) { return playout.MediaTracks{}, nil }
 
 	t.Run("filler", func(t *testing.T) {
 		t.Parallel()
-		r := fillerResolver(t, dir, pod)
+		r := fillerResolver(t, dir, brk)
 		plays, history := &recordingPlays{}, &recordedAirings{}
 		r.clipPlays, r.airings, r.probeTracks = plays, history, probed
 
@@ -102,10 +102,10 @@ func TestRecordAiringServedStampsAProgramme(t *testing.T) {
 func TestRecordAiringServedCountsAFillerClipByHash(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
-	r := fillerResolver(t, dir, pod)
+	r := fillerResolver(t, dir, brk)
 	plays := &recordingPlays{}
 	r.clipPlays = plays
 
@@ -125,7 +125,7 @@ func TestRecordAiringServedCountsAFillerClipByHash(t *testing.T) {
 			plays.calls, plays.channels, plays.at, base)
 	}
 
-	noHash := fillerResolver(t, dir, filler.Pod{Entries: []filler.PodEntry{
+	noHash := fillerResolver(t, dir, pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("1994/toys.mp4"), Name: "no-hash", DurationMs: 8000},
 	}})
 	noHash.clipPlays = plays

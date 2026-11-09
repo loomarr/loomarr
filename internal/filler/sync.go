@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -68,7 +71,7 @@ type RawClip struct {
 	DurationMs      int64
 	Role            Role
 	Era             int // initial era from filename; 0 if none
-	GeographicScope GeographicScope
+	GeographicScope pod.GeographicScope
 	Country         string
 	Network         string
 	Station         string
@@ -776,12 +779,12 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 			if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 				return errors.New(ArtifactMediaMissing)
 			}
-			digest, size, digestErr := FileSHA256(path)
+			digest, size, digestErr := asset.FileSHA256(path)
 			if digestErr != nil {
 				return errors.New("manifested media cannot be hashed: " + digestErr.Error())
 			}
 			if observedHash == "" {
-				observedHash, digestErr = ClipID(path)
+				observedHash, digestErr = asset.ClipID(path)
 				if digestErr != nil {
 					return errors.New("manifested media cannot be identified: " + digestErr.Error())
 				}
@@ -891,7 +894,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
 			return artifact, true, errors.New(artifact.RepairReason)
 		}
-		digest, size, err := FileSHA256(path)
+		digest, size, err := asset.FileSHA256(path)
 		if err != nil {
 			return fail("manifested media cannot be hashed: " + err.Error())
 		}
@@ -955,7 +958,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 // replacement before the stale links are removed, so interruption can only leave a duplicate.
 func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
 	stem := strings.TrimSuffix(filepath.Base(filepath.FromSlash(rc.Path)), filepath.Ext(rc.Path))
-	if !isContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
+	if !split.IsContentHash(rc.ID) || !isOpaqueHash(stem) || stem == rc.ID {
 		return rc, false, nil
 	}
 	ext := filepath.Ext(rc.Path)
@@ -999,7 +1002,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 	}
 	targetExists := false
 	if _, err := os.Stat(newFull); err == nil {
-		id, hashErr := ClipID(newFull)
+		id, hashErr := asset.ClipID(newFull)
 		if hashErr != nil || id != rc.ID {
 			return rc, false, fmt.Errorf("canonical target exists with different content")
 		}
@@ -1102,27 +1105,8 @@ func isHashDisplayName(value string) bool {
 	return isOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
 }
 
-func isContentHash(value string) bool {
-	return len(value) == 64 && isLowerHex(value)
-}
-
-// IsContentHash reports whether value is a 64-character lowercase hex content hash.
-func IsContentHash(value string) bool { return isContentHash(value) }
-
 func isOpaqueHash(value string) bool {
-	return (len(value) == 40 || len(value) == 64) && isLowerHex(value)
-}
-
-func isLowerHex(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if !strings.ContainsRune("0123456789abcdef", r) {
-			return false
-		}
-	}
-	return true
+	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
 }
 
 // serverFieldsUnchanged reports whether the SCAN-owned fields match (so a re-sync is a no-op

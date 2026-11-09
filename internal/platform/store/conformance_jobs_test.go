@@ -999,6 +999,10 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	// The proposer is a person: their requests are recorded against users (#2793).
+	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),

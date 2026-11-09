@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // AcquisitionIntentVersion is persisted with every pull so a later ranking change never
@@ -24,18 +27,18 @@ var (
 // Zero values mean the operator did not request that constraint; they never mean that missing
 // candidate metadata satisfies it.
 type AcquisitionIntent struct {
-	Version         string     `json:"version"`
-	Roles           []Role     `json:"roles,omitempty"`
-	EraStart        int        `json:"eraStart,omitempty"`
-	EraEnd          int        `json:"eraEnd,omitempty"`
-	Audiences       []Audience `json:"audiences,omitempty"`
-	Geography       Geography  `json:"geography,omitempty"`
-	MaxDurationMS   int        `json:"maxDurationMs,omitempty"`
-	TaxonomyGaps    []string   `json:"taxonomyGaps,omitempty"`
-	SourceAllowlist []string   `json:"sourceAllowlist,omitempty"`
-	MinHeight       int        `json:"minHeight,omitempty"`
-	Count           int        `json:"count"`
-	CatalogReason   string     `json:"catalogReason"`
+	Version         string        `json:"version"`
+	Roles           []Role        `json:"roles,omitempty"`
+	EraStart        int           `json:"eraStart,omitempty"`
+	EraEnd          int           `json:"eraEnd,omitempty"`
+	Audiences       []Audience    `json:"audiences,omitempty"`
+	Geography       pod.Geography `json:"geography,omitempty"`
+	MaxDurationMS   int           `json:"maxDurationMs,omitempty"`
+	TaxonomyGaps    []string      `json:"taxonomyGaps,omitempty"`
+	SourceAllowlist []string      `json:"sourceAllowlist,omitempty"`
+	MinHeight       int           `json:"minHeight,omitempty"`
+	Count           int           `json:"count"`
+	CatalogReason   string        `json:"catalogReason"`
 }
 
 // Normalize supplies version/defaults and canonicalises set-like fields. It does not relax a
@@ -51,8 +54,8 @@ func (i AcquisitionIntent) Normalize() AcquisitionIntent {
 	i.CatalogReason = strings.TrimSpace(i.CatalogReason)
 	i.Roles = uniqueRoles(i.Roles)
 	i.Audiences = uniqueAudiences(i.Audiences)
-	i.TaxonomyGaps = uniqueStrings(i.TaxonomyGaps)
-	i.SourceAllowlist = uniqueStrings(i.SourceAllowlist)
+	i.TaxonomyGaps = split.UniqueStrings(i.TaxonomyGaps)
+	i.SourceAllowlist = split.UniqueStrings(i.SourceAllowlist)
 	return i
 }
 
@@ -136,7 +139,7 @@ type AcquisitionCandidate struct {
 	PublishedAt   string         `json:"publishedAt,omitempty"`
 	DurationMS    int            `json:"durationMs,omitempty"`
 	Height        int            `json:"height,omitempty"`
-	Geography     Geography      `json:"geography,omitempty"`
+	Geography     pod.Geography  `json:"geography,omitempty"`
 	ObservedRoles []Role         `json:"observedRoles,omitempty"`
 	Audiences     []Audience     `json:"audiences,omitempty"`
 	Taxonomy      []string       `json:"taxonomy,omitempty"`
@@ -216,25 +219,10 @@ type AcquisitionSourceDecision struct {
 	SourceID       string                       `json:"sourceId"`
 	Provider       string                       `json:"provider"`
 	Label          string                       `json:"label,omitempty"`
-	Geography      Geography                    `json:"geography,omitempty"`
+	Geography      pod.Geography                `json:"geography,omitempty"`
 	Disposition    AcquisitionSourceDisposition `json:"disposition"`
 	CandidateCount int                          `json:"candidateCount"`
 	Detail         string                       `json:"detail"`
-}
-
-func uniqueStrings(in []string) []string {
-	out := make([]string, 0, len(in))
-	seen := map[string]bool{}
-	for _, value := range in {
-		value = strings.TrimSpace(value)
-		key := strings.ToLower(value)
-		if value != "" && !seen[key] {
-			seen[key] = true
-			out = append(out, value)
-		}
-	}
-	sort.Slice(out, func(a, b int) bool { return strings.ToLower(out[a]) < strings.ToLower(out[b]) })
-	return out
 }
 
 func uniqueRoles(in []Role) []Role {

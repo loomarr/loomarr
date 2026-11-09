@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
@@ -155,7 +156,7 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 	observedAt := proposal.CreatedAt.UTC()
 	sourceSHA, assessmentSHA, structureDecisionSHA := proposal.Source.SHA256, "", ""
 	if proposal.Structure != nil {
-		if err := validateSourceStructureAssessmentOrProjection(*proposal.Structure, proposal.StructureDecision); err != nil || proposal.Structure.Source != proposal.Source {
+		if err := split.ValidateAssessmentOrProjection(*proposal.Structure, proposal.StructureDecision); err != nil || proposal.Structure.Source != proposal.Source {
 			return StructureSplitShadowDecision{}, fmt.Errorf("structure split shadow proposal assessment is invalid")
 		}
 		assessmentSHA = proposal.Structure.SHA256
@@ -191,13 +192,13 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 	return decision, nil
 }
 
-func certifiedStructureShadowBasis(proposal SplitProposal) ([]SplitSegment, bool) {
+func certifiedStructureShadowBasis(proposal SplitProposal) ([]split.Segment, bool) {
 	if proposal.Structure == nil || len(proposal.Spawned) > 0 {
 		return nil, false
 	}
 	assessment := *proposal.Structure
-	if validateSourceStructureAssessmentOrProjection(assessment, proposal.StructureDecision) != nil || assessment.Source != proposal.Source ||
-		assessment.Kind != StructureCompilationBreak && assessment.Kind != StructureProgrammeSpots {
+	if split.ValidateAssessmentOrProjection(assessment, proposal.StructureDecision) != nil || assessment.Source != proposal.Source ||
+		assessment.Kind != split.KindCompilationBreak && assessment.Kind != split.KindProgrammeSpots {
 		return nil, false
 	}
 	keep, discard, err := projectCertifiedStructureSegments(proposal.Segments, assessment.Plan)
@@ -215,7 +216,7 @@ func structureSplitShadowOutcome(partition SplitPartition) StructureSplitShadowO
 	return outcome
 }
 
-func structureSplitShadowSpans(segments []SplitSegment, fallbackReason string, overrideReason bool) []StructureSplitShadowSpan {
+func structureSplitShadowSpans(segments []split.Segment, fallbackReason string, overrideReason bool) []StructureSplitShadowSpan {
 	spans := make([]StructureSplitShadowSpan, 0, len(segments))
 	for _, segment := range segments {
 		reason := strings.TrimSpace(segment.HoldReason)
@@ -233,7 +234,7 @@ func structureSplitShadowSpans(segments []SplitSegment, fallbackReason string, o
 	return spans
 }
 
-func structureSplitShadowOutcomeCoversProposal(outcome StructureSplitShadowOutcome, segments []SplitSegment) error {
+func structureSplitShadowOutcomeCoversProposal(outcome StructureSplitShadowOutcome, segments []split.Segment) error {
 	expected := make(map[[2]int64]struct{}, len(segments))
 	for _, segment := range segments {
 		key := [2]int64{segment.StartMs, segment.EndMs}

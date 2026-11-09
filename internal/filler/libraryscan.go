@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // Library sources (§10 V38c, #2151 decision 36) — copying clips out of a folder of the household's
@@ -143,7 +145,7 @@ func (s *LibraryScanner) Scan(ctx context.Context, folder, watchDir string, cata
 			return nil // a file of that name is still waiting for intake; the next scan retries
 		}
 		if catalogued != nil {
-			id, err := ClipID(path)
+			id, err := asset.ClipID(path)
 			if err != nil {
 				res.Unreadable++
 				return nil

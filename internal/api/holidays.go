@@ -6,18 +6,19 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
 
 // registerHolidays mounts the holiday definitions (#2030 decision 32). Read-only until the holidays
 // editor ships with its create, edit and retire endpoints.
 func (s *Server) registerHolidays(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-holidays", Method: http.MethodGet, Path: "/v1/holidays",
 		Summary:     "The holiday definitions and this year's dates",
 		Description: "Every holiday definition in display order — its words, each country's date rules, its broadcast air window and, for a group, its members — with this year's season for the household's country (`season`, absent when that country does not keep it). `calendarCountry` is the country whose calendar applies: the household's own when some holiday names it, else the US. Read-only; any authenticated user.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.listHolidays)
+	}, httpcore.RoleMember), s.listHolidays)
 }
 
 type holidaysOutput struct {

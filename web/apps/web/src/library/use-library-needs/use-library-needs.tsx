@@ -1,6 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCandidateDTO } from "@loomarr/api/models/libraryCandidateDTO";
 import type { LibraryNeedDTO } from "@loomarr/api/models/libraryNeedDTO";
+import type { LibraryOrderNeedDTO } from "@loomarr/api/models/libraryOrderNeedDTO";
 import type { LibraryProblemDTO } from "@loomarr/api/models/libraryProblemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import type {
@@ -8,6 +9,7 @@ import type {
   LibraryNeedCandidate,
   LibraryNeedSearch,
   LibraryNeedsAnswers,
+  LibraryOrderNeed,
   LibraryProblem,
 } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,6 +43,16 @@ const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
   yearMatches: c.yearMatches,
   lengthMatches: c.lengthMatches,
   episodesMatches: c.episodesMatches,
+});
+
+// A show whose files don't say which of TMDB's orders they follow (#2151 decision 53).
+const orderNeedOf = (o: LibraryOrderNeedDTO): LibraryOrderNeed => ({
+  id: o.item.id,
+  name: o.item.name,
+  poster: o.item.poster ? <ServedImage alt="" image={o.item.poster} sizes={THUMB_SIZES} /> : undefined,
+  disk: o.disk,
+  files: o.files,
+  choices: o.choices,
 });
 
 // The best guess is the first, when its name agrees; the rest are the others to pick from.
@@ -77,6 +89,7 @@ const useLibraryNeeds = () => {
   const queryClient = useQueryClient();
   const list = libraryApi.useListLibraryNeeds();
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
+  const orders = useMemo(() => (unwrap(list.data)?.orders ?? []).map(orderNeedOf), [list.data]);
   const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);
 
   const refresh = useCallback(
@@ -90,6 +103,7 @@ const useLibraryNeeds = () => {
   );
   const link = libraryApi.useLinkLibraryItem({ mutation: { onSettled: refresh } });
   const ignore = libraryApi.useIgnoreLibraryItem({ mutation: { onSettled: refresh } });
+  const order = libraryApi.useChooseLibraryEpisodeOrder({ mutation: { onSettled: refresh } });
 
   // A mutation that answers with an error status still resolves; unwrap turns it into a rejection
   // so the card puts the question back.
@@ -102,10 +116,15 @@ const useLibraryNeeds = () => {
       const res = await ignore.mutateAsync({ id });
       if (res.status !== 204) throw new Error("Couldn't save your answer");
     },
+    onChooseOrder: async (id, answer) => {
+      const res = await order.mutateAsync({ id, data: answer });
+      if (res.status !== 204) throw new Error("Couldn't save your answer");
+    },
   };
 
   return {
     needs,
+    orders,
     problems,
     loaded: list.data !== undefined,
     error: list.error,

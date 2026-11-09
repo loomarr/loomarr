@@ -8,6 +8,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -17,7 +19,7 @@ type recordingTranscriptObserver struct{ clip filler.StoreClip }
 
 func (s *recordingTranscriptObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, string, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, "spoken words", nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, "spoken words", nil
 }
 
 type recordingVisionObserver struct {
@@ -27,7 +29,7 @@ type recordingVisionObserver struct {
 
 func (s *recordingVisionObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, s.observation, nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, s.observation, nil
 }
 
 func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) {
@@ -211,7 +213,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" {
+	if got.GeographicScope != pod.GeographicUnknown || got.Country != "" {
 		t.Fatalf("inherited source invented clip geography = %+v", got.Clip)
 	}
 }
@@ -221,7 +223,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	at := time.Unix(1_700_000_400, 0).UTC()
 	source := records.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
 		"Regional source", at)
-	source.Geography = filler.Geography{Country: "GB"}
+	source.Geography = pod.Geography{Country: "GB"}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +251,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 		t.Fatal(err)
 	}
 	// A source declares a country, so its default is national; only a station makes a clip local.
-	if got.GeographicScope != filler.GeographicNational || got.Country != "GB" {
+	if got.GeographicScope != pod.GeographicNational || got.Country != "GB" {
 		t.Fatalf("explicit source geography = %+v, want national GB", got.Clip)
 	}
 }
@@ -274,7 +276,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if _, changed, err := st.ApplyFillerEnrichment(t.Context(), research, at); err != nil || !changed {
 		t.Fatalf("apply research = changed %v, err %v", changed, err)
 	}
-	if got, _ := st.GetClip(t.Context(), clip.Hash); got.GeographicScope != filler.GeographicNational {
+	if got, _ := st.GetClip(t.Context(), clip.Hash); got.GeographicScope != pod.GeographicNational {
 		t.Fatalf("precondition: research projected %+v, want national", got.Clip)
 	}
 
@@ -290,10 +292,10 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
+	if got.GeographicScope != pod.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
 		t.Fatalf("after the station pass the clip row = %+v, want local to WEWS (fcc:59441) on 1991-03-10", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatal("Cleveland station news is still eligible for a US household with no local area")
 	}
 }
@@ -317,7 +319,7 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
 	driver := newFillerPipelineDriver(nil, coordinator, nil)
 	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
-		return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
+		return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
 	}
 	if err := driver.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -333,7 +335,7 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (clipstore.Clip, fstest.MapFS) {
 	t.Helper()
 	source := records.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
-	source.Geography = filler.Geography{Country: country}
+	source.Geography = pod.Geography{Country: country}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
@@ -363,10 +365,10 @@ func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at tim
 	}
 }
 
-func usPod(c filler.Clip) filler.Pod {
+func usPod(c filler.Clip) pod.Pod {
 	c.Placement = filler.PlacementBreakBody
-	return filler.Assemble([]filler.Clip{c}, filler.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
-		filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
+	return pod.Assemble([]filler.Clip{c}, pod.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
+		pod.Policy{Geography: pod.Geography{Country: "US"}}, nil)
 }
 
 // #1670: British archive ads aired on a US-only household labelled country=US, because a source
@@ -380,14 +382,14 @@ func TestFillerEnrichmentUndeclaredSourceLeavesClipGeographyUnknown(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Country != "" || got.GeographicScope == filler.GeographicNational {
+	if got.Country != "" || got.GeographicScope == pod.GeographicNational {
 		t.Fatalf("undeclared source labelled the clip %+v; want unknown geography", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatalf("clip from an undeclared source passed the US-only filter: %+v", got.Clip)
 	}
-	if pod := usPod(got.Clip); pod.MatchLevel != filler.MatchBumperCard {
-		t.Fatalf("US pod aired an unknown-geography clip: %+v", pod)
+	if brk := usPod(got.Clip); brk.MatchLevel != pod.MatchBumperCard {
+		t.Fatalf("US pod aired an unknown-geography clip: %+v", brk)
 	}
 }
 
@@ -400,12 +402,12 @@ func TestFillerEnrichmentDeclaredSourceStillLabelsClips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicNational || got.Country != "US" ||
+	if got.GeographicScope != pod.GeographicNational || got.Country != "US" ||
 		got.GeoEvidence != "registered_source:archive:geo" {
 		t.Fatalf("declared US source geography = %+v, want national US from the source", got.Clip)
 	}
-	if pod := usPod(got.Clip); pod.MatchLevel == filler.MatchBumperCard {
-		t.Fatalf("US pod over a declared-US clip fell back to the bumper card: %+v", pod)
+	if brk := usPod(got.Clip); brk.MatchLevel == pod.MatchBumperCard {
+		t.Fatalf("US pod over a declared-US clip fell back to the bumper card: %+v", brk)
 	}
 }
 
@@ -450,7 +452,7 @@ func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Country != "" || got.GeoEvidence != "" || filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if got.Country != "" || got.GeoEvidence != "" || pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatalf("re-enrichment kept the inherited US stamp: %+v", got.Clip)
 	}
 	states, err := st.ListFillerEnrichment(t.Context(), clip.Hash)

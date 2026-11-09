@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 type inferiorCopies map[string]bool
@@ -27,7 +28,7 @@ func TestSync_NeverCataloguesOrFilesAKnownInferiorCopy(t *testing.T) {
 	if err := os.WriteFile(arrival, []byte("a re-upload of an ad the catalog holds in a better copy"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	arrivalHash, err := filler.ClipID(arrival)
+	arrivalHash, err := asset.ClipID(arrival)
 	if err != nil {
 		t.Fatal(err)
 	}

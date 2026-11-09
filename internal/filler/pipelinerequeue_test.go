@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // seedParkedReel puts a compilation in the state that was unreachable before V54a: parked at the
@@ -16,9 +17,9 @@ import (
 // budget on the way to succeeding — the same reason migration 00050 reset the column.
 func seedParkedReel(st *pipeMemStore, hash string) {
 	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: "reels/" + hash + ".mp4", Name: hash}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, Attempts: 3,
+	st.rows[hash] = pipelinestate.ClipPipeline{
+		ClipHash: hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, Attempts: 3,
 		NextRun: time.Unix(1_900_000_000, 0).UTC(), // far future: parked rows are not due
 	}
 }
@@ -64,7 +65,7 @@ func TestRequeue_ReturnsAParkedReelToTheBelt(t *testing.T) {
 	if !claimable(t, st, "reel1") {
 		t.Fatal("the reel is still invisible to ListPipelineWork — the requeue did not un-park it")
 	}
-	if got := st.rows["reel1"].Stage; got != filler.StageSplit {
+	if got := st.rows["reel1"].Stage; got != pipelinestate.StageSplit {
 		t.Errorf("stage moved to %q; a requeue must leave the reel at the split rung", got)
 	}
 	if got := st.rows["reel1"].Attempts; got != 0 {
@@ -78,8 +79,8 @@ func TestRequeue_LeavesARejectedReelRefused(t *testing.T) {
 	st := newPipeMemStore()
 	seedParkedReel(st, "reel1")
 	row := st.rows["reel1"]
-	row.Disposition = filler.DispositionRejected
-	row.RejectReason, row.RejectDetail = filler.ReasonTooShort, "8.2s; floor is 10s"
+	row.Disposition = pipelinestate.DispositionRejected
+	row.RejectReason, row.RejectDetail = pipelinestate.ReasonTooShort, "8.2s; floor is 10s"
 	st.rows["reel1"] = row
 
 	moved, err := p2(st).Requeue(context.Background(), "reel1")
@@ -89,7 +90,7 @@ func TestRequeue_LeavesARejectedReelRefused(t *testing.T) {
 	if moved {
 		t.Fatal("a re-detect quietly overturned a rejection")
 	}
-	if got := st.rows["reel1"].RejectReason; got != filler.ReasonTooShort {
+	if got := st.rows["reel1"].RejectReason; got != pipelinestate.ReasonTooShort {
 		t.Errorf("reject reason = %q, want it left intact", got)
 	}
 	if claimable(t, st, "reel1") {
@@ -103,7 +104,7 @@ func TestRequeue_LeavesAReelParkedAtALaterStageAlone(t *testing.T) {
 	st := newPipeMemStore()
 	seedParkedReel(st, "reel1")
 	row := st.rows["reel1"]
-	row.Stage = filler.StageFinish
+	row.Stage = pipelinestate.StageFinish
 	st.rows["reel1"] = row
 
 	moved, err := p2(st).Requeue(context.Background(), "reel1")
@@ -124,7 +125,7 @@ func TestRequeue_LeavesARunningRowAlone(t *testing.T) {
 	st := newPipeMemStore()
 	seedParkedReel(st, "reel1")
 	row := st.rows["reel1"]
-	row.Disposition, row.Attempts, row.NextRun = filler.DispositionRunning, 2, time.Time{}
+	row.Disposition, row.Attempts, row.NextRun = pipelinestate.DispositionRunning, 2, time.Time{}
 	st.rows["reel1"] = row
 
 	moved, err := p2(st).Requeue(context.Background(), "reel1")

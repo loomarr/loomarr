@@ -10,6 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -151,7 +153,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatalf("playable catalog before readiness = %+v, %v; want empty", playable, err)
 	}
 	row, found, err := st.GetClipPipeline(ctx, held[0].Hash)
-	if err != nil || !found || row.AcquisitionID != jobID || row.Disposition != filler.DispositionRunning {
+	if err != nil || !found || row.AcquisitionID != jobID || row.Disposition != pipelinestate.DispositionRunning {
 		t.Fatalf("enrolled conveyor = %+v, found=%v, err=%v", row, found, err)
 	}
 	failed, err := pipeline.RunOnce(ctx)
@@ -162,7 +164,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatalf("interrupted first pass = %+v, want one durable retry", failed)
 	}
 	row, found, err = st.GetClipPipeline(ctx, held[0].Hash)
-	if err != nil || !found || row.Status != filler.StatusFailed || row.Attempts != 1 || !row.NextRun.After(clock) {
+	if err != nil || !found || row.Status != pipelinestate.StatusFailed || row.Attempts != 1 || !row.NextRun.After(clock) {
 		t.Fatalf("retry state = %+v, found=%v, err=%v", row, found, err)
 	}
 
@@ -197,7 +199,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil || !found || event.AcquisitionID != jobID || event.Enrollment.Kind != filler.EnrollmentAcquisition {
 		t.Fatalf("Ready event = %+v, found=%v, err=%v", event, found, err)
 	}
-	pool, err := filler.NewPodAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
+	pool, err := pod.NewAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

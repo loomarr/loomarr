@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -37,7 +38,7 @@ func (s *Server) arrsFromRequester(ctx context.Context, _ *struct{}) (*arrsFromR
 	}
 	servers, err := s.arrDiscovery.ArrServers(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't ask Seerr",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't ask Seerr",
 			"Loomarr couldn't read Seerr's Sonarr and Radarr. Check the Seerr connection, or fill them in by hand.", err)
 	}
 	for _, server := range servers {

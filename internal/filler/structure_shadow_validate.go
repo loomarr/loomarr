@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func ValidateStructureSplitShadowDecision(decision StructureSplitShadowDecision) error {
 	if decision.SchemaVersion != StructureSplitShadowSchemaVersion || decision.ContractVersion != StructureSplitShadowContractVersion || decision.ID == "" || decision.ProposalID == "" || decision.ClipHash == "" || strings.TrimSpace(decision.PolicyVersion) != decision.PolicyVersion || decision.PolicyVersion == "" || len(decision.PolicyVersion) > 128 || decision.ObservedAt.IsZero() || decision.ObservedAt != decision.ObservedAt.UTC() {
 		return fmt.Errorf("structure split shadow decision identity is invalid")
 	}
-	if decision.SourceSHA256 != "" && !isContentHash(decision.SourceSHA256) ||
-		decision.AssessmentSHA256 != "" && !isContentHash(decision.AssessmentSHA256) ||
-		decision.StructureDecisionSHA256 != "" && !isContentHash(decision.StructureDecisionSHA256) ||
-		decision.StructureAuthoritySHA256 != "" && !isContentHash(decision.StructureAuthoritySHA256) {
+	if decision.SourceSHA256 != "" && !split.IsContentHash(decision.SourceSHA256) ||
+		decision.AssessmentSHA256 != "" && !split.IsContentHash(decision.AssessmentSHA256) ||
+		decision.StructureDecisionSHA256 != "" && !split.IsContentHash(decision.StructureDecisionSHA256) ||
+		decision.StructureAuthoritySHA256 != "" && !split.IsContentHash(decision.StructureAuthoritySHA256) {
 		return fmt.Errorf("structure split shadow decision source or assessment digest is invalid")
 	}
 	if err := validateStructureSplitShadowOutcome(decision.Legacy); err != nil {

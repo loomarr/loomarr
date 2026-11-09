@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/docs"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -19,42 +20,42 @@ import (
 // any authenticated user: Help is documentation, and the version is what a member quotes
 // in a bug report.
 func (s *Server) registerHelp(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-docs", Method: http.MethodGet, Path: "/v1/docs",
 		Summary:     "List the embedded help pages",
 		Description: "The Help section's table of contents (§13). Pages ship inside the binary, so Help works air-gapped.",
 		Tags:        []string{"help"},
-	}, RoleMember), s.listDocs)
+	}, httpcore.RoleMember), s.listDocs)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-doc", Method: http.MethodGet, Path: "/v1/docs/{slug}",
 		Summary:     "Read one help page as markdown",
 		Description: "Returns raw markdown, not HTML: the frontend renders it and searches it client-side (§7.2), which needs the source rather than a rendered blob.",
 		Tags:        []string{"help"},
-	}, RoleMember), s.getDoc)
+	}, httpcore.RoleMember), s.getDoc)
 
-	rawOp[diagramInput](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[diagramInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "get-doc-diagram", Method: http.MethodGet, Path: "/v1/docs/diagrams/{name}",
 		Summary: "Read one help diagram",
 		Description: "A diagram a help page shows, as SVG. It ships inside the binary, so Help's " +
 			"diagrams work air-gapped. Load it only as an image: it is served sandboxed.",
 		Tags: []string{"help"},
-	}, "The diagram.", "image/svg+xml"), RoleMember, serveDiagram)
+	}, "The diagram.", "image/svg+xml"), httpcore.RoleMember, serveDiagram)
 
-	rawOp[screenshotInput](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[screenshotInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "get-doc-screenshot", Method: http.MethodGet, Path: "/v1/docs/screenshots/{name}",
 		Summary: "Read one help screenshot",
 		Description: "A screenshot a help page shows, as WebP. It ships inside the binary, so Help's " +
 			"screenshots work air-gapped.",
 		Tags: []string{"help"},
-	}, "The screenshot.", "image/webp"), RoleMember, serveScreenshot)
+	}, "The screenshot.", "image/webp"), httpcore.RoleMember, serveScreenshot)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-version", Method: http.MethodGet, Path: "/v1/system/version",
 		Summary:     "Version and readiness of this instance",
 		Description: "What the operator quotes in a bug report, plus the readiness /v1/readyz reports. The probes stay unauthenticated for orchestrators (RolePublic); this is their authenticated twin, carrying the build and schema detail a probe has no business returning.",
 		Tags:        []string{"system"},
-	}, RolePublic), s.systemVersion)
+	}, httpcore.RolePublic), s.systemVersion)
 }
 
 // DocSummary is one entry in the Help table of contents.
@@ -102,7 +103,7 @@ func (s *Server) getDoc(_ context.Context, in *getDocInput) (*getDocOutput, erro
 	slug, section, _ := strings.Cut(docs.Resolve(href), "#")
 	page, ok := docs.Get(slug)
 	if !ok {
-		return nil, errNotFound("Help page not found", "That help page doesn't exist — it may have been moved or renamed.")
+		return nil, httpcore.NotFound("Help page not found", "That help page doesn't exist — it may have been moved or renamed.")
 	}
 	out := &getDocOutput{}
 	out.Body.Slug, out.Body.Section, out.Body.Title, out.Body.Markdown = page.Slug, section, page.Title, page.Markdown
@@ -128,7 +129,7 @@ func serveDiagram(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox; "+frameAncestors)
+		"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox; "+httpcore.FrameAncestors)
 	// The bytes change only with the binary, and Help is behind a sign-in.
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))

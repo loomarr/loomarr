@@ -22,7 +22,7 @@ import (
 // (a 4K fanart); the image service applies its own upload cap to what it keeps.
 const artFileMax = 32 << 20
 
-// artRefs is the image_refs half of the store: which image a library item owns in each role.
+// artRefs is the image-ref half of the store (library_item_images): which image a library item owns in each role.
 type artRefs interface {
 	PutImageRef(ctx context.Context, ref clipstore.ImageRef) error
 	DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error

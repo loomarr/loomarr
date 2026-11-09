@@ -9,7 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 )
 
@@ -21,11 +22,11 @@ const (
 // StructureAssessmentMediaSourceIdentity deliberately excludes a pathname. A retained path is a
 // location at which bytes may be found; it is not part of the decision authority.
 type StructureAssessmentMediaSourceIdentity struct {
-	Role       filler.SplitSourceRole `json:"role"`
-	SHA256     string                 `json:"sha256"`
-	Bytes      int64                  `json:"bytes"`
-	ClipHash   string                 `json:"clipHash"`
-	DurationMS int64                  `json:"durationMs"`
+	Role       split.SourceRole `json:"role"`
+	SHA256     string           `json:"sha256"`
+	Bytes      int64            `json:"bytes"`
+	ClipHash   string           `json:"clipHash"`
+	DurationMS int64            `json:"durationMs"`
 }
 
 // StructureAssessmentMediaDerivative identifies one complete normalized output without naming
@@ -36,7 +37,7 @@ type StructureAssessmentMediaDerivative struct {
 	DurationMS int64  `json:"durationMs"`
 }
 
-func structureAssessmentSourceIdentity(source filler.SplitSourceAsset) StructureAssessmentMediaSourceIdentity {
+func structureAssessmentSourceIdentity(source split.SourceAsset) StructureAssessmentMediaSourceIdentity {
 	return StructureAssessmentMediaSourceIdentity{
 		Role: source.Role, SHA256: source.SHA256, Bytes: source.Bytes,
 		ClipHash: source.ClipHash, DurationMS: source.DurationMs,
@@ -44,7 +45,7 @@ func structureAssessmentSourceIdentity(source filler.SplitSourceAsset) Structure
 }
 
 func structureAssessmentMediaPath(clipDir, digest string) string {
-	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
+	return filepath.Join(clipDir, split.MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
 }
 
 func strictStructureAssessmentJSON(raw []byte, destination any) error {
@@ -113,11 +114,11 @@ func publishStructureAssessmentMedia(ctx context.Context, staged, target, digest
 	} else if !errors.Is(err, os.ErrExist) {
 		return err
 	}
-	existingDigest, existingSize, err := filler.FileSHA256(target)
+	existingDigest, existingSize, err := asset.FileSHA256(target)
 	if err != nil || existingDigest != digest || existingSize != size {
 		return errors.New("existing structure assessment media does not match its content address")
 	}
-	equal, err := filler.ExactFileBytesEqual(ctx, staged, target, cut.MaximumVideoBytes)
+	equal, err := asset.ExactFileBytesEqual(ctx, staged, target, cut.MaximumVideoBytes)
 	if err != nil || !equal {
 		return errors.New("existing structure assessment media does not match exact bytes")
 	}

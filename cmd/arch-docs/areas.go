@@ -95,11 +95,12 @@ var areas = []area{
 		Description: "Turning \"I want a channel that feels like X\" into a lineup a person can approve. " +
 			"The suggester checks every title against the real library and catalog, the workflow tracks " +
 			"each request through to the household's first channel, and the outlook explains a pending " +
-			"proposal before anyone approves it. The quality and planner-reference packages measure how " +
-			"good the suggestions are.",
+			"proposal before anyone approves it. Accepting a proposal, by a person's approval or the " +
+			"auto-approve grant within its pending-acquisition quota, is its own package. The quality " +
+			"and planner-reference packages measure how good the suggestions are.",
 		Packages: []string{
 			"proposals", "proposals/workflow", "proposals/outlook", "proposals/suggest",
-			"proposals/webreference", "proposals/quality",
+			"proposals/accept", "proposals/webreference", "proposals/quality",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
@@ -149,7 +150,7 @@ var areas = []area{
 			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
 			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
-			"filler/source/youtube", "filler/location", "filler/language",
+			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -211,9 +212,11 @@ var areas = []area{
 		Title: "Edge",
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
 			"is the composition root that builds every other area and hands them to it. " +
+			"`api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, " +
+			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "app", "app/playoutresolve"},
+		Packages:       []string{"api", "api/httpcore", "app", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

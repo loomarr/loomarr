@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -50,26 +52,26 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	parentFull := filepath.Join(s.clipDir, filepath.FromSlash(parent.Path))
 	parentHash := parent.Hash
 	if tags.ConditioningLineage.ParentAssetRole != "" {
-		var parentSource SplitSourceAsset
-		switch SplitSourceRole(tags.ConditioningLineage.ParentAssetRole) {
-		case SplitSourceEvidence:
+		var parentSource split.SourceAsset
+		switch split.SourceRole(tags.ConditioningLineage.ParentAssetRole) {
+		case split.SourceEvidence:
 			parentTags, ok := ReadSidecarTags(parentFull)
 			if !ok || parentTags.MediaAssets == nil || parentTags.MediaAssets.Evidence == nil ||
 				parentTags.MediaAssets.Evidence.Asset.SHA256 != tags.ConditioningLineage.ParentAssetSHA256 {
 				return review("conditioning parent evidence asset is unavailable")
 			}
 			evidence := parentTags.MediaAssets.Evidence
-			parentSource = SplitSourceAsset{
-				Role: SplitSourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,
+			parentSource = split.SourceAsset{
+				Role: split.SourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,
 				ClipHash: evidence.Asset.ClipHash, Path: evidence.Asset.Path, DurationMs: evidence.DurationMs,
 			}
-		case SplitSourceLegacyPlayback:
-			digest, size, err := FileSHA256(parentFull)
+		case split.SourceLegacyPlayback:
+			digest, size, err := asset.FileSHA256(parentFull)
 			if err != nil || digest != tags.ConditioningLineage.ParentAssetSHA256 {
 				return review("conditioning parent playback asset changed")
 			}
-			parentSource = SplitSourceAsset{
-				Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size,
+			parentSource = split.SourceAsset{
+				Role: split.SourceLegacyPlayback, SHA256: digest, Bytes: size,
 				ClipHash: parent.Hash, Path: parent.Path, DurationMs: parent.DurationMs,
 			}
 		default:

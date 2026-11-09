@@ -12,6 +12,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -155,8 +158,8 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 	}
 }
 
-func (s *TranscodeStage) ID() StageID     { return StageTranscode }
-func (s *TranscodeStage) Cost() StageCost { return CostTranscode }
+func (s *TranscodeStage) ID() pipelinestate.StageID { return pipelinestate.StageTranscode }
+func (s *TranscodeStage) Cost() StageCost           { return CostTranscode }
 
 // Applies unless this clip already carries this profile's mark.
 //
@@ -181,7 +184,7 @@ func (s *TranscodeStage) Applies(ctx context.Context, c StoreClip) (bool, string
 	if tags, ok := ReadSidecarTags(full); ok && tags.Mezzanine == s.target().profile.ID() && tags.MediaQuality != nil {
 		// A clean report is finished work. An anomalous report must remain applicable so a
 		// failed hold/tombstone write can cheaply re-emit the same safety verdict next pass.
-		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == VerdictContinue {
+		if verdict, _, _ := EvaluateMediaQuality(*tags.MediaQuality); verdict == pipelinestate.VerdictContinue {
 			if s.evidenceTranscode != nil && (tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil) {
 				return true, ""
 			}
@@ -312,14 +315,14 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		// still encodes, because its input is the conditioned cut, not the master.
 		quality = evidence.Quality
 		err = copyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
-		reportProgress(ctx, StageTranscode, 90)
+		reportProgress(ctx, pipelinestate.StageTranscode, 90)
 	} else {
 		quality, err = s.transcode(transcodeCtx, req, func(pct int) {
 			if evidence != nil {
-				reportProgress(ctx, StageTranscode, 40+pct*50/100)
+				reportProgress(ctx, pipelinestate.StageTranscode, 40+pct*50/100)
 				return
 			}
-			reportProgress(ctx, StageTranscode, pct*90/100)
+			reportProgress(ctx, pipelinestate.StageTranscode, pct*90/100)
 		})
 	}
 	if err != nil {
@@ -394,9 +397,9 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			}
 			return reject, nil
 		}
-		reportProgress(ctx, StageTranscode, 95)
+		reportProgress(ctx, pipelinestate.StageTranscode, 95)
 	}
-	newHash, err := ClipID(stageFull)
+	newHash, err := asset.ClipID(stageFull)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("hash transformed clip %s: %w", oldRel, err)
 	}
@@ -449,8 +452,8 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		}
 	}
 	if job != nil {
-		sourceEqual, sourceErr := exactFileBytesEqual(ctx, sourceMasterFull, inputFull, tools.ConditioningMaxSnapshotBytes)
-		parentEqual, parentErr := exactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, tools.ConditioningMaxSnapshotBytes)
+		sourceEqual, sourceErr := asset.ExactFileBytesEqual(ctx, sourceMasterFull, inputFull, tools.ConditioningMaxSnapshotBytes)
+		parentEqual, parentErr := asset.ExactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 			return conditioningReview(c, "conditioning source or parent changed while evidence was prepared"), nil
 		}
@@ -462,7 +465,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	// now occupies the catalog name. Re-open the visible source before publication so a replacement
 	// cannot be re-keyed and then deleted as if it were the bytes we preserved.
 	if sourceMaster.ClipHash == c.Hash {
-		sourceStillOwned, sourceErr := exactFileBytesEqual(ctx, oldFull, sourceMasterFull, tools.ConditioningMaxSnapshotBytes)
+		sourceStillOwned, sourceErr := asset.ExactFileBytesEqual(ctx, oldFull, sourceMasterFull, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || !sourceStillOwned {
 			if job != nil {
 				return conditioningReview(c, "conditioning source changed while evidence was prepared"), nil
@@ -556,7 +559,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 			removeSource = os.Remove
 		}
 		if err := removeSource(oldFull); err != nil && !os.IsNotExist(err) {
-			return StageResult{Clip: updated, Verdict: VerdictContinue,
+			return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue,
 				Note: "re-encoded, but the original file could not be deleted"}, nil
 		}
 		_ = os.Remove(sidecarPathFor(oldFull))
@@ -652,7 +655,7 @@ func tooQuietToCorrect(target float64, l tools.ConditioningLoudness) (StageResul
 		return StageResult{}, false
 	}
 	return StageResult{
-		Verdict: VerdictReject, Reason: ReasonTooQuiet,
+		Verdict: pipelinestate.VerdictReject, Reason: pipelinestate.ReasonTooQuiet,
 		Note: "too quiet to correct",
 		Detail: fmt.Sprintf("%.1f LUFS; reaching %.0f LUFS needs +%.1f dB, at most +%.0f dB",
 			measured, target, target-measured, measure.MaxBoostDB),
@@ -684,7 +687,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster MediaAssetIdentity, p stagedPl
 	if err != nil {
 		return MediaAssetManifest{}, err
 	}
-	digest, size, err := FileSHA256(p.path)
+	digest, size, err := asset.FileSHA256(p.path)
 	if err != nil {
 		return MediaAssetManifest{}, fmt.Errorf("digest playback derivative: %w", err)
 	}
@@ -733,7 +736,7 @@ func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezza
 
 func validConditioningPublication(p *ConditioningPublication, sourceHash, targetHash string) bool {
 	return p != nil && p.State == "pending" && len(p.Owner) == 32 &&
-		isContentHash(p.SourceHash) && isContentHash(p.TargetHash) &&
+		split.IsContentHash(p.SourceHash) && split.IsContentHash(p.TargetHash) &&
 		p.SourceHash == sourceHash && p.TargetHash == targetHash
 }
 
@@ -796,7 +799,7 @@ func clearConditioningPublication(targetFull string, publication *ConditioningPu
 }
 
 func conditioningReview(c StoreClip, note string) StageResult {
-	return StageResult{Clip: c, Verdict: VerdictReview, Note: note}
+	return StageResult{Clip: c, Verdict: pipelinestate.VerdictReview, Note: note}
 }
 
 func conditioningCommitOutcome(c StoreClip, err error) (StageResult, error) {
@@ -811,7 +814,7 @@ func isConditioningCancellation(err error) bool {
 }
 
 func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash string) error {
-	if !isContentHash(beforeHash) || !isContentHash(afterHash) ||
+	if !split.IsContentHash(beforeHash) || !split.IsContentHash(afterHash) ||
 		e.BeforeRewriteHash != beforeHash || e.AfterRewriteHash != afterHash {
 		return fmt.Errorf("persisted conditioning artifact identities are invalid")
 	}
@@ -831,24 +834,24 @@ func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash stri
 }
 
 func validConditioningLineage(lineage *ConditioningLineage, childParentHash string) bool {
-	if lineage == nil || !isContentHash(lineage.ChildHash) || !isContentHash(lineage.ParentHash) ||
+	if lineage == nil || !split.IsContentHash(lineage.ChildHash) || !split.IsContentHash(lineage.ParentHash) ||
 		lineage.ParentHash != childParentHash || lineage.IntendedStartMs < 0 || lineage.IntendedEndMs <= lineage.IntendedStartMs {
 		return false
 	}
 	assetBound := lineage.ParentAssetRole != "" || lineage.ParentAssetSHA256 != ""
-	role := SplitSourceRole(lineage.ParentAssetRole)
+	role := split.SourceRole(lineage.ParentAssetRole)
 	decisionBound := lineage.StructureDecisionSHA256 == "" && lineage.StructureRole == "" ||
-		isContentHash(lineage.StructureDecisionSHA256) && certifiedFillerRole(lineage.StructureRole)
-	return decisionBound && (!assetBound || ((role == SplitSourceEvidence || role == SplitSourceLegacyPlayback) && isContentHash(lineage.ParentAssetSHA256)))
+		split.IsContentHash(lineage.StructureDecisionSHA256) && split.CertifiedFillerRole(lineage.StructureRole)
+	return decisionBound && (!assetBound || ((role == split.SourceEvidence || role == split.SourceLegacyPlayback) && split.IsContentHash(lineage.ParentAssetSHA256)))
 }
 
 func mediaQualityResult(c StoreClip, quality MediaQuality) StageResult {
 	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
 	switch verdict {
-	case VerdictReject:
+	case pipelinestate.VerdictReject:
 		result.Reason, result.Detail = reason, detail
-	case VerdictReview:
+	case pipelinestate.VerdictReview:
 		result.Note = detail
 	}
 	return result

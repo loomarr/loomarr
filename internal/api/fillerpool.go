@@ -3,7 +3,8 @@ package api
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 // Catalog-wide filler health — the Filler page's pool strip (§10 V35).
@@ -55,7 +56,7 @@ type fillerPoolOutput struct {
 // already read.
 func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking catalog health.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking catalog health.")
 	}
 
 	report, err := s.pods.Pool(ctx)
@@ -66,7 +67,7 @@ func (s *Server) fillerPool(ctx context.Context, _ *struct{}) (*fillerPoolOutput
 	return &fillerPoolOutput{Body: poolDTO(report)}, nil
 }
 
-func poolDTO(report filler.PoolReport) PoolDTO {
+func poolDTO(report pod.PoolReport) PoolDTO {
 	chans := make([]PoolChannelDTO, 0, len(report.Channels))
 	for _, c := range report.Channels {
 		chans = append(chans, PoolChannelDTO{

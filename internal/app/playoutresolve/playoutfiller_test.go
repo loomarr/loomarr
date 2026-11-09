@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -34,48 +35,48 @@ func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, err
 }
 
 type stubPods struct {
-	pod   filler.Pod
+	pod   pod.Pod
 	err   error
-	asked *[]filler.BreakSlot // when set, records each break slot PreviewAt received
+	asked *[]pod.BreakSlot // when set, records each break slot PreviewAt received
 }
 
-func (s stubPods) Preview(context.Context, string) (filler.Pod, error) { return s.pod, s.err }
-func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (filler.Pod, error) {
+func (s stubPods) Preview(context.Context, string) (pod.Pod, error) { return s.pod, s.err }
+func (s stubPods) PreviewDraft(context.Context, string, pod.Selection) (pod.Pod, error) {
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAt(_ context.Context, _ string, slot filler.BreakSlot) (filler.Pod, error) {
+func (s stubPods) PreviewAt(_ context.Context, _ string, slot pod.BreakSlot) (pod.Pod, error) {
 	if s.asked != nil {
 		*s.asked = append(*s.asked, slot)
 	}
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAtMany(_ context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
-	pods := make([]filler.Pod, len(slots))
+func (s stubPods) PreviewAtMany(_ context.Context, _ string, slots []pod.BreakSlot) ([]pod.Pod, error) {
+	pods := make([]pod.Pod, len(slots))
 	for i := range pods {
 		pods[i] = s.pod
 	}
 	return pods, s.err
 }
 
-func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, error) {
-	return filler.CoverageReport{}, s.err
+func (s stubPods) Coverage(context.Context, string) (pod.CoverageReport, error) {
+	return pod.CoverageReport{}, s.err
 }
 
-func (s stubPods) CoverageDraft(ctx context.Context, _ string, _ filler.Selection) (filler.CoverageReport, error) {
+func (s stubPods) CoverageDraft(ctx context.Context, _ string, _ pod.Selection) (pod.CoverageReport, error) {
 	if err := ctx.Err(); err != nil {
-		return filler.CoverageReport{}, err
+		return pod.CoverageReport{}, err
 	}
-	return filler.CoverageReport{}, s.err
+	return pod.CoverageReport{}, s.err
 }
 
-func (s stubPods) ClipFit(context.Context, string) (map[string]filler.Fit, error) {
+func (s stubPods) ClipFit(context.Context, string) (map[string]pod.Fit, error) {
 	return nil, s.err
 }
 
-func (s stubPods) Pool(context.Context) (filler.PoolReport, error) {
-	return filler.PoolReport{}, s.err
+func (s stubPods) Pool(context.Context) (pod.PoolReport, error) {
+	return pod.PoolReport{}, s.err
 }
 
 // clipAt builds the SHARD-relative location a clip row carries since V38c — `a3/f9/<hash>.mp4`.
@@ -89,7 +90,7 @@ func clipAt(name string) string {
 	return filler.ClipRelPath(hex.EncodeToString(sum[:]), ".mp4")
 }
 
-func fillerResolver(t *testing.T, dir string, pod filler.Pod) *Resolver {
+func fillerResolver(t *testing.T, dir string, brk pod.Pod) *Resolver {
 	t.Helper()
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotFiller},
@@ -104,7 +105,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *Resolver {
 		now:       func() time.Time { return testPlayoutAnchor() },
 		tier:      func() string { return "balanced" },
 		encoder:   func() string { return "" },
-		pods:      stubPods{pod: pod},
+		pods:      stubPods{pod: brk},
 		fillerDir: dir,
 	}
 }
@@ -170,11 +171,11 @@ func TestAiringNow_FreshChannelStartsAtPersistedActivation(t *testing.T) {
 func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
 		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
-	r := fillerResolver(t, dir, pod)
+	r := fillerResolver(t, dir, brk)
 
 	airing, src, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
@@ -213,12 +214,12 @@ func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
 		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 		{Path: clipAt("1994/cereal.mp4"), Name: "cereal", DurationMs: 8000},
 	}}
-	r := fillerResolver(t, dir, pod)
+	r := fillerResolver(t, dir, brk)
 
 	// 6s into the break: past the 4s bumper, 2s into the first ad.
 	base := testPlayoutAnchor()
@@ -247,7 +248,7 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 func TestAiringNow_FillerCannotCrossTheScheduledBreakBoundary(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	r := fillerResolver(t, dir, filler.Pod{Entries: []filler.PodEntry{
+	r := fillerResolver(t, dir, pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("long-ad.mp4"), Name: "long ad", DurationMs: 60_000},
 	}})
 	base := testPlayoutAnchor()
@@ -266,9 +267,9 @@ func TestAiringNow_FillerCannotCrossTheScheduledBreakBoundary(t *testing.T) {
 // slot reconcile cut shorter than the configured break is never overrun by its last ad.
 func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
 	t.Parallel()
-	var asked []filler.BreakSlot
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
-	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+	var asked []pod.BreakSlot
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
+	r.pods = stubPods{pod: pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
 	}}, asked: &asked}
 	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
@@ -281,7 +282,7 @@ func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
 	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
 		t.Fatal(err)
 	}
-	want := filler.BreakSlot{Start: base, Length: 113_366 * time.Millisecond}
+	want := pod.BreakSlot{Start: base, Length: 113_366 * time.Millisecond}
 	if len(asked) != 1 || !asked[0].Start.Equal(want.Start) || asked[0].Length != want.Length {
 		t.Fatalf("pod asked for %+v, want the break's own slot %+v", asked, want)
 	}
@@ -292,9 +293,9 @@ func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
 // that would draw (and record as aired) most of the catalog.
 func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
 	t.Parallel()
-	var asked []filler.BreakSlot
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
-	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+	var asked []pod.BreakSlot
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
+	r.pods = stubPods{pod: pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
 	}}, asked: &asked}
 	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
@@ -312,7 +313,7 @@ func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
 // No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
 func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 	t.Parallel()
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
 	airing, src, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
 		t.Fatalf("an empty pod was an error: %v", err)
@@ -329,13 +330,13 @@ func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 // the database, so containment is enforced at resolution, not assumed at write time.
 func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
 	t.Parallel()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		// ⚠ The RAW traversal string, deliberately NOT run through clipAt — hashing it would
 		// produce a perfectly valid id and test nothing. What must be refused is the crafted
 		// value itself, as it would arrive from a tampered database row.
 		{Path: "../../../../etc/passwd", Name: "evil", DurationMs: 4000},
 	}}
-	r := fillerResolver(t, t.TempDir(), pod)
+	r := fillerResolver(t, t.TempDir(), brk)
 
 	airing, src, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
@@ -349,13 +350,13 @@ func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
 // The embedded fallback bumper card is generated, not a file: it has no path to play.
 func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
 	t.Parallel()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		// ⚠ An EMPTY path, not a hashed one: the fallback card is generated rather than played
 		// from a file, and "" is how the resolver knows. Hashing it would give the card a path
 		// that resolves to a file which does not exist.
 		{Path: "", Name: "fallback card", DurationMs: 5000, IsFallbackCard: true},
 	}}
-	r := fillerResolver(t, t.TempDir(), pod)
+	r := fillerResolver(t, t.TempDir(), brk)
 
 	_, src, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
@@ -373,7 +374,7 @@ func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
 func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
 	t.Parallel()
 	probed := false
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
 	r.encoder = func() string { return "h264_nvenc" }
 	r.ffmpegPath = func() string { probed = true; return "/nonexistent/ffmpeg" }
 
@@ -395,7 +396,7 @@ func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
 // is exactly the contract worth pinning.
 func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 	t.Parallel()
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
 	r.encoder = func() string { return "" }
 	r.ffmpegPath = func() string { return "/nonexistent/ffmpeg" }
 
@@ -412,7 +413,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	t.Parallel()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
 	r.encoder = func() string { return "" }
 	r.loadCapabilityEvidence = func(context.Context) (playout.Capacity, bool) {
 		return playout.Capacity{}, false
@@ -444,7 +445,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 func TestProfile_ProbesOnlyOnce(t *testing.T) {
 	t.Parallel()
 	calls := 0
-	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r := fillerResolver(t, t.TempDir(), pod.Pod{})
 	r.encoder = func() string { return "" }
 	r.ffmpegPath = func() string { calls++; return "/nonexistent/ffmpeg" }
 
@@ -478,10 +479,10 @@ func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash s
 func TestRecordAiringServed_ACountingFailureOrNoRecorderIsHarmless(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
+	brk := pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
-	r := fillerResolver(t, dir, pod)
+	r := fillerResolver(t, dir, brk)
 	airing, _, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
 		t.Fatal(err)

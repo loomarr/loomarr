@@ -52,8 +52,14 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if len(needs) != 1 || needs[0].ID != harborID || needs[0].Catalog != show || needs[0].Unnumbered != 2 ||
-		!reflect.DeepEqual(needs[0].Last, map[int]int{1: 3, 2: 1}) {
-		t.Fatalf("order needs = %+v, want Harbor Show with 2 unnumbered episodes, seasons running to 3 and 1", needs)
+		!reflect.DeepEqual(needs[0].Last, map[int]int{1: 3, 2: 1}) ||
+		!reflect.DeepEqual(needs[0].Waiting, []LibraryWaitingFile{
+			{Path: "/media/e1.mkv", Season: 1, Episode: 1}, {Path: "/media/e3.mkv", Season: 2, Episode: 1},
+		}) {
+		t.Fatalf("order needs = %+v, want Harbor Show with 2 unnumbered episodes and their files, seasons running to 3 and 1", needs)
+	}
+	if n, err := st.LibraryOrderNeedCount(ctx); err != nil || n != 1 {
+		t.Fatalf("order need count = %d, %v; want the one show listed", n, err)
 	}
 
 	if _, ok, err := st.LibraryEpisodeOrderFor(ctx, show); err != nil || ok {

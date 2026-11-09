@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
@@ -75,7 +75,7 @@ type PodFiller interface {
 	// Selection (§10 — era/audience/category/roles + pinned/excluded). ok=false → no
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
-	BuildFillerList(ctx context.Context, channelID string, seed int64, sel filler.Selection) (programIDs []string, ok bool)
+	BuildFillerList(ctx context.Context, channelID string, seed int64, sel pod.Selection) (programIDs []string, ok bool)
 	// HasPool reports whether the channel has ANY playable commercials — the question
 	// "should breaks be interleaved at all?".
 	//
@@ -85,10 +85,10 @@ type PodFiller interface {
 	// internal-playout install with no Tunarr, no clip has one — so a channel with a perfectly
 	// good pod would report "no pool" and get NO BREAKS AT ALL, which is exactly the inverted
 	// dependency §9.1 set out to remove, one level up.
-	HasPool(ctx context.Context, channelID string, seed int64, sel filler.Selection) bool
+	HasPool(ctx context.Context, channelID string, seed int64, sel pod.Selection) bool
 	// PlayableDurationMs reports how much real media the deterministic pod contains.
 	// It excludes the generated fallback card, which has no bytes to air.
-	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel filler.Selection) int64
+	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel pod.Selection) int64
 }
 
 // Engine reconciles every channel's local desired state and, only when that channel's

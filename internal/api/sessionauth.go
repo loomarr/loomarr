@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -19,7 +20,7 @@ type sessionAuthorizer struct {
 }
 
 // NewSessionAuthorizer builds the session+token authorizer.
-func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
+func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) httpcore.Authorizer {
 	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
 }
 
@@ -36,24 +37,24 @@ func NewSessionAuthorizerCurrent(
 	mgr *auth.Manager,
 	devices *auth.DeviceManager,
 	apiToken func(context.Context) (string, error),
-) Authorizer {
+) httpcore.Authorizer {
 	return &sessionAuthorizer{mgr: mgr, devices: devices, apiTokenCurrent: apiToken}
 }
 
-func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
+func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Role {
 	return a.authorizeIdentity(r).role
 }
 
 // AuthorizeUser resolves the role AND the authenticated user (when a session
 // cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
-func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *identitystore.User) {
+func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
 	identity := a.authorizeIdentity(r)
 	return identity.role, identity.user
 }
 
 type requestIdentity struct {
 	deviceID string
-	role     Role
+	role     httpcore.Role
 	user     *identitystore.User
 }
 
@@ -68,7 +69,7 @@ func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
 func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
-		if u, err := a.mgr.Resolve(r.Context(), c.Value, clientLabel(r.UserAgent())); err == nil {
+		if u, err := a.mgr.Resolve(r.Context(), c.Value, httpcore.ClientLabel(r.UserAgent())); err == nil {
 			user := u
 			return requestIdentity{role: roleOf(u), user: &user}
 		}
@@ -104,11 +105,11 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 				apiToken = "" // credential state unavailable: fail bearer auth closed.
 			}
 		}
-		if apiToken != "" && constantEq(h[len(prefix):], apiToken) {
-			return requestIdentity{role: RoleAdmin}
+		if apiToken != "" && httpcore.ConstantEq(h[len(prefix):], apiToken) {
+			return requestIdentity{role: httpcore.RoleAdmin}
 		}
 	}
-	return requestIdentity{role: RoleAnonymous}
+	return requestIdentity{role: httpcore.RoleAnonymous}
 }
 
 // hasBearer reports whether a request carries an Authorization: Bearer credential.
@@ -127,40 +128,13 @@ func hasBearer(r *http.Request) bool {
 // authenticated user (the session authorizer). The middleware uses it to thread
 // identity for /v1/auth/me etc.
 type UserAuthorizer interface {
-	Authorizer
-	AuthorizeUser(r *http.Request) (Role, *identitystore.User)
+	httpcore.Authorizer
+	AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User)
 }
 
-func roleOf(u identitystore.User) Role {
+func roleOf(u identitystore.User) httpcore.Role {
 	if u.Role == identitystore.RoleAdmin {
-		return RoleAdmin
+		return httpcore.RoleAdmin
 	}
-	return RoleMember
-}
-
-// userCtxKey threads the authenticated store.User for handlers that need
-// identity (e.g. /v1/auth/me). It is stored by the middleware via huma.WithValue.
-type userCtxKey struct{}
-
-func userFrom(ctx context.Context) (identitystore.User, bool) {
-	u, ok := ctx.Value(userCtxKey{}).(identitystore.User)
-	return u, ok
-}
-
-// deviceCtxKey threads the safe token-hash identity of an authenticated paired device. It is set
-// only by the authorizer that validated the bearer credential; handlers never re-parse credentials.
-type deviceCtxKey struct{}
-
-func deviceIDFrom(ctx context.Context) (string, bool) {
-	id, ok := ctx.Value(deviceCtxKey{}).(string)
-	return id, ok && id != ""
-}
-
-// reqCtxKey threads the raw *http.Request so handlers can read the client IP and
-// set cookies (login/logout).
-type reqCtxKey struct{}
-
-func requestFrom(ctx context.Context) *http.Request {
-	r, _ := ctx.Value(reqCtxKey{}).(*http.Request)
-	return r
+	return httpcore.RoleMember
 }

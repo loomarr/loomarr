@@ -12,7 +12,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -235,9 +237,9 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -250,7 +252,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("parent pipeline = (_, %v, %v), want row", found, err)
 	}
-	if parent.Disposition != filler.DispositionComplete {
+	if parent.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("parent disposition = %q, want complete after the proposal was confirmed", parent.Disposition)
 	}
 	parentClip, err := st.GetClip(ctx, compHash)
@@ -267,8 +269,8 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
 		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
 	}
-	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{
-		Dispositions: []filler.Disposition{filler.DispositionRunning, filler.DispositionReview},
+	conveyor, err := st.ListClipPipelines(ctx, pipelinestate.PipelineFilter{
+		Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning, pipelinestate.DispositionReview},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -290,9 +292,9 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -307,7 +309,7 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 		t.Fatalf("outer post-commit parent filing calls = %d, want zero", failing.calls)
 	}
 	parent, found, err := st.GetClipPipeline(ctx, compHash)
-	if err != nil || !found || parent.Disposition != filler.DispositionComplete {
+	if err != nil || !found || parent.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("parent pipeline = %+v, found=%v, err=%v; want complete by the inner commit", parent, found, err)
 	}
 }
@@ -464,9 +466,9 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 		t.Fatal(err)
 	}
 
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -498,7 +500,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			"empty-hash upsert bug (%+v)", len(segments), segments)
 	}
 	seen := map[string]bool{}
-	intendedByName := make(map[string]filler.SplitSegment, len(prop.Segments))
+	intendedByName := make(map[string]split.Segment, len(prop.Segments))
 	for _, intended := range prop.Segments {
 		intendedByName[intended.Name] = intended
 	}
@@ -539,7 +541,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			t.Errorf("segment %q lineage = %+v, want child %q parent %q interval [%d,%d)",
 				s.Name, tags.ConditioningLineage, s.Hash, compHash, intended.StartMs, intended.EndMs)
 		}
-		if row, found, err := st.GetClipPipeline(ctx, s.Hash); err != nil || !found || row.Stage != filler.StageProbe {
+		if row, found, err := st.GetClipPipeline(ctx, s.Hash); err != nil || !found || row.Stage != pipelinestate.StageProbe {
 			t.Errorf("segment %q pipeline = (%+v, %v, %v), want enrolled at probe",
 				s.Name, row, found, err)
 		}
@@ -573,15 +575,15 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 	if err := st.UpsertClip(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	proposal := filler.SplitProposal{
 		ID: "proposal-concurrent", ClipHash: compHash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
 	}
 	if err := st.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -631,9 +633,9 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 func parkReel(t *testing.T, st records.Store) func() bool {
 	t.Helper()
 	ctx := context.Background()
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, Attempts: 3,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, Attempts: 3,
 		NextRun:    time.Now().UTC().Add(24 * time.Hour), // parked rows are not due
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
@@ -704,7 +706,7 @@ func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Stage != filler.StageSplit {
+	if row.Stage != pipelinestate.StageSplit {
 		t.Errorf("stage = %q, want the reel left at the split rung", row.Stage)
 	}
 	if row.Attempts != 0 {

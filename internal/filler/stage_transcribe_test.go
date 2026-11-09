@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 )
 
@@ -191,7 +192,7 @@ func TestTranscribeStage_WordlessRecordsSentinelAndDoesNotRevisit(t *testing.T) 
 	st := newFakeTranscribeStore()
 	tools := &scriptedTools{segs: nil} // whisper heard nothing
 	out, applied := runIfApplies(t, newTranscribeStage(st, tools, fstest.MapFS{}), transcribeClip("silent.mp4", ""))
-	if !applied || out.Verdict != filler.VerdictContinue {
+	if !applied || out.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("applied=%v verdict=%v, want a wordless clip carried forward", applied, out.Verdict)
 	}
 	// Recorded as the sentinel — present AND non-empty, so an `!= ""` check treats it as handled.

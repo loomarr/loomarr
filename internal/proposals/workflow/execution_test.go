@@ -84,7 +84,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	}
 
 	repo.completed = nil
-	prop.Trace = proposals.DecisionTrace{Version: suggest.DecisionTraceVersion + 1}
+	prop.Trace = proposals.DecisionTrace{Version: proposals.DecisionTraceVersion + 1}
 	if _, err := workflow.Complete(context.Background(), work, prop); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("Complete invalid trace error = %v, want ErrInvalidState", err)
 	}
@@ -95,10 +95,10 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	repo.completed = nil
 	refusedOnly := proposals.Proposal{Refused: []proposals.RefusedPick{{Item: proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
-	}, Reason: suggest.ReasonOverCeiling}}, Trace: proposals.DecisionTrace{
-		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+	}, Reason: proposals.ReasonOverCeiling}}, Trace: proposals.DecisionTrace{
+		Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: "library",
-			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: proposals.DispositionRefused, Reason: proposals.ReasonOverCeiling}},
 	}}
 	if _, err := workflow.Complete(context.Background(), work, refusedOnly); err != nil {
 		t.Fatalf("Complete refused-only review Proposal: %v", err)
@@ -125,9 +125,9 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 
 func selectedDecisionTrace(key, name, ownership string) proposals.DecisionTrace {
 	return proposals.DecisionTrace{
-		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: key, Name: name, Ownership: ownership,
-			Rank: proposals.RankTuple{TieKey: key}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+			Rank: proposals.RankTuple{TieKey: key}, Disposition: proposals.DispositionSelected, Reason: "selected"}},
 	}
 }
 
