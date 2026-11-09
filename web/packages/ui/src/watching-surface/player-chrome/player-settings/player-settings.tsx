@@ -63,7 +63,7 @@ const OptionRow = ({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={() => onSelect(option.value)}
-      style={{ ...row, backgroundColor: hovered ? playerChrome.glassTop : "transparent" }}
+      style={{ ...row, backgroundColor: hovered ? playerChrome.surfaceHover : "transparent" }}
     >
       {body}
     </Pressable>

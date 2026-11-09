@@ -1,7 +1,6 @@
 import { Icon, icons, playerChrome, Text } from "@loomarr/design-system";
 import { ScrollView, View } from "react-native";
 
-import { webOnly } from "../glass";
 import type { PlayerSheetProps } from "../player-chrome.type";
 import { ToolButton } from "../player-transport";
 
@@ -13,8 +12,8 @@ const PlayerSheet = ({ channelLabel, children, density, icon, onClose, title }: 
     aria-label={title}
     role="dialog"
     style={{
-      backgroundColor: playerChrome.sheet,
-      borderLeftColor: playerChrome.glassRing,
+      backgroundColor: playerChrome.surface,
+      borderLeftColor: playerChrome.hairline,
       borderLeftWidth: 1,
       bottom: 0,
       maxWidth: "100%",
@@ -23,16 +22,12 @@ const PlayerSheet = ({ channelLabel, children, density, icon, onClose, title }: 
       top: 0,
       width: density === "touch" ? 384 : 416,
       zIndex: 40,
-      ...webOnly({
-        backdropFilter: `blur(${playerChrome.glassBlur}px)`,
-        boxShadow: playerChrome.shadowCard,
-      }),
     }}
   >
     <View
       style={{
         alignItems: "center",
-        borderBottomColor: playerChrome.glassRing,
+        borderBottomColor: playerChrome.hairline,
         borderBottomWidth: 1,
         flexDirection: "row",
         gap: 10,
