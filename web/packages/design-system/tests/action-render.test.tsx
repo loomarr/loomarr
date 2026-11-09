@@ -34,16 +34,17 @@ describe("Action variants", () => {
   // react-native-web flattens the Pressable's own style object to inline rgba() (not hex, and
   // "transparent" becomes rgba(0,0,0,0.00)) — only the Tamagui-rendered Text child keeps literal
   // hex, since that goes through Tamagui's own atomic-CSS resolution instead.
-  it("renders suggest/destructive with dark text on a solid accent", () => {
+  it("renders the suggest tone with dark text on a solid accent", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Action variant="suggest">Suggest a lineup</Action>
+        <Action tone="suggest">Suggest a lineup</Action>
       </LoomarrProvider>,
     );
     // brandChroma[4], the base suggest magenta — not accent.suggest's lighter -300 stop, which
     // is calibrated for TEXT on a neutral ground, not for a fill a dark label sits on top of.
     expect(markup).toContain("background-color:rgba(214,64,159,1.00)");
-    expect(markup).toContain("color:#0B0C0E");
+    // The label is the inverse content colour (dark in the dark theme), as the tone's other fills.
+    expect(markup).toContain("color:var(--contentInverse)");
   });
 
   // The pager's "Older ›": the row reverses rather than the markup, so the decorative icon stays
@@ -83,14 +84,27 @@ describe("Action variants", () => {
     expect(markup).toContain("border-top-color:rgba(102,105,112,1.00)");
   });
 
-  it("renders link as underlined info-coloured text with no box", () => {
+  it("renders ghost as text with no fill and no border", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Action variant="link">Read the docs</Action>
+        <Action variant="ghost">Read the docs</Action>
       </LoomarrProvider>,
     );
     expect(markup).toContain("background-color:rgba(0,0,0,0.00)");
-    expect(markup).toContain("text-decoration-line:underline");
+    expect(markup).toContain("border-top-color:rgba(0,0,0,0.00)");
+  });
+
+  it("renders the danger tone on an outline as a danger border and label, never a fill (#2777)", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action tone="danger" variant="outline">
+          Delete
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("background-color:rgba(0,0,0,0.00)");
+    expect(markup).toContain("border-top-color:rgba(232,90,95,1.00)");
+    expect(markup).toContain("color:#E85A5F");
   });
 });
 
@@ -242,8 +256,7 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
   // The danger tone is not a fill (a neutral tile with danger text), so it keeps the amber border.
   const fills = [
     { name: "primary", props: { tone: "primary" } },
-    { name: "suggest", props: { variant: "suggest" } },
-    { name: "destructive", props: { variant: "destructive" } },
+    { name: "suggest", props: { tone: "suggest" } },
   ] as const;
   it.each(
     (["pointer", "touch", "tv"] as const).flatMap((density) => fills.map((fill) => ({ density, ...fill }))),
@@ -616,7 +629,7 @@ describe("Action render composition", () => {
     // Guards the isValidElement check: a Pressable still renders when `render` isn't usable.
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Action render={undefined} variant="secondary">
+        <Action render={undefined} variant="outline">
           Save
         </Action>
       </LoomarrProvider>,

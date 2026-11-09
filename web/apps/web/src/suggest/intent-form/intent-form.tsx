@@ -118,7 +118,7 @@ const IntentForm = ({
         layout="text"
         onPress={() => setRefining((v) => !v)}
         style={{ alignSelf: "flex-start" }}
-        variant="link"
+        variant="ghost"
       >
         {refining ? "Hide details" : "Add details"}
       </Action>

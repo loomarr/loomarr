@@ -191,7 +191,7 @@ const ChannelProgramming = ({
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
               <div className="border-border flex items-center gap-2 border-t pt-4">
-                <Action disabled={rules.isApplying} onPress={rules.apply} variant="suggest">
+                <Action disabled={rules.isApplying} onPress={rules.apply} tone="suggest">
                   {rules.isApplying ? "Applying…" : "Apply rules"}
                 </Action>
                 <Action disabled={rules.isApplying} onPress={rules.discard} variant="ghost">

@@ -34,7 +34,11 @@ const DialogWorkshop = ({ layout = "padded", size = "default", spread = false }:
           Every 6 hours, starting at midnight.
         </p>
         <DialogFooter spread={spread}>
-          {spread ? <Action variant="destructive">Remove task</Action> : null}
+          {spread ? (
+            <Action tone="danger" variant="outline">
+              Remove task
+            </Action>
+          ) : null}
           <div style={{ display: "flex", gap: 8 }}>
             <DialogClose>
               <Action variant="outline">Cancel</Action>

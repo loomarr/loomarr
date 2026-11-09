@@ -60,7 +60,7 @@ const DemoBanner = ({ compact = false, step, stepCount, next, onDismiss }: DemoB
             <Text textRole="compact" tone="secondary">
               Next:
             </Text>
-            <Action accessibilityRole="link" render={next.link} variant="link">
+            <Action accessibilityRole="link" render={next.link} variant="ghost">
               {next.label}
             </Action>
           </>
@@ -86,7 +86,7 @@ const DemoBanner = ({ compact = false, step, stepCount, next, onDismiss }: DemoB
             Next:
           </Text>
           {/* `link`, or Action stamps `role="button"` on the anchor and it stops reading as a link. */}
-          <Action accessibilityRole="link" render={next.link} variant="link">
+          <Action accessibilityRole="link" render={next.link} variant="ghost">
             {next.label}
           </Action>
           <Text textRole="caption" tone="secondary">

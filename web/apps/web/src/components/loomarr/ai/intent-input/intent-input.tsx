@@ -53,7 +53,7 @@ const IntentInput = ({
           disabled={!canSubmit}
           icon={submitting ? "loading" : "suggest"}
           onPress={submit}
-          variant="suggest"
+          tone="suggest"
         >
           {submitting ? "Suggesting…" : "Suggest a lineup"}
         </Action>

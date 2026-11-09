@@ -337,7 +337,7 @@ const GuidePage = () => {
               accessibilityRole="link"
               icon="suggest"
               render={<Link to="/requests/new" />}
-              variant="suggest"
+              tone="suggest"
             >
               {isAdmin ? "Add a channel" : "Request a channel"}
             </Action>

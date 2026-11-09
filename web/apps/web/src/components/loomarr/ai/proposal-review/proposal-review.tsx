@@ -194,7 +194,7 @@ const ProposalReview = ({
             </Action>
             <briefForm.Subscribe selector={(state) => state.values.brief.trim() === ""}>
               {(empty) => (
-                <Action disabled={controlsDisabled || empty} submit variant="suggest">
+                <Action disabled={controlsDisabled || empty} submit tone="suggest">
                   Update suggestions
                 </Action>
               )}

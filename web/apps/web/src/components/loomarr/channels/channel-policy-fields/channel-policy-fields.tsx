@@ -363,7 +363,7 @@ const ChannelPolicyFields = ({
               layout="text"
               onPress={() => setAxesRequested(true)}
               style={{ marginBottom: 10 }}
-              variant="link"
+              variant="ghost"
             >
               Use separate date windows
             </Action>
@@ -419,7 +419,7 @@ const ChannelPolicyFields = ({
               layout="text"
               onPress={() => setAxesRequested(false)}
               style={{ alignSelf: "flex-start" }}
-              variant="link"
+              variant="ghost"
             >
               Use a single era
             </Action>

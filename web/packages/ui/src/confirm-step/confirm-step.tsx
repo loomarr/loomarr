@@ -18,7 +18,7 @@ const ConfirmStep = ({ confirmLabel, disabled = false, message, onCancel, onConf
       {message}
     </Text>
     <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" flexWrap="wrap" gap={8}>
-      <Action disabled={disabled} onPress={onConfirm} variant="destructive">
+      <Action disabled={disabled} onPress={onConfirm} tone="danger" variant="outline">
         {confirmLabel}
       </Action>
       <Action onPress={onCancel} variant="ghost">

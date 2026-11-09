@@ -96,7 +96,7 @@ const SourceStorageCard = () => {
               href={`/filler/settings/${storage.pausedBy === "capacity_unavailable" ? "folders" : "storage"}`}
             />
           }
-          variant={allowanceFull ? "secondary" : "ghost"}
+          variant={allowanceFull ? "outline" : "ghost"}
         >
           {storage.pausedBy === "capacity_unavailable"
             ? "Choose folder"

@@ -36,7 +36,7 @@ const titleRow = (t: TitleDTO): Pick<ListRowProps, "title" | "sub" | "progress">
 const SectionFrame = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section aria-labelledby="home-way">
     <SectionHeader id="home-way" title={title}>
-      <Action accessibilityRole="link" render={<Link to="/requests/in-progress" />} variant="link">
+      <Action accessibilityRole="link" render={<Link to="/requests/in-progress" />} variant="ghost">
         All requests
       </Action>
     </SectionHeader>

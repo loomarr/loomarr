@@ -27,7 +27,7 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
   return (
     <section aria-labelledby="home-tonight">
       <SectionHeader id="home-tonight" title="Tonight">
-        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
+        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="ghost">
           Full guide
         </Action>
       </SectionHeader>

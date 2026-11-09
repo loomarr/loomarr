@@ -704,7 +704,7 @@ const OnScreenLogoSection = ({
               This channel ignores holidays, so its logo stays the same all year. To change that, set Holidays
               on its Programming tab.
             </Text>
-            <Action onPress={onOpenProgramming} tone="secondary" variant="link">
+            <Action onPress={onOpenProgramming} tone="secondary" variant="ghost">
               Open Programming
             </Action>
           </View>

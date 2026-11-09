@@ -94,7 +94,12 @@ const ChannelDangerZone = ({
                 <p className="text-onair-300 text-xs">This can't be undone.</p>
               </div>
               <div className="shrink-0">
-                <Action disabled={busy} onPress={() => chooseRemoval("purge")} variant="destructive">
+                <Action
+                  disabled={busy}
+                  onPress={() => chooseRemoval("purge")}
+                  tone="danger"
+                  variant="outline"
+                >
                   Delete channel
                 </Action>
               </div>
@@ -118,7 +123,8 @@ const ChannelDangerZone = ({
               <Action
                 disabled={busy}
                 onPress={() => onDelete({ purge: removal === "purge" })}
-                variant={removal === "purge" ? "destructive" : "outline"}
+                tone={removal === "purge" ? "danger" : undefined}
+                variant="outline"
               >
                 {removal === "purge" ? "Delete channel" : "Stop updating"}
               </Action>

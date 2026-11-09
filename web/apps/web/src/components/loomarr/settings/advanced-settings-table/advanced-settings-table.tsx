@@ -172,7 +172,7 @@ const AdvancedSettingsTable = ({
                     layout="text"
                     onPress={() => onClear?.(entry)}
                     style={{ alignSelf: "flex-start" }}
-                    variant="link"
+                    variant="ghost"
                   >
                     Use default
                   </Action>

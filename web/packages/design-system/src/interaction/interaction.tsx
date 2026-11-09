@@ -28,13 +28,14 @@ import {
 } from "../tokens";
 
 /**
- * The legacy Web Button's six flat variants (#970 PR B checkpoint 3), alongside `tone`'s existing
- * filled/bordered tile look. Deliberately a separate prop rather than new `tone` values: `tone`
- * always draws a border and a focus ring sized for remote/touch targets (TV and phone callers
- * depend on that), while these are flat, underline-on-hover-link-included, and match the legacy
- * Button's own flatter aesthetic. Supplying both prefers `variant`.
+ * The four button looks (#2777): primary-filled (no `variant`: `tone` "primary", or "suggest" for the
+ * AI accent), secondary-outline (`variant="outline"`), text-ghost (`variant="ghost"`) and icon-ghost
+ * (`variant="ghost"` with `layout="icon"`). One filled button per screen, by convention: the screen's
+ * one main action. Danger is a `tone` on the outline (`variant="outline" tone="danger"`), never a fill.
+ * A `variant` is flat; without one the tile look draws a border and a focus ring sized for
+ * remote/touch targets (TV and phone callers depend on that).
  */
-type ActionVariant = "destructive" | "ghost" | "link" | "outline" | "secondary" | "suggest";
+type ActionVariant = "ghost" | "outline";
 
 type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
   /** A toggle's state when it is off as well as on; `selected` alone only ever announces pressed. */
@@ -63,7 +64,7 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    * `text` draws the label alone as a line of hint-size text, with no box, control height or
    * padding: a field row's "Reset to default" beside its source badge, where a control-sized
    * button would wrap a narrow column. Focus is an outline, so the row does not move. Pair it with
-   * `variant="link"`.
+   * `variant="ghost"`.
    */
   layout?: "icon" | "inline" | "stacked" | "text";
   /**
@@ -92,34 +93,27 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    */
   compact?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
-  /** `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. */
-  tone?: "danger" | "primary" | "secondary" | "success";
+  /**
+   * `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. On
+   * `variant="outline"`, `danger` draws the outline and its label in the danger colour. `suggest` is the
+   * AI accent as the one filled button (dark text on the solid accent, which light text fails AA on).
+   */
+  tone?: "danger" | "primary" | "secondary" | "suggest" | "success";
   variant?: ActionVariant;
 };
 
-const variantLook = (theme: ReturnType<typeof useTheme>) =>
+const variantLook = (theme: ReturnType<typeof useTheme>, danger: boolean) =>
   ({
-    // Dark text on a solid accent: suggest/destructive both fail AA with light text (§2.1,
-    // carried over from the legacy cva calibration), so `inverse` (dark) is deliberate, not a
-    // mistake inherited from `tone`'s own inverse-on-filled convention.
-    suggest: { background: brandChroma[4], border: "transparent", iconTone: "inverse" as IconTone },
-    destructive: { background: theme.guideOnAir.val, border: "transparent", iconTone: "inverse" as IconTone },
-    outline: { background: "transparent", border: theme.borderControl.val, iconTone: "content" as IconTone },
-    secondary: {
-      background: theme.surfaceElevated.val,
-      border: "transparent",
-      iconTone: "content" as IconTone,
+    outline: {
+      background: "transparent",
+      border: danger ? theme.stateDanger.val : theme.borderControl.val,
+      iconTone: (danger ? "danger" : "content") as IconTone,
     },
     ghost: { background: "transparent", border: "transparent", iconTone: "content" as IconTone },
-    link: { background: "transparent", border: "transparent", iconTone: "info" as IconTone },
   }) as const;
 
-const variantTextColor = (theme: ReturnType<typeof useTheme>, variant: ActionVariant) =>
-  variant === "suggest" || variant === "destructive"
-    ? theme.contentInverse.val
-    : variant === "link"
-      ? theme.stateInfo.val
-      : theme.contentPrimary.val;
+const variantTextColor = (theme: ReturnType<typeof useTheme>, variant: ActionVariant, danger: boolean) =>
+  variant === "outline" && danger ? theme.stateDanger.val : theme.contentPrimary.val;
 
 // Chains both sides' event handlers and concatenates (never tailwind-merges — this mirrors Base
 // UI's own `mergeProps`, which is Tailwind-unaware) `style`/`className` rather than letting
@@ -202,7 +196,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const compactIcon = compact && iconOnly && !tv;
     const textOnly = layout === "text";
     const iconLabel = iconOnly && typeof children === "string" ? children : undefined;
-    const look = variant ? variantLook(theme)[variant] : undefined;
+    const look = variant ? variantLook(theme, tone === "danger")[variant] : undefined;
     // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
     // under 3:1 on the destructive and suggest fills. A focused fill keeps its rest look
     // and gains a 3px foreground ring outside a gap of the surface behind it, so the ring sits
@@ -211,7 +205,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     // A danger tile is not a fill: it is the neutral tile with danger text, as iOS draws a
     // destructive alert button, because a solid red fill reads as on-air, which the system keeps
     // for live.
-    const filled = variant ? variant === "suggest" || variant === "destructive" : tone === "primary";
+    const filled = variant ? false : tone === "primary" || tone === "suggest";
     const focusRing =
       filled && focused
         ? {
@@ -223,11 +217,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         : undefined;
     const backgroundColor = look
       ? look.background
-      : tone === "primary"
-        ? theme.actionPrimary.val
-        : selected
-          ? theme.surfaceFocus.val
-          : theme.surfaceElevated.val;
+      : tone === "suggest"
+        ? brandChroma[4]
+        : tone === "primary"
+          ? theme.actionPrimary.val
+          : selected
+            ? theme.surfaceFocus.val
+            : theme.surfaceElevated.val;
     // Amber is focus, never selection (#1887). A selected secondary action is neutral-pressed
     // (#1909 Q1/Q2): the `surfaceFocus` fill, a foreground border and a heavier label, so the
     // current item reads from across a room while one amber border still marks where the remote is.
@@ -238,15 +234,17 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         : look.border
       : focused && !filled
         ? theme.actionFocus.val
-        : tone === "primary"
-          ? theme.actionPrimary.val
-          : pressed
-            ? theme.contentPrimary.val
-            : stacked
-              ? backgroundColor
-              : theme.borderControl.val;
+        : tone === "suggest"
+          ? brandChroma[4]
+          : tone === "primary"
+            ? theme.actionPrimary.val
+            : pressed
+              ? theme.contentPrimary.val
+              : stacked
+                ? backgroundColor
+                : theme.borderControl.val;
     const textColor = variant
-      ? variantTextColor(theme, variant)
+      ? variantTextColor(theme, variant, tone === "danger")
       : tone === "danger"
         ? theme.stateDanger.val
         : tone === "success"
@@ -271,7 +269,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         fontSize={typography[density].hint.size}
         fontWeight={typography[density].hint.weight}
         lineHeight={lineHeightPx(typography[density].hint.lineHeight)}
-        textDecorationLine={variant === "link" ? "underline" : undefined}
+        textDecorationLine="underline"
       >
         {children}
       </TamaguiText>
@@ -323,7 +321,6 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
           flexShrink={fitLabel ? 1 : undefined}
           fontWeight={labelWeight}
-          textDecorationLine={variant === "link" ? "underline" : undefined}
           {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
         >
           {children}
@@ -335,7 +332,6 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         fontFamily="body"
         fontSize={tv ? typography.tv.data.size : typography[density].label.size}
         fontWeight={labelWeight}
-        textDecorationLine={variant === "link" ? "underline" : undefined}
       >
         {children}
       </TamaguiText>
