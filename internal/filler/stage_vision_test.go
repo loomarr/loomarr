@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -17,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The vision rung (§10 V44's job, V51b's stage) — the expensive LAST tier. Its risk is the same as
@@ -150,8 +150,8 @@ var oneFrame = [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}
 
 // visionClip builds an untagged candidate clip vision has not read. Hash is DERIVED from the
 // path rather than equal to it, so a hash-keyed call and a path-keyed one stay distinguishable.
-func visionClip(path string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: clips.Clip{
+func visionClip(path string) clipstore.Clip {
+	return clipstore.Clip{Clip: clips.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial, DurationMs: 30_000,
 	}}
 }
@@ -159,7 +159,7 @@ func visionClip(path string) cliplibrary.StoreClip {
 // wordless marks a clip as a silent visual spot — the case vision exists for: no dialogue
 // (Language "none"), no transcript beyond the wordless sentinel. It stays untagged, so it is a
 // candidate.
-func wordless(c cliplibrary.StoreClip) cliplibrary.StoreClip {
+func wordless(c clipstore.Clip) clipstore.Clip {
 	c.Language = language.None
 	c.Transcript = clips.TranscriptNone
 	return c
@@ -167,7 +167,7 @@ func wordless(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 
 // fullyTagged marks a clip resolved by the cheaper tiers (era + audience + category), so it is NOT
 // a vision candidate.
-func fullyTagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
+func fullyTagged(c clipstore.Clip) clipstore.Clip {
 	c.Era = 1994
 	c.Audience = clips.Kids
 	c.Category = "toys"
@@ -183,7 +183,7 @@ func newVisionStage(st filler.VisionClipStore, tools tools.MediaTools, provider 
 
 // runVision applies + runs, failing the test on an unexpected error. It returns the applied flag so
 // a test can assert "did not run" by COST rather than by outcome.
-func runVision(t *testing.T, s *filler.VisionStage, c cliplibrary.StoreClip) bool {
+func runVision(t *testing.T, s *filler.VisionStage, c clipstore.Clip) bool {
 	t.Helper()
 	if applies, _ := s.Applies(context.Background(), c); !applies {
 		return false
@@ -433,7 +433,7 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 func TestVisionStage_SkipsClipsWithNothingToGain(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		clip cliplibrary.StoreClip
+		clip clipstore.Clip
 	}{
 		{"already fully tagged", fullyTagged(visionClip("done.mp4"))},
 	} {

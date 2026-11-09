@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The LANGUAGE stage (§10 V51b): what language is the speech in, and does some channel air it
@@ -55,7 +55,7 @@ func (s *LanguageStage) ID() pipelinestate.StageID { return pipelinestate.StageL
 func (s *LanguageStage) Cost() StageCost { return CostWhisper }
 
 // Applies when the gate is on and this clip has not been heard yet.
-func (s *LanguageStage) Applies(ctx context.Context, c cliplibrary.StoreClip) (bool, string) {
+func (s *LanguageStage) Applies(ctx context.Context, c clipstore.Clip) (bool, string) {
 	if s.detector == nil {
 		return false, "no language backend is configured"
 	}
@@ -80,7 +80,7 @@ func (s *LanguageStage) Applies(ctx context.Context, c cliplibrary.StoreClip) (b
 }
 
 // Run hears the clip, records the answer, and rejects a foreign one.
-func (s *LanguageStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
+func (s *LanguageStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, error) {
 	want := ""
 	if s.want != nil {
 		var err error

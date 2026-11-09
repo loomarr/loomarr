@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 30 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
+- **platform** · 31 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
 - **library** · 9 imports — the titles a channel plays: `provision` keys and states, `library/inventory` breakanalysis, and `library/titlesearch` candidates for re-curation
 - **proposals** · 5 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
 - **filler** · 3 imports — asking the filler engine for the pod that fills a break
@@ -16,7 +16,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`channels`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/proposalstore`, `playout`, `playout/tunarr`, `provision`
+- **`channels`** · 5 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/tunarr`, `provision`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`channels/approval`** · 2 importers · → `channels/schedule`, `platform/rating`, `platform/store`, `platform/store/activitystore`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `provision`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.

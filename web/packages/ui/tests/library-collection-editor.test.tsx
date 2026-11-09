@@ -22,7 +22,14 @@ type Host = Parameters<typeof createRoot>[0] & {
 };
 const doc = (
   globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
+    document: {
+      body: {
+        append(n: unknown): void;
+        querySelectorAll: Host["querySelectorAll"];
+        textContent: string | null;
+      };
+      createElement(t: string): Host;
+    };
   }
 ).document;
 
@@ -59,8 +66,9 @@ const render = (overrides: Partial<LibraryCollectionEditorProps>) => {
       </LoomarrProvider>,
     ),
   );
+  // The whole document: the delete dialog may draw outside host.
   const button = (name: string) => {
-    const hit = Array.from(host.querySelectorAll('[role="button"], button')).find(
+    const hit = Array.from(doc.body.querySelectorAll('[role="button"], button')).find(
       (n) => n.textContent?.trim() === name || n.getAttribute("aria-label") === name,
     );
     if (!hit) throw new Error(`missing button: ${name}`);
@@ -88,11 +96,17 @@ describe("LibraryCollectionEditor", () => {
     cleanup();
   });
 
-  it("says no channel uses it, and deletes it", () => {
+  it("says no channel uses it, and deletes it once asked", () => {
     const { host, props, button, cleanup } = render({});
     expect(host.textContent).toContain("No channel uses this collection.");
     act(() => button("Delete collection").click());
-    expect(props.onDelete).toHaveBeenCalled();
+    expect(props.onDelete).not.toHaveBeenCalled();
+    expect(doc.body.textContent).toContain("nothing stops airing");
+    act(() => button("Keep it").click());
+    expect(props.onDelete).not.toHaveBeenCalled();
+    act(() => button("Delete collection").click());
+    act(() => button("Delete").click());
+    expect(props.onDelete).toHaveBeenCalledTimes(1);
     cleanup();
   });
 

@@ -1,6 +1,7 @@
 import { Action, Field, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { type ReactNode, useEffect, useState } from "react";
 
+import { ModalOverlay } from "../../overlay";
 import type { LibraryCollectionChannel } from "../library-collections/library-collections.type";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import type {
@@ -142,21 +143,42 @@ const Footer = ({
   busy,
   failed,
   name,
+  members,
   onDelete,
   onCancel,
   onSave,
 }: Pick<
   LibraryCollectionEditorProps,
-  "saved" | "usedBy" | "busy" | "failed" | "name" | "onDelete" | "onCancel" | "onSave"
+  "saved" | "usedBy" | "busy" | "failed" | "name" | "members" | "onDelete" | "onCancel" | "onSave"
 >): ReactNode => {
   const used = usedBy.length > 0;
+  // A deleted collection can't be brought back, so Delete asks first (#3249, option B).
+  const [asking, setAsking] = useState(false);
+  const titles = members.length === 1 ? "Its one title stays" : `Its ${members.length} titles stay`;
   return (
     <Stack gap="inline">
+      <ModalOverlay
+        actions={[
+          { label: "Keep it", onPress: () => setAsking(false), preferredFocus: true, tone: "secondary" },
+          {
+            label: "Delete",
+            onPress: () => {
+              setAsking(false);
+              onDelete();
+            },
+            tone: "danger",
+          },
+        ]}
+        description={`No channel uses it, so nothing stops airing. ${titles} in your library.`}
+        onDismiss={() => setAsking(false)}
+        title={`Delete ${name.trim() || "this collection"}?`}
+        visible={asking}
+      />
       <Line alignItems="flex-start" justifyContent="space-between" rowGap="control">
         {saved ? (
           <Stack gap={4}>
             <Line>
-              <Action disabled={used || busy} onPress={onDelete} tone="danger" variant="outline">
+              <Action disabled={used || busy} onPress={() => setAsking(true)} tone="danger" variant="outline">
                 Delete collection
               </Action>
             </Line>
@@ -229,6 +251,7 @@ const LibraryCollectionEditor = (props: LibraryCollectionEditorProps) => {
       <Footer
         busy={props.busy}
         failed={props.failed}
+        members={props.members}
         name={props.name}
         onCancel={props.onCancel}
         onDelete={props.onDelete}

@@ -1,12 +1,12 @@
 import {
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   type GuideAiringLayout,
   type GuideChannelLayout,
   type GuideHealthState,
   type GuideNavigationDirection,
   type GuideSelection,
-  guideAiringLabel,
   guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
@@ -170,7 +170,7 @@ const Block = ({
   return (
     <PreviewAnchor content={preview}>
       <Pressable
-        accessibilityLabel={`${guideAiringLabel(a)}, ${when}`}
+        accessibilityLabel={`${formatProgrammeTitle(a)}, ${when}`}
         accessibilityRole="button"
         // tabIndex, not focusable: react-native-web ignores focusable on a Pressable.
         tabIndex={focusable ? 0 : -1}
@@ -247,7 +247,7 @@ const Block = ({
                 textRole="cardLabel"
                 tone={pending || kind === "flex" ? "muted" : "primary"}
               >
-                {hasSeries ? a.title : guideAiringLabel(a)}{" "}
+                {hasSeries ? a.title : formatProgrammeTitle(a)}{" "}
               </Text>
               {!hasSeries && px >= META_MIN ? (
                 <Text numberOfLines={1} textAlign="left" textRole="guideMeta">

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The ingest pipeline (§10 V51b): one ordered, per-clip run replacing seven independent cron
@@ -46,7 +46,7 @@ const (
 // StageResult is what a stage reports back.
 type StageResult struct {
 	// Clip is the (possibly updated) clip — the transcode stage changes Path/Quality/DurationMs.
-	Clip cliplibrary.StoreClip
+	Clip clipstore.Clip
 	// Verdict decides whether the clip continues, stops for a human, or is refused.
 	Verdict pipelinestate.Verdict
 	// Reason + Detail are set when Verdict is VerdictReject: a stable code and the measured fact.
@@ -68,9 +68,9 @@ type Stage interface {
 	// ⚠ Re-evaluated on every pass, which is what makes a setting change retroactive: flipping
 	// `filler.vision.enabled` on picks up clips that already went past that rung, with no
 	// migration and no re-sweep.
-	Applies(ctx context.Context, c cliplibrary.StoreClip) (bool, string)
+	Applies(ctx context.Context, c clipstore.Clip) (bool, string)
 	// Run does the work for one clip. Progress goes through the context's ProgressFunc.
-	Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error)
+	Run(ctx context.Context, c clipstore.Clip) (StageResult, error)
 	Cost() StageCost
 }
 
@@ -197,7 +197,7 @@ type PipelineStore interface {
 	PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error)
 	// ListClipsWithoutPipeline returns catalogued clips that have no pipeline row yet — the
 	// lazy enrolment the pipeline self-heals with, instead of a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error)
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]clipstore.Clip, error)
 	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error)
 	UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error
@@ -208,7 +208,7 @@ type PipelineStore interface {
 
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
-	GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error)
+	GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error)
 	// HoldClips keeps every review verdict out of rotation, including a previously-Ready clip that
 	// was not already held when a later quality check asked for help.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
@@ -220,7 +220,7 @@ type ClipStore interface {
 
 // Notifier receives every state change so it can be published (SSE) — best-effort, never
 // load-bearing. The persisted row is the truth; this is the latency optimisation (§8).
-type Notifier func(p pipelinestate.ClipPipeline, c cliplibrary.StoreClip)
+type Notifier func(p pipelinestate.ClipPipeline, c clipstore.Clip)
 
 // Pipeline runs clips through the stages.
 type Pipeline struct {
@@ -771,7 +771,7 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 // a held clip, so such a row failed every attempt and only ever backed off. The clip is already
 // playable, so nothing is republished and Kind/placement stay as they are; only the row settles,
 // with a note saying why. Any other identity mismatch is left for Commit to refuse as stale.
-func settleReleased(row pipelinestate.ClipPipeline, clip cliplibrary.StoreClip, at time.Time) (pipelinestate.ClipPipeline, bool) {
+func settleReleased(row pipelinestate.ClipPipeline, clip clipstore.Clip, at time.Time) (pipelinestate.ClipPipeline, bool) {
 	if clip.Hash == "" || clip.Path == "" || row.ClipHash != clip.Hash || clip.Held ||
 		!clip.RemovedAt.IsZero() || clip.IsComposite || row.Disposition != pipelinestate.DispositionRunning ||
 		validateCompletedReadyLadder(row) != nil {
@@ -833,7 +833,7 @@ func (p *Pipeline) repairLadderGaps(row *pipelinestate.ClipPipeline) bool {
 // took a work slot on every pass (#1392). The row is never skipped past the finish rung, since
 // readiness requires it to have completed, so at MaxAttempts it keeps retrying at the longest
 // backoff — the same fail-closed shape screening uses.
-func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPipeline, clip cliplibrary.StoreClip, cause error) error {
+func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip, cause error) error {
 	now := p.now().UTC()
 	if row.Attempts > MaxAttempts {
 		row.Attempts = MaxAttempts
@@ -851,7 +851,7 @@ func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPip
 // clip is then left `running` at the head of the queue and every later clip starves. A stage panic
 // is an execution failure, not evidence that the media is bad, so the ordinary retry policy below
 // remains the single place that decides whether to retry, skip, or reject it.
-func (p *Pipeline) runStage(ctx context.Context, stage Stage, clip cliplibrary.StoreClip) (out StageResult, err error) {
+func (p *Pipeline) runStage(ctx context.Context, stage Stage, clip clipstore.Clip) (out StageResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("stage %s panicked: %v", stage.ID(), recovered)
@@ -896,7 +896,7 @@ func (p *Pipeline) step(row *pipelinestate.ClipPipeline, at time.Time) bool {
 //
 // The timeout is short and fixed: this is one row write, and if the store cannot take it in five
 // seconds the next pass re-derives the same state anyway.
-func (p *Pipeline) persist(ctx context.Context, row pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) error {
+func (p *Pipeline) persist(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip) error {
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	return p.save(saveCtx, row, clip)
@@ -973,7 +973,7 @@ const (
 )
 
 // stageProgress builds the ProgressFunc for one stage run, owning that run's throttle state.
-func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) pipelinestate.ProgressFunc {
+func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip clipstore.Clip) pipelinestate.ProgressFunc {
 	// Seeded from the write the runner just made when it set the stage RUNNING at 0.
 	t := &progressThrottle{lastWritten: 0, lastWriteAt: p.now()}
 	return func(id pipelinestate.StageID, percent int) {
@@ -987,7 +987,7 @@ func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPip
 // to survive a reload is which stage a clip is at and whether it is running; the percentage is
 // decoration. Putting a synchronous SQLite write on ffmpeg's progress path — which emits about
 // once a second, per clip — to persist decoration is the wrong trade.
-func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip cliplibrary.StoreClip, t *progressThrottle, id pipelinestate.StageID, percent int) {
+func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip clipstore.Clip, t *progressThrottle, id pipelinestate.StageID, percent int) {
 	if id != row.Stage {
 		return
 	}
@@ -1019,7 +1019,7 @@ func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeli
 }
 
 // writeProgress persists the row and moves the throttle baseline, keeping the two in step.
-func (p *Pipeline) writeProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip cliplibrary.StoreClip, t *progressThrottle, percent int) {
+func (p *Pipeline) writeProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip clipstore.Clip, t *progressThrottle, percent int) {
 	if err := p.save(ctx, *row, clip); err != nil {
 		// ⚠ The baseline stays put on a failed write, so the next sample retries rather than
 		// waiting another 10 points for a write that never landed.
@@ -1053,7 +1053,7 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 // save applies an airability gate, writes the row, tombstones a refused clip, and publishes the
 // result. A review is not terminal until its clip is held: otherwise a transient store failure
 // could leave content the operator was explicitly asked to inspect eligible for a pod forever.
-func (p *Pipeline) save(ctx context.Context, row pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) error {
+func (p *Pipeline) save(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip) error {
 	row.UpdatedAt = p.now().UTC()
 	applyPreparationProgress(&row)
 	row.UnscheduleIfTerminal()
@@ -1087,7 +1087,7 @@ func (p *Pipeline) save(ctx context.Context, row pipelinestate.ClipPipeline, cli
 // Best-effort by design: the pipeline row is already committed, so a failure here leaves a clip
 // marked rejected and still airable until the next pass re-saves it — noisy but recoverable, and
 // strictly better than failing the run and losing the reason too.
-func (p *Pipeline) tombstone(ctx context.Context, clip cliplibrary.StoreClip) {
+func (p *Pipeline) tombstone(ctx context.Context, clip clipstore.Clip) {
 	if clip.Path == "" {
 		return
 	}
@@ -1096,7 +1096,7 @@ func (p *Pipeline) tombstone(ctx context.Context, clip cliplibrary.StoreClip) {
 	}
 }
 
-func (p *Pipeline) publish(row pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) {
+func (p *Pipeline) publish(row pipelinestate.ClipPipeline, clip clipstore.Clip) {
 	if p.notify != nil {
 		p.notify(row, clip)
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Matcher defaults (#2151 step 11, decision 27).
@@ -45,8 +45,8 @@ type Searcher func(ctx context.Context, term string, limit int) ([]SearchHit, er
 
 // MatchStore is where the Matcher finds titles nothing grounds and keeps what it found for them.
 type MatchStore interface {
-	LibraryNeeds(ctx context.Context) ([]store.LibraryNeed, error)
-	SaveLibraryCandidates(ctx context.Context, itemID, searched string, candidates []store.LibraryCandidate) error
+	LibraryNeeds(ctx context.Context) ([]librarystore.LibraryNeed, error)
+	SaveLibraryCandidates(ctx context.Context, itemID, searched string, candidates []librarystore.LibraryCandidate) error
 }
 
 // Matcher searches the catalog for each title nothing grounds and nobody answered, and keeps its
@@ -132,7 +132,7 @@ func (e evidence) fits(kind string, rec mp.Record) bool {
 
 // settles is whether a candidate agrees on everything: the name; the year (a series without one
 // in its folder name is checked without it); and the length or the episodes.
-func (e evidence) settles(c store.LibraryCandidate) bool {
+func (e evidence) settles(c librarystore.LibraryCandidate) bool {
 	yearOK := c.YearMatch || (c.Kind == string(mp.KindSeries) && e.year == 0)
 	return c.NameMatch && yearOK && c.LengthMatch
 }
@@ -203,8 +203,8 @@ func (m *Matcher) Tick(ctx context.Context) error {
 // candidates searches for one title and ranks what it finds. settled is the catalog id of the one
 // candidate that agrees on everything the title can be checked by (decisions 56 and 57), or zero
 // when none or more than one does: then the maintainer decides (decision 58).
-func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, ev evidence) (
-	_ []store.LibraryCandidate, settled mp.ExternalID, _ error,
+func (m *Matcher) candidates(ctx context.Context, need librarystore.LibraryNeed, title string, ev evidence) (
+	_ []librarystore.LibraryCandidate, settled mp.ExternalID, _ error,
 ) {
 	if err := m.wait(ctx); err != nil {
 		return nil, mp.ExternalID{}, err
@@ -213,7 +213,7 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 	if err != nil {
 		return nil, mp.ExternalID{}, err
 	}
-	var out []store.LibraryCandidate
+	var out []librarystore.LibraryCandidate
 	for _, hit := range hits {
 		if hit.Kind != need.Kind {
 			continue
@@ -221,7 +221,7 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 		if len(out) == matchSearched {
 			break
 		}
-		c := store.LibraryCandidate{
+		c := librarystore.LibraryCandidate{
 			Kind: hit.Kind, ID: libraryID(hit.ID), Name: hit.Name, Year: hit.Year, Overview: hit.Overview,
 			NameMatch: sameName(hit.Name, title), YearMatch: sameYear(hit.Year, ev.year),
 		}
@@ -252,7 +252,7 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 }
 
 // agreement ranks a candidate: the name counts most, then the year, then the length.
-func agreement(c store.LibraryCandidate) int {
+func agreement(c librarystore.LibraryCandidate) int {
 	n := 0
 	if c.NameMatch {
 		n += 4
@@ -285,7 +285,7 @@ func (m *Matcher) details(ctx context.Context, hit SearchHit) (mp.Record, bool) 
 
 // length is a title's length from its files' headers: the longest, for a movie with an extra
 // copy. Zero when no header is read yet.
-func (m *Matcher) length(ctx context.Context, need store.LibraryNeed) time.Duration {
+func (m *Matcher) length(ctx context.Context, need librarystore.LibraryNeed) time.Duration {
 	if m.Inventory == nil || need.Kind != string(mp.KindMovie) {
 		return 0
 	}
@@ -303,7 +303,7 @@ func (m *Matcher) length(ctx context.Context, need store.LibraryNeed) time.Durat
 }
 
 // episodes is a series' episodes on disk by season; nil for a movie, or when they can't be read.
-func (m *Matcher) episodes(ctx context.Context, need store.LibraryNeed) map[int]int {
+func (m *Matcher) episodes(ctx context.Context, need librarystore.LibraryNeed) map[int]int {
 	if m.Episodes == nil || need.Kind != string(mp.KindSeries) {
 		return nil
 	}

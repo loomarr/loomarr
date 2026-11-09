@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // PlaybackHeadroom answers whether live playback needs the machine right now (#1512 G5).
@@ -78,7 +78,7 @@ func preemptedByPlayback(c StageCost) bool {
 // runYielding runs a preemptible rung under the playback budget's background context. When that
 // context ends while the pass's own has not, playback took the machine: the rung yields as a
 // deferral (no attempt spent, due next pass) and the rest of this pass starts no media work.
-func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip cliplibrary.StoreClip) (StageResult, error) {
+func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip clipstore.Clip) (StageResult, error) {
 	if p.headroom == nil || !preemptedByPlayback(stage.Cost()) {
 		return p.runStage(ctx, stage, clip)
 	}

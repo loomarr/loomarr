@@ -98,9 +98,11 @@ describe("DefectReview", () => {
     expect(text).toContain("3 of 4");
     expect(text).toContain("Sunbeam Juice");
     expect(text).toContain("1988 · Tape era");
-    expect(text).toContain("Softness 8.7, borderline (bar 8)");
+    expect(text).toContain("Slightly soft picture");
+    expect(text).not.toContain("(bar");
     expect(text).not.toContain("Compression blocks");
-    expect(text).toContain("Judge (m1): pass, “soft VHS”");
+    expect(text).toContain("A second look by a vision model: it passes, “soft VHS”");
+    expect(text).not.toContain("m1");
     expect(text).toContain("41 clips left to label");
     expect(text).toContain("player");
     expect(Array.from(host.querySelectorAll('[role="row"]'))).toHaveLength(2);

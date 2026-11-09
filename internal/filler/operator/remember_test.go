@@ -1,0 +1,108 @@
+package operator
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/records"
+)
+
+// recordingSources captures what got registered, and can fail on demand.
+type recordingSources struct {
+	upserted []records.FillerSource
+	err      error
+}
+
+func (r *recordingSources) ListFillerSources(context.Context) ([]records.FillerSource, error) {
+	return r.upserted, nil
+}
+
+func (r *recordingSources) ListFillerProviders(context.Context) ([]records.FillerProvider, error) {
+	return []records.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
+}
+
+func (r *recordingSources) UpsertFillerSource(_ context.Context, s records.FillerSource) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.upserted = append(r.upserted, s)
+	return nil
+}
+
+func TestRememberSources(t *testing.T) {
+	t.Parallel()
+	fixed := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
+	newOperator := func(rs *recordingSources) *Operator {
+		return New(Config{Sources: rs, Now: func() time.Time { return fixed }})
+	}
+
+	t.Run("registers an archive item by its identifier", func(t *testing.T) {
+		rs := &recordingSources{}
+		newOperator(rs).rememberSources(context.Background(),
+			[]string{"https://archive.org/details/classic_tv_commercials"})
+
+		if len(rs.upserted) != 1 {
+			t.Fatalf("registered %d sources, want 1", len(rs.upserted))
+		}
+		got := rs.upserted[0]
+		// Keyed by IDENTIFIER, not the URL: re-adding the same collection spelled a
+		// different way must update one row rather than growing a second.
+		if got.ID != "classic_tv_commercials" {
+			t.Errorf("id = %q, want the archive identifier", got.ID)
+		}
+		if got.Kind != "archive" {
+			t.Errorf("kind = %q, want archive", got.Kind)
+		}
+		if !got.CreatedAt.Equal(fixed) {
+			t.Errorf("CreatedAt = %v, want the injected clock", got.CreatedAt)
+		}
+	})
+
+	// ⚠ A YouTube URL is a VIDEO, not a source with state to remember. Nothing about it needs
+	// a licence, a fetch cursor or a name someone chose, and a row per video would turn the
+	// registry into a second, worse clip list.
+	t.Run("ignores non-archive urls", func(t *testing.T) {
+		rs := &recordingSources{}
+		newOperator(rs).rememberSources(context.Background(), []string{
+			"https://www.youtube.com/watch?v=abc123",
+			"https://www.youtube.com/playlist?list=PL123",
+		})
+		if len(rs.upserted) != 0 {
+			t.Errorf("registered %v, want nothing for YouTube urls", rs.upserted)
+		}
+	})
+
+	// ⚠ THE property this is best-effort for: a registry failure must not be able to stop a
+	// download. The method returns nothing, so this asserts it does not panic and leaves the
+	// caller free to proceed.
+	t.Run("survives a store failure", func(t *testing.T) {
+		rs := &recordingSources{err: errors.New("disk full")}
+		newOperator(rs).rememberSources(context.Background(),
+			[]string{"https://archive.org/details/x"})
+		// Reaching here without a panic IS the assertion.
+	})
+
+	t.Run("does nothing when no store is wired", func(t *testing.T) {
+		New(Config{}).rememberSources(context.Background(),
+			[]string{"https://archive.org/details/x"})
+	})
+}
+
+func TestArchiveIDFrom(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ in, want string }{
+		{"https://archive.org/details/classic_tv_commercials", "classic_tv_commercials"},
+		{"http://archive.org/details/item-1/", "item-1"},
+		{"https://archive.org/details/item-2?start=3", "item-2"},
+		{"https://archive.org/details/item-3#play", "item-3"},
+		{"https://www.youtube.com/watch?v=abc", ""},
+		{"not a url", ""},
+		{"", ""},
+	} {
+		if got := archiveIDFrom(tc.in); got != tc.want {
+			t.Errorf("archiveIDFrom(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
