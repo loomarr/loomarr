@@ -1,6 +1,5 @@
-import { Action } from "@loomarr/design-system";
+import { Action, ActivityIndicator } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -49,7 +48,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
       <div className="border-border flex items-baseline gap-2.5 border-b px-4 py-3.5">
         <h2 className="text-sm font-medium">Services</h2>
         <span className="text-muted-foreground ml-auto flex items-center gap-1.5 font-mono text-xs">
-          {refreshing ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}
+          {refreshing ? <ActivityIndicator decorative size="compact" tone="inherit" /> : null}
           checked every 30s · the same checks Settings runs
         </span>
       </div>

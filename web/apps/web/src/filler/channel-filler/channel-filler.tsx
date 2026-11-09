@@ -15,11 +15,12 @@ import {
   DialogTitle,
   Disclosure,
   Field,
+  Icon,
+  icons,
   Surface,
   Text,
 } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
 import { type ComponentProps, useEffect, useState } from "react";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
@@ -342,7 +343,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             to="/filler"
             className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
           >
-            <ArrowLeft className="size-3.5" aria-hidden />
+            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
             Filler overview
           </Link>
         ) : null}

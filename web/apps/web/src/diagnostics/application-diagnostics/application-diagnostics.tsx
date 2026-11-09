@@ -8,6 +8,8 @@ import {
   Action,
   CompactSelect,
   Field,
+  Icon,
+  icons,
   StatusDot,
   type StatusTone,
   Surface,
@@ -16,7 +18,6 @@ import {
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Radio } from "lucide-react";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import {
@@ -244,7 +245,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
         {capture?.active ? (
           <>
             <span className="inline-flex items-center gap-2 text-sm">
-              <Radio aria-hidden className="text-caution size-4" />
+              <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
               Active until {formatTime(capture.endsAt ?? Date.now())}
             </span>
             <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
@@ -516,12 +517,13 @@ const ApplicationDiagnostics = ({
         )}
         {downloadState === "failed" && (
           <span className="text-onair inline-flex items-center gap-1">
-            <AlertTriangle aria-hidden className="size-3" /> Download failed
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
           </span>
         )}
         {dropped > 0 && (
           <span className="text-caution inline-flex items-center gap-1">
-            <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
+            since startup
           </span>
         )}
       </fieldset>

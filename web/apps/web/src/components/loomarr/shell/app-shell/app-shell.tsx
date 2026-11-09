@@ -1,19 +1,5 @@
-import { Tooltip } from "@loomarr/design-system";
+import { Icon, icons, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
-import {
-  BadgeInfo,
-  CalendarClock,
-  Clapperboard,
-  House,
-  Inbox,
-  Library as LibraryIcon,
-  ListChecks,
-  LogOut,
-  PlayCircle,
-  Search,
-  Settings,
-  Users,
-} from "lucide-react";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
@@ -60,21 +46,21 @@ const PHONE_HEADER_HEIGHT = 49;
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
   // `dashboard`, and so is the route, so bookmarks keep working).
-  { to: "/dashboard", label: "Home", icon: House },
+  { to: "/dashboard", label: "Home", icon: "home" },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
   // one grid. The fold completed when the grid grew the origination affordance the mock always
   // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
   // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
-  { to: "/guide", label: "Guide", icon: CalendarClock },
+  { to: "/guide", label: "Guide", icon: "schedule" },
   // The titles Loomarr found in its media folders (#2151 decision 22, design/library).
-  { to: "/library", label: "Library", icon: LibraryIcon },
-  { to: "/requests", label: "Requests", icon: Inbox },
-  { to: "/filler", label: "Filler", icon: Clapperboard },
-  { to: "/people", label: "People", icon: Users },
-  { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/help", label: "Help", icon: ListChecks },
+  { to: "/library", label: "Library", icon: "library" },
+  { to: "/requests", label: "Requests", icon: "requests" },
+  { to: "/filler", label: "Filler", icon: "filler" },
+  { to: "/people", label: "People", icon: "people" },
+  { to: "/settings", label: "Settings", icon: "settings" },
+  { to: "/help", label: "Help", icon: "help" },
 ];
 
 // The member's four. Same routes, named for what a member is doing with them — and the
@@ -90,11 +76,11 @@ const ADMIN_NAV: NavItem[] = [
 // Home leads it too (#1659): the member Home carries no machine state, which is what §11 kept
 // from members.
 const MEMBER_NAV: NavItem[] = [
-  { to: "/dashboard", label: "Home", icon: House },
-  { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/requests", label: "Requests", icon: Inbox },
-  { to: "/settings/notifications", label: "Notifications", icon: Settings },
-  { to: "/help", label: "Help", icon: ListChecks },
+  { to: "/dashboard", label: "Home", icon: "home" },
+  { to: "/guide", label: "Guide", icon: "schedule" },
+  { to: "/requests", label: "Requests", icon: "requests" },
+  { to: "/settings/notifications", label: "Notifications", icon: "settings" },
+  { to: "/help", label: "Help", icon: "help" },
 ];
 
 // Watch's rail position (#1817 item 3, decision X2, matching the #1839 phone-bottom-bar draft):
@@ -107,7 +93,7 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
     to: "/watch/$id",
     channelId: watchChannelId,
     label: "Watch",
-    icon: PlayCircle,
+    icon: "play",
   };
   return [base[0], watch, ...base.slice(1)].filter(
     (item): item is NavItem | WatchNavItem => item !== undefined,
@@ -144,7 +130,7 @@ const AppShell = ({
   // The footer's version line, inside a link to About for an admin and plain text for a member.
   const versionLabel = (
     <>
-      <BadgeInfo className="size-4 shrink-0" aria-hidden />
+      <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
       <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
     </>
   );
@@ -180,13 +166,13 @@ const AppShell = ({
               FOCUS_RING,
             )}
           >
-            <Search className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
             <span>Search…</span>
             <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
-            const { label, icon: Icon } = item;
+            const { label, icon } = item;
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
             // Watch's href always points at ONE channel, but any channel's /watch/$id route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
@@ -210,7 +196,7 @@ const AppShell = ({
             );
             const content = (
               <>
-                <Icon className="size-4" aria-hidden />
+                <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
                 <span>{label}</span>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
@@ -296,7 +282,7 @@ const AppShell = ({
                   FOCUS_RING,
                 )}
               >
-                <LogOut className="size-4" aria-hidden />
+                <Icon decorative glyph={icons.signOut} size="compact" tone="inherit" />
               </button>
             </Tooltip>
           )}

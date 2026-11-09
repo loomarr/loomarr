@@ -18,8 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Text, Tooltip } from "@loomarr/design-system";
-import { GripVertical } from "lucide-react";
+import { Action, Badge, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -145,7 +144,7 @@ const SortableLineupRow = ({
         aria-label={`Reorder ${entry.name}`}
         className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <GripVertical className="size-4" aria-hidden />
+        <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
       </button>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">

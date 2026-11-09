@@ -2,9 +2,8 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
-import { Badge, type BadgeTone, Card, Tooltip } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Card, Icon, icons, Tooltip } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
-import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
@@ -131,7 +130,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
             aria-label={`Channel id ${channel.channelId}`}
             className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
           >
-            <Info className="size-3" aria-hidden />
+            <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
           </button>
         </Tooltip>
       </div>

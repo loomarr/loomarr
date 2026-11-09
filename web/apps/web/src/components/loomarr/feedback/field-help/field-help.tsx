@@ -1,5 +1,4 @@
-import { Tooltip } from "@loomarr/design-system";
-import { Info } from "lucide-react";
+import { Icon, icons, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
@@ -41,7 +40,7 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
           className,
         )}
       >
-        <Info className="size-3.5" aria-hidden />
+        <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
         {!describedById && (
           <span id={descriptionId} className="sr-only">
             {children}

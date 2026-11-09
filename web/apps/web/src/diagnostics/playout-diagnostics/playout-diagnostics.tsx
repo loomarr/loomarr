@@ -6,6 +6,8 @@ import {
   Action,
   CompactSelect,
   Field,
+  Icon,
+  icons,
   StatusDot,
   type StatusTone,
   Surface,
@@ -14,7 +16,6 @@ import {
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { CopyValue } from "../copy-value";
@@ -169,8 +170,8 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
       </div>
       {(query.data.truncated || query.data.discarded > 0) && (
         <p className="text-caution flex items-center gap-1 text-xs">
-          <AlertTriangle aria-hidden className="size-3" /> Output is truncated; {query.data.discarded} earlier
-          lines were discarded.
+          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Output is truncated;{" "}
+          {query.data.discarded} earlier lines were discarded.
         </p>
       )}
       <pre

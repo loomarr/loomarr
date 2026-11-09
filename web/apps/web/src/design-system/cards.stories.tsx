@@ -1,4 +1,4 @@
-import { Text } from "@loomarr/design-system";
+import { Icon, icons, Text } from "@loomarr/design-system";
 import {
   CardAction,
   CardStatus,
@@ -9,7 +9,6 @@ import {
   RowCard,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Archive, FolderOpen } from "lucide-react";
 
 // The two card families (#2765, Direction mock "Two families"): a picture card for things with a
 // picture (programmes, titles, clips, requests) and a row card for things without one (channels,
@@ -182,13 +181,13 @@ const Rows: Story = {
     <ListGroup aria-label="Sources">
       <RowCard
         action={<CardAction>Check now</CardAction>}
-        lead={<FolderOpen aria-hidden size={20} />}
+        lead={<Icon decorative glyph={icons.folder} size="default" tone="muted" />}
         meta={[<CardStatus key="s" label="Ready" tone="ok" />, "42 clips · checked 2 hours ago"]}
         title="Drop folder"
       />
       <RowCard
         action={<CardAction attention>Try again</CardAction>}
-        lead={<Archive aria-hidden size={20} />}
+        lead={<Icon decorative glyph={icons.archive} size="default" tone="muted" />}
         meta={[
           <CardStatus key="s" label="Hasn’t checked in for 23 hours" tone="warn" />,
           "18 clips · last checked 23 hours ago",

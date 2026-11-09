@@ -8,10 +8,9 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Badge, Field } from "@loomarr/design-system";
+import { Action, Badge, Field, Icon, icons } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
-import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
@@ -199,7 +198,9 @@ const ManualChannelBuilder = ({
                     templateId === template.id && "border-suggest bg-suggest-tint-15",
                   )}
                 >
-                  <Sparkles className="text-suggest mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span className="mt-0.5 flex">
+                    <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
+                  </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{template.label}</span>
                     <span className="text-muted-foreground block text-sm">{template.description}</span>

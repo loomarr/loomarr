@@ -1,6 +1,5 @@
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action } from "@loomarr/design-system";
-import { Loader2, Sparkles } from "lucide-react";
+import { Action, ActivityIndicator, Icon, icons } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useCompleteSetup } from "../use-complete-setup";
@@ -56,9 +55,13 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
               className="border-border bg-card hover:border-suggest flex w-full cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors disabled:opacity-50"
             >
               {complete.isPending && chosen === t.id ? (
-                <Loader2 className="text-suggest mt-0.5 size-4 shrink-0 animate-spin" aria-hidden />
+                <span className="mt-0.5 flex">
+                  <ActivityIndicator decorative size="compact" tone="suggest" />
+                </span>
               ) : (
-                <Sparkles className="text-suggest mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="mt-0.5 flex">
+                  <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
+                </span>
               )}
               <span className="min-w-0">
                 <span className="block text-sm font-medium">{t.label}</span>

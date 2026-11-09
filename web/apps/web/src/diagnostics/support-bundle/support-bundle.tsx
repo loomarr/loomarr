@@ -13,11 +13,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Icon,
+  icons,
   LoadingStrip,
   Toggle,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
-import { Settings2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 
@@ -230,7 +231,9 @@ const SupportBundle = ({
                 </form.Field>
               </div>
               <div className="border-success/30 bg-success/5 mt-4 flex items-start gap-2 rounded-md border p-3">
-                <ShieldCheck className="text-lock mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="mt-0.5 flex">
+                  <Icon decorative glyph={icons.verified} size="compact" tone="success" />
+                </span>
                 <p className="text-muted-foreground text-xs">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
                 </p>
@@ -284,7 +287,10 @@ const SupportBundle = ({
 
             <details className="border-border rounded-lg border p-4">
               <summary className="cursor-pointer text-sm font-medium">
-                <Settings2 className="mr-2 inline size-4" aria-hidden /> Customize report
+                <span className="mr-2 inline-flex align-middle">
+                  <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
+                </span>{" "}
+                Customize report
               </summary>
               <div className="mt-4 space-y-4">
                 <fieldset>

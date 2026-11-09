@@ -1,8 +1,7 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
-import { X } from "lucide-react";
+import { Action, Icon, icons, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
@@ -81,7 +80,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
                 className="text-muted-foreground hover:text-foreground"
                 onClick={() => commit(series.filter((k) => k !== key))}
               >
-                <X className="size-3.5" aria-hidden />
+                <Icon decorative glyph={icons.close} size="compact" tone="inherit" />
               </button>
             </li>
           ))}

@@ -2,10 +2,9 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { Action } from "@loomarr/design-system";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Check } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
@@ -71,7 +70,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
             "Signed in as ⏎ fictional ⏎ …" with a stray gap around the name. Kept as ONE
             text node inside a <span> so the formatter cannot break it mid-sentence. */}
         <p className="flex items-center gap-2 text-sm">
-          <Check className="text-signal size-4 shrink-0" aria-hidden />
+          <Icon decorative glyph={icons.selected} size="compact" tone="primary" />
           <span>Your admin account is ready. You&rsquo;re signed in as {ownerName}.</span>
         </p>
         {/* Plain language over mechanism: "bootstrap runs once" is our word for it, not the

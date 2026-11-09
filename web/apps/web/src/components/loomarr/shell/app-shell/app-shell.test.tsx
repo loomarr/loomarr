@@ -1,7 +1,7 @@
-import { LoomarrProvider } from "@loomarr/design-system";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
 
@@ -232,11 +232,7 @@ describe("AppShell", () => {
         removeEventListener: vi.fn(),
       }));
       try {
-        render(
-          <LoomarrProvider theme="dark">
-            <RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />
-          </LoomarrProvider>,
-        );
+        render(<RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />);
 
         expect(await screen.findByTestId("phone-bottom-bar-placeholder")).toHaveStyle({ height: "49px" });
 
@@ -258,15 +254,13 @@ describe("AppShell", () => {
       const onOpenCommand = vi.fn();
       try {
         render(
-          <LoomarrProvider theme="dark">
-            <RouterHarness
-              content={
-                <AppShell isAdmin onOpenCommand={onOpenCommand}>
-                  content
-                </AppShell>
-              }
-            />
-          </LoomarrProvider>,
+          <RouterHarness
+            content={
+              <AppShell isAdmin onOpenCommand={onOpenCommand}>
+                content
+              </AppShell>
+            }
+          />,
         );
         const header = await screen.findByRole("banner");
         await userEvent.click(await within(header).findByRole("button", { name: "Search" }));

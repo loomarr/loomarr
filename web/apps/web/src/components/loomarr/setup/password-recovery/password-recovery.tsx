@@ -1,6 +1,5 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { Action, LoadingStrip } from "@loomarr/design-system";
-import { CheckCircle2, KeyRound, Mail } from "lucide-react";
+import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
@@ -26,7 +25,9 @@ const PasswordRecoveryRequest = ({
   if (sent) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
+        <span className="mx-auto flex w-fit">
+          <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
+        </span>
         <div className="space-y-2">
           <h1 className="font-display text-2xl font-semibold">Check your email</h1>
           <p className="text-muted-foreground text-sm">
@@ -48,7 +49,9 @@ const PasswordRecoveryRequest = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <Mail className="text-signal mx-auto size-8" aria-hidden />
+        <span className="mx-auto flex w-fit">
+          <Icon decorative glyph={icons.mail} size="touch" tone="primary" />
+        </span>
         <h1 className="font-display text-2xl font-semibold">Forgot your password?</h1>
         <p className="text-muted-foreground text-sm">
           Enter your Loomarr username. We’ll email a reset link when this local account has a verified
@@ -103,7 +106,9 @@ const PasswordRecoveryReset = ({
   if (succeeded) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
+        <span className="mx-auto flex w-fit">
+          <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
+        </span>
         <div className="space-y-2">
           <h1 className="font-display text-2xl font-semibold">Password reset</h1>
           <p className="text-muted-foreground text-sm">
@@ -141,7 +146,9 @@ const PasswordRecoveryReset = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <KeyRound className="text-signal mx-auto size-8" aria-hidden />
+        <span className="mx-auto flex w-fit">
+          <Icon decorative glyph={icons.key} size="touch" tone="primary" />
+        </span>
         <h1 className="font-display text-2xl font-semibold">Create a new password</h1>
         <p className="text-muted-foreground text-sm">This reset link expires {expiry}.</p>
       </div>

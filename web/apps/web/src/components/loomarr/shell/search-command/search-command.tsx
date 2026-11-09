@@ -1,5 +1,4 @@
-import { Action, Badge, Text } from "@loomarr/design-system";
-import { Search } from "lucide-react";
+import { Action, Badge, Icon, icons, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
@@ -164,7 +163,7 @@ const SearchCommand = ({
       )}
     >
       <div className="border-border flex items-center gap-2 border-b px-3">
-        <Search className="text-static-400 size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.search} size="compact" tone="muted" />
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}

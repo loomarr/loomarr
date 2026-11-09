@@ -1,8 +1,7 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Field, Surface, Text } from "@loomarr/design-system";
-import { Check, Loader2 } from "lucide-react";
+import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
@@ -215,12 +214,12 @@ const SourceSearch = ({
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
                       <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
-                        <Loader2 className="size-4 animate-spin" aria-hidden />
+                        <ActivityIndicator decorative size="compact" tone="inherit" />
                         Downloading…
                       </span>
                     ) : acquisition === "success" ? (
                       <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
-                        <Check className="size-4" aria-hidden />
+                        <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
                         Added · being checked
                       </span>
                     ) : acquisition === "error" ? (

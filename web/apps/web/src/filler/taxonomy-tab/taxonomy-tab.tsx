@@ -4,11 +4,10 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Field } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Icon, icons } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -109,7 +108,11 @@ const TaxonTree = ({
       return (
         <li key={taxon.slug}>
           <div className="flex items-start gap-2 px-4 py-3">
-            {nested ? <ChevronRight className="text-static-500 mt-1 size-3 shrink-0" aria-hidden /> : null}
+            {nested ? (
+              <span className="mt-1 flex">
+                <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
+              </span>
+            ) : null}
             <div className="min-w-0 flex-1">
               <button
                 type="button"

@@ -2,8 +2,7 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
-import { X } from "lucide-react";
+import { Action, Icon, icons, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
@@ -125,7 +124,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                     className="text-muted-foreground hover:text-foreground"
                     onClick={() => commit(selected.filter((c) => c !== id))}
                   >
-                    <X className="size-3.5" aria-hidden />
+                    <Icon decorative glyph={icons.close} size="compact" tone="inherit" />
                   </button>
                 </li>
               ))}
