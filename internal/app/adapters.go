@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
@@ -89,14 +90,14 @@ func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
 // api sentinel. Thin, wiring-only.
 type jobsAdapter struct{ s *jobs.Scheduler }
 
-func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
+func (a jobsAdapter) List(ctx context.Context) ([]system.JobView, error) {
 	st, err := a.s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.JobView, 0, len(st))
+	out := make([]system.JobView, 0, len(st))
 	for _, j := range st {
-		out = append(out, api.JobView{
+		out = append(out, system.JobView{
 			Name: j.Name, Group: string(j.Group), Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
@@ -107,25 +108,25 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	return out, nil
 }
 
-func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
+func (a jobsAdapter) History(ctx context.Context, name string) (system.JobHistoryView, error) {
 	history, err := a.s.History(ctx, name)
 	if errors.Is(err, jobs.ErrUnknownJob) {
-		return api.JobHistoryView{}, api.ErrJobNotFound
+		return system.JobHistoryView{}, system.ErrJobNotFound
 	}
 	if err != nil {
-		return api.JobHistoryView{}, err
+		return system.JobHistoryView{}, err
 	}
-	out := api.JobHistoryView{
+	out := system.JobHistoryView{
 		WindowStart: history.WindowStart, RunCount: history.RunCount,
 		FailureCount: history.FailureCount, AverageDurationMs: history.AverageDurationMs,
-		Truncated: history.Truncated, Recent: make([]api.JobExecutionView, 0, len(history.Recent)),
+		Truncated: history.Truncated, Recent: make([]system.JobExecutionView, 0, len(history.Recent)),
 	}
 	for _, run := range history.Recent {
 		trigger := "scheduled"
 		if run.Manual {
 			trigger = "manual"
 		}
-		out.Recent = append(out.Recent, api.JobExecutionView{
+		out.Recent = append(out.Recent, system.JobExecutionView{
 			StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, DurationMs: run.DurationMs,
 			Result: run.Result, Error: run.Error, Trigger: trigger,
 		})
@@ -136,9 +137,9 @@ func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryVi
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
 	switch err := a.s.SetPaused(ctx, name, paused); {
 	case errors.Is(err, jobs.ErrUnknownJob):
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	case errors.Is(err, jobs.ErrJobDisabled):
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	default:
 		return err
 	}
@@ -147,9 +148,9 @@ func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) er
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	switch err := a.s.Trigger(ctx, name); {
 	case errors.Is(err, jobs.ErrUnknownJob):
-		return api.ErrJobNotFound
+		return system.ErrJobNotFound
 	case errors.Is(err, jobs.ErrJobDisabled):
-		return api.ErrJobDisabled
+		return system.ErrJobDisabled
 	case err != nil:
 		return err
 	}

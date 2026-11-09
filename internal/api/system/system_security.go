@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type EncryptionStatus struct {
 	DataKeyCount               int    `json:"dataKeyCount" doc:"Active and retained readable data keys"`
 }
 
-func (s *Server) registerSystemSecurity(api huma.API) {
+func (s *Handlers) registerSystemSecurity(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-encryption-status", Method: http.MethodGet, Path: "/v1/system/security/encryption",
 		Summary:     "Database secret-encryption status",
@@ -38,7 +38,7 @@ func (s *Server) registerSystemSecurity(api huma.API) {
 
 type encryptionStatusOutput struct{ Body EncryptionStatus }
 
-func (s *Server) systemEncryptionStatus(ctx context.Context, _ *struct{}) (*encryptionStatusOutput, error) {
+func (s *Handlers) systemEncryptionStatus(ctx context.Context, _ *struct{}) (*encryptionStatusOutput, error) {
 	if s.encryption == nil {
 		return nil, huma.Error501NotImplemented("database secret encryption is unavailable")
 	}
@@ -49,7 +49,7 @@ func (s *Server) systemEncryptionStatus(ctx context.Context, _ *struct{}) (*encr
 	return &encryptionStatusOutput{Body: status}, nil
 }
 
-func (s *Server) systemEncryptionRotate(ctx context.Context, _ *struct{}) (*struct{}, error) {
+func (s *Handlers) systemEncryptionRotate(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if s.encryption == nil {
 		return nil, huma.Error501NotImplemented("database secret encryption is unavailable")
 	}

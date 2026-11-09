@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -36,7 +37,7 @@ const (
 // selection hot-swaps it with no restart) plus the SystemLLMService that powers
 // /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
 // overlaid on the LLM_* env defaults, so a UI choice survives reboots.
-func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder, owner *generationLifecycle) (llm.Provider, api.SystemLLMService) {
+func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder, owner *generationLifecycle) (llm.Provider, system.SystemLLMService) {
 	sel := resolveSelection(set)
 	sw := llm.NewSwappable(func(selection llm.Selection) llm.Provider {
 		return buildProviderFor(selection, metricRecorder)
@@ -268,7 +269,7 @@ type systemLLMService struct {
 	discoverMu    sync.Mutex
 	discoverAt    time.Time
 	discoverVRAM  float64
-	discoverCache []api.DiscoverModelView
+	discoverCache []system.DiscoverModelView
 }
 
 // discoverTTL is how long a compatible-download list is reused before re-hitting HF.
@@ -281,11 +282,11 @@ const modelPullTimeout = 6 * time.Hour
 // prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
 func (s *systemLLMService) prober() *llm.Prober { return llm.NewProber(s.ollamaBase()) }
 
-func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, error) {
+func (s *systemLLMService) Status(ctx context.Context) (system.SystemLLMStatus, error) {
 	sel := s.swap.Selection()
 	local := sel.Provider == "ollama" || sel.Provider == ""
 
-	out := api.SystemLLMStatus{
+	out := system.SystemLLMStatus{
 		Provider: sel.Provider,
 		Model:    sel.Model,
 		Local:    local,
@@ -301,7 +302,7 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 			if e.Recommended {
 				out.Recommended = e.Tag
 			}
-			out.Catalog = append(out.Catalog, api.LLMModelView{
+			out.Catalog = append(out.Catalog, system.LLMModelView{
 				Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
 				Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
 				Tools: e.Tools, Vision: e.Vision, Recommended: e.Recommended, Why: e.Why,
@@ -332,8 +333,8 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 
 // hostedCatalog builds the hosted-provider views, fetching live models where a key
 // is available and flagging the active provider + keyConfigured. Never returns keys.
-func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selection) []api.HostedProviderView {
-	var views []api.HostedProviderView
+func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selection) []system.HostedProviderView {
+	var views []system.HostedProviderView
 	for _, hp := range llm.HostedCatalog() {
 		key := s.storedKeyFor(ctx, hp.Key)
 		isActive := hostedSelectionMatches(active, hp)
@@ -351,12 +352,12 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 		if key != "" {
 			models, live = hp.LiveModels(ctx, key)
 		}
-		view := api.HostedProviderView{
+		view := system.HostedProviderView{
 			Key: hp.Key, Label: hp.Label, BaseURL: hp.BaseURL, KeysURL: hp.KeysURL,
 			Note: hp.Note, KeyConfigured: key != "", Active: isActive, ModelsLive: live,
 		}
 		for _, m := range models {
-			view.Models = append(view.Models, api.HostedModelView{
+			view.Models = append(view.Models, system.HostedModelView{
 				ID: m.ID, Label: m.Label, Why: m.Why, Recommended: m.Recommended, Tools: m.Tools,
 				Vision: m.Vision, Transcription: m.Transcription,
 			})
@@ -403,7 +404,7 @@ func hostedSelectionMatches(sel llm.Selection, hp llm.HostedProvider) bool {
 		strings.TrimRight(sel.URL, "/") != strings.TrimRight(openRouter.BaseURL, "/")
 }
 
-func (s *systemLLMService) Select(ctx context.Context, req api.SelectRequest) error {
+func (s *systemLLMService) Select(ctx context.Context, req system.SelectRequest) error {
 	provider := req.Provider
 	if provider == "" {
 		provider = "ollama"
@@ -435,7 +436,7 @@ func hostedBase(provider, suppliedBase string) (hp llm.HostedProvider, ok bool) 
 func (s *systemLLMService) selectLocal(ctx context.Context, model string) error {
 	probe := s.prober().Probe(ctx)
 	if !containsModel(probe.PulledModels, model) {
-		return api.ErrModelNotPulled
+		return system.ErrModelNotPulled
 	}
 	sel := llm.Selection{Provider: "ollama", URL: s.ollamaBase(), Model: model}
 	if err := s.persist(ctx, sel); err != nil {
@@ -451,13 +452,13 @@ func (s *systemLLMService) selectLocal(ctx context.Context, model string) error 
 func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, model, apiKey string) error {
 	hp, ok := hostedBase(provider, baseURL)
 	if !ok {
-		return api.ErrUnknownProvider
+		return system.ErrUnknownProvider
 	}
 	// OpenRouter ids are unambiguously namespaced (vendor/model). Reject a local
 	// Ollama tag—or any other bare value—before touching credentials or the network.
 	// Custom deliberately stays provider-defined: it may be Ollama's own /v1 mode.
 	if provider == "openrouter" && !validOpenRouterModelID(model) {
-		return api.ErrInvalidHostedModel
+		return system.ErrInvalidHostedModel
 	}
 	// Reuse a stored key if the caller didn't supply one (re-selecting a model on an
 	// already-configured provider shouldn't require re-pasting the key).
@@ -466,7 +467,7 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	}
 	if err := llm.ValidateKey(ctx, hp.BaseURL, apiKey); err != nil {
 		s.log.Warn("hosted key validation failed", "provider", provider, "err", err)
-		return api.ErrKeyInvalid
+		return system.ErrKeyInvalid
 	}
 	// Default the model when none was given — but LIVE-aware: prefer a curated
 	// recommendation that STILL EXISTS on the provider (ids churn), else the first
@@ -479,7 +480,7 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 		}
 	}
 	if model == "" {
-		return api.ErrUnknownProvider // nothing selectable — provider returned no models
+		return system.ErrUnknownProvider // nothing selectable — provider returned no models
 	}
 	sel := llm.Selection{Provider: provider, URL: hp.BaseURL, Model: model, APIKey: apiKey}
 	if err := s.persist(ctx, sel); err != nil {
@@ -515,7 +516,7 @@ func validOpenRouterModelID(model string) bool {
 func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey string) error {
 	hp, ok := hostedBase(provider, baseURL)
 	if !ok {
-		return api.ErrUnknownProvider
+		return system.ErrUnknownProvider
 	}
 	if apiKey == "" {
 		apiKey = s.storedKeyFor(ctx, provider)
@@ -529,7 +530,7 @@ func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey s
 // the ranking matches the installed list's fit verdicts. A source outage logs +
 // returns the error (the handler degrades it to an empty list + a "browse on
 // huggingface.co" link); it never fails the page.
-func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelView, error) {
+func (s *systemLLMService) Discover(ctx context.Context) ([]system.DiscoverModelView, error) {
 	probe := s.prober().Probe(ctx)
 	vram := probe.VRAMGiB
 
@@ -548,9 +549,9 @@ func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelVie
 		s.log.Warn("llm discover failed", "err", err)
 		return nil, err
 	}
-	out := make([]api.DiscoverModelView, 0, len(models))
+	out := make([]system.DiscoverModelView, 0, len(models))
 	for _, m := range models {
-		out = append(out, api.DiscoverModelView{
+		out = append(out, system.DiscoverModelView{
 			ID: m.ID, Label: m.Label, Quant: m.Quant, PullRef: m.PullRef,
 			SizeGiB: m.SizeGiB, Fit: string(m.Fit), Downloads: m.Downloads,
 			Role: string(m.Role), Recommended: m.Recommended, Note: m.Note,
@@ -565,7 +566,7 @@ func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelVie
 func (s *systemLLMService) Pull(ctx context.Context, model string) (string, error) {
 	// Pull is local-only — there's nothing to download for a hosted provider.
 	if p := s.swap.Provider(); p != "ollama" && p != "" {
-		return "", api.ErrNotLocal
+		return "", system.ErrNotLocal
 	}
 	if s.start == nil || s.operations == nil {
 		return "", errors.New("model pull lifecycle is not configured")
