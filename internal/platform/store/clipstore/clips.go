@@ -1469,7 +1469,7 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 //
 // ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
 // the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
-// (the class [[loomarr-perf-cpu-profile-blind-to-waiting]] warns about). The full leaf+rollup set is
+// (waiting time is invisible to a CPU profile). The full leaf+rollup set is
 // loaded (leaf and rollup rows alike), because that is what curation matches against; `Category` is
 // derived from it separately at write time, not here.
 //

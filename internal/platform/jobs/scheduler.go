@@ -40,23 +40,21 @@ type Job struct {
 	// Timeout is how long this job may run before its context is cancelled. Zero ⇒ River's
 	// `JobTimeoutDefault`, which is **one minute**.
 	//
-	// ⚠ **A media job MUST set this, and the default being one minute is why.** Nothing here
-	// ever configured `river.Config.JobTimeout`, and `riverWorker` did not override
-	// `Timeout()`, so every job on the install ran under a 60-second deadline inherited from a
-	// dependency — a number nobody chose and nothing recorded. `exec.CommandContext` SIGKILLs
-	// its child when that fires, so the symptom was never "timed out": it was
+	// ⚠ **A media job MUST set this, and the default being one minute is why.** River's
+	// 60-second default is a number inherited from a dependency, not a chosen one.
+	// `exec.CommandContext` SIGKILLs its child when it fires, so the symptom is never "timed
+	// out": it is
 	//
 	//	ffmpeg black/silence detect …: signal: killed
 	//	whisper-cli: signal: killed
 	//	ffmpeg wav extract: context deadline exceeded
 	//
-	// on the maintainer's catalog, which reads as a broken file or a broken binary. Measured
-	// 2026-08-11: that same boundary scan completes in **40s** run by hand, so the file was
-	// fine and the ceiling was the fault.
+	// which reads as a broken file or a broken binary. Measured 2026-08-11: that same boundary
+	// scan completes in **40s** run by hand, so the file was fine and the ceiling was the fault.
 	//
-	// ⚠ It also silently halved a budget the design doc reasons about. §10 V51g compares a
+	// ⚠ The ceiling is also not the budget the design doc reasons about. §10 V51g compares a
 	// rung's cost "against a budget of 120", taking 120s from the two-minute CRON INTERVAL —
-	// how often the job STARTS, not how long it may run. The real ceiling was 60s.
+	// how often the job STARTS, not how long it may run. The ceiling is what Timeout declares.
 	Timeout time.Duration
 
 	// DisabledReason, when non-empty, means this build/backend CANNOT run this job. It is

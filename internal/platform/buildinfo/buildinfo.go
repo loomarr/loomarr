@@ -1,9 +1,8 @@
 // Package buildinfo carries the version stamped into the binary at build time.
 //
-// It exists because nothing exposed a version before: §16 describes upgrades and
-// downgrades and the operator runbook assumes the operator knows what they're running,
-// but no endpoint, log line, or UI surface said. A bug report without a version is a bug
-// report that starts with a round-trip.
+// It exists because §16 describes upgrades and downgrades and the operator runbook assumes
+// the operator knows what they're running, so an endpoint, log line and UI surface must say.
+// A bug report without a version is a bug report that starts with a round-trip.
 package buildinfo
 
 import "runtime/debug"
