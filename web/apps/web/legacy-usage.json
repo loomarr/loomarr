@@ -69,8 +69,7 @@
       "tailwindClasses": 32
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 151,
-      "legacyUi": 2
+      "tailwindClasses": 145
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "tailwindClasses": 68
