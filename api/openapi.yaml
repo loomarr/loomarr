@@ -1135,6 +1135,12 @@ components:
           description: When the channel was created (Unix ms); absent for an older channel no approval dates
           format: int64
           type: integer
+        decade:
+          description: The decade the channel's era sits in (1980 for the 1980s); absent when the channel has no single-decade era
+          examples:
+            - 1980
+          format: int64
+          type: integer
         group:
           examples:
             - Kids
@@ -5049,13 +5055,17 @@ components:
             - attention
             - unconfigured
           type: string
-        held:
-          description: Downloaded clips awaiting review in Incoming; NOT included in clips
-          format: int64
-          type: integer
         lastScanAt:
           description: RFC3339; absent if nothing has ever been fetched
           type: string
+        needsYou:
+          description: Choices Incoming lists as needing help
+          format: int64
+          type: integer
+        preparing:
+          description: Clips Incoming lists as getting ready; NOT included in clips
+          format: int64
+          type: integer
         sourcesOn:
           format: int64
           type: integer
@@ -5071,7 +5081,8 @@ components:
         - sourcesReady
         - sourcesTotal
         - clips
-        - held
+        - preparing
+        - needsYou
       type: object
     GenreFilter:
       additionalProperties: false
@@ -5206,6 +5217,9 @@ components:
           type: array
         channelId:
           type: string
+        decade:
+          format: int64
+          type: integer
         logo:
           type: string
         name:

@@ -519,13 +519,13 @@ func people(doc document) []mp.Person {
 		}
 	}
 	for _, a := range cast {
-		add(mp.Person{Name: clean(a.Name), Role: mp.PersonActor, Character: clean(a.Role), TMDB: tmdbPerson(a.TMDBID), Photo: photo(a.Thumb)})
+		add(mp.Person{Name: clean(a.Name), Role: mp.PersonActor, Character: clean(a.Role), ID: tmdbPerson(a.TMDBID), Photo: photo(a.Thumb)})
 	}
 	for _, c := range doc.Directors {
-		add(mp.Person{Name: clean(c.Name), Role: mp.PersonDirector, TMDB: tmdbPerson(c.TMDBID)})
+		add(mp.Person{Name: clean(c.Name), Role: mp.PersonDirector, ID: tmdbPerson(c.TMDBID)})
 	}
 	for _, c := range doc.Writers {
-		add(mp.Person{Name: clean(c.Name), Role: mp.PersonWriter, TMDB: tmdbPerson(c.TMDBID)})
+		add(mp.Person{Name: clean(c.Name), Role: mp.PersonWriter, ID: tmdbPerson(c.TMDBID)})
 	}
 	return out
 }
@@ -538,11 +538,11 @@ func billing(order string) int {
 	return math.MaxInt
 }
 
-func tmdbPerson(id string) string {
+func tmdbPerson(id string) mp.ExternalID {
 	if id = strings.TrimSpace(id); digitsPattern.MatchString(id) {
-		return id
+		return mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: id}
 	}
-	return ""
+	return mp.ExternalID{}
 }
 
 func photo(thumb string) string {

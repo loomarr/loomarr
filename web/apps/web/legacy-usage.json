@@ -49,9 +49,6 @@
     "src/components/loomarr/ai/refine-review/refine-review.tsx": {
       "tailwindClasses": 79
     },
-    "src/components/loomarr/ai/request-card/request-card.tsx": {
-      "tailwindClasses": 31
-    },
     "src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
       "tailwindClasses": 10
     },
@@ -142,7 +139,7 @@
       "tailwindClasses": 14
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 108
+      "tailwindClasses": 61
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "tailwindClasses": 67
@@ -151,7 +148,7 @@
       "tailwindClasses": 68
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 159
+      "tailwindClasses": 102
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "tailwindClasses": 46
@@ -193,7 +190,7 @@
       "tailwindClasses": 48
     },
     "src/components/loomarr/people/people-roster/people-roster.tsx": {
-      "tailwindClasses": 129
+      "tailwindClasses": 36
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
       "tailwindClasses": 142
@@ -459,16 +456,10 @@
       "tailwindClasses": 18
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 37
+      "tailwindClasses": 34
     },
     "src/home/new-this-week/new-this-week.tsx": {
       "tailwindClasses": 68
-    },
-    "src/home/on-now/on-now.tsx": {
-      "tailwindClasses": 58
-    },
-    "src/home/recently-tuned/recently-tuned.tsx": {
-      "tailwindClasses": 34
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -491,7 +482,7 @@
       "tailwindClasses": 65
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 24
     },
     "src/routes/_authed/account.tsx": {
       "tailwindClasses": 73

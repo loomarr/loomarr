@@ -1,7 +1,7 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Badge, Surface, Toggle } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
-import { ChevronRight } from "lucide-react";
+import { Action, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
+import { Archive, FolderOpen } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
@@ -74,12 +74,13 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {visible.length > 0 ? (
-        <ul
-          className={cn("flex flex-col gap-1", scalable && "mt-2")}
-          aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
-        >
-          {visible.map(renderRow)}
-        </ul>
+        <div className={cn(scalable && "mt-2")}>
+          <ListGroup
+            aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
+          >
+            {visible.map(renderRow)}
+          </ListGroup>
+        </div>
       ) : (
         <p className="text-muted-foreground mt-3 text-sm">No sources match your filter.</p>
       )}
@@ -140,116 +141,91 @@ const FillerSources = ({
   const needsLocation = realSources.some((source) => source.actions.includes("set_location"));
 
   const row = (source: (typeof sources)[number]) => {
-    const status = dormant(source)
-      ? "Off"
-      : [
-          source.incoming > 0
-            ? `${source.count} ready`
-            : `${source.count} ${source.count === 1 ? "clip" : "clips"}`,
-          ...(source.incoming > 0 ? [`${source.incoming} being checked`] : []),
-          ...(source.lastCheckedAt ? [`checked ${formatRelative(source.lastCheckedAt, now)}`] : []),
-        ].join(" · ");
-    const details = (
-      <>
-        <div className="min-w-0 basis-full text-left sm:flex-1 sm:basis-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium">
-              {source.id === "folder" ? "Drop folder" : source.target}
-            </span>
-            {source.readiness === "not_configured" && (
-              <Badge shape="square" tone="caution">
-                Add details
-              </Badge>
-            )}
-            {source.readiness === "needs_location" && !needsLocation && (
-              <Badge shape="square" tone="caution">
-                Location needed
-              </Badge>
-            )}
-            {source.readiness === "out_of_area" && (
-              <Badge shape="square" tone="caution">
-                Not used here
-              </Badge>
-            )}
-            {source.readiness === "unavailable" && (
-              <Badge shape="square" tone="caution">
-                Needs attention
-              </Badge>
-            )}
-            {source.readiness === "ready" &&
-              source.locationSource === "source" &&
-              source.effectiveCountry && (
-                <Badge shape="square" tone="neutral">
-                  {source.effectiveCountry}
-                </Badge>
-              )}
-            {source.onForPlace && source.enabled && (
-              <Badge shape="square" tone="neutral">
-                For your area
-              </Badge>
-            )}
-          </div>
-          <p className="text-muted-foreground mt-0.5 truncate text-xs">
-            {source.readiness === "provider_off"
-              ? `Paused with ${providerRowsByID.get(source.parentId ?? "")?.target ?? source.kind}. Existing clips stay here.`
+    const name = source.id === "folder" ? "Drop folder" : source.target;
+    const counts = [
+      source.incoming > 0
+        ? `${source.count} ready`
+        : `${source.count} ${source.count === 1 ? "clip" : "clips"}`,
+      ...(source.incoming > 0 ? [`${source.incoming} being checked`] : []),
+      ...(source.lastCheckedAt ? [`checked ${formatRelative(source.lastCheckedAt, now)}`] : []),
+    ].join(" · ");
+    // The row's one status: what needs the operator, else off, else ready.
+    const health: { label: string; tone: StatusTone } =
+      source.readiness === "not_configured"
+        ? { label: "Add details", tone: "warn" }
+        : source.readiness === "needs_location" && !needsLocation
+          ? { label: "Location needed", tone: "warn" }
+          : source.readiness === "out_of_area"
+            ? { label: "Not used here", tone: "warn" }
+            : source.readiness === "unavailable"
+              ? { label: "Needs attention", tone: "warn" }
               : dormant(source)
-                ? "Paused. Existing clips stay in your library."
-                : source.id === "folder"
-                  ? source.configured
-                    ? source.target
-                    : "Choose a folder for files you add yourself."
-                  : source.detail}
-          </p>
-        </div>
-        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{status}</span>
-        {source.license && <span className="text-muted-foreground shrink-0 text-xs">{source.license}</span>}
-        {onSelect && <ChevronRight className="text-muted-foreground size-4 shrink-0" aria-hidden />}
-      </>
+                ? { label: "Off", tone: "off" }
+                : { label: "Ready", tone: "ok" };
+    const detail =
+      source.readiness === "provider_off"
+        ? `Paused with ${providerRowsByID.get(source.parentId ?? "")?.target ?? source.kind}. Existing clips stay here.`
+        : dormant(source)
+          ? "Paused. Existing clips stay in your library."
+          : source.id === "folder"
+            ? source.configured
+              ? source.target
+              : "Choose a folder for files you add yourself."
+            : source.detail;
+    const meta = [
+      <CardStatus key="status" label={health.label} tone={health.tone} />,
+      ...(dormant(source) ? [] : [counts]),
+      ...(detail ? [detail] : []),
+      ...(source.readiness === "ready" && source.locationSource === "source" && source.effectiveCountry
+        ? [source.effectiveCountry]
+        : []),
+      ...(source.onForPlace && source.enabled ? ["For your area"] : []),
+      ...(source.license ? [source.license] : []),
+    ];
+    const lead = source.parentId ? (
+      <Archive aria-hidden className="text-muted-foreground size-5" />
+    ) : (
+      <FolderOpen aria-hidden className="text-muted-foreground size-5" />
     );
     return (
-      <li
+      <div
         key={source.id}
-        className={cn(
-          "py-1",
-          source.parentId
-            ? "border-border/40 border-b px-1 last:border-b-0"
-            : "border-border/50 border-b last:border-b-0",
-          selectedId === source.id && "bg-muted/25",
-        )}
+        className={cn("flex min-w-0 items-center gap-2 pl-2", selectedId === source.id && "bg-muted/25")}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          {onToggleEnabled && source.switchable && (
-            <Toggle
-              kind="switch"
-              id={`source-use-${source.id}`}
-              label={`Use ${source.target}`}
-              labelHidden
-              checked={source.enabled}
-              disabled={
-                toggling != null ||
-                !source.providerEnabled ||
-                (source.parentId != null && togglingProvider === source.kind)
-              }
-              onCheckedChange={(checked) => onToggleEnabled(source.id, checked)}
-            />
-          )}
-          {onSelect ? (
-            <button
-              type="button"
-              className="hover:bg-muted/50 focus-visible:ring-ring relative flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:outline-none sm:flex-nowrap"
-              onClick={() => onSelect(source)}
-            >
-              {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
-                  the verb is the one thing the row shows only to assistive tech. */}
-              <span className="sr-only">Manage</span> {details}
-            </button>
-          ) : (
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 px-2 py-2 sm:flex-nowrap">
-              {details}
-            </div>
-          )}
+        {onToggleEnabled && source.switchable && (
+          <Toggle
+            kind="switch"
+            id={`source-use-${source.id}`}
+            label={`Use ${source.target}`}
+            labelHidden
+            checked={source.enabled}
+            disabled={
+              toggling != null ||
+              !source.providerEnabled ||
+              (source.parentId != null && togglingProvider === source.kind)
+            }
+            onCheckedChange={(checked) => onToggleEnabled(source.id, checked)}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <RowCard
+            action={
+              onSelect ? (
+                <CardAction
+                  accessibilityLabel={`Manage ${name}`}
+                  attention={health.tone === "warn"}
+                  onPress={() => onSelect(source)}
+                >
+                  Manage
+                </CardAction>
+              ) : undefined
+            }
+            lead={lead}
+            meta={meta}
+            title={name}
+          />
         </div>
-      </li>
+      </div>
     );
   };
 

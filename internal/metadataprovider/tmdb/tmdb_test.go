@@ -174,11 +174,11 @@ func TestFetchMovie(t *testing.T) {
 	}
 	// The cast in billing order, then the key crew once each; an editor is not key crew.
 	wantPeople := []mp.Person{
-		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", TMDB: "90003001",
+		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", ID: tmdbID("90003001"),
 			Photo: "https://image.tmdb.org/t/p/original/person-90003001.jpg"},
-		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", TMDB: "90003002"},
-		{Name: "Lamp Director", Role: mp.PersonDirector, TMDB: "90003101"},
-		{Name: "Ledger Writer", Role: mp.PersonWriter, TMDB: "90003102"},
+		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", ID: tmdbID("90003002")},
+		{Name: "Lamp Director", Role: mp.PersonDirector, ID: tmdbID("90003101")},
+		{Name: "Ledger Writer", Role: mp.PersonWriter, ID: tmdbID("90003102")},
 	}
 	if !reflect.DeepEqual(d.People, wantPeople) {
 		t.Errorf("people = %+v\nwant     %+v", d.People, wantPeople)
@@ -261,8 +261,8 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("descriptive = %+v", d)
 	}
 	if want := []mp.Person{
-		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", TMDB: "90003202"},
-		{Name: "Station Creator", Role: mp.PersonCreator, TMDB: "90003201",
+		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", ID: tmdbID("90003202")},
+		{Name: "Station Creator", Role: mp.PersonCreator, ID: tmdbID("90003201"),
 			Photo: "https://image.tmdb.org/t/p/original/person-90003201.jpg"},
 	}; !reflect.DeepEqual(d.People, want) {
 		t.Errorf("series people = %+v", d.People)
@@ -371,7 +371,7 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 // not movies or series are left out.
 func TestFilmography(t *testing.T) {
 	f := newFakeTMDB(t)
-	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), "90003001")
+	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), tmdbID("90003001"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,18 +379,25 @@ func TestFilmography(t *testing.T) {
 		t.Errorf("language = %q, want the household's", q.Get("language"))
 	}
 	want := []mp.FilmCredit{
-		{Kind: mp.KindMovie, TMDB: "90000602", Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
-		{Kind: mp.KindSeries, TMDB: "90000701", Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
-		{Kind: mp.KindMovie, TMDB: "90000601", Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
-		{Kind: mp.KindMovie, TMDB: "90000603", Title: "Unreleased Lamp", Role: mp.PersonActor},
+		{Kind: mp.KindMovie, ID: tmdbID("90000602"), Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
+		{Kind: mp.KindSeries, ID: tmdbID("90000701"), Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
+		{Kind: mp.KindMovie, ID: tmdbID("90000601"), Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
+		{Kind: mp.KindMovie, ID: tmdbID("90000603"), Title: "Unreleased Lamp", Role: mp.PersonActor},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("filmography =\n%+v\nwant\n%+v", got, want)
 	}
-	if _, err := f.provider(nil).Filmography(context.Background(), "abc"); !errors.Is(err, mp.ErrUnsupported) {
+	if _, err := f.provider(nil).Filmography(context.Background(), tmdbID("abc")); !errors.Is(err, mp.ErrUnsupported) {
 		t.Errorf("a person id that is not a number: err = %v, want ErrUnsupported", err)
 	}
+	imdb := mp.ExternalID{Namespace: mp.NamespaceIMDB, Value: "nm90003001"}
+	if _, err := f.provider(nil).Filmography(context.Background(), imdb); !errors.Is(err, mp.ErrUnsupported) {
+		t.Errorf("a person by another catalog's id: err = %v, want ErrUnsupported", err)
+	}
 }
+
+// tmdbID is an id in TMDB's namespace.
+func tmdbID(v string) mp.ExternalID { return mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: v} }
 
 // One language is spelled one way: a bare code takes the country as its region, none is English,
 // and the record says the language it was read in.

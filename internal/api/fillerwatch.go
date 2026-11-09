@@ -69,14 +69,19 @@ type fillerWatchOutput struct {
 		// ⚠ HELD clips are excluded, because they are not in the catalog yet — they are waiting
 		// for a human in Incoming. `Held` below is what stops that reading as "nothing arrived".
 		Clips int `json:"clips"`
-		// Held is how many downloaded clips are waiting for review (§10 V38).
+		// Preparing and NeedsYou are Incoming's own group totals, counted by the same store
+		// queries the Incoming page counts with (#2733), so the header, Manage and Incoming
+		// cannot disagree.
 		//
-		// ⚠ **Reported SEPARATELY, and the header says so.** Auto-fetch holds everything it
-		// downloads, so a fresh install that just fetched 12 clips has a catalog of ZERO and 12
-		// in Incoming. Reporting only `clips` made the pill read "0 clips" on an install that had
-		// just worked perfectly — indistinguishable from a fetch that failed. Found by fetching
-		// real collections and then asking why the Catalog tab was empty.
-		Held int `json:"held" doc:"Downloaded clips awaiting review in Incoming; NOT included in clips"`
+		// ⚠ **Reported SEPARATELY from clips, and the header says so.** Auto-fetch holds
+		// everything it downloads while it is prepared, so a fresh install that just fetched 12
+		// clips has a catalog of ZERO and 12 getting ready. Reporting only `clips` made the pill
+		// read "0 clips" on an install that had just worked perfectly.
+		//
+		// ⚠ A held clip is NOT "need you". The header once counted every held clip that way while
+		// Incoming listed only the splits waiting for an answer; most held clips are machine work.
+		Preparing int `json:"preparing" doc:"Clips Incoming lists as getting ready; NOT included in clips"`
+		NeedsYou  int `json:"needsYou" doc:"Choices Incoming lists as needing help"`
 		// LastScanAt is the most recent fetch across every source; absent when nothing has ever
 		// reported one.
 		//
@@ -135,11 +140,17 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count filler clips", err)
 	}
-	// ...so the queue is counted separately, or an install that just auto-fetched reads as "0
-	// clips" while holding a dozen.
+	// ...so held clips are counted separately for the verdict, or an install that just auto-fetched
+	// reads as broken while holding a dozen. The header's own clauses are Incoming's totals.
 	heldCount, err := s.store.CountClips(ctx, clipstore.ClipFilter{HeldOnly: true})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count held clips", err)
+	}
+	if out.Body.Preparing, err = s.store.CountClipPipelines(ctx, incomingPreparingFilter()); err != nil {
+		return nil, huma.Error500InternalServerError("count preparing clips", err)
+	}
+	if out.Body.NeedsYou, err = s.store.CountReadySplitProposals(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("count incoming choices", err)
 	}
 
 	// ⚠ The applied drop-folder is a SOURCE even though its desired value comes from settings
@@ -173,7 +184,7 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	}
 
 	out.Body.SourcesOn, out.Body.SourcesReady, out.Body.SourcesTotal = on, ready, total
-	out.Body.Clips, out.Body.Held = clipCount, heldCount
+	out.Body.Clips = clipCount
 	if svc, ok := s.filler.(fillerFetchStatusService); ok {
 		status, serr := svc.FetchStatus(ctx)
 		if serr != nil {

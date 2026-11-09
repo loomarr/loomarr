@@ -23,9 +23,9 @@ func testLibrary(t *testing.T) catalog.LibrarySearcher {
 	t.Helper()
 	return catalog.LibrarySearch{
 		Titles: libraryTitlesFake{
-			{ID: "1000", Kind: "movie", Name: "Marigold Protocol", TMDBID: "90000603"},
-			{ID: "1001", Kind: "movie", Name: "Marigold Protocol II", TMDBID: "90000605"},
-			{ID: "1002", Kind: "movie", Name: "Marigold Protocol III", TMDBID: "90624860"},
+			{ID: "1000", Kind: "movie", Name: "Marigold Protocol", IDs: tmdbIDs("90000603")},
+			{ID: "1001", Kind: "movie", Name: "Marigold Protocol II", IDs: tmdbIDs("90000605")},
+			{ID: "1002", Kind: "movie", Name: "Marigold Protocol III", IDs: tmdbIDs("90624860")},
 		},
 		Facts: itemFactsFake{"1000": {Year: 1999}, "1001": {Year: 2003}, "1002": {Year: 2021}},
 	}
@@ -182,7 +182,7 @@ func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit
 	for i := range titles {
 		titles[i] = store.LibraryTitle{
 			ID: fmt.Sprintf("owned-%02d", i), Kind: "movie", Name: fmt.Sprintf("Archive Pick %02d", i),
-			TMDBID: strconv.Itoa(90_010_000 + i),
+			IDs: tmdbIDs(strconv.Itoa(90_010_000 + i)),
 		}
 	}
 	lib := catalog.LibrarySearch{Titles: titles, Facts: itemFactsFake{}}

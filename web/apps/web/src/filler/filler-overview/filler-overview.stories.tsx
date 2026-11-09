@@ -115,6 +115,23 @@ export const ClipsNeedAChoiceMember: Story = {
   ],
 };
 
+// Channels drawing the same pool get one card, not identical copies (#2733).
+export const SharedPool: Story = {
+  decorators: [
+    withReadiness({
+      ...readiness,
+      pool: {
+        ...readiness.pool,
+        channels: [7, 8, 9].map((number) => ({
+          ...readiness.pool.channels[0]!,
+          channelId: `ch-${number}`,
+          number,
+        })),
+      },
+    }),
+  ],
+};
+
 export const EmptyLibrary: Story = {
   decorators: [
     withReadiness({

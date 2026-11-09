@@ -3,14 +3,14 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import { Action, type StatusTone } from "@loomarr/design-system";
-import { ListGroup, ListRow } from "@loomarr/ui";
+import { Text } from "@loomarr/design-system";
+import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
-import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { RequestRow } from "@/queue/request-row";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -33,107 +33,94 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
   );
 };
 
-// A failed request in Needs you stays a decision card: it carries its reason and the one way to
-// fix it, and the viewer has to act on it (#1817 Q11).
-const cardFor = (
-  { journey, status }: RequestEntry,
-  extras?: { action?: React.ReactNode; hint?: string | undefined },
-) => (
-  <li key={journey.jobId}>
-    <RequestCard
-      jobId={journey.jobId}
-      title={journey.intent.description}
-      line={status.line}
-      tone={status.tone}
-      createdAt={journey.createdAt}
-      // The badge is a short label; the sentence behind it is the explanation line.
-      hint={extras?.hint ?? status.detail}
-      action={extras?.action}
-    />
-  </li>
-);
-
-// A request's badge tone, as a row's status dot. Home's Your requests uses the same map, so the
-// same status draws the same dot wherever a request is a row (#1817 Q11).
-const REQUEST_ROW_TONE: Record<RequestEntry["status"]["tone"], StatusTone> = {
-  suggest: "attention",
-  lock: "ok",
-  onair: "error",
-  caution: "progress",
-};
-
-// The row's trailing link, quiet like Home's "View channel →".
-const ROW_LINK =
-  "shrink-0 rounded-sm text-sm text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 // The date reads relative, like the rest of the app; the full date shows on hover and the `<time>`
 // carries it machine-readable.
 const When = ({ at, verb }: { at: string; verb: string }) => (
-  <time dateTime={at} title={new Date(at).toLocaleString()}>
-    {verb} {formatRelative(at)}
-  </time>
+  <Text textRole="cardMeta" tone="secondary">
+    <time dateTime={at} title={new Date(at).toLocaleString()}>
+      {verb} {formatRelative(at)}
+    </time>
+  </Text>
 );
 
-// Requests › In progress and Done: each request is a row you scan (#1817 Q11), the same shape as
-// Home's Your requests. The sub line reads status · date · the sentence behind the status.
+// The title as a link to the request's detail, for a row whose one action goes somewhere else.
+const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (
+  <Link
+    to="/requests/$jobId"
+    params={{ jobId }}
+    className="focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
+  >
+    {title}
+  </Link>
+);
+
+// Requests › In progress and Done: each request is a row you scan (#1817 Q11, #2765), the same row
+// card as Home's Your requests. The metadata line reads status · date · the sentence behind the status.
 //
 // Every row reaches the request's detail. A finished request that became a channel has a second
-// destination, the channel itself, so its title is the detail link and the one trailing slot goes
-// to the channel. ⚠ The trailing links name their row ("Open Westerns", "Open channel for Westerns"):
-// a list of identical "Open" links is a list a screen reader cannot tell apart.
+// destination, the channel itself, so its title is the detail link and the one action goes to the
+// channel. ⚠ The actions name their row ("Open Westerns", "Open channel for Westerns"): a list of
+// identical "Open" links is a list a screen reader cannot tell apart.
 const rowFor = ({ journey, status }: RequestEntry) => {
   const title = journey.intent.description;
   const channel = status.tab === "done" ? journey.channel : undefined;
   return (
-    <ListRow
+    <RequestRow
       key={journey.jobId}
-      tone={REQUEST_ROW_TONE[status.tone]}
-      title={
-        channel ? (
-          <Link
-            to="/requests/$jobId"
-            params={{ jobId: journey.jobId }}
-            className="focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
-          >
-            {title}
-          </Link>
-        ) : (
-          title
-        )
-      }
-      sub={
-        <>
-          <span>{status.line}</span> · <When at={journey.createdAt} verb="Requested" />
-          {status.detail && ` · ${status.detail}`}
-        </>
-      }
+      status={status}
+      title={channel ? <DetailLink jobId={journey.jobId} title={title} /> : title}
+      meta={[
+        <When key="when" at={journey.createdAt} verb="Requested" />,
+        ...(status.detail ? [status.detail] : []),
+      ]}
       action={
         channel ? (
-          <Link
-            to="/channels/$id"
-            params={{ id: channel.id }}
-            aria-label={`Open channel for ${title}`}
-            className={ROW_LINK}
-            // One line of 13 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
+          <CardAction
+            accessibilityLabel={`Open channel for ${title}`}
+            accessibilityRole="link"
+            render={<Link to="/channels/$id" params={{ id: channel.id }} />}
           >
-            Open channel <span aria-hidden="true">→</span>
-          </Link>
+            Open channel
+          </CardAction>
         ) : (
-          <Link
-            to="/requests/$jobId"
-            params={{ jobId: journey.jobId }}
-            aria-label={`Open ${title}`}
-            className={ROW_LINK}
-            data-touch-target
+          <CardAction
+            accessibilityLabel={`Open ${title}`}
+            accessibilityRole="link"
+            render={<Link to="/requests/$jobId" params={{ jobId: journey.jobId }} />}
           >
-            Open <span aria-hidden="true">→</span>
-          </Link>
+            Open
+          </CardAction>
         )
       }
     />
   );
 };
+
+// A failed request in Needs you stays a decision row: it carries its reason and the one way to
+// fix it, and the viewer has to act on it (#1817 Q11). Its title is the link to the detail.
+const failedRowFor = (
+  { journey, status }: RequestEntry,
+  hint: string | undefined,
+  fix: string | undefined,
+) => (
+  <RequestRow
+    key={journey.jobId}
+    status={status}
+    title={<DetailLink jobId={journey.jobId} title={journey.intent.description} />}
+    meta={[<When key="when" at={journey.createdAt} verb="Requested" />, ...(hint ? [hint] : [])]}
+    action={
+      fix ? (
+        <CardAction
+          accessibilityRole="link"
+          attention
+          render={<Link to="/requests/new" search={{ job: journey.jobId }} />}
+        >
+          {fix}
+        </CardAction>
+      ) : undefined
+    }
+  />
+);
 
 // Decided filler pulls, for the Done tab (#1430): the server KEEPS a pull once an admin approves
 // or dismisses it — exactly so History can answer what was agreed to — but no screen ever asked
@@ -145,24 +132,16 @@ const pullDecisionLine = (status: PullDTO["status"]): { line: string; tone: "loc
 const pullRowFor = (pull: PullDTO) => {
   const { line, tone } = pullDecisionLine(pull.status);
   return (
-    <ListRow
+    <RequestRow
       key={pull.id}
-      tone={REQUEST_ROW_TONE[tone]}
+      status={{ line, tone }}
       title={pull.title}
-      sub={
-        <>
-          <span>{line}</span>
-          {pull.decidedAt && (
-            <>
-              {" · "}
-              <When at={pull.decidedAt} verb="Decided" />
-            </>
-          )}
-          {/* Pulls of one kind share a title; what each was for is what tells the rows apart (#2738). */}
-          {pull.reason && ` · ${pull.reason}`}
-          {pull.note && ` · ${pull.note}`}
-        </>
-      }
+      meta={[
+        ...(pull.decidedAt ? [<When key="when" at={pull.decidedAt} verb="Decided" />] : []),
+        // Pulls of one kind share a title; what each was for is what tells the rows apart (#2738).
+        ...(pull.reason ? [pull.reason] : []),
+        ...(pull.note ? [pull.note] : []),
+      ]}
     />
   );
 };
@@ -247,27 +226,19 @@ const NeedsYouList = () => {
           <h2 id="needs-failed" className="text-lg font-semibold">
             Couldn't be built
           </h2>
-          <ul className="flex flex-col gap-3">
-            {failed.map((e) => {
-              const fix = requestFixLabel(e.journey);
-              return cardFor(e, {
-                hint: requestFailureHint(e.status.detail, e.journey.failure?.guidance),
-                action: fix && (
-                  <Action
-                    accessibilityRole="link"
-                    render={<Link to="/requests/new" search={{ job: e.journey.jobId }} />}
-                    variant="outline"
-                  >
-                    {fix}
-                  </Action>
-                ),
-              });
-            })}
-          </ul>
+          <ListGroup aria-labelledby="needs-failed">
+            {failed.map((e) =>
+              failedRowFor(
+                e,
+                requestFailureHint(e.status.detail, e.journey.failure?.guidance),
+                requestFixLabel(e.journey) || undefined,
+              ),
+            )}
+          </ListGroup>
         </section>
       )}
     </div>
   );
 };
 
-export { NeedsYouList, REQUEST_ROW_TONE, RequestList };
+export { NeedsYouList, RequestList };

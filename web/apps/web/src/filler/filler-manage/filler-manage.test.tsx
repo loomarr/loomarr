@@ -1,14 +1,14 @@
 import {
   getFillerDefectReportMockHandler,
-  getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
+  getListTaxonomyMockHandler,
   getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { defectReport, readiness } from "@/test/fixtures/filler";
+import { defectReport } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -25,19 +25,26 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("FillerManage", () => {
-  // The hub reads the watch line and readiness on every visit. A quiet install by default; tests
-  // about the hub override these.
+  // The hub reads the watch line and the Tags page's counts on every visit. A quiet install by
+  // default; tests about the hub override these.
   beforeEach(() => {
     server.use(
       getFillerWatchMockHandler({
         clips: 25,
         health: "healthy",
-        held: 0,
+        preparing: 0,
+        needsYou: 0,
         sourcesOn: 1,
         sourcesReady: 1,
         sourcesTotal: 1,
       }),
-      getFillerReadinessMockHandler(readiness()),
+      getListTaxonomyMockHandler({
+        taxa: [],
+        totalClips: 25,
+        taggedClips: 25,
+        unclassifiedClips: 0,
+        axisCoverage: [],
+      }),
       getFillerDefectReportMockHandler(defectReport()),
     );
   });
@@ -57,16 +64,25 @@ describe("FillerManage", () => {
   it("lists the admin's tools with their live state", async () => {
     server.use(
       getMeMockHandler(me({ name: "Admin" })),
-      // `held` is what the header's "N need you" counts; Incoming's row must say the same number.
+      // `needsYou` is Incoming's needs-help total, which the header's "N need you" also reads;
+      // Incoming's row must say the same number (#2733).
       getFillerWatchMockHandler({
         clips: 40,
         health: "healthy",
-        held: 3,
+        preparing: 16,
+        needsYou: 3,
         sourcesOn: 1,
         sourcesReady: 1,
         sourcesTotal: 2,
       }),
-      getFillerReadinessMockHandler(readiness({ pool: { ...readiness().pool, untagged: 5 } })),
+      // The Tags row repeats the Tags page's unclassified count, not a second definition.
+      getListTaxonomyMockHandler({
+        taxa: [],
+        totalClips: 40,
+        taggedClips: 35,
+        unclassifiedClips: 5,
+        axisCoverage: [],
+      }),
       getFillerDefectReportMockHandler(
         defectReport({ verdicts: { pass: 30, fail: 7, undecided: 0, pending: 3 }, total: 12 }),
       ),
@@ -96,6 +112,26 @@ describe("FillerManage", () => {
       "href",
       "/filler/taxonomy",
     );
+  });
+
+  // "Preparing" is Incoming's getting-ready total, the same number the header shows (#2733).
+  it("says how many clips Incoming is preparing when nothing needs a choice", async () => {
+    server.use(
+      getMeMockHandler(me({ name: "Admin" })),
+      getFillerWatchMockHandler({
+        clips: 40,
+        health: "healthy",
+        preparing: 16,
+        needsYou: 0,
+        sourcesOn: 1,
+        sourcesReady: 1,
+        sourcesTotal: 1,
+      }),
+    );
+    render(<FillerManage />, { wrapper });
+
+    const tools = await screen.findByRole("region", { name: "Filler tools" });
+    expect(await within(tools).findByText("Nothing needs you · 16 clips preparing")).toBeInTheDocument();
   });
 
   it("shows a member only the tools they can use", async () => {

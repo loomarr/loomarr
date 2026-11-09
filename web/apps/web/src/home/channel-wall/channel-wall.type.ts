@@ -1,7 +1,9 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { GuideLayout } from "@loomarr/core/guide";
 
-interface OnNowProps {
+interface ChannelWallProps {
+  /** The caller's last-tuned channel (GET /v1/household/viewing's continueWatching): first, and marked. */
+  lastChannelId?: string | undefined;
   layout: GuideLayout;
   nowMs: number;
 }
@@ -14,4 +16,4 @@ interface AiringArtworkProps {
   sizes: string;
 }
 
-export type { AiringArtworkProps, OnNowProps };
+export type { AiringArtworkProps, ChannelWallProps };

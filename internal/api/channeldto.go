@@ -47,12 +47,15 @@ type ChannelDTO struct {
 	IntentRef     string `json:"intentRef,omitempty"`
 	// CreatedAtMs and RequestedBy are Home's "New channel" card (#1663): "added Tuesday",
 	// "requested by …". Both absent when unknown (a hand-made channel has no requester).
-	CreatedAtMs  int64  `json:"createdAtMs,omitempty" doc:"When the channel was created (Unix ms); absent for an older channel no approval dates"`
-	RequestedBy  string `json:"requestedBy,omitempty" doc:"Name of the person whose request made this channel; absent for a hand-made channel"`
-	ProgramCount int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
-	PendingCount int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
-	BreakCount   int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
-	SlotCount    int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
+	CreatedAtMs int64  `json:"createdAtMs,omitempty" doc:"When the channel was created (Unix ms); absent for an older channel no approval dates"`
+	RequestedBy string `json:"requestedBy,omitempty" doc:"Name of the person whose request made this channel; absent for a hand-made channel"`
+	// Decade is the decade the channel's era sits in, the same value that picks its on-screen logo's
+	// palette (#2767). Colour is the client's business; the server says only which decade.
+	Decade       int `json:"decade,omitempty" example:"1980" doc:"The decade the channel's era sits in (1980 for the 1980s); absent when the channel has no single-decade era"`
+	ProgramCount int `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
+	PendingCount int `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
+	BreakCount   int `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
+	SlotCount    int `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
 	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
 	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
@@ -145,6 +148,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 		ID: ch.ID, Revision: ch.Revision, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
+		Decade:       schedule.WatermarkEraDecade(ch.Policy.Scope),
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
 		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),
 		Policy: ch.Policy, Lineup: lineup,

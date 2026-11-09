@@ -77,7 +77,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	21: a title lists every studio or network, and its tagline, countries and trailer (decision 46).
 //	22: a title lists its people with their role, character, TMDB id and photo (decision 49).
 //	23: a movie's set is listed as the catalog row the catalog provider fetches it by.
-const writeVersion = 23
+//	24: a person is linked by any catalog's id (namespace and value), not a TMDB id.
+const writeVersion = 24
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -237,7 +238,7 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		it.Genres, it.Studios, it.Countries = facts.Genres, facts.Studios, facts.Countries
 		for _, p := range facts.People {
 			it.Credits = append(it.Credits, store.LibraryCredit{Name: p.Name, Role: p.Role, Character: p.Character,
-				TMDB: p.TMDB, Photo: p.Photo})
+				ID: store.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}, Photo: p.Photo})
 		}
 	}
 	for _, id := range item.ExternalIDs {
@@ -366,7 +367,7 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 	}
 	for _, p := range r.People.Value {
 		f.People = append(f.People, inventory.Person{Name: p.Name, Role: string(p.Role), Character: p.Character,
-			TMDB: p.TMDB, Photo: p.Photo})
+			ID: inventory.ExternalID{Namespace: string(p.ID.Namespace), Value: p.ID.Value}, Photo: p.Photo})
 	}
 	f.Studios, f.Countries, f.Tagline, f.Trailer = r.Studios.Value, r.Countries.Value, r.Tagline.Value, r.Trailer.Value
 	if r.Numbering.Known() {

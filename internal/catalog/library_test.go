@@ -11,6 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
+// tmdbIDs is a title's ids when TMDB's is its only one.
+func tmdbIDs(v string) []store.LibraryID { return []store.LibraryID{{Namespace: "tmdb", Value: v}} }
+
 type libraryTitlesFake []store.LibraryTitle
 
 func (f libraryTitlesFake) SearchLibraryTitles(_ context.Context, _ string, limit int) ([]store.LibraryTitle, error) {
@@ -26,11 +29,7 @@ func (f libraryTitlesFake) LibraryTitles(context.Context, time.Time) ([]store.Li
 
 func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
 	for _, t := range f {
-		id := t.TMDBID
-		if namespace == "tvdb" {
-			id = t.TVDBID
-		}
-		if t.Kind == kind && id == value {
+		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}
@@ -50,8 +49,10 @@ func (f itemFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[st
 }
 
 var ownedTitles = libraryTitlesFake{
-	{ID: "lib-film", Kind: "movie", Name: "Harbor Lights", TMDBID: "90000001", Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
-	{ID: "lib-show", Kind: "series", Name: "Harbor Watch", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
+	{ID: "lib-film", Kind: "movie", Name: "Harbor Lights", IDs: tmdbIDs("90000001"), Rating: "PG",
+		Genres: []string{"Drama"}, SizeBytes: 4_000},
+	{ID: "lib-show", Kind: "series", Name: "Harbor Watch", IDs: append(tmdbIDs("90000003"),
+		store.LibraryID{Namespace: "tvdb", Value: "90000002"}), Rating: "TV-Y"},
 }
 
 // Title search answers from the Library only (#2151 step 16): its titles come back under their
