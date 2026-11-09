@@ -23,6 +23,8 @@ func TestLibraryItemsListAndPage(t *testing.T) {
 	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie", Year: 2001},
 		{ID: "90000002", Kind: "series", Name: "Bravo Show", Year: 2010},
+		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002"},
+		{ID: "90000012", Kind: "episode", Name: "Bravo E2", SeriesID: "90000002"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -208,6 +210,7 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 			Match: store.LibraryMatch{Basis: "manager", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"}},
 		{ID: "90000002", Kind: "movie", Name: "Bravo Movie", Match: store.LibraryMatch{Basis: "sidecar", App: "nfo"}},
 		{ID: "90000003", Kind: "movie", Name: "Charlie Movie"},
+		{ID: "90000011", Kind: "episode", Name: "Alpha E1", SeriesID: "90000001"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
