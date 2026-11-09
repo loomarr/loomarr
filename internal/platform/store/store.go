@@ -104,7 +104,7 @@ type ChannelStore interface {
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
 	// GetChannelForJob finds the channel a job's proposal changes: the one a refine or
 	// re-curation job names, else the one the job originated. ErrNotFound means a first
-	// approval creates it; ErrJobChannelGone means the named channel was removed.
+	// approval creates it.
 	GetChannelForJob(ctx context.Context, jobID string) (Channel, error)
 	// ChannelHasUnfinishedJob reports a refine or re-curation job of the channel that is
 	// queued, running, or done with a proposal still awaiting a decision.

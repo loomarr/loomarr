@@ -960,9 +960,6 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			st.override = true
 			st.channel = channelstore.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
 		}},
-		{name: "removed channel", configure: func(st *scopeLookupStore) {
-			st.err = fmt.Errorf("%w: job names channel-gone", channelstore.ErrJobChannelGone)
-		}},
 		{name: "detached channel", configure: func(st *scopeLookupStore) {
 			st.override = true
 			st.channel = channelstore.Channel{Channel: schedule.Channel{

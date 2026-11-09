@@ -10,7 +10,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -156,7 +155,7 @@ func TestPlan_RefusesToCreateAChannelForAProposalWithNoJob(t *testing.T) {
 	if err == nil {
 		t.Fatalf("planned a channel %q for a proposal whose job does not exist", ch.ID)
 	}
-	if errors.Is(err, channelstore.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
-		t.Errorf("error %v must not read as 'no channel yet' (which replans) or 'channel gone'", err)
+	if !errors.Is(err, accept.ErrProposalJobGone) || errors.Is(err, store.ErrNotFound) {
+		t.Errorf("error %v must be ErrProposalJobGone, not 'no channel yet' (which replans)", err)
 	}
 }
