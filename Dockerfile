@@ -174,11 +174,11 @@ ARG YTDLP_ARM64_SHA256=e87e9533e89fe5889abaa21f5114dfe7756d6aa6219b83551add04d48
 # Never edit these five values by hand: `scripts/ffmpeg-pin-refresh.sh` (and the weekly
 # `FFmpeg pin refresh` workflow) captures the build, publishes the source release, and rewrites the
 # pins, the redistribution manifest and the per-pin evidence together. See docs/contributing/releasing.md.
-ARG FFMPEG_RELEASE=autobuild-2026-10-26-14-25
-ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-10-27
-ARG FFMPEG_BUILD_ID=n9.0.2-36-g6882969ce9
-ARG FFMPEG_AMD64_SHA256=79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b
-ARG FFMPEG_ARM64_SHA256=f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f
+ARG FFMPEG_RELEASE=autobuild-2026-11-08-12-35
+ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-11-09
+ARG FFMPEG_BUILD_ID=n9.0.2-48-gd4070a14ce
+ARG FFMPEG_AMD64_SHA256=bf5e935a51afb65ddd14bf67104361508bcc7c77026a66d7e193a05a56ab8d77
+ARG FFMPEG_ARM64_SHA256=78972a433ec501179670b7a35720819deb31569ac25e9040e9bb6f8a7cfc8306
 # ⚠ Since v1.9.3 whisper.cpp's version releases carry NO binaries: the Ubuntu archives are attached
 # to the ggml-style build release cut from the SAME commit, which the version release links as its
 # "Nightly build". WHISPER_VERSION is the human version; WHISPER_BUILD is the release the archives

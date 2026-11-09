@@ -7,32 +7,32 @@
       "assets": [
         {
           "architecture": "amd64",
-          "asset": "ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz",
-          "asset_url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz",
-          "sha256": "79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b"
+          "asset": "ffmpeg-n9.0.2-48-gd4070a14ce-linux64-gpl-9.0.tar.xz",
+          "asset_url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-11-09/ffmpeg-n9.0.2-48-gd4070a14ce-linux64-gpl-9.0.tar.xz",
+          "sha256": "bf5e935a51afb65ddd14bf67104361508bcc7c77026a66d7e193a05a56ab8d77"
         },
         {
           "architecture": "arm64",
-          "asset": "ffmpeg-n9.0.2-36-g6882969ce9-linuxarm64-gpl-9.0.tar.xz",
-          "asset_url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-n9.0.2-36-g6882969ce9-linuxarm64-gpl-9.0.tar.xz",
-          "sha256": "f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f"
+          "asset": "ffmpeg-n9.0.2-48-gd4070a14ce-linuxarm64-gpl-9.0.tar.xz",
+          "asset_url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-11-09/ffmpeg-n9.0.2-48-gd4070a14ce-linuxarm64-gpl-9.0.tar.xz",
+          "sha256": "78972a433ec501179670b7a35720819deb31569ac25e9040e9bb6f8a7cfc8306"
         }
       ],
       "upstream": {
-        "release_url": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-26-14-25",
-        "release_revision": "autobuild-2026-10-26-14-25",
-        "release_commit": "b4a2b1d7cc241786eb8e2b588a7ade40cad48bbd",
-        "source_url": "https://github.com/FFmpeg/FFmpeg/commit/6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d",
-        "source_revision": "6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d",
-        "build_url": "https://github.com/BtbN/FFmpeg-Builds/tree/937868360a21d711ec94a33f5591d345ad9b7754",
-        "build_revision": "937868360a21d711ec94a33f5591d345ad9b7754",
-        "build_id": "n9.0.2-36-g6882969ce9",
+        "release_url": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-11-08-12-35",
+        "release_revision": "autobuild-2026-11-08-12-35",
+        "release_commit": "c9fe5114060e507409f7ee07edfd82efaf25d767",
+        "source_url": "https://github.com/FFmpeg/FFmpeg/commit/d4070a14cecc7e29eb278f9b6036c2284255f70d",
+        "source_revision": "d4070a14cecc7e29eb278f9b6036c2284255f70d",
+        "build_url": "https://github.com/BtbN/FFmpeg-Builds/tree/c9fe5114060e507409f7ee07edfd82efaf25d767",
+        "build_revision": "c9fe5114060e507409f7ee07edfd82efaf25d767",
+        "build_id": "n9.0.2-48-gd4070a14ce",
         "retention_class": "mirrored",
-        "retention_policy_url": "https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-10-27",
-        "retention_policy_revision": "third-party-sources-2026-10-27",
+        "retention_policy_url": "https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-11-09",
+        "retention_policy_revision": "third-party-sources-2026-11-09",
         "license_urls": [
-          "https://github.com/BtbN/FFmpeg-Builds/blob/937868360a21d711ec94a33f5591d345ad9b7754/LICENSE",
-          "https://github.com/FFmpeg/FFmpeg/blob/6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d/COPYING.GPLv3"
+          "https://github.com/BtbN/FFmpeg-Builds/blob/c9fe5114060e507409f7ee07edfd82efaf25d767/LICENSE",
+          "https://github.com/FFmpeg/FFmpeg/blob/d4070a14cecc7e29eb278f9b6036c2284255f70d/COPYING.GPLv3"
         ]
       }
     },
