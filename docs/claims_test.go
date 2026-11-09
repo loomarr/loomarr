@@ -93,7 +93,6 @@ var backtickSpan = regexp.MustCompile("`([^`\n]+)`")
 // is "real but absent", and it must not become a junk drawer for typos.
 var envVarsOutsideTheRegistry = map[string]string{
 	"PLAYOUT_RENDER_DEVICE":                "compose-only — it drives the `devices:` mapping; the app never reads it",
-	"PLAYOUT_FONT_PATH":                    "read directly via os.Getenv in internal/playout/font.go",
 	"FILLER_DROP_DIR":                      "development-only — dev-env selects the host folder mounted into Tunarr",
 	"MEDIA_SERVER_IP":                      "compose-only — dev Tunarr's extra_hosts entry",
 	"LOOMARR_VERSION":                      "compose-only — selects the pinned GHCR image tag",

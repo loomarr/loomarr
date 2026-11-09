@@ -96,7 +96,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/bgexec` | — |
 | `media/creative` | — |
 | `media/defects` | — |
-| `media/encode` | `platform/config` |
+| `media/encode` | — |
 | `media/images` | `platform/httpx`, `platform/jobs`, `platform/settings`, `platform/store/activitystore` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `metadataprovider` | — |
@@ -105,7 +105,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `people/notifications` | `platform/httpx` |
 | `platform/activity` | `platform/store/activitystore` |
 | `platform/buildinfo` | — |
-| `platform/config` | — |
 | `platform/diagnostics` | `platform/storagegovernor` |
 | `platform/holidayvocab` | — |
 | `platform/httpx` | `platform/metrics` |
@@ -113,7 +112,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library`, `platform/buildinfo`, `platform/config` |
+| `platform/settings` | `library`, `platform/buildinfo` |
 | `platform/storagegovernor` | — |
 | `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
 | `platform/store/activitystore` | `platform/store/storedb` |
@@ -123,7 +122,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb` |
 | `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
 | `platform/store/storedb` | — |
-| `playout` | `channels/schedule`, `media/encode`, `platform/config`, `platform/diagnostics`, `provision` |
+| `playout` | `channels/schedule`, `media/encode`, `platform/diagnostics`, `provision` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
 | `proposals/accept` | `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
