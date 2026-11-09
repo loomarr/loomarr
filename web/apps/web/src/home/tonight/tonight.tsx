@@ -1,3 +1,5 @@
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import type { GuideHighlightDTO } from "@loomarr/api/models/guideHighlightDTO";
 import { GuideHighlightDTOReason } from "@loomarr/api/models/guideHighlightDTOReason";
 import { formatGuideTime, formatProgrammeTitle } from "@loomarr/core/guide";
@@ -20,10 +22,31 @@ const highlightReason = (h: GuideHighlightDTO, timeZone?: string): string => {
   }
 };
 
-// Tonight — Home's highlights list (#1659 web mock): when, which channel, the show and its
-// episode, and why it is worth knowing about. Each row opens that channel's Watch.
-const Tonight = ({ highlights, timeZone }: TonightProps) => {
-  if (highlights.length === 0) return null;
+interface NextProgramme {
+  airing: GuideAiring;
+  channelId: string;
+  channelNumber: number;
+}
+
+// Each channel's next real programme after now (#2763), soonest first. Filler is not a programme,
+// so a channel with only filler ahead has no row.
+const nextProgrammes = (channels: readonly GuideChannelTimeline[], nowMs: number): NextProgramme[] =>
+  channels
+    .flatMap((channel) => {
+      const next = channel.airings
+        .filter((airing) => airing.kind === "program" && airing.startMs > nowMs)
+        .sort((a, b) => a.startMs - b.startMs)[0];
+      return next ? [{ airing: next, channelId: channel.channelId, channelNumber: channel.number }] : [];
+    })
+    .sort((a, b) => a.airing.startMs - b.airing.startMs || a.channelNumber - b.channelNumber);
+
+// Tonight — Home's list of what is on next (#1659 web mock): when, which channel, the show and its
+// episode, and, when it is a premiere or a marathon, why that is worth knowing. Each row opens that
+// channel's Watch.
+const Tonight = ({ channels, highlights, nowMs, timeZone }: TonightProps) => {
+  const rows = nextProgrammes(channels, nowMs);
+  if (rows.length === 0) return null;
+  const reasons = new Map(highlights.map((h) => [h.airing.scheduleBlockId, highlightReason(h, timeZone)]));
   return (
     <section aria-labelledby="home-tonight">
       <SectionHeader id="home-tonight" title="Tonight">
@@ -32,14 +55,14 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
         </Action>
       </SectionHeader>
       <ListGroup aria-labelledby="home-tonight">
-        {highlights.map((h) => (
+        {rows.map(({ airing, channelId, channelNumber }) => (
           <HighlightRow
-            key={h.airing.scheduleBlockId}
-            time={formatGuideTime(h.airing.startMs, timeZone)}
-            channelNumber={String(h.channelNumber).padStart(2, "0")}
-            title={formatProgrammeTitle(h.airing)}
-            reason={highlightReason(h, timeZone)}
-            render={<Link to="/watch/$id" params={{ id: h.channelId }} />}
+            key={airing.scheduleBlockId}
+            time={formatGuideTime(airing.startMs, timeZone)}
+            channelNumber={String(channelNumber).padStart(2, "0")}
+            title={formatProgrammeTitle(airing)}
+            reason={reasons.get(airing.scheduleBlockId)}
+            render={<Link to="/watch/$id" params={{ id: channelId }} />}
           />
         ))}
       </ListGroup>
@@ -47,4 +70,4 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
   );
 };
 
-export { highlightReason, Tonight };
+export { highlightReason, nextProgrammes, Tonight };
