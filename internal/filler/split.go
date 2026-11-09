@@ -341,7 +341,7 @@ type SplitDetectionProgress struct {
 }
 
 // SplitLanguageProgress is the private durable cursor between boundary detection and review.
-// The wanted languages (IntakeLanguages) are snapshotted so a settings edit or a new channel cannot
+// The wanted languages (language.IntakeSet) are snapshotted so a settings edit or a new channel cannot
 // judge one reel under two policies.
 type SplitLanguageProgress struct {
 	Want string `json:"want"`
@@ -403,7 +403,7 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
-	// LanguagePreference is the set of languages (IntakeLanguages, comma-joined) this finished
+	// LanguagePreference is the set of languages (language.IntakeSet, comma-joined) this finished
 	// proposal was checked against. It lets review disclose a later change, to the setting or to the
 	// channels, and offer an explicit recheck rather than silently presenting an old decision as
 	// current policy.

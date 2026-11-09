@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
@@ -146,11 +147,11 @@ type SplitArtworkWriter interface {
 	IngestSplitArtwork(ctx context.Context, proposalID string, segment SplitSegment, jpeg []byte) (string, error)
 }
 
-// SegmentLanguagePolicy applies the intake languages (IntakeLanguages) to each detected span before
+// SegmentLanguagePolicy applies the intake languages (language.IntakeSet) to each detected span before
 // the split becomes reviewable. Budget is the existing per-pass whisper allowance, not another user
 // knob.
 type SegmentLanguagePolicy struct {
-	Detector LanguageDetector
+	Detector language.Detector
 	Want     func(context.Context) (string, error)
 	Budget   func() int
 }
@@ -271,7 +272,7 @@ func (sp *Splitter) startSegmentLanguage(ctx context.Context, p *SplitProposal) 
 		// Not "no language": that would present every segment as reviewable under no policy.
 		return false, fmt.Errorf("read the channels' commercial languages: %w", err)
 	}
-	want := LanguageSet(raw)
+	want := language.NormalizeSet(raw)
 	if want == "" {
 		return false, nil
 	}
@@ -312,7 +313,7 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 		for i := p.Language.Next; i < endIndex; i++ {
 			segment := &p.Segments[i]
 			segment.LanguageChecked = true
-			start, end := LanguageSpan(segment.EndMs - segment.StartMs)
+			start, end := language.Span(segment.EndMs - segment.StartMs)
 			detected, err := policy.Detector.DetectLanguage(ctx, file, segment.StartMs+start, min(segment.EndMs, segment.StartMs+end))
 			if err != nil {
 				if ctx.Err() != nil {
@@ -322,8 +323,8 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 				segment.LanguageNote = "Language could not be checked"
 				continue
 			}
-			segment.Language = NormalizeLanguage(detected)
-			if segment.Language == LangUndetermined {
+			segment.Language = language.Normalize(detected)
+			if segment.Language == language.Undetermined {
 				segment.LanguageReason = SplitLanguageInconclusive
 			}
 		}
@@ -335,7 +336,7 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 	want := p.Language.Want
 	kept := make([]SplitSegment, 0, len(p.Segments))
 	for _, segment := range p.Segments {
-		if LanguageRejects(segment.Language, want) {
+		if language.Rejects(segment.Language, want) {
 			p.LanguageExclusions = append(p.LanguageExclusions, SplitLanguageExclusion{
 				StartMs:          segment.StartMs,
 				EndMs:            segment.EndMs,

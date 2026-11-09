@@ -1,4 +1,4 @@
-package filler
+package language
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 // The parser against REAL whisper-cli output, not hand-written JSON.
 //
 // ⚠ **Captured from the vendored binary and model in the built image** (whisper.cpp v1.9.1 +
-// `ggml-tiny.bin`), run with the exact arguments `WhisperLanguage.DetectLanguage` uses, over two
+// `ggml-tiny.bin`), run with the exact arguments `Whisper.DetectLanguage` uses, over two
 // genuine clips:
 //
 //   - `lang_es.json` — a Spanish soft-drink advert from archive.org
@@ -30,7 +30,7 @@ func TestParseWhisperLanguage_AgainstRealVendoredOutput(t *testing.T) {
 		{"lang_es.json", "es", "a genuine Spanish advert must be detected as Spanish, or the gate never rejects anything"},
 		{"lang_en.json", "en", "a real catalog clip must be detected as English, or the gate deletes the whole catalog"},
 	} {
-		raw, err := os.ReadFile(filepath.Join("..", "testkit", "fixtures", "whisper", tc.file))
+		raw, err := os.ReadFile(filepath.Join("..", "..", "testkit", "fixtures", "whisper", tc.file))
 		if err != nil {
 			t.Fatalf("read %s: %v", tc.file, err)
 		}
@@ -52,11 +52,11 @@ func TestParseWhisperLanguage_AgainstRealVendoredOutput(t *testing.T) {
 // `ggml-small.en.bin` is English-only and does not identify languages at all, so it would have
 // answered `en` for the Spanish capture above.
 func TestParseWhisperLanguage_TheCapturesDistinguishDetectedFromRequested(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "testkit", "fixtures", "whisper", "lang_es.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testkit", "fixtures", "whisper", "lang_es.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// If the parser ever reads `params`, this returns LangUndetermined ("auto" is not a language)
+	// If the parser ever reads `params`, this returns Undetermined ("auto" is not a language)
 	// rather than "es" — a silent no-op gate.
 	if got, _ := parseWhisperLanguage(raw); got != "es" {
 		t.Errorf("parsed %q; the capture's params.language is %q, so reading the wrong field "+

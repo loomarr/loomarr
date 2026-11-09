@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
@@ -156,7 +157,7 @@ func visionClip(path string) filler.StoreClip {
 // (Language "none"), no transcript beyond the wordless sentinel. It stays untagged, so it is a
 // candidate.
 func wordless(c filler.StoreClip) filler.StoreClip {
-	c.Language = filler.LangNone
+	c.Language = language.None
 	c.Transcript = filler.TranscriptNone
 	return c
 }

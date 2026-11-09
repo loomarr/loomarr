@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -734,7 +735,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 		if f.Geography != nil {
 			sel.Geography = filler.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
 		}
-		sel.Language = filler.NormalizeLanguage(f.Language)
+		sel.Language = language.Normalize(f.Language)
 		if f.Era != nil {
 			// ⚠ **PRESENCE is the opt-in, and that is what finally makes "any era" reachable
 			// (§10, V51f).** A present range means the operator has ANSWERED the era question —

@@ -1,5 +1,7 @@
 package filler
 
+import "github.com/loomarr/loomarr/internal/filler/language"
+
 // The commercial language boundary (§10, #2030 decisions 12–15). A channel airs clips in its
 // commercial language plus wordless ones; when those run out the card airs, never a clip in
 // another language. Pins skip it, as they skip every matching rule (pickPinned).
@@ -10,10 +12,10 @@ package filler
 
 // commercialLanguage is the channel's commercial language: its own, else the household's.
 func commercialLanguage(w Window, policy Policy) string {
-	if lang := NormalizeLanguage(w.Language); lang != "" {
+	if lang := language.Normalize(w.Language); lang != "" {
 		return lang
 	}
-	return NormalizeLanguage(policy.Language)
+	return language.Normalize(policy.Language)
 }
 
 // speaksTheChannelsLanguage reports whether c may air on the channel.
@@ -22,11 +24,11 @@ func speaksTheChannelsLanguage(c Clip, w Window, policy Policy) bool {
 	if want == "" {
 		return true // no language anywhere: nothing to hold the clip to
 	}
-	switch got := NormalizeLanguage(c.Language); got {
-	case LangNone:
+	switch got := language.Normalize(c.Language); got {
+	case language.None:
 		return true
-	case LangUndetermined:
-		return want == NormalizeLanguage(policy.Language)
+	case language.Undetermined:
+		return want == language.Normalize(policy.Language)
 	default:
 		return got == want
 	}
