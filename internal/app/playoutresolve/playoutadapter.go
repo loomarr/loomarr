@@ -32,8 +32,8 @@ import (
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -171,7 +171,7 @@ type Resolver struct {
 	libraryVideo LibraryVideoReader
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
-	itemFacts store.LibraryItemFactsReader
+	itemFacts librarystore.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -256,7 +256,7 @@ type Config struct {
 	// LibraryVideo is a Library item's video format as the scanner read it.
 	LibraryVideo LibraryVideoReader
 	// ItemFacts answers the guide's metadata for a library item id.
-	ItemFacts store.LibraryItemFactsReader
+	ItemFacts librarystore.LibraryItemFactsReader
 
 	// Tier, Encoder and ToneCurve read playout.quality_tier, playout.encoder and
 	// playout.tone_curve live.
@@ -1333,7 +1333,7 @@ func readableFile(path string) bool {
 
 // LibraryVideoReader is the store's read of the video a Library item plays.
 type LibraryVideoReader interface {
-	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
+	LibraryPlayingVideo(ctx context.Context, itemID string) (librarystore.LibraryStream, bool, error)
 }
 
 // libraryFormat is a library item's video format as the scanner read its playing file's header
@@ -1358,7 +1358,7 @@ func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.Me
 
 // LibraryAudioReader is the store's one Library read audio selection makes.
 type LibraryAudioReader interface {
-	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]librarystore.LibraryStream, bool, error)
 }
 
 // libraryAudioTracks is a local file's audio tracks as the Library lists them, when the scanner

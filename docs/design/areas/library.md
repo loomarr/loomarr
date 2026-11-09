@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 17 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **platform** · 18 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
 
 ## Packages
@@ -23,9 +23,9 @@ One area of the [package map](../package-map.md#start-here).
   Provisioning backstop (design §4, §7, §18).
 - **`library/requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/tmdb`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `provision`
+- **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/tmdb`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `platform/store/librarystore`, `provision`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
-- **`library/titlesearch`** · 6 importers · → `library`, `platform/store`, `provision`
+- **`library/titlesearch`** · 6 importers · → `library`, `platform/store/librarystore`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`library/tmdb`** · 7 importers · → `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.

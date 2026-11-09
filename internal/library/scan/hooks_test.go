@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/arrhook"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // webhookArr saves whatever connection it is sent.
@@ -36,8 +36,8 @@ func webhookArr(t *testing.T) *httptest.Server {
 func TestArrHooks(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}

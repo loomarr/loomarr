@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 const libraryParityName = "eval library-parity"
@@ -77,7 +78,7 @@ func runLibraryParity(ctx context.Context, args []string, getenv func(string) st
 		}
 	}
 	writeParitySummary(stdout, result)
-	var rows []store.LibraryFile
+	var rows []librarystore.LibraryFile
 	for _, root := range roots {
 		got, err := st.LibraryFiles(ctx, root)
 		if err != nil {

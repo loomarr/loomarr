@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-type libraryEpisodesFake map[string][]store.LibraryEpisode
+type libraryEpisodesFake map[string][]librarystore.LibraryEpisode
 
-func (f libraryEpisodesFake) LibraryEpisodes(_ context.Context, seriesID string) ([]store.LibraryEpisode, bool, error) {
+func (f libraryEpisodesFake) LibraryEpisodes(_ context.Context, seriesID string) ([]librarystore.LibraryEpisode, bool, error) {
 	eps, ok := f[seriesID]
 	return eps, ok, nil
 }

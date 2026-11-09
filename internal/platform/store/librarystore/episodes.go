@@ -1,4 +1,4 @@
-package store
+package librarystore
 
 import (
 	"context"
@@ -34,9 +34,9 @@ type LibraryEpisodeReader interface {
 	LibraryEpisodes(ctx context.Context, seriesID string) (eps []LibraryEpisode, found bool, err error)
 }
 
-func (s *sqlStore) LibraryEpisodes(ctx context.Context, seriesID string) ([]LibraryEpisode, bool, error) {
+func (s *Store) LibraryEpisodes(ctx context.Context, seriesID string) ([]LibraryEpisode, bool, error) {
 	var one int
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT 1 FROM library_items WHERE id = ? AND kind = 'series'`),
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT 1 FROM library_items WHERE id = ? AND kind = 'series'`),
 		seriesID).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -44,7 +44,7 @@ func (s *sqlStore) LibraryEpisodes(ctx context.Context, seriesID string) ([]Libr
 	if err != nil {
 		return nil, false, fmt.Errorf("library series %s: %w", seriesID, err)
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id, i.name, i.season, i.episode, i.episode_end, i.year,
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, i.name, i.season, i.episode, i.episode_end, i.year,
 		i.premiere_date, i.rating, i.score, i.overview,
 		COALESCE(NULLIF((SELECT MAX(src.duration_ms) FROM library_sources src WHERE src.item_id = i.id AND src.plays), 0), i.runtime_ms)
 		FROM library_items i
@@ -73,7 +73,7 @@ func (s *sqlStore) LibraryEpisodes(ctx context.Context, seriesID string) ([]Libr
 	if err := rows.Err(); err != nil {
 		return nil, true, fmt.Errorf("library episodes of %s: %w", seriesID, err)
 	}
-	trows, err := s.db.QueryContext(ctx, s.ph(`SELECT t.item_id, t.name FROM library_tags t
+	trows, err := s.h.QueryContext(ctx, s.ph(`SELECT t.item_id, t.name FROM library_tags t
 		JOIN library_items i ON i.id = t.item_id
 		WHERE i.series_id = ? AND i.kind = 'episode' ORDER BY t.item_id, t.position`), seriesID)
 	if err != nil {

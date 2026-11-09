@@ -8,7 +8,7 @@ import (
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 func radarrMovie(tmdb, file string) mp.Record {
@@ -31,8 +31,8 @@ func TestFolderPassReusesTheArrListing(t *testing.T) {
 	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr, Fetcher: radarr,
 		Address: func() string { return address }})
 	ctx := context.Background()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
