@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -223,13 +224,13 @@ func (s *sqlStore) commitProposalApproval(
 	if p.CreatedBy != "" {
 		for _, item := range encoded {
 			if err := identitystore.InsertNotificationReferenceRecipient(
-				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
+				ctx, tx, s.ph, notifications.ReferenceTitle, string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
 			); err != nil {
 				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
 			}
 		}
 		if err := identitystore.InsertNotificationReferenceRecipient(
-			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
+			ctx, tx, s.ph, notifications.ReferenceChannel, commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
 		); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
 		}

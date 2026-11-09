@@ -82,7 +82,7 @@ LIMIT 10;
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
-- [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
+- [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`title_requesters`](#title_requesters), [`channel_requesters`](#channel_requesters)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
 
@@ -1945,17 +1945,28 @@ One row per try at sending a notification to one destination. A failure that may
 | `outcome_code` | What went wrong, in terms an admin can act on. delivery_disabled, destination_unavailable, preference_disabled (reasons for suppressing); means_unavailable, recipient_rejected, configuration_invalid, transport_unavailable, acceptance_ambiguous, cancelled, worker_interrupted (reasons for failing). Empty when delivered or still in progress. | `TEXT` |
 | `created_at` | When the attempt was queued, in Unix seconds. | `BIGINT` |
 
-### notification_reference_recipients
+### title_requesters
 
-One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them.
+One row per person who asked for a title, recorded when an admin approves their request, so later news about it (the title arrived) reaches them.
 
-**Kept:** Kept while the title, the channel and the person exist. Once one is gone, the nightly housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
+**Kept:** Goes with the title or the person.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `reference_kind` | What was asked for. title or channel. | `TEXT` · key |
-| `reference_id` | The title's key or the channel's id. | `TEXT` · key |
-| `person_id` | The person who asked for it, from users. | `TEXT` · key |
+| `title_key` | The title asked for (a titles key). | `TEXT` · key · → `titles.key` |
+| `person_id` | The person who asked for it, from users. | `TEXT` · key · → `users.id` |
+| `created_at` | When their request was approved, in Unix seconds. | `BIGINT` |
+
+### channel_requesters
+
+One row per person who asked for a channel, recorded when an admin approves their request, so later news about it (the channel went live) reaches them.
+
+**Kept:** Goes with the channel or the person.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel asked for (a channels id). | `TEXT` · key · → `channels.id` |
+| `person_id` | The person who asked for it, from users. | `TEXT` · key · → `users.id` |
 | `created_at` | When their request was approved, in Unix seconds. | `BIGINT` |
 
 ## Settings and housekeeping
