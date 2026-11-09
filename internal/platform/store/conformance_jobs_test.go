@@ -18,8 +18,8 @@ import (
 // Jobs and proposals (§8): the suggester job lifecycle, the scheduled-job table behind
 // the cron runner, and the proposal queues the approval gate reads.
 //
-// ⚠ The three scheduled-job tests sit TOGETHER here. `ScheduledJobPaused` used to live ~900
-// lines from its two siblings, in a file ordered by when each test was written.
+// ⚠ The three scheduled-job tests sit TOGETHER here, so the pause flag is read beside the upsert
+// it must survive.
 
 func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 	return Job{

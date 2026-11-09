@@ -126,9 +126,8 @@ type ChannelStore interface {
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
 	// discovery feedback in one transaction. A detached Channel is retained through SaveChannel.
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
-	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
-	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
-	// content, not by channel id — see ImageStore.
+	// ⚠ There are no channel-icon byte accessors. A channel's icon is an image-service image
+	// (§22) and its bytes are addressed by content, not by channel id — see ImageStore.
 	// ClaimDueChannels atomically claims up to limit channels whose
 	// reconcile_deadline is at/before now, for the periodic reconcile sweep
 	// (§9). Like ClaimDueTitles it *leases* each claimed channel (deadline →
@@ -625,7 +624,7 @@ type SettingStore interface {
 	// generation or the complete new one (config-design §8).
 	ApplySettingBatch(ctx context.Context, batch SettingBatch) error
 	// RewriteSettingValues atomically replaces values without changing their
-	// audit metadata or authority. Startup uses it to encrypt legacy plaintext.
+	// audit metadata or authority. Data-key rotation uses it to reseal protected values.
 	RewriteSettingValues(ctx context.Context, rows []SettingMutation) error
 	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
 	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
