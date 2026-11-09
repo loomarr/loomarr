@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -194,6 +195,10 @@ type ProposalDTO struct {
 	// approval UI explain a search-added series before approval; the client cannot submit it,
 	// and the approval gate independently re-derives every series item from the same Intent.
 	EpisodeSelectionPreview schedule.EpisodeSelection `json:"episodeSelectionPreview,omitempty" doc:"Server-derived episode policy applied to any series added before approval"`
+	// RaiseAudienceTo names the card's "Raise to <rating>" (#3012): the lowest audience limit that
+	// lets every rated left-out title in, sent back as the approval edit's `audience`. Derived
+	// here so no client keeps its own copy of the rating ladder.
+	RaiseAudienceTo ratingWire `json:"raiseAudienceTo,omitempty" doc:"The lowest audience limit that admits every rated left-out title; absent when none was left out for its rating"`
 }
 
 // rfc3339OrEmpty renders a timestamp for the wire, mapping the ZERO time to "" so `omitempty`
@@ -209,11 +214,13 @@ func rfc3339OrEmpty(t time.Time) string {
 
 func proposalToDTO(p store.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
 	payload := p.Body
+	raise, _ := suggest.AudienceToAdmitRefused(payload)
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
 		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
 		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent, holidays),
+		RaiseAudienceTo: ratingWire(raise),
 	}
 }
 
@@ -365,6 +372,10 @@ type ApprovalEditDTO struct {
 	Add []proposals.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
+	// Audience is the card's "Raise to <rating>" (#3012): a new audience limit, applied as the
+	// channel is created. It may only loosen the proposal's own limit; the left-out titles it
+	// admits come back in.
+	Audience ratingWire `json:"audience,omitempty" doc:"A higher audience limit for the channel; left-out titles it admits are included"`
 }
 
 type approveInput struct {
@@ -384,14 +395,14 @@ type approveInput struct {
 // crafted series selector from the trusted original Intent; an empty-but-non-nil edit would
 // falsely describe that server grounding as "approved with modifications: none".
 func approvalEditFromDTO(b *ApprovalEditDTO) *suggest.ApprovalEdit {
-	if b == nil || (len(b.Drop) == 0 && len(b.Add) == 0 && b.Note == "") {
+	if b == nil || (len(b.Drop) == 0 && len(b.Add) == 0 && b.Note == "" && b.Audience == "") {
 		return nil
 	}
 	drop := make([]provision.Key, 0, len(b.Drop))
 	for _, k := range b.Drop {
 		drop = append(drop, provision.Key(k))
 	}
-	return &suggest.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note}
+	return &suggest.ApprovalEdit{DropKeys: drop, Add: b.Add, Note: b.Note, Audience: rating.Rating(b.Audience)}
 }
 
 type approveOutput struct {
@@ -449,6 +460,9 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	}
 	if errors.Is(err, suggest.ErrEmptyApproval) {
 		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
+	}
+	if errors.Is(err, suggest.ErrAudienceNotRaised) {
+		return nil, errUnprocessable("That audience limit isn't higher", "Choose a rating above this channel's current audience limit.")
 	}
 	if err != nil {
 		return nil, err
@@ -643,6 +657,9 @@ func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*str
 	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
 	if errors.Is(err, suggest.ErrProposalJobGone) {
 		return nil, errProposalTooOld()
+	}
+	if errors.Is(err, suggest.ErrAudienceNotRaised) {
+		return nil, errUnprocessable("That audience limit isn't higher", "Choose a rating above this channel's current audience limit.")
 	}
 	if err != nil {
 		return nil, err

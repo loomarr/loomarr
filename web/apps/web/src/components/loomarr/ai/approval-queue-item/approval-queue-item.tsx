@@ -1,4 +1,6 @@
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
 import { Action, Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
 import { ChevronDown, ShieldAlert } from "lucide-react";
@@ -38,6 +40,19 @@ const seasonNotKeptLabel = ({ country, holidays }: SeasonNotKept): string => {
   return `${names} ${one ? "isn't" : "aren't"} on your holiday calendar (${regionName(country)}), so this channel won't follow ${
     one ? "its season" : "their seasons"
   }.`;
+};
+
+// withAudience joins the title edits with a raised audience limit (#3012). The title editor and
+// the Raise button each change their own half; no half left means no edit at all.
+const withAudience = (
+  edit: ApprovalEditDTO | undefined,
+  audience: Rating | undefined,
+): ApprovalEditDTO | undefined => {
+  const titles =
+    edit?.drop?.length || edit?.add?.length || edit?.note?.trim()
+      ? { drop: edit.drop, add: edit.add, note: edit.note }
+      : undefined;
+  return audience ? { ...titles, audience } : titles;
 };
 
 const PickRow = ({
@@ -92,6 +107,7 @@ const ApprovalQueueItem = ({
   episodeSelectionPreview,
   refused,
   audienceLimit,
+  raiseAudienceTo,
   seasonNotKept,
   edit,
   onEdit,
@@ -108,6 +124,8 @@ const ApprovalQueueItem = ({
   const [reason, setReason] = useState("");
   const reasonId = useId();
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
+  const canRaise = raiseAudienceTo !== undefined && onEdit !== undefined;
+  const raising = canRaise && edit?.audience !== undefined;
 
   return (
     <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
@@ -219,12 +237,32 @@ const ApprovalQueueItem = ({
             ))}
           </ul>
           <p className="text-muted-foreground text-xs">
-            {audienceLimit
-              ? `This channel's audience limit is ${audienceLimit}, so anything rated higher is left out.`
-              : "This channel has an audience limit, so anything rated higher is left out."}{" "}
-            Approving adds everything else. To include these, raise the audience limit after the channel is
-            created.
+            {raising
+              ? `Approving raises this channel's audience limit to ${edit?.audience}, so titles rated up to ${edit?.audience} are included.`
+              : `${
+                  audienceLimit
+                    ? `This channel's audience limit is ${audienceLimit}, so anything rated higher is left out.`
+                    : "This channel has an audience limit, so anything rated higher is left out."
+                } Approving adds everything else.${
+                  canRaise ? "" : " To include these, raise the audience limit after the channel is created."
+                }`}
           </p>
+          {/* #3012: one button, the lowest limit that lets these in (named by the server). It
+              rides the approval like any other edit, so it applies when the channel is created;
+              pressing it again takes it back. */}
+          {canRaise && (
+            <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0}>
+              <Action
+                aria-pressed={raising}
+                disabled={busy}
+                onPress={() => onEdit?.(withAudience(edit, raising ? undefined : raiseAudienceTo))}
+                selected={raising}
+                variant="outline"
+              >
+                {`Raise to ${raiseAudienceTo}`}
+              </Action>
+            </Surface>
+          )}
         </div>
       )}
 
@@ -270,7 +308,8 @@ const ApprovalQueueItem = ({
                 episodeSelectionPreview={episodeSelectionPreview}
                 value={edit}
                 disabled={status === "approving"}
-                onChange={onEdit}
+                // The title editor knows drops, adds and the note; a raised limit is kept across.
+                onChange={(next) => onEdit(withAudience(next, edit?.audience))}
                 showNote
                 renderFeedback={renderFeedback}
               />

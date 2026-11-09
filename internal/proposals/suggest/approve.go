@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -38,6 +39,10 @@ var ErrRevisionActive = store.ErrProposalRevisionActive
 // not a playable starting lineup, so they cannot make an otherwise empty edited approval valid.
 var ErrEmptyApproval = errors.New("approve: choose at least one title")
 
+// ErrAudienceNotRaised reports an edit whose audience limit does not loosen the proposal's own:
+// the proposal has no limit, or the new one is unknown, the same, or stricter (#3012).
+var ErrAudienceNotRaised = errors.New("approve: the new audience limit must be higher than the current one")
+
 // ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
 //
 // ⚠ THE EDIT IS A PARAMETER TO Approve, not something a caller applies first, and that is the
@@ -55,6 +60,10 @@ type ApprovalEdit struct {
 	Add []proposals.ProposalItem
 	// Note is the approver's message to the requester, persisted for the audit trail.
 	Note string
+	// Audience is a new audience limit the approver chose on the card ("Raise to TV-G", #3012).
+	// Empty keeps the proposal's own. It may only loosen the limit the proposal has; the
+	// left-out titles it now admits go back into the Lineup or acquisitions.
+	Audience rating.Rating
 	// ownedAddKeys is server-resolved authority, never populated from the wire.
 	// It lets applyEdit place an owned addition without trusting a client-supplied
 	// InLibrary flag or LibraryItemID.
@@ -83,6 +92,7 @@ func ResolveApprovalEdit(
 		DropKeys:     append([]provision.Key(nil), edit.DropKeys...),
 		Add:          make([]proposals.ProposalItem, 0, len(edit.Add)),
 		Note:         edit.Note,
+		Audience:     edit.Audience,
 		ownedAddKeys: make(map[provision.Key]bool),
 	}
 	seen := make(map[provision.Key]bool, len(edit.Add))
@@ -419,11 +429,26 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	body.Acquisitions = slices.Clone(body.Acquisitions)
 	body.Alternates = slices.Clone(body.Alternates)
 
+	// A raised audience limit goes first, so the titles it lets back in are subject to the
+	// edit's drops like any other.
+	var raised string
+	if edit != nil && edit.Audience != "" {
+		var err error
+		if raised, err = raiseAudience(&body, edit.Audience); err != nil {
+			return store.Proposal{}, err
+		}
+	}
+
 	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
 	// in one place for both callers. The edited body is written back onto the proposal below:
 	// the stored record must show what was actually approved, not what the model originally
 	// proposed — otherwise the audit trail describes a lineup that never existed.
 	summary := applyEdit(&body, edit)
+	if raised != "" && summary != "" {
+		summary += ", " + raised
+	} else if raised != "" {
+		summary = raised
+	}
 	// This guards the human edit boundary, where every title in an otherwise valid draft can
 	// be deliberately unchecked. A nil edit is also used by automatic re-curation, whose empty
 	// incoming delta is valid: it means "keep the existing channel" after its quality/cap filter
@@ -447,6 +472,50 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	}
 
 	return p, nil
+}
+
+// raiseAudience sets the proposal's audience limit to `to` and moves every left-out title the new
+// limit admits back where it came from: an owned title to the Lineup, a missing one to the
+// acquisitions (#3012). It answers with the server-written summary part. Only a rating-limit
+// refusal of a title with a known rating comes back; an unrated title stays out, because its
+// refusal was the unrated rule, which a ceiling doesn't decide.
+func raiseAudience(body *proposals.Proposal, to rating.Rating) (string, error) {
+	next, ok := to.Rank()
+	current, hasLimit := body.Policy.Audience.Ceiling.Rank()
+	if !ok || !hasLimit || next <= current {
+		return "", ErrAudienceNotRaised
+	}
+	body.Policy.Audience.Ceiling = to
+	kept := make([]proposals.RefusedPick, 0, len(body.Refused))
+	for _, refused := range body.Refused {
+		normalized := rating.Normalize(refused.Item.OfficialRating)
+		if refused.Reason == "over_ceiling" && normalized.Mapped() {
+			if admitted, _ := body.Policy.Audience.Admits(normalized); admitted {
+				if refused.Item.InLibrary && refused.Item.LibraryItemID != "" {
+					body.Lineup = append(body.Lineup, refused.Item)
+				} else {
+					body.Acquisitions = append(body.Acquisitions, refused.Item)
+				}
+				continue
+			}
+		}
+		kept = append(kept, refused)
+	}
+	body.Refused = kept
+	return "raised the audience limit to " + string(to), nil
+}
+
+// AudienceToAdmitRefused is the lowest audience limit that lets every rated left-out title in,
+// for the approval card's "Raise to <rating>" button (#3012). False when no title was left out
+// for its rating.
+func AudienceToAdmitRefused(p proposals.Proposal) (rating.Rating, bool) {
+	ratings := make([]rating.Rating, 0, len(p.Refused))
+	for _, refused := range p.Refused {
+		if refused.Reason == "over_ceiling" {
+			ratings = append(ratings, rating.Normalize(refused.Item.OfficialRating))
+		}
+	}
+	return rating.LowestCeilingAdmitting(ratings)
 }
 
 // applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the

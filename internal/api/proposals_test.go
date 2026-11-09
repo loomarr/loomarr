@@ -1669,3 +1669,59 @@ func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
 		t.Errorf("a refused approval created %d channels", len(chans))
 	}
 }
+
+// #3012: the card names the lowest limit that lets the left-out titles in, and approving with
+// that `audience` creates the channel at the new limit with those titles in its lineup.
+func TestApprove_RaisesTheAudienceLimitTheCardOffers(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
+	body := `{"intent":{"description":"cartoons for the kids"},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":90000611,"name":"Small Steps","officialRating":"TV-Y7",` +
+		`"inLibrary":true,"libraryItemId":"lib-611"}],"acquisitions":[],` +
+		`"policy":{"audience":{"ceiling":"TV-Y7"}},` +
+		`"refused":[{"item":{"mediaType":"movie","tmdbId":90000612,"name":"Bigger Steps","officialRating":"TV-G",` +
+		`"inLibrary":true,"libraryItemId":"lib-612"},"reason":"over_ceiling"}]}`
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-raise", JobID: "job-raise", Status: "submitted", Body: wireProposal(t, body),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/proposals/p-raise", adminToken, "")
+	var offered struct {
+		RaiseAudienceTo string `json:"raiseAudienceTo"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&offered)
+	if offered.RaiseAudienceTo != "TV-G" {
+		t.Fatalf("raiseAudienceTo = %q, want TV-G", offered.RaiseAudienceTo)
+	}
+
+	if resp := do(t, srv, http.MethodPost, "/v1/proposals/p-raise/approve", adminToken, `{"audience":"TV-Q"}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("approve with an off-ladder audience → %d, want 422", resp.StatusCode)
+	}
+	if resp := do(t, srv, http.MethodPost, "/v1/proposals/p-raise/approve", adminToken, `{"audience":"TV-Y"}`); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("approve with a stricter audience → %d, want 422", resp.StatusCode)
+	}
+
+	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-raise/approve", adminToken, `{"audience":"TV-G"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve with audience → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	ch, err := st.GetChannel(context.Background(), out.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Policy.Audience.Ceiling != "TV-G" {
+		t.Errorf("channel ceiling = %q, want TV-G", ch.Policy.Audience.Ceiling)
+	}
+	if len(ch.Lineup) != 2 {
+		t.Errorf("channel lineup = %+v, want the left-out TV-G title included", ch.Lineup)
+	}
+	if p, _ := st.GetProposal(context.Background(), "p-raise"); len(p.Body.Refused) != 0 || p.ModSummary != "raised the audience limit to TV-G" {
+		t.Errorf("approved proposal refused=%+v summary=%q, want nothing left out and the raise recorded", p.Body.Refused, p.ModSummary)
+	}
+}
