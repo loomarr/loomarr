@@ -105,7 +105,7 @@ func TestExtractSpanWAV_ProducesWhatWhisperRequires(t *testing.T) {
 // leaving for someone to discover. Moving `-ss` after `-i` produces the same correct cut — it
 // is a PERFORMANCE property (seek by keyframe vs decode up to the span), not a correctness one,
 // so no assertion about the output bytes can catch it. Verified by sabotage: the reorder leaves
-// this test green. The comment on `extractSpanWAV` is what guards it.
+// this test green. The comment on `ExtractSpanWAV` is what guards it.
 func TestExtractSpanWAV_CutsOnlyTheRequestedSpan(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg unavailable")
@@ -206,7 +206,7 @@ func TestCut_MP4DoesNotExposeKeyframePreroll(t *testing.T) {
 	}
 }
 
-// ⚠ A negative duration must not reach ffmpeg. `extractSpanWAV` passes `endMs-startMs`, so an
+// ⚠ A negative duration must not reach ffmpeg. `ExtractSpanWAV` passes `endMs-startMs`, so an
 // inverted span is a subtraction away — and ffmpeg given a negative `-t` writes nothing while
 // exiting 0, which the caller reads as a successful extraction of silence.
 func TestExtractSpanWAV_ClampsAnInvertedSpan(t *testing.T) {
