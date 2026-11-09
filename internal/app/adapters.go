@@ -403,8 +403,9 @@ func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	if m.Kind == "series" {
 		r.MediaType = library.Series
 	}
-	r.TMDBID, _ = strconv.Atoi(m.TMDBID)
-	r.TVDBID, _ = strconv.Atoi(m.TVDBID)
+	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
+	r.TMDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TVDB)))
 	return r
 }
 
