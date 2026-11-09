@@ -50,6 +50,7 @@ type channelBuild struct {
 	playout                playoutapi.Playout
 	playoutResolverService playoutapi.PlayoutResolver
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
+	watched                func() bool             // a viewer is fetching a channel; nil without the packager
 	playoutGuide           playoutapi.PlayoutGuide
 	playoutResolver        *playoutresolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
@@ -135,6 +136,8 @@ func buildChannels(
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
+	// Whether a viewer is watching a channel; the library's header reads wait while one is.
+	var watched func() bool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -299,6 +302,7 @@ func buildChannels(
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
 		playoutGuideSvc = playoutBuilt.guide
 		resourceBudget = playoutBuilt.budget
+		watched = playoutBuilt.watched
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := settings.ChannelReconcileEvery.Get(set)
@@ -326,6 +330,7 @@ func buildChannels(
 		playoutCapability:      playoutCapability,
 		playout:                playoutSvc,
 		playoutResolverService: playoutResolverSvc, resourceBudget: resourceBudget,
+		watched:      watched,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,

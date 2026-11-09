@@ -43,6 +43,9 @@ type playoutBuild struct {
 	setResidentVRAM   func(func(context.Context) (float64, string))
 	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
 	budget *playout.ResourceBudget
+	// watched reports whether a viewer is fetching a channel (PackagerHLS.Watched); nil without the
+	// channel packager.
+	watched func() bool
 }
 
 type playoutDeps struct {
@@ -146,6 +149,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}).WithLog(log)
 	// The channel packager is built after the resolver it reads the schedule through.
 	var packagedHLS *playout.PackagerHLS
+	var watched func() bool
 	// Host measurements live in playout.state_dir. The retired prepared library's setting is gone, so
 	// its default home, <data dir>/prepared (the sibling of the default state directory), is the one
 	// place left to reclaim; a custom layout finds nothing there.
@@ -334,6 +338,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			eventBus.Publish(events.Event{Type: "playout", Payload: opsapi.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
 		})
 		playoutObserver = packagedHLS
+		watched = packagedHLS.Watched
 		owner.addStop(func(context.Context) error {
 			packagedHLS.Stop()
 			return nil
@@ -412,6 +417,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 		budget:          resourceBudget,
+		watched:         watched,
 	}, nil
 }
 
