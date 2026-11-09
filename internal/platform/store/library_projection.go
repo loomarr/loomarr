@@ -26,25 +26,24 @@ type LibraryProjection interface {
 
 func (s *sqlStore) ProjectLibraryWith(p LibraryProjector) { s.libraryProjector.Store(&p) }
 
-// projectLibrary rewrites the library rows of each item in tx. An item the inventory no longer
-// has, or one the projector does not list, keeps whatever row it had: presence comes from
-// library_files, and a title that comes back finds its row, its collections and its answer.
-func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, ids ...inventory.ItemID) error {
+// projecting reports whether a projector is installed, so an inventory write can skip reading the
+// items it would hand over.
+func (s *sqlStore) projecting() bool {
+	p := s.libraryProjector.Load()
+	return p != nil && *p != nil
+}
+
+// projectLibrary rewrites the library rows of each item in tx. The items come from the inventory
+// write that changed them, so this side never reads the inventory. An item the inventory no longer
+// has is not passed in, and one the projector does not list keeps whatever row it had: presence
+// comes from library_files, and a title that comes back finds its row, its collections and its
+// answer.
+func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, items []inventory.Item) error {
 	p := s.libraryProjector.Load()
 	if p == nil || *p == nil {
 		return nil
 	}
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		item, ok, err := s.readInventoryItem(ctx, tx, id)
-		if err != nil {
-			return fmt.Errorf("project library item %s: %w", id, err)
-		}
-		if !ok {
-			continue
-		}
+	for _, item := range items {
 		row, ok := (*p)(item)
 		if !ok {
 			continue

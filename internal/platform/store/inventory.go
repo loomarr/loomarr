@@ -132,7 +132,7 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 			return "", fmt.Errorf("delete followed inventory item: %w", err)
 		}
 	}
-	if err := s.projectLibrary(ctx, tx, at, itemID, orphan); err != nil {
+	if err := s.projectInventory(ctx, tx, at, itemID, orphan); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -304,6 +304,29 @@ func (s *sqlStore) InventoryItem(ctx context.Context, ref inventory.ItemRef) (in
 		return inventory.Item{}, false, fmt.Errorf("validate stored inventory item: %w", err)
 	}
 	return item, true, nil
+}
+
+// projectInventory hands the library projector the items ids name, read in tx after the write
+// that changed them. An id the inventory no longer has is skipped. This is the one place the
+// inventory side reaches the library side: the library never reads the inventory back.
+func (s *sqlStore) projectInventory(ctx context.Context, tx *sql.Tx, at time.Time, ids ...inventory.ItemID) error {
+	if !s.projecting() {
+		return nil
+	}
+	items := make([]inventory.Item, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		item, ok, err := s.readInventoryItem(ctx, tx, id)
+		if err != nil {
+			return fmt.Errorf("project library item %s: %w", id, err)
+		}
+		if ok {
+			items = append(items, item)
+		}
+	}
+	return s.projectLibrary(ctx, tx, at, items)
 }
 
 func (s *sqlStore) readInventoryItem(ctx context.Context, tx *sql.Tx, itemID inventory.ItemID) (inventory.Item, bool, error) {
@@ -547,7 +570,7 @@ func (s *sqlStore) MarkInventoryUnseen(
 		epoch(at), string(authority), string(authority)); err != nil {
 		return fmt.Errorf("mark inventory source origins missing: %w", err)
 	}
-	if err := s.projectLibrary(ctx, tx, at, gone...); err != nil {
+	if err := s.projectInventory(ctx, tx, at, gone...); err != nil {
 		return err
 	}
 	return tx.Commit()
