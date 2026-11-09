@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/location"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -59,22 +60,22 @@ type locationSuggestionOutput struct {
 }
 
 func (s *Server) registerLocations(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-search", Method: http.MethodGet, Path: "/v1/locations",
 		Summary: "Search installation locations", Description: "Admin only. Searches Loomarr's embedded city, populated-municipality, and country index; no runtime geocoder is called.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.locationsSearch)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-resolve", Method: http.MethodPost, Path: "/v1/locations/resolve",
 		Summary: "Resolve device coordinates", Description: "Admin only. Resolves transient browser coordinates against Loomarr's embedded place index. Coordinates are not stored.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.locationResolve)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-get", Method: http.MethodGet, Path: "/v1/locations/{id}",
 		Summary: "Get a saved place", Description: "Admin only. Returns the embedded index entry for a saved city place id, so a form can show the place it holds.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.locationGet)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-suggestion", Method: http.MethodGet, Path: "/v1/locations/suggestion",
 		Summary: "Suggest an approximate installation location", Description: "Admin only. Uses trusted CDN geography or the effective public client IP against Loomarr's embedded index. Never saves the suggestion.",
 		Tags: []string{"settings"},
@@ -84,7 +85,7 @@ func (s *Server) registerLocations(api huma.API) {
 func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput) (*locationsSearchOutput, error) {
 	index, err := location.Default()
 	if err != nil {
-		return nil, errServiceUnavailable("Location search unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
+		return nil, httpcore.ServiceUnavailable("Location search unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}
 	out := &locationsSearchOutput{}
 	out.Body.Locations = make([]locationDTO, 0)
@@ -97,11 +98,11 @@ func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput)
 func (s *Server) locationResolve(_ context.Context, input *locationResolveInput) (*locationOutput, error) {
 	index, err := location.Default()
 	if err != nil {
-		return nil, errServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
+		return nil, httpcore.ServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}
 	place, ok := index.Resolve(input.Body.Latitude, input.Body.Longitude)
 	if !ok {
-		return nil, errUnprocessable("Location not found", "Loomarr couldn't match those coordinates to a nearby place. Search for your location instead.")
+		return nil, httpcore.Unprocessable("Location not found", "Loomarr couldn't match those coordinates to a nearby place. Search for your location instead.")
 	}
 	out := &locationOutput{}
 	out.Body.Location = locationDTOFrom(place)
@@ -120,14 +121,14 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 		return nil
 	}
 	if geo.Country == "" {
-		return errUnprocessable("Invalid location", "Choose the channel's country along with its city.")
+		return httpcore.Unprocessable("Invalid location", "Choose the channel's country along with its city.")
 	}
 	index, err := location.Default()
 	if err != nil {
-		return errServiceUnavailable("Location check unavailable", "The built-in location index couldn't be opened. Try again.")
+		return httpcore.ServiceUnavailable("Location check unavailable", "The built-in location index couldn't be opened. Try again.")
 	}
 	if place, ok := index.Lookup(geo.Place); !ok || place.Country != geo.Country {
-		return errUnprocessable("Invalid location", "That city isn't one Loomarr knows in "+geo.Country+". Search for it again.")
+		return httpcore.Unprocessable("Invalid location", "That city isn't one Loomarr knows in "+geo.Country+". Search for it again.")
 	}
 	return nil
 }
@@ -135,7 +136,7 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {
 	index, err := location.Default()
 	if err != nil {
-		return nil, errServiceUnavailable("Location suggestion unavailable", "The built-in location index couldn't be opened. Search for your location instead.")
+		return nil, httpcore.ServiceUnavailable("Location suggestion unavailable", "The built-in location index couldn't be opened. Search for your location instead.")
 	}
 	out := &locationSuggestionOutput{}
 	request := requestFrom(ctx)
@@ -229,11 +230,11 @@ type locationGetInput struct {
 func (s *Server) locationGet(_ context.Context, input *locationGetInput) (*locationOutput, error) {
 	index, err := location.Default()
 	if err != nil {
-		return nil, errServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
+		return nil, httpcore.ServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}
 	place, ok := index.Lookup(input.ID)
 	if !ok {
-		return nil, errNotFound("Place not found", "That saved place isn't in Loomarr's location index. Search for your city again.")
+		return nil, httpcore.NotFound("Place not found", "That saved place isn't in Loomarr's location index. Search for your city again.")
 	}
 	out := &locationOutput{}
 	out.Body.Location = locationDTOFrom(place)

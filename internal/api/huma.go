@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
@@ -1253,7 +1254,7 @@ func humaConfig() huma.Config {
 	arrayNullableOnce.Do(func() { huma.DefaultArrayNullable = false })
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
 	// A fresh map: DefaultConfig hands out Huma's package-level DefaultFormats.
-	cfg.Formats = map[string]huma.Format{"application/json": wireJSONFormat, "json": wireJSONFormat}
+	cfg.Formats = map[string]huma.Format{"application/json": httpcore.WireJSONFormat, "json": httpcore.WireJSONFormat}
 	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a

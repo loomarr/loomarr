@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -107,7 +108,7 @@ type fillerFetchStatusService interface {
 }
 
 func (s *Server) registerFillerWatch(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-watch", Method: http.MethodGet, Path: "/v1/filler/watch",
 		Summary: "Is filler working right now",
 		Description: "The Filler page header's live status (§10 V38c): how many sources are ready, how many clips " +

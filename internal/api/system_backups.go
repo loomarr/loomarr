@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // /v1/system/backups* — the backups already on disk (§16, V12).
@@ -72,7 +73,7 @@ type BackupContent struct {
 // live HERE, with the typed half, rather than in Router: splitting one resource across two
 // registration mechanisms is what let the list be spec'd while its download was not.
 func (s *Server) registerSystemBackups(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-backups-list", Method: http.MethodGet, Path: "/v1/system/backups",
 		Summary: "Backups on disk, newest first",
 		Description: "Admin only. What the scheduled backup job has written into the configured " +
@@ -82,7 +83,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemBackupsList)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-backups-run", Method: http.MethodPost, Path: "/v1/system/backups",
 		Summary: "Write a backup now",
 		Description: "Admin only. Writes one snapshot into the configured directory and prunes to " +
@@ -90,7 +91,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemBackupsRun)
 
-	rawOp[backupNameInput](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[backupNameInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "system-backups-download", Method: http.MethodGet,
 		Path:    "/v1/system/backups/{name}",
 		Summary: "Download an already-written backup",
@@ -99,7 +100,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 		Tags: []string{"system"},
 	}, "The backup file.", "application/octet-stream"), RoleAdmin, s.downloadBackupHandler)
 
-	rawOp[struct{}](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[struct{}](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "backup-now", Method: http.MethodGet, Path: "/v1/backup",
 		Summary: "Stream a fresh backup",
 		Description: "Admin only. Makes a new snapshot and streams it without writing it to the " +

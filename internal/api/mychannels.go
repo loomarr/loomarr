@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -22,25 +23,25 @@ import (
 // "visit" the channels either side.
 
 func (s *Server) registerMyChannels(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "my-channels", Method: http.MethodGet, Path: "/v1/me/channels",
 		Summary:     "Your favourite and recent channels",
 		Description: "Any signed-in person, or a TV they paired. Both of the caller's channel lists in one read: favourites in the order they were starred, and up to 20 recents, newest first. The filter counts are the list lengths.",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.myChannels)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "add-favourite-channel", Method: http.MethodPut, Path: "/v1/me/favourites/{channelId}",
 		Summary:     "Star a channel",
 		Description: "Adds the channel to the caller's favourites. Idempotent. Returns both lists.",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.addFavouriteChannel)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "remove-favourite-channel", Method: http.MethodDelete, Path: "/v1/me/favourites/{channelId}",
 		Summary:     "Unstar a channel",
 		Description: "Removes the channel from the caller's favourites; removing one that isn't starred is not an error. Returns both lists.",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.removeFavouriteChannel)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "record-channel-tune", Method: http.MethodPut, Path: "/v1/me/recent-channels/{channelId}",
 		Summary: "Record that you tuned a channel",
 		Description: "Moves the channel to the front of the caller's recents. Call it once a tune settles (the first decoded frame), " +
@@ -74,11 +75,11 @@ type myChannelsOutput struct {
 // caller has no user, so it has no lists.
 func (s *Server) channelListsUser(ctx context.Context) (string, error) {
 	if s.store == nil {
-		return "", errFeatureNotConfigured("Channel lists unavailable", "The persistence service is not configured.")
+		return "", httpcore.FeatureNotConfigured("Channel lists unavailable", "The persistence service is not configured.")
 	}
 	userID := userIDFromHuma(ctx)
 	if userID == "" {
-		return "", errUnauthorized("Not signed in", "Favourite and recent channels belong to a person. Sign in, or use a paired device.")
+		return "", httpcore.Unauthorized("Not signed in", "Favourite and recent channels belong to a person. Sign in, or use a paired device.")
 	}
 	return userID, nil
 }
@@ -116,7 +117,7 @@ func (s *Server) writeMyChannels(ctx context.Context, write func(userID string) 
 	}
 	if err := write(userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+			return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 		}
 		return nil, err
 	}

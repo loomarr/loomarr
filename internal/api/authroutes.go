@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
@@ -19,18 +20,18 @@ func (s *Server) registerAuth(api huma.API) {
 	if s.login == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "login", Method: http.MethodPost, Path: "/v1/auth/login",
 		Summary: "Sign in with media-server credentials", Tags: []string{"auth"},
 	}, RolePublic), s.handleLogin)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "logout", Method: http.MethodPost, Path: "/v1/auth/logout",
 		Summary: "End the current session", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
 	}, RolePublic), s.handleLogout)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "me", Method: http.MethodGet, Path: "/v1/auth/me",
 		Summary: "Current user, role, and quotas", Tags: []string{"auth"},
 	}, RoleMember), s.handleMe)
@@ -48,7 +49,7 @@ func (s *Server) registerAuth(api huma.API) {
 		// RolePublic because it IS the credential — requiring a session to reach the route
 		// that issues one would make it useless. The gate is that it is not registered at
 		// all unless LOOMARR_DEV_LOGIN=1 (§11), which is a stronger guarantee than a role.
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "dev-login", Method: http.MethodPost, Path: "/v1/auth/dev-login",
 			Summary: "Sign in as an admin without a credential (development only)", Tags: []string{"auth"},
 		}, RolePublic), s.handleDevLogin)
@@ -93,10 +94,10 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 		case errors.Is(err, auth.ErrRateLimited):
 			// Rate-limited attempts are their own signal (HTTP 429); don't fold
 			// them into the credential success/failure ratio.
-			return nil, errTooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
+			return nil, httpcore.TooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			s.metrics.LoginResult(false)
-			return nil, errUnauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
+			return nil, httpcore.Unauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
 		default:
 			return nil, err
 		}
@@ -125,7 +126,7 @@ func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, er
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			// No admin row to borrow. Dev login never CREATES one (§11) — that would
 			// turn a credential shortcut into a provisioning path.
-			return nil, errUnauthorized("No admin to sign in as",
+			return nil, httpcore.Unauthorized("No admin to sign in as",
 				"Dev login borrows an existing admin account, and this install has none. Create one through the setup wizard first.")
 		}
 		return nil, err
@@ -162,7 +163,7 @@ type meOnlyOutput struct{ Body meBody }
 func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, error) {
 	u, ok := userFrom(ctx)
 	if !ok {
-		return nil, errUnauthorized("Not signed in", "You need to sign in to view this.")
+		return nil, httpcore.Unauthorized("Not signed in", "You need to sign in to view this.")
 	}
 	return &meOnlyOutput{Body: meBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove,

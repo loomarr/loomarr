@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -13,19 +14,19 @@ import (
 // surface the Settings UI and the wizard both drive. All admin-only; secrets are
 // masked by the service before they cross this boundary (§4).
 func (s *Server) registerSettings(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-list", Method: http.MethodGet, Path: "/v1/settings",
 		Summary: "List settings", Description: "Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsList)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-patch", Method: http.MethodPatch, Path: "/v1/settings",
 		Summary: "Update settings", Description: "Admin only. Per-key results (saved | invalid | pinned). A saved value follows that setting's apply contract: live on the next owning operation, or restart in the next app generation (config-design §3/§8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsPatch)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-clear", Method: http.MethodDelete, Path: "/v1/settings/{key}",
 		Summary: "Clear a setting", Description: "Admin only. Drops the stored override so the key reverts to env/default — the explicit clear, and the only way to unset a secret (config-design §8/§9).",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
@@ -34,25 +35,25 @@ func (s *Server) registerSettings(api huma.API) {
 	// The unlock (config-design §3.1). A separate operation rather than a field on PATCH:
 	// taking a key from the deploy config is a deliberate act, not something that should
 	// ride along with an ordinary save of its value.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-env-override", Method: http.MethodPut, Path: "/v1/settings/{key}/env-override",
 		Summary: "Take a setting back from the environment", Description: "Admin only. Sets or clears the durable claim that this key is app-managed even though its environment variable is set (config-design §3.1). Unlocking seeds the stored value from the env value it takes over, so nothing changes until the operator saves; a secret never seeds. 404 unknown key (bootstrap keys are not in the registry), 409 when the environment does not pin the key.",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.settingsEnvOverride)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setup-test", Method: http.MethodPost, Path: "/v1/setup/test",
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.settingsTest)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
 		Summary: "Reveal a generated token", Description: "Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.",
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.secretReveal)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
 		Summary: "Regenerate a generated token", Description: "Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.",
 		Tags: []string{"settings"},
@@ -68,7 +69,7 @@ type settingsListOutput struct {
 
 func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOutput, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsListOutput{}
 	entries, err := s.withAuditNames(ctx, s.settings.List(ctx))
@@ -119,7 +120,7 @@ type settingsPatchOutput struct {
 
 func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*settingsPatchOutput, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsPatchOutput{}
 	var saved map[string]string
@@ -184,7 +185,7 @@ func (s *Server) mutateLiveTVSettings(
 		return nil
 	}
 	if s.backendTransition == nil {
-		return errNotImplemented("Settings workflow unavailable",
+		return httpcore.NotImplemented("Settings workflow unavailable",
 			"The Live TV settings workflow isn't running, so this can't be changed right now.")
 	}
 	mutationRan := false
@@ -196,7 +197,7 @@ func (s *Server) mutateLiveTVSettings(
 		return nil
 	}
 	if !mutationRan {
-		return apiErrWithCause(http.StatusServiceUnavailable, "Couldn't save settings",
+		return httpcore.ProblemWithCause(http.StatusServiceUnavailable, "Couldn't save settings",
 			"The settings workflow couldn't be started. Try again in a moment.", err)
 	}
 	s.logw("playout backend transition remains pending after save", err)
@@ -258,7 +259,7 @@ type settingsClearInput struct {
 // has to be a deliberate act rather than a side effect of writing settings back.
 func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*struct{}, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	var res SettingResult
 	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
@@ -270,9 +271,9 @@ func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*st
 	}
 	switch res.Status {
 	case "invalid":
-		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
+		return nil, httpcore.NotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "pinned":
-		return nil, errConflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
+		return nil, httpcore.Conflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
 	}
 	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
 	return nil, nil
@@ -293,7 +294,7 @@ type settingsEnvOverrideInput struct {
 // not behaving like its `.env` can find out from the app that someone took a key back.
 func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrideInput) (*struct{}, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	var res SettingResult
 	err := s.mutateLiveTVSettings(ctx, hasKey(liveTVWiringKeys, in.Key), func(mutationCtx context.Context) bool {
@@ -307,9 +308,9 @@ func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrid
 	case "unknown":
 		// Bootstrap keys land here too: they are read before the database opens, so a flag
 		// stored in that database could not affect them, and they are not in the registry.
-		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
+		return nil, httpcore.NotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "not_pinned":
-		return nil, errConflict("Not set by environment",
+		return nil, httpcore.Conflict("Not set by environment",
 			"No environment variable is setting this, so there's nothing to take over. You can edit it directly.")
 	}
 	s.autoWireMediaSourceAfterSave(ctx, map[string]string{in.Key: ""})
@@ -341,7 +342,7 @@ type settingsTestOutput struct {
 
 func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*settingsTestOutput, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	ok, hint := s.settings.Test(ctx, in.Body.Check)
 	out := &settingsTestOutput{}
@@ -365,11 +366,11 @@ type secretRevealOutput struct {
 // looking at what's already in use.
 func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	value, err := s.settings.RevealSecret(ctx, in.Name)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal token", "This token's current value couldn't be loaded.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Can't reveal token", "This token's current value couldn't be loaded.", err)
 	}
 	out := &secretRevealOutput{}
 	out.Body.Value = value
@@ -388,7 +389,7 @@ type secretRegenerateOutput struct {
 
 func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput) (*secretRegenerateOutput, error) {
 	if s.settings == nil {
-		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+		return nil, httpcore.NotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	var value string
 	var mutationErr error
@@ -401,7 +402,7 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 	}
 	err = mutationErr
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
 	}
 	out := &secretRegenerateOutput{}
 	out.Body.Value = value

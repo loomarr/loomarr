@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // /v1/system/database* — the SQLite → PostgreSQL migration stepper (§18, V11).
@@ -99,7 +100,7 @@ type DatabaseStatus struct {
 // registerSystemDatabase mounts /v1/system/database* (§18). Admin-only throughout: this
 // moves every row the instance owns, and the backup it writes carries every secret.
 func (s *Server) registerSystemDatabase(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-status", Method: http.MethodGet, Path: "/v1/system/database",
 		Summary: "Active backend + migration progress",
 		Description: "Admin only. Which backend is live, whether a migration is offered, and " +
@@ -107,7 +108,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.databaseStatus)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-preflight", Method: http.MethodPost, Path: "/v1/system/database/preflight",
 		Summary: "Probe a candidate PostgreSQL target",
 		Description: "Admin only. Runs every check against the target and returns them all — a check " +
@@ -116,7 +117,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.databasePreflight)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-backup", Method: http.MethodPost, Path: "/v1/system/database/backup",
 		Summary: "Write the pre-migration backup",
 		Description: "Admin only. Writes a server-side snapshot into the configured backup directory. " +
@@ -125,7 +126,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.databaseBackup)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-migrate", Method: http.MethodPost, Path: "/v1/system/database/migrate",
 		Summary: "Copy every table into the target and verify parity",
 		Description: "Admin only. Refuses without a passing preflight and a backup. The source is only " +

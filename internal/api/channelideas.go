@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -31,7 +32,7 @@ type IdeaLibrary interface {
 const ideaHolidayHorizon = 6 * 7 * 24 * time.Hour
 
 func (s *Server) registerChannelIdeas(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-channel-ideas", Method: http.MethodGet, Path: "/v1/discovery/ideas",
 		Summary: "Channel ideas from your library",
 		Description: "Channels the library could make, for Home's Channel ideas (#1665). Built from the library's genres and " +
@@ -41,7 +42,7 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 			"through the list for \"Different ideas\".",
 		Tags: []string{"discovery"},
 	}, RoleMember), s.listChannelIdeas)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "request-channel-idea", Method: http.MethodPost, Path: "/v1/discovery/ideas/{ideaId}/request",
 		Summary: "Request a channel from an idea",
 		Description: "Puts the idea in the approval queue as the caller's own channel request (#1720): the idea's name, " +
@@ -51,7 +52,7 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 		DefaultStatus: http.StatusAccepted,
 		Tags:          []string{"discovery"},
 	}, RoleMember), s.requestChannelIdea)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "submit-manual-channel", Method: http.MethodPost, Path: "/v1/discovery/manual-channel",
 		Summary: "Submit a hand-built channel",
 		Description: "Puts a hand-picked lineup through the same gate every other proposal uses (#1817, decision G2): " +
@@ -61,13 +62,13 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 		DefaultStatus: http.StatusAccepted,
 		Tags:          []string{"discovery"},
 	}, RoleMember), s.submitManualChannel)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "hide-channel-idea", Method: http.MethodPut, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Hide a channel idea",
 		Description: "Hides the idea for the caller only. Idempotent. DELETE is the undo.",
 		Tags:        []string{"discovery"},
 	}, RoleMember), s.hideChannelIdea)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unhide-channel-idea", Method: http.MethodDelete, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Undo hiding a channel idea",
 		Description: "Brings a hidden idea back for the caller; unhiding one that isn't hidden is not an error.",
@@ -121,11 +122,11 @@ type channelIdeaInput struct {
 // hides are, so a break-glass API token (no person) gets none.
 func (s *Server) ideasUser(ctx context.Context) (string, error) {
 	if s.store == nil {
-		return "", errFeatureNotConfigured("Channel ideas unavailable", "The persistence service is not configured.")
+		return "", httpcore.FeatureNotConfigured("Channel ideas unavailable", "The persistence service is not configured.")
 	}
 	userID := userIDFromHuma(ctx)
 	if userID == "" {
-		return "", errUnauthorized("Not signed in", "Channel ideas belong to a person. Sign in, or use a paired device.")
+		return "", httpcore.Unauthorized("Not signed in", "Channel ideas belong to a person. Sign in, or use a paired device.")
 	}
 	return userID, nil
 }
@@ -158,11 +159,11 @@ func (s *Server) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChanne
 // calendar's display labels by holiday id, which names and pitches read.
 func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.Idea, map[string]string, error) {
 	if s.ideaLibrary == nil {
-		return nil, nil, errNotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
+		return nil, nil, httpcore.NotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
 	items, err := s.ideaLibrary.IdeaItems(ctx)
 	if err != nil {
-		return nil, nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
+		return nil, nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
 			"The media library didn't answer. Check the connection in Settings and try again.", err)
 	}
 	hidden, err := s.store.HiddenIdeas(ctx, userID)
@@ -220,11 +221,11 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 		return nil, err
 	}
 	if u, ok := userFrom(ctx); ok && u.Role == identitystore.RoleAdmin {
-		return nil, apiErr(http.StatusForbidden, "Channel ideas are for members",
+		return nil, httpcore.Problem(http.StatusForbidden, "Channel ideas are for members",
 			"Requests go to an admin for approval. As an admin, make the channel yourself from the guide.")
 	}
 	if s.suggest == nil {
-		return nil, errFeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
+		return nil, httpcore.FeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
 	}
 	out := &requestChannelIdeaOutput{}
 	requested, err := s.requestedIdeas(ctx, userID)
@@ -258,7 +259,7 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 		out.Body.JobID = jobID
 		return out, nil
 	}
-	return nil, errNotFound("Idea not available", "That idea isn't available any more. Refresh Home for today's ideas.")
+	return nil, httpcore.NotFound("Idea not available", "That idea isn't available any more. Refresh Home for today's ideas.")
 }
 
 type submitManualChannelBody struct {
@@ -281,25 +282,25 @@ func (s *Server) submitManualChannel(ctx context.Context, in *submitManualChanne
 		return nil, err
 	}
 	if s.suggest == nil {
-		return nil, errFeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
+		return nil, httpcore.FeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
 	}
 	if s.approver == nil {
-		return nil, errFeatureNotConfigured("Channel requests unavailable", "The approval gate isn't running on this server.")
+		return nil, httpcore.FeatureNotConfigured("Channel requests unavailable", "The approval gate isn't running on this server.")
 	}
 	name := strings.TrimSpace(in.Body.Name)
 	if name == "" {
-		return nil, errBadRequest("Name this channel", "Give the channel a name before continuing.")
+		return nil, httpcore.BadRequest("Name this channel", "Give the channel a name before continuing.")
 	}
 	if len(in.Body.Lineup) == 0 {
-		return nil, errBadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
+		return nil, httpcore.BadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
 	}
 	lineup, acquisitions, err := s.approver.ResolveManualLineup(ctx, in.Body.Lineup)
 	if err != nil {
-		return nil, errBadRequest("Couldn't check those titles", err.Error())
+		return nil, httpcore.BadRequest("Couldn't check those titles", err.Error())
 	}
 	total := len(lineup) + len(acquisitions)
 	if total == 0 {
-		return nil, errBadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
+		return nil, httpcore.BadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
 	}
 	built := proposals.Proposal{
 		ChannelName: name, Manual: true, Lineup: lineup, Acquisitions: acquisitions, Rationale: in.Body.Description,

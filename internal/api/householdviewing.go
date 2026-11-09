@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 )
 
@@ -33,7 +34,7 @@ const (
 )
 
 func (s *Server) registerHouseholdViewing(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "household-viewing", Method: http.MethodGet, Path: "/v1/household/viewing",
 		Summary: "Who is watching what right now",
 		Description: "Any signed-in person. Counts of devices watching each channel for everyone; the named viewings " +
@@ -88,7 +89,7 @@ func (s *Server) householdViewing(ctx context.Context, _ *struct{}) (*householdV
 		watches = s.viewing.Watching(s.clock())
 	}
 	me, hasMe := userFrom(ctx)
-	admin := roleFrom(ctx) == RoleAdmin
+	admin := httpcore.RoleFrom(ctx) == RoleAdmin
 	out.Body.Scope = viewingScopeSelf
 	if admin {
 		out.Body.Scope = viewingScopeHousehold

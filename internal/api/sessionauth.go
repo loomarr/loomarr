@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -68,7 +69,7 @@ func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
 func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
-		if u, err := a.mgr.Resolve(r.Context(), c.Value, clientLabel(r.UserAgent())); err == nil {
+		if u, err := a.mgr.Resolve(r.Context(), c.Value, httpcore.ClientLabel(r.UserAgent())); err == nil {
 			user := u
 			return requestIdentity{role: roleOf(u), user: &user}
 		}
@@ -104,7 +105,7 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 				apiToken = "" // credential state unavailable: fail bearer auth closed.
 			}
 		}
-		if apiToken != "" && constantEq(h[len(prefix):], apiToken) {
+		if apiToken != "" && httpcore.ConstantEq(h[len(prefix):], apiToken) {
 			return requestIdentity{role: RoleAdmin}
 		}
 	}

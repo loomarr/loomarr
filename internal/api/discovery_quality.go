@@ -7,14 +7,15 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 func (s *Server) registerDiscoveryQuality(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "export-discovery-quality", Method: http.MethodGet, Path: "/v1/system/discovery-quality/export",
 		Summary:     "Export local discovery-quality measurements",
-		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. " + operatorAPI,
+		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. " + httpcore.OperatorAPI,
 		Tags:        []string{"system"},
 	}, RoleAdmin), s.discoveryQualityExport)
 }

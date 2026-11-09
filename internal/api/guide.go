@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -478,7 +479,7 @@ func guideAiringOf(channelID string, b playout.Broadcast) GuideAiring {
 
 // registerGuide mounts /v1/guide (§12, V13b).
 func (s *Server) registerGuide(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-guide", Method: http.MethodGet, Path: "/v1/guide",
 		Summary: "Every channel's timeline over a window",
 		Description: "Per-channel programme timelines across [from, to), for Loomarr's own time grid. " +

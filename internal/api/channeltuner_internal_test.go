@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -87,7 +88,7 @@ func TestChannelOperationsFailClosedWhenCheckpointReadFails(t *testing.T) {
 	s := &Server{backendCheckpoint: func(context.Context) (BackendCheckpoint, error) {
 		return BackendCheckpoint{}, want
 	}}
-	if _, err := s.listChannels(context.Background(), &struct{}{}); statusFromError(err, 0) != 503 {
+	if _, err := s.listChannels(context.Background(), &struct{}{}); httpcore.StatusFromError(err, 0) != 503 {
 		t.Fatalf("list error = %v, want 503 checkpoint failure", err)
 	}
 }

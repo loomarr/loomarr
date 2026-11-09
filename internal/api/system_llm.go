@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -139,7 +140,7 @@ type LLMModelView struct {
 // registerSystemLLM mounts /v1/system/llm* (§8.1). Admin-only — model selection
 // changes what runs on the box and can trigger a multi-GB download.
 func (s *Server) registerSystemLLM(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-status", Method: http.MethodGet, Path: "/v1/system/llm",
 		Summary: "LLM host probe + model catalog",
 		Description: "Admin only. Active provider + model; the local-model catalog (for Ollama: " +
@@ -148,7 +149,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemLLMStatus)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-select", Method: http.MethodPost, Path: "/v1/system/llm/select",
 		Summary: "Select the active provider + model",
 		Description: "Admin only. Persists the choice and hot-swaps the running suggester with no restart (§8.1). " +
@@ -157,7 +158,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemLLMSelect)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-test", Method: http.MethodPost, Path: "/v1/system/llm/test",
 		Summary: "Test a hosted provider + key",
 		Description: "Admin only. Validates a hosted provider + API key WITHOUT swapping (§8.1). " +
@@ -165,7 +166,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemLLMTest)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-pull", Method: http.MethodPost, Path: "/v1/system/llm/pull",
 		Summary: "Download a local model",
 		Description: "Admin only. Local Ollama only (409 on a hosted provider). Starts a pull as a " +
@@ -173,14 +174,14 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemLLMPull)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-pull-operation", Method: http.MethodGet, Path: "/v1/system/llm/pull-operations/{jobId}",
 		Summary:     "Read local-model download progress and outcome",
 		Description: "Admin only. Authoritative reconnect state for the jobId returned by POST /v1/system/llm/pull. SSE llm_pull frames only accelerate progress display.",
 		Tags:        []string{"system"},
 	}, RoleAdmin), s.systemLLMPullOperation)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-discover", Method: http.MethodGet, Path: "/v1/system/llm/discover",
 		Summary: "Compatible downloadable local models",
 		Description: "Admin only. Returns the most-popular downloadable GGUF models (Hugging Face) that " +
@@ -199,7 +200,7 @@ func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 	}
 }, error) {
 	if s.systemLLM == nil {
-		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+		return nil, httpcore.NotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	out := &struct {
 		Body struct {
@@ -225,11 +226,11 @@ func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
 	Body SystemLLMStatus
 }, error) {
 	if s.systemLLM == nil {
-		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+		return nil, httpcore.NotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	st, err := s.systemLLM.Status(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "AI provider unreachable", "Loomarr couldn't reach the AI provider to check its status. Verify the connection and try again.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "AI provider unreachable", "Loomarr couldn't reach the AI provider to check its status. Verify the connection and try again.", err)
 	}
 	return &struct{ Body SystemLLMStatus }{Body: st}, nil
 }
@@ -247,32 +248,32 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 	Body SystemLLMStatus
 }, error) {
 	if s.systemLLM == nil {
-		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+		return nil, httpcore.NotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Model == "" {
-		return nil, errUnprocessable("Model required", "Choose a model to activate.")
+		return nil, httpcore.Unprocessable("Model required", "Choose a model to activate.")
 	}
 	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
-		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
+		return nil, httpcore.Unprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
 	}
 	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL}
 	switch err := s.systemLLM.Select(ctx, req); {
 	case err == nil:
 	case errors.Is(err, ErrModelNotPulled):
-		return nil, errConflict("Model not ready", "Download this model before selecting it.")
+		return nil, httpcore.Conflict("Model not ready", "Download this model before selecting it.")
 	case errors.Is(err, ErrUnknownProvider):
-		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
+		return nil, httpcore.Unprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	case errors.Is(err, ErrInvalidHostedModel):
-		return nil, errUnprocessable("Invalid hosted model", "Choose a synchronous OpenRouter provider/model slug, such as openai/gpt-4o-mini. Ollama tags and :batch variants cannot serve Loomarr's chat-completions requests.")
+		return nil, httpcore.Unprocessable("Invalid hosted model", "Choose a synchronous OpenRouter provider/model slug, such as openai/gpt-4o-mini. Ollama tags and :batch variants cannot serve Loomarr's chat-completions requests.")
 	case errors.Is(err, ErrKeyInvalid):
-		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
+		return nil, httpcore.Unauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't select the model", "Loomarr couldn't activate that model. Check the AI provider connection and try again.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't select the model", "Loomarr couldn't activate that model. Check the AI provider connection and try again.", err)
 	}
 	// Return the fresh status so the UI reflects the new active model immediately.
 	st, err := s.systemLLM.Status(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Model selected, status unavailable", "The model was activated, but Loomarr couldn't re-read the provider status. Refresh to see the current state.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Model selected, status unavailable", "The model was activated, but Loomarr couldn't re-read the provider status. Refresh to see the current state.", err)
 	}
 	return &struct{ Body SystemLLMStatus }{Body: st}, nil
 }
@@ -293,13 +294,13 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 	}
 }, error) {
 	if s.systemLLM == nil {
-		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+		return nil, httpcore.NotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Provider == "" {
-		return nil, errUnprocessable("Provider required", "Choose which AI provider to test.")
+		return nil, httpcore.Unprocessable("Provider required", "Choose which AI provider to test.")
 	}
 	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
-		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
+		return nil, httpcore.Unprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
 	}
 	out := &struct {
 		Body struct {
@@ -311,7 +312,7 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 	case err == nil:
 		out.Body.OK = true
 	case errors.Is(err, ErrUnknownProvider):
-		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
+		return nil, httpcore.Unprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	default:
 		// A bad key / unreachable provider is a normal, reportable outcome (not a
 		// server error): 200 with ok=false + the reason, so the UI shows it inline.
@@ -333,17 +334,17 @@ func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*st
 	}
 }, error) {
 	if s.systemLLM == nil {
-		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
+		return nil, httpcore.NotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Model == "" {
-		return nil, errUnprocessable("Model required", "Enter the model to download.")
+		return nil, httpcore.Unprocessable("Model required", "Enter the model to download.")
 	}
 	jobID, err := s.systemLLM.Pull(ctx, in.Body.Model)
 	if errors.Is(err, ErrNotLocal) {
-		return nil, errConflict("Download not supported", "Downloading models only applies to a local Ollama provider.")
+		return nil, httpcore.Conflict("Download not supported", "Downloading models only applies to a local Ollama provider.")
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't start the download", "Loomarr couldn't start downloading that model. Check the Ollama connection and try again.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't start the download", "Loomarr couldn't start downloading that model. Check the Ollama connection and try again.", err)
 	}
 	out := &struct {
 		Body struct {
@@ -377,13 +378,13 @@ func (s *Server) systemLLMPullOperation(
 ) (*struct{ Body systemLLMPullOperationDTO }, error) {
 	operation, err := s.store.GetInteractiveOperation(ctx, in.JobID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Model pull not found", "That model-pull operation doesn't exist.")
+		return nil, httpcore.NotFound("Model pull not found", "That model-pull operation doesn't exist.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	if operation.Kind != store.InteractiveOperationLLMPull {
-		return nil, errNotFound("Model pull not found", "That model-pull operation doesn't exist.")
+		return nil, httpcore.NotFound("Model pull not found", "That model-pull operation doesn't exist.")
 	}
 	return &struct{ Body systemLLMPullOperationDTO }{Body: systemLLMPullOperationDTO{
 		JobID: operation.ID, Model: operation.Subject, Status: string(operation.Status),

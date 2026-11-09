@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -16,7 +17,7 @@ import (
 // search adds no new privilege surface (§7.2). This is the SAME catalog impl as
 // the LLM grounding tool — humans and the model see identical results.
 func (s *Server) registerSearch(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "search", Method: http.MethodGet, Path: "/v1/search",
 		Summary: "Federated search (library + TMDB)", Tags: []string{"search"},
 	}, RoleMember), s.doSearch)
@@ -51,23 +52,23 @@ type searchOutput struct {
 
 func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, error) {
 	if s.search == nil {
-		return nil, errNotImplemented("Search isn't set up", "Connect your media library or add a TMDB API key in Settings to search for titles.")
+		return nil, httpcore.NotImplemented("Search isn't set up", "Connect your media library or add a TMDB API key in Settings to search for titles.")
 	}
 	request, err := normalizeSearchRequest(in)
 	if err != nil {
-		return nil, errBadRequest("Invalid search", err.Error())
+		return nil, httpcore.BadRequest("Invalid search", err.Error())
 	}
 	if request.Discovery != nil {
 		if request.Scope == "library" {
-			return nil, errBadRequest("Invalid search scope", "Structured discovery requires the tmdb or all scope.")
+			return nil, httpcore.BadRequest("Invalid search scope", "Structured discovery requires the tmdb or all scope.")
 		}
 		if s.liveSettings != nil && strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) == "" {
-			return nil, errNotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to discover titles.")
+			return nil, httpcore.NotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to discover titles.")
 		}
 	} else {
 		scope, configured := s.configuredSearchScope(request.Scope)
 		if !configured {
-			return nil, errNotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to search TMDB.")
+			return nil, httpcore.NotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to search TMDB.")
 		}
 		request.Scope = scope
 	}
@@ -78,7 +79,7 @@ func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, 
 	request.Limit = limit
 	cands, err := s.search.Search(ctx, request)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Search failed",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Search failed",
 			"The search couldn't be completed. Check the configured title sources and try again.", err)
 	}
 	out := &searchOutput{}

@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 // Handler bodies keep their `(w, r)` signature and are reused verbatim. Only the mounting
 // changes.
 
-// rawOp registers one raw-byte operation: method + path + required role, an optional middleware
+// RawOp registers one raw-byte operation: method + path + required role, an optional middleware
 // chain, and the stdlib handler that writes the response itself.
 //
 // ⚠ **The type parameter is not decoration.** Huma builds the spec's `parameters` list from the
@@ -34,21 +34,21 @@ import (
 // template whose parameter is declared nowhere — invalid OpenAPI 3.1, and a generated client
 // that cannot fill in the URL. The playout routes got away with `struct{}` only because they
 // were Hidden. Declare the params; the handler may still read them via r.PathValue.
-func rawOp[I any](
+func RawOp[I any](
 	api huma.API,
 	op huma.Operation,
 	role Role,
 	body func(http.ResponseWriter, *http.Request),
 	mw ...func(huma.Context, func(huma.Context)),
 ) {
-	rawInputOp(api, op, role, func(w http.ResponseWriter, r *http.Request, _ *I) {
+	RawInputOp(api, op, role, func(w http.ResponseWriter, r *http.Request, _ *I) {
 		body(w, r)
 	}, mw...)
 }
 
-// rawInputOp is rawOp's typed-input form. Huma still owns parameter parsing and validation, while
+// RawInputOp is RawOp's typed-input form. Huma still owns parameter parsing and validation, while
 // the response body retains direct access to ResponseWriter for negotiated or streamed formats.
-func rawInputOp[I any](
+func RawInputOp[I any](
 	api huma.API,
 	op huma.Operation,
 	role Role,
@@ -59,7 +59,7 @@ func rawInputOp[I any](
 	// defaults to ADMIN for an unmarked operation, so a route that must stay reachable without
 	// a session (the channel icon Tunarr fetches machine-to-machine) has to say RolePublic —
 	// forgetting fails closed, which surfaces as a 403 in development rather than an exposure.
-	op = withRole(op, role)
+	op = WithRole(op, role)
 	op.Middlewares = append(op.Middlewares, mw...)
 	huma.Register(api, op, func(_ context.Context, input *I) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{Body: func(hctx huma.Context) {
@@ -69,7 +69,7 @@ func rawInputOp[I any](
 	})
 }
 
-// bytesResponse declares the 200 for an opaque byte body so the spec says `image/jpeg` rather
+// BytesResponse declares the 200 for an opaque byte body so the spec says `image/jpeg` rather
 // than implying JSON.
 //
 // Huma fills in a response it finds empty but never overwrites content already set here — it
@@ -78,7 +78,7 @@ func rawInputOp[I any](
 // Several content types are allowed because one route can legitimately serve more than one: the
 // HLS asset route returns a playlist or a segment depending on which file was asked for, and a
 // spec claiming only one of those would be a documented lie.
-func bytesResponse(op huma.Operation, description string, contentTypes ...string) huma.Operation {
+func BytesResponse(op huma.Operation, description string, contentTypes ...string) huma.Operation {
 	if op.Responses == nil {
 		op.Responses = map[string]*huma.Response{}
 	}
@@ -90,9 +90,9 @@ func bytesResponse(op huma.Operation, description string, contentTypes ...string
 	return op
 }
 
-// hashInput addresses a clip by its CONTENT HASH (V45a) — hex, no slashes, so a plain `{hash}`
+// HashInput addresses a clip by its CONTENT HASH (V45a) — hex, no slashes, so a plain `{hash}`
 // segment needs no wildcard and no encoding. Shared by the thumbnail, media and hover routes,
 // which are the same lookup three times over.
-type hashInput struct {
+type HashInput struct {
 	Hash string `path:"hash" doc:"The clip's content hash (from ClipDTO)" example:"9f2b1c4e8a7d6503"`
 }

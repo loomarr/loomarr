@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // EncryptionService exposes non-secret envelope-encryption status and maintenance.
@@ -21,13 +22,13 @@ type EncryptionStatus struct {
 }
 
 func (s *Server) registerSystemSecurity(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-encryption-status", Method: http.MethodGet, Path: "/v1/system/security/encryption",
 		Summary:     "Database secret-encryption status",
 		Description: "Admin only. Reports the non-secret installation-key fingerprint and retained data-key count.",
 		Tags:        []string{"system"},
 	}, RoleAdmin), s.systemEncryptionStatus)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-encryption-rotate-data-key", Method: http.MethodPost, Path: "/v1/system/security/encryption/rotate",
 		Summary:     "Rotate the active data-encryption key",
 		Description: "Admin only. New secret writes immediately use a fresh data key; prior keys remain readable.",

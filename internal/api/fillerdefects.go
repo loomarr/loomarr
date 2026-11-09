@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -101,7 +102,7 @@ type clearFillerDefectLabelInput struct {
 }
 
 func (s *Server) registerFillerDefects(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-defect-report", Method: http.MethodGet, Path: "/v1/filler/defects",
 		Summary: "Defect floor report",
 		Description: "Admin only (#2034). What the defect floor would retire on this install, every measured clip's findings, " +
@@ -109,13 +110,13 @@ func (s *Server) registerFillerDefects(api huma.API) {
 			"Labels stay in this install's database; nothing here leaves the machine.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.fillerDefectReport)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "label-filler-defect", Method: http.MethodPut, Path: "/v1/filler/defects/{clipId}/label",
 		Summary:     "Label a clip for the defect floor",
 		Description: "Admin only (#2034). Labels a measured clip pass or fail against a good copy of the era its record was judged for.",
 		Tags:        []string{"filler"},
 	}, RoleAdmin), s.labelFillerDefect)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "clear-filler-defect-label", Method: http.MethodDelete, Path: "/v1/filler/defects/{clipId}/label",
 		Summary:     "Clear a clip's defect floor label",
 		Description: "Admin only (#2034).",
@@ -125,7 +126,7 @@ func (s *Server) registerFillerDefects(api huma.API) {
 
 func (s *Server) fillerDefectReport(ctx context.Context, in *fillerDefectReportInput) (*fillerDefectReportOutput, error) {
 	if s.fillerDefects == nil {
-		return nil, errFeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
+		return nil, httpcore.FeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}
 	r, err := s.fillerDefects.Report(ctx, defectfloor.DefectReportFilter{
 		Verdict: defects.Verdict(in.Verdict), Unlabelled: in.Unlabelled, Limit: in.Limit, Offset: in.Offset,
@@ -146,7 +147,7 @@ func (s *Server) clearFillerDefectLabel(ctx context.Context, in *clearFillerDefe
 
 func (s *Server) setFillerDefectLabel(ctx context.Context, clipID string, label defects.Label) error {
 	if s.fillerDefects == nil {
-		return errFeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
+		return httpcore.FeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}
 	err := s.fillerDefects.Label(ctx, clipID, label)
 	if errors.Is(err, defectfloor.ErrDefectNotMeasured) {

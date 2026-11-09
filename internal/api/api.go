@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/web"
@@ -45,7 +46,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// Stamp every error response with the request's correlation id + log its full cause
 	// (§7). A response Transformer is the one seam that sees EVERY error body — returned
 	// StatusErrors AND huma's own validation failures — with the request context.
-	cfg.Transformers = append(cfg.Transformers, errorTransformer(log))
+	cfg.Transformers = append(cfg.Transformers, httpcore.ErrorTransformer(log))
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		// Stamped per handler build, so a restart (§9.2) resets the uptime About reports
@@ -202,13 +203,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// endpoint make" without serialising traffic and diffing a global counter by hand.
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
-	return withSecurityHeaders(withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = wireJSONFormat.Marshal(w, v)
+	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
 }
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {

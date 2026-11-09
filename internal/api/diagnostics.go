@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
@@ -146,21 +147,21 @@ type clientDiagnosticsOutput struct {
 
 func (s *Server) registerDiagnostics(api huma.API) {
 	if s.startupReports != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "get-current-health", Method: http.MethodGet, Path: "/v1/diagnostics/health",
 			Summary:     "Get current health",
 			Description: "Returns the freshness-aware health of the running Loomarr generation from the same required checks used by readiness.",
 			Tags:        []string{"diagnostics"},
 		}, RoleAdmin), s.getCurrentHealth)
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "list-startup-reports", Method: http.MethodGet, Path: "/v1/diagnostics/startup-reports",
 			Summary:     "List startup reports",
-			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. " + operatorAPI,
+			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. " + httpcore.OperatorAPI,
 			Tags:        []string{"diagnostics"},
 		}, RoleAdmin), s.listStartupReports)
 	}
 	if s.clientDiagnostics != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
+		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "ingest-client-diagnostics", Method: http.MethodPost, Path: "/v1/diagnostics/client-events",
 			Summary:     "Report curated client diagnostics",
 			Description: "Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.",
@@ -197,18 +198,18 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			},
 		},
 	}
-	rawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
-	huma.Register(api, withRole(huma.Operation{
+	httpcore.RawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-diagnostic-processes", Method: http.MethodGet, Path: "/v1/diagnostics/processes",
 		Summary: "List diagnostic Process runs", Description: "Returns one bounded newest-first page of active and recent external media Process runs.",
 		Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.listDiagnosticProcesses)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-diagnostic-process", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}",
 		Summary: "Get a diagnostic Process run", Description: "Returns bounded lifecycle metadata and downsampled progress for one Process run.",
 		Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.getDiagnosticProcess)
-	rawInputOp(api, huma.Operation{
+	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "get-diagnostic-process-output", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}/output",
 		Summary: "Read diagnostic Process output", Description: "Streams one Process run's bounded redacted diagnostic output as readable text.",
 		Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{
@@ -218,25 +219,25 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			}, Content: map[string]*huma.MediaType{"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}}}},
 		},
 	}, RoleAdmin, s.diagnosticProcessOutputHandler)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle/preview",
 		Summary: "Preview a Support bundle", Description: "Returns the entries, counts, estimated size, truncation, versions, drops, and redactions selected for a bounded Support bundle without creating the archive.",
 		Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.previewDiagnosticBundle)
-	rawInputOp(api, huma.Operation{
+	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "download-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle",
 		Summary: "Download a Support bundle", Description: "Builds and downloads one bounded redacted ZIP from the same explicit selection accepted by preview.",
 		Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{"200": {Description: "Redacted Support bundle ZIP", Content: map[string]*huma.MediaType{"application/zip": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}}},
 	}, RoleAdmin, s.diagnosticBundleHandler)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-diagnostic-verbose-capture", Method: http.MethodGet, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Get verbose capture", Description: "Returns the current process-local bounded debug-capture window.", Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.getVerboseCapture)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "start-diagnostic-verbose-capture", Method: http.MethodPost, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Start verbose capture", Description: "Temporarily retains scoped debug evidence through the ordinary bounded and redacted recorder.", Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.startVerboseCapture)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "stop-diagnostic-verbose-capture", Method: http.MethodDelete, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Stop verbose capture", Description: "Immediately restores the default diagnostic retention threshold.", Tags: []string{"diagnostics"},
 	}, RoleAdmin), s.stopVerboseCapture)
@@ -249,7 +250,7 @@ func (s *Server) previewDiagnosticBundle(ctx context.Context, input *diagnosticB
 	preview, err := s.diagnosticBundles.Preview(ctx, input.Body)
 	if err != nil {
 		if errors.Is(err, diagnostics.ErrInvalidBundleSelection) {
-			return nil, errBadRequest("Invalid Support bundle selection", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidBundleSelection.Error()+": "))
+			return nil, httpcore.BadRequest("Invalid Support bundle selection", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidBundleSelection.Error()+": "))
 		}
 		if errors.Is(err, diagnostics.ErrBundleTooLarge) {
 			return nil, huma.Error413RequestEntityTooLarge("The selected evidence exceeds the 16 MiB Support bundle limit.")
@@ -300,7 +301,7 @@ func (s *Server) startVerboseCapture(_ context.Context, input *verboseCaptureInp
 		time.Duration(input.Body.DurationMinutes)*time.Minute, input.Body.Subsystem, input.Body.ChannelID,
 	)
 	if errors.Is(err, diagnostics.ErrInvalidVerboseCapture) {
-		return nil, errBadRequest("Invalid verbose capture", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidVerboseCapture.Error()+": "))
+		return nil, httpcore.BadRequest("Invalid verbose capture", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidVerboseCapture.Error()+": "))
 	}
 	if err != nil {
 		return nil, huma.Error503ServiceUnavailable("Verbose capture couldn't be started.")
@@ -327,7 +328,7 @@ func (s *Server) listDiagnosticProcesses(
 	})
 	if err != nil {
 		if errors.Is(err, diagnostics.ErrInvalidProcessQuery) {
-			return nil, errBadRequest("Invalid Process filters", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidProcessQuery.Error()+": "))
+			return nil, httpcore.BadRequest("Invalid Process filters", strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidProcessQuery.Error()+": "))
 		}
 		s.log.Error("diagnostic process query failed", "event", "diagnostics.processes_query_failed", "subsystem", "diagnostics", "err", err)
 		return nil, huma.Error500InternalServerError("The retained Process timeline couldn't be read.")
@@ -384,7 +385,7 @@ func (s *Server) ingestClientDiagnostics(
 	ctx context.Context, input *clientDiagnosticsInput,
 ) (*clientDiagnosticsOutput, error) {
 	if s.clientDiagnostics == nil {
-		return nil, errNotImplemented("Client diagnostics unavailable",
+		return nil, httpcore.NotImplemented("Client diagnostics unavailable",
 			"Client diagnostic ingestion isn't available on this Loomarr generation.")
 	}
 	actorID := "api_token"
@@ -396,16 +397,16 @@ func (s *Server) ingestClientDiagnostics(
 		switch {
 		case errors.Is(err, diagnostics.ErrInvalidClientBatch):
 			detail := strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidClientBatch.Error()+": ")
-			return nil, errBadRequest("Invalid client diagnostics", detail)
+			return nil, httpcore.BadRequest("Invalid client diagnostics", detail)
 		case errors.Is(err, diagnostics.ErrClientRateLimited):
-			return nil, errTooManyRequests("Client diagnostics rate limited",
+			return nil, httpcore.TooManyRequests("Client diagnostics rate limited",
 				"This client sent too many diagnostic observations. Playback can continue while the bounded queue retries later.")
 		case errors.Is(err, diagnostics.ErrClientUnavailable):
-			return nil, errServiceUnavailable("Client diagnostics unavailable",
+			return nil, httpcore.ServiceUnavailable("Client diagnostics unavailable",
 				"Playback can continue, but this diagnostic batch couldn't be retained.")
 		default:
 			s.log.Error("client diagnostic ingestion failed", "event", "diagnostics.client_ingestion_failed", "subsystem", "diagnostics", "err", err)
-			return nil, apiErrWithCause(http.StatusInternalServerError, "Client diagnostics failed",
+			return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Client diagnostics failed",
 				"Playback can continue, but this diagnostic batch couldn't be accepted.", err)
 		}
 	}
@@ -478,7 +479,7 @@ func (s *Server) diagnosticEventsHandler(
 	if page.NextCursor != "" {
 		w.Header().Set("X-Next-Cursor", page.NextCursor)
 	}
-	writeJSON(w, http.StatusOK, page)
+	httpcore.WriteJSON(w, http.StatusOK, page)
 }
 
 func acceptsNDJSON(accept string) bool {

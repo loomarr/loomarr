@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -127,7 +128,7 @@ func updateDTOToTaxon(slug string, d UpdateTaxonDTO) taxonomy.Taxon {
 // authenticated user (the catalog UI shows tags); every edit is admin (the tag vocabulary is an
 // operator concern, like the rest of filler ingestion).
 func (s *Server) registerTaxonomy(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-taxonomy", Method: http.MethodGet, Path: "/v1/taxonomy",
 		Summary: "The clip tag vocabulary (the taxonomy graph)",
 		Description: "The operator-editable tag graph the filler tagger grounds against and curation matches over (§10 V45a). " +
@@ -135,25 +136,25 @@ func (s *Server) registerTaxonomy(api huma.API) {
 		Tags: []string{"filler"},
 	}, RoleMember), s.listTaxonomy)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-taxonomy-edit", Method: http.MethodPost, Path: "/v1/taxonomy/impact",
 		Summary: "Preview a vocabulary edit", Description: "Admin only. Validates the prospective graph and reports stored clips, descendants, saved channel selections, and classifier terms affected without mutating anything.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.previewTaxonomyEdit)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-taxon", Method: http.MethodPost, Path: "/v1/taxonomy",
 		Summary: "Add a taxon", Description: "Admin only. Updates the graph and catalog tags atomically (§10 V45a).",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.createTaxon)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "update-taxon", Method: http.MethodPut, Path: "/v1/taxonomy/{slug}",
 		Summary: "Edit a taxon", Description: "Admin only. Updates the graph and catalog tags atomically (§10 V45a).",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.updateTaxon)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-taxon", Method: http.MethodDelete, Path: "/v1/taxonomy/{slug}",
 		Summary: "Remove a taxon", Description: "Admin only. Children are reparented and catalog tags update atomically (§10 V45a).",
 		Tags: []string{"filler"},
@@ -208,7 +209,7 @@ func impactCommandToEdit(command TaxonomyImpactCommandDTO) (clipstore.TaxonomyEd
 	case "delete":
 		return clipstore.TaxonomyEdit{Delete: true, Slug: taxon.Slug}, nil
 	default:
-		return clipstore.TaxonomyEdit{}, errUnprocessable("Unknown taxonomy operation", "Choose create, update, or delete.")
+		return clipstore.TaxonomyEdit{}, httpcore.Unprocessable("Unknown taxonomy operation", "Choose create, update, or delete.")
 	}
 }
 
@@ -275,7 +276,7 @@ type createTaxonInput struct {
 
 func (s *Server) createTaxon(ctx context.Context, in *createTaxonInput) (*struct{ Body TaxonDTO }, error) {
 	if in.Body.Slug == "" || in.Body.Label == "" || in.Body.Axis == "" {
-		return nil, errUnprocessable("Incomplete taxon", "A taxon needs a slug, a label, and an axis.")
+		return nil, httpcore.Unprocessable("Incomplete taxon", "A taxon needs a slug, a label, and an axis.")
 	}
 	taxon := createDTOToTaxon(in.Body)
 	if err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Create: true, Taxon: taxon}); err != nil {
@@ -291,12 +292,12 @@ type updateTaxonInput struct {
 
 func (s *Server) updateTaxon(ctx context.Context, in *updateTaxonInput) (*struct{ Body TaxonDTO }, error) {
 	if in.Body.Label == "" || in.Body.Axis == "" {
-		return nil, errUnprocessable("Incomplete taxon", "A taxon needs a label and an axis.")
+		return nil, httpcore.Unprocessable("Incomplete taxon", "A taxon needs a label and an axis.")
 	}
 	taxon := updateDTOToTaxon(in.Slug, in.Body)
 	if err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Slug: in.Slug, Taxon: taxon}); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
+			return nil, httpcore.NotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
 		}
 		return nil, err
 	}
@@ -310,7 +311,7 @@ type deleteTaxonInput struct {
 func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct{}, error) {
 	err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: in.Slug})
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
+		return nil, httpcore.NotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -331,9 +332,9 @@ func (s *Server) applyTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyE
 func mapTaxonomyEditError(err error) error {
 	switch {
 	case errors.Is(err, taxonomy.ErrInvalidForest):
-		return errUnprocessable("Invalid taxonomy", err.Error())
+		return httpcore.Unprocessable("Invalid taxonomy", err.Error())
 	case errors.Is(err, clipstore.ErrTaxonConflict):
-		return errConflict("Taxonomy changed", err.Error())
+		return httpcore.Conflict("Taxonomy changed", err.Error())
 	default:
 		return err
 	}

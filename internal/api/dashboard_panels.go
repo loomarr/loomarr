@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -55,7 +56,7 @@ type ServicesView struct {
 }
 
 func (s *Server) registerDashboardPanels(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-services", Method: http.MethodGet, Path: "/v1/system/services",
 		Summary: "Every configured integration and whether it answers",
 		Description: "Admin only. Runs the SAME connection checks as the wizard checklist and " +
@@ -64,7 +65,7 @@ func (s *Server) registerDashboardPanels(api huma.API) {
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemServices)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-activity", Method: http.MethodGet, Path: "/v1/activity",
 		Summary: "What Loomarr has been doing, newest first",
 		Description: "Admin only. Reads the persisted activity table (§5), NOT the SSE bus — the bus " +
@@ -138,11 +139,11 @@ type listActivityOutput struct {
 
 func (s *Server) listActivity(ctx context.Context, in *listActivityInput) (*listActivityOutput, error) {
 	if s.store == nil {
-		return nil, errNotImplemented("Activity unavailable", "There's no store configured yet.")
+		return nil, httpcore.NotImplemented("Activity unavailable", "There's no store configured yet.")
 	}
 	rows, err := s.store.ListActivity(ctx, in.Limit)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't read activity",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't read activity",
 			"Loomarr couldn't read its activity history. Try again in a moment.", err)
 	}
 	out := &listActivityOutput{}

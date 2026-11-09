@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/edit"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -33,19 +34,19 @@ func (c BackendCheckpoint) editBackend() edit.Backend {
 func channelEditProblem(err error) error {
 	switch {
 	case errors.Is(err, edit.ErrNotFound):
-		return errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+		return httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	case errors.Is(err, edit.ErrStale):
 		return staleChannelConflict()
 	case errors.Is(err, edit.ErrNumberInUse):
-		return errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
+		return httpcore.Conflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
 	case errors.Is(err, edit.ErrIDTaken):
-		return errConflict("Channel already exists", "A channel with that id already exists.")
+		return httpcore.Conflict("Channel already exists", "A channel with that id already exists.")
 	case errors.Is(err, edit.ErrClaimed):
-		return errConflict("Channel already exists", "That channel number was claimed by another channel. Refresh and try again.")
+		return httpcore.Conflict("Channel already exists", "That channel number was claimed by another channel. Refresh and try again.")
 	case errors.Is(err, edit.ErrInvalidSeries):
-		return errUnprocessable("Invalid series", "For a single-series channel, pick a series (not a movie or episode).")
+		return httpcore.Unprocessable("Invalid series", "For a single-series channel, pick a series (not a movie or episode).")
 	case errors.Is(err, edit.ErrInvalid):
-		return apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
+		return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
 	return err
@@ -65,7 +66,7 @@ func (s *Server) linkUploadToChannel(ctx context.Context, id, what string, chang
 	case errors.Is(err, edit.ErrNotFound):
 		return channelEditProblem(err)
 	}
-	return apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
+	return httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't update the channel",
 		"The "+what+" was saved but linking it to the channel failed. Try again.", err)
 }
 
@@ -73,5 +74,5 @@ func (s *Server) linkUploadToChannel(ctx context.Context, id, what string, chang
 // valid when authored, but the channel changed before it could commit. The only honest recovery
 // is to refresh and let the operator decide again, especially for whole-list lineup replacement.
 func staleChannelConflict() error {
-	return errConflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
+	return httpcore.Conflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
 }

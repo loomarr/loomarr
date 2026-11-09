@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -147,7 +148,7 @@ func (s *Server) getFillerAcquisition(ctx context.Context, in *getFillerAcquisit
 
 func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadinessOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking readiness.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking readiness.")
 	}
 	readiness, err := s.filler.Readiness(ctx)
 	if err != nil {
@@ -158,7 +159,7 @@ func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadi
 
 func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (*fillerStorageCleanupPreviewOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking storage.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before checking storage.")
 	}
 	preview, err := s.filler.PreviewStorageCleanup(ctx)
 	if err != nil {
@@ -169,7 +170,7 @@ func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (
 
 func (s *Server) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*fillerStorageCleanupResultOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before cleaning storage.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Set up commercials and filler before cleaning storage.")
 	}
 	result, err := s.filler.CleanupStorage(ctx)
 	if err != nil {

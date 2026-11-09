@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"encoding"
@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// wireJSONFormat is the API's JSON encoder: Huma's default, with every nil slice sent as `[]`
+// WireJSONFormat is the API's JSON encoder: Huma's default, with every nil slice sent as `[]`
 // and every nil map as `{}`.
 //
 // ⚠ The spec declares no array or map nullable (humaConfig's DefaultArrayNullable note), but
@@ -30,18 +30,18 @@ import (
 // every value, copy every slice — was 5× the encode itself there.
 //
 // (encoding/json/v2 encodes nil as empty by default, but is still behind GOEXPERIMENT=jsonv2.)
-var wireJSONFormat = huma.Format{
+var WireJSONFormat = huma.Format{
 	Marshal: func(w io.Writer, v any) error {
-		return huma.DefaultJSONFormat.Marshal(w, emptyNotNull(v))
+		return huma.DefaultJSONFormat.Marshal(w, EmptyNotNull(v))
 	},
 	Unmarshal: huma.DefaultJSONFormat.Unmarshal,
 }
 
-// emptyNotNull returns v with every nil slice and map that would be encoded as null replaced by
+// EmptyNotNull returns v with every nil slice and map that would be encoded as null replaced by
 // an empty one. Copy-on-write: v and everything it points to are never mutated (a handler may
 // return cached or shared data), only the path down to a replaced value is copied, and a value
 // with nothing to replace is returned as-is without allocating.
-func emptyNotNull(v any) any {
+func EmptyNotNull(v any) any {
 	rv := reflect.ValueOf(v)
 	if !rv.IsValid() {
 		return v

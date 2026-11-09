@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -198,7 +199,7 @@ func runHighlight(ch channelAirings, run []playout.Broadcast) (highlightPick, bo
 }
 
 func (s *Server) registerGuideHighlights(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "guide-highlights", Method: http.MethodGet, Path: "/v1/guide/highlights",
 		Summary: "Tonight's highlights across every channel",
 		Description: "Any signed-in person. Up to `limit` airings in [from, to) worth calling out, each with a typed " +

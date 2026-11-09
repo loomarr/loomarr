@@ -7,6 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/sse"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/events"
 )
 
@@ -227,7 +228,7 @@ func (s *Server) registerEvents(api huma.API) {
 	if s.events == nil && !s.schemaOnly {
 		return
 	}
-	sse.Register(api, withRole(huma.Operation{
+	sse.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "events", Method: http.MethodGet, Path: "/v1/events",
 		Summary: "Live update stream (SSE)",
 		Description: "Any authenticated user. State changes as Server-Sent Events, each frame " +
@@ -269,7 +270,7 @@ func (s *Server) streamEvents(ctx context.Context, _ *struct{}, send sse.Sender)
 			//
 			// sse encodes frames itself, outside the API's JSON format, so the frame gets the same
 			// nil-to-empty pass here (wirejson.go). It keeps the payload's type: that names the event.
-			_ = send(sse.Message{Data: emptyNotNull(ev.Payload)})
+			_ = send(sse.Message{Data: httpcore.EmptyNotNull(ev.Payload)})
 		}
 	}
 }

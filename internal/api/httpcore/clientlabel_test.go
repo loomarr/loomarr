@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import "testing"
 
@@ -13,7 +13,7 @@ func TestClientLabelNamesFamilyAndSystemOnly(t *testing.T) {
 		"curl/8.10": "Browser",
 		"":          "Browser",
 	} {
-		if got := clientLabel(ua); got != want {
+		if got := ClientLabel(ua); got != want {
 			t.Errorf("clientLabel(%q) = %q, want %q", ua, got, want)
 		}
 	}

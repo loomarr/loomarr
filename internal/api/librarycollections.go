@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -22,36 +23,36 @@ import (
 // channel scopes still name until cutover, step 15).
 
 func (s *Server) registerLibraryCollections(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listCollections", Method: http.MethodGet, Path: "/v1/collections",
 		Summary:     "Your collections",
 		Description: "The household's collections, by name, each with its titles in order.",
 		Tags:        []string{"library"},
 	}, RoleAdmin), s.listCollections)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getCollection", Method: http.MethodGet, Path: "/v1/collections/{id}",
 		Summary: "One collection",
 		Tags:    []string{"library"},
 	}, RoleAdmin), s.getCollection)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "createCollection", Method: http.MethodPost, Path: "/v1/collections",
 		Summary:     "Make a collection",
 		Description: "Titles are library title ids, in the order the collection lists them.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusCreated,
 	}, RoleAdmin), s.createCollection)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "updateCollection", Method: http.MethodPut, Path: "/v1/collections/{id}",
 		Summary:     "Change a collection",
 		Description: "Replaces its name, description and titles.",
 		Tags:        []string{"library"},
 	}, RoleAdmin), s.updateCollection)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "deleteCollection", Method: http.MethodDelete, Path: "/v1/collections/{id}",
 		Summary:     "Delete a collection",
 		Description: "409 while a channel uses it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.deleteCollection)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "copySet", Method: http.MethodPost, Path: "/v1/collections/sets/{id}/copy",
 		Summary:     "Make my own copy of a ready-made set",
 		Description: "Makes a collection of the household's own with the set's name and the library's movies of it, in its order.",
@@ -112,11 +113,11 @@ func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollect
 	}
 	list, err := svc.Collections(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
 	}
 	sets, err := svc.Sets(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
 	}
 	uses, err := s.collectionUses(ctx)
 	if err != nil {
@@ -153,10 +154,10 @@ func (s *Server) copySet(ctx context.Context, in *collectionIDInput) (*collectio
 	}
 	id, err := svc.CopySet(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, apiErr(http.StatusNotFound, "No such set in your library", "Your library has none of its movies.")
+		return nil, httpcore.Problem(http.StatusNotFound, "No such set in your library", "Your library has none of its movies.")
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't copy the set", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't copy the set", "Try again in a moment.", err)
 	}
 	return s.collectionResponse(ctx, id)
 }
@@ -172,11 +173,11 @@ func (s *Server) createCollection(ctx context.Context, in *struct{ Body collecti
 	}
 	name := strings.TrimSpace(in.Body.Name)
 	if name == "" {
-		return nil, apiErr(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
+		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
 	}
 	id, err := svc.CreateCollection(ctx, name, strings.TrimSpace(in.Body.Description), in.Body.Titles)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
 	}
 	return s.collectionResponse(ctx, id)
 }
@@ -191,14 +192,14 @@ func (s *Server) updateCollection(ctx context.Context, in *struct {
 	}
 	name := strings.TrimSpace(in.Body.Name)
 	if name == "" {
-		return nil, apiErr(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
+		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "A collection needs a name", "Give it a name, then save.")
 	}
 	err = svc.UpdateCollection(ctx, in.ID, name, strings.TrimSpace(in.Body.Description), in.Body.Titles)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, collectionNotFound()
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the collection", "Try again in a moment.", err)
 	}
 	return s.collectionResponse(ctx, in.ID)
 }
@@ -213,14 +214,14 @@ func (s *Server) deleteCollection(ctx context.Context, in *collectionIDInput) (*
 		return nil, err
 	}
 	if len(uses[in.ID]) > 0 {
-		return nil, apiErr(http.StatusConflict, "A channel uses this collection", "Take it off the channel first.")
+		return nil, httpcore.Problem(http.StatusConflict, "A channel uses this collection", "Take it off the channel first.")
 	}
 	err = svc.DeleteCollection(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, collectionNotFound()
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't delete the collection", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't delete the collection", "Try again in a moment.", err)
 	}
 	return nil, nil
 }
@@ -235,7 +236,7 @@ func (s *Server) collectionResponse(ctx context.Context, id string) (*collection
 		return nil, collectionNotFound()
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the collection", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the collection", "Try again in a moment.", err)
 	}
 	uses, err := s.collectionUses(ctx)
 	if err != nil {
@@ -245,7 +246,7 @@ func (s *Server) collectionResponse(ctx context.Context, id string) (*collection
 }
 
 func collectionNotFound() error {
-	return apiErr(http.StatusNotFound, "No such collection", "It may have been deleted.")
+	return httpcore.Problem(http.StatusNotFound, "No such collection", "It may have been deleted.")
 }
 
 func collectionOf(c scan.Collection, posters map[string]*ImageDTO, uses map[string][]collectionChannelDTO) collectionDTO {
@@ -268,7 +269,7 @@ func collectionOf(c scan.Collection, posters map[string]*ImageDTO, uses map[stri
 func (s *Server) collectionUses(ctx context.Context) (map[string][]collectionChannelDTO, error) {
 	channels, err := s.store.ListChannels(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
 	}
 	slices.SortFunc(channels, func(a, b store.Channel) int { return a.Number - b.Number })
 	out := map[string][]collectionChannelDTO{}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -127,7 +128,7 @@ func (n personNames) applyPull(dto PullDTO) PullDTO {
 }
 
 func (s *Server) registerFillerPulls(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-pulls", Method: http.MethodGet, Path: "/v1/filler/pulls",
 		Summary: "List pulls awaiting a decision",
 		Description: "Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. " +
@@ -135,7 +136,7 @@ func (s *Server) registerFillerPulls(api huma.API) {
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.listFillerPulls)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "approve-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/approve",
 		Summary: "Approve a pull — the commit point",
 		Description: "Admin only (§10 V66). THE gate: this is the only path on which a pull downloads anything, " +
@@ -145,14 +146,14 @@ func (s *Server) registerFillerPulls(api huma.API) {
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.approveFillerPull)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "dismiss-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/dismiss",
 		Summary:     "Decline a pull",
 		Description: "Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.",
 		Tags:        []string{"filler"},
 	}, RoleAdmin), s.dismissFillerPull)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-approve-filler-pulls", Method: http.MethodPost, Path: "/v1/filler/pulls/approve",
 		Summary:     "Approve several pulls (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a " + "per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659).",

@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 )
 
@@ -27,14 +28,14 @@ type LibraryHookService interface {
 }
 
 func (s *Server) registerLibraryHooks(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "receiveLibraryHook", Method: http.MethodPost, Path: "/v1/library/hooks/{app}",
 		Summary: "Receive an event from Sonarr or Radarr",
 		Description: "Where Sonarr and Radarr send file events once Loomarr has registered itself with them. " +
 			"Authenticated by the generated secret as the basic-auth password, not by a session.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, RolePublic), s.receiveLibraryHook)
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "testLibraryHook", Method: http.MethodPost, Path: "/v1/library/hooks/{app}/test",
 		Summary: "Test an arr's webhook",
 		Description: "Registers Loomarr with the arr again and asks it to send its test event. " +
@@ -51,17 +52,17 @@ type libraryHookInput struct {
 
 func (s *Server) receiveLibraryHook(ctx context.Context, in *libraryHookInput) (*struct{}, error) {
 	if s.libraryHooks == nil {
-		return nil, errFeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
+		return nil, httpcore.FeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
 	}
 	user, password, ok := basicAuth(in.Authorization)
 	if !ok || !s.libraryHooks.Authorized(user, password) {
-		return nil, apiErr(http.StatusUnauthorized, "Not authorized", "This webhook needs the credentials Loomarr registered in the arr.")
+		return nil, httpcore.Problem(http.StatusUnauthorized, "Not authorized", "This webhook needs the credentials Loomarr registered in the arr.")
 	}
 	if err := s.libraryHooks.Receive(ctx, in.App, in.RawBody); err != nil {
 		if errors.Is(err, scan.ErrHookUnknownApp) {
-			return nil, apiErr(http.StatusNotFound, "Not found", "Loomarr takes webhooks only from Sonarr and Radarr.")
+			return nil, httpcore.Problem(http.StatusNotFound, "Not found", "Loomarr takes webhooks only from Sonarr and Radarr.")
 		}
-		return nil, apiErrWithCause(http.StatusBadRequest, "Couldn't read the event", "The body is not a Sonarr or Radarr webhook.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadRequest, "Couldn't read the event", "The body is not a Sonarr or Radarr webhook.", err)
 	}
 	return nil, nil
 }
@@ -85,10 +86,10 @@ type libraryHookTestInput struct {
 
 func (s *Server) testLibraryHook(ctx context.Context, in *libraryHookTestInput) (*struct{}, error) {
 	if s.libraryHooks == nil {
-		return nil, errFeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
+		return nil, httpcore.FeatureNotConfigured("Webhooks unavailable", "The library scanner is not set up on this server.")
 	}
 	if err := s.libraryHooks.Test(ctx, in.App); err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "The webhook test failed", hookTestDetail(err), err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "The webhook test failed", hookTestDetail(err), err)
 	}
 	return nil, nil
 }

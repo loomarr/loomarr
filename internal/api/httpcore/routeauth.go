@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"github.com/danielgtaylor/huma/v2"
@@ -25,7 +25,7 @@ import (
 // roleMetaKey is where the required role rides on huma.Operation.Metadata. Metadata is
 // `yaml:"-"`, so this never reaches api/openapi.yaml — the authorization model is not a
 // client contract, and publishing it would invite a frontend to enforce it.
-const roleMetaKey = "loomarr:role"
+const RoleMetaKey = "loomarr:role"
 
 // RolePublic marks a route reachable with NO credential. It is a real value rather than the
 // absence of one so that "public" is a decision someone wrote down.
@@ -34,31 +34,31 @@ const roleMetaKey = "loomarr:role"
 // Each must work before a session can exist.
 const RolePublic Role = "public"
 
-// operatorAPI marks an operation that no Loomarr client calls on purpose: it serves operators,
+// OperatorAPI marks an operation that no Loomarr client calls on purpose: it serves operators,
 // scripts and support work, so the client-coverage audit (#1568) should not flag it.
-const operatorAPI = "Operator and automation API: no Loomarr client calls it."
+const OperatorAPI = "Operator and automation API: no Loomarr client calls it."
 
-// withRole stamps the required role onto an operation. Every huma.Register call in this
+// WithRole stamps the required role onto an operation. Every huma.Register call in this
 // package goes through it.
-func withRole(op huma.Operation, role Role) huma.Operation {
+func WithRole(op huma.Operation, role Role) huma.Operation {
 	if op.Metadata == nil {
 		op.Metadata = map[string]any{}
 	}
-	op.Metadata[roleMetaKey] = role
+	op.Metadata[RoleMetaKey] = role
 	return op
 }
 
-// roleForOperation reports the role an operation requires.
+// RoleForOperation reports the role an operation requires.
 //
 // ⚠ An operation with no marker requires ADMIN, not anonymous. That is the fail-closed
 // default: a route added without thinking about authorization is unreachable rather than
 // open, so the mistake surfaces as a 403 in development instead of an exposure in
 // production.
-func roleForOperation(op *huma.Operation) Role {
+func RoleForOperation(op *huma.Operation) Role {
 	if op == nil {
 		return RoleAdmin
 	}
-	if v, ok := op.Metadata[roleMetaKey]; ok {
+	if v, ok := op.Metadata[RoleMetaKey]; ok {
 		if role, ok := v.(Role); ok {
 			return role
 		}
@@ -66,11 +66,11 @@ func roleForOperation(op *huma.Operation) Role {
 	return RoleAdmin
 }
 
-// authorizeRole reports whether have satisfies want.
+// AuthorizeRole reports whether have satisfies want.
 //
 // Ordering is admin > member > public. Admin passes everything, since an admin holding a
 // member's permissions is the point of the hierarchy.
-func authorizeRole(want, have Role) bool {
+func AuthorizeRole(want, have Role) bool {
 	switch want {
 	case RolePublic:
 		return true

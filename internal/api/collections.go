@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // registerCollections mounts GET /v1/library/collections — the media server's collections
@@ -14,7 +15,7 @@ import (
 // already shows the same user, and picking a collection still routes a channel through
 // submit→approve. So it adds no privilege surface (§7.2).
 func (s *Server) registerCollections(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryCollections", Method: http.MethodGet, Path: "/v1/library/collections",
 		Summary: "List media-server collections", Tags: []string{"library"},
 	}, RoleMember), s.doListCollections)
@@ -28,12 +29,12 @@ type collectionsOutput struct {
 
 func (s *Server) doListCollections(ctx context.Context, _ *struct{}) (*collectionsOutput, error) {
 	if s.collections == nil {
-		return nil, errNotImplemented("Collections aren't available",
+		return nil, httpcore.NotImplemented("Collections aren't available",
 			"Connect your media library in Settings to use collections.")
 	}
 	colls, err := s.collections.Collections(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load collections",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't load collections",
 			"The media library didn't answer. Check the connection in Settings and try again.", err)
 	}
 	out := &collectionsOutput{}
