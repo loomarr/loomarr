@@ -65,7 +65,7 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 // They now read the tree from SOURCE (importgraph_test.go), which the cache DOES track. The
 // difference is directly observable, and worth repeating if you touch this:
 //
-//	git mv internal/platform/store/conformance_titles_test.go internal/platform/store/conformance_titles.go
+//	git mv internal/platform/store/conformance_approval_quota_test.go internal/platform/store/conformance_approval_quota.go
 //	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
 //
 // Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
@@ -377,22 +377,12 @@ func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 
 // NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
-// ⚠ **There used to be one, for `internal/platform/store`, and the reason it lasted was a mis-estimate
-// rather than a constraint.** The conformance suite (7 files, ~4,450 lines — 42% of the non-test
-// package) sat in ordinary .go files because BOTH backend drivers must reach `RunConformance` —
-// SQLite in-package, Postgres behind the `integration` tag — so the assertions "had to be
-// importable package code". The exit was written down as a ~4,450-line mechanical rename into a
-// sibling package, and sequenced for later on that basis.
-//
-// The estimate assumed the wrong move. A sibling package would indeed have meant qualifying
-// every `Store`, `Channel`, `ErrNotFound` … reference across 4,450 lines. But both drivers are
-// ALREADY `_test.go` files in `package store`, and a test file is visible to every other test
-// file in its package — so renaming `conformance*.go` to `conformance*_test.go` keeps them
-// exactly where they are, keeps both drivers working, and takes them out of the production build
-// with **zero content changes**. Done 2026-08-10; the diff is seven renames.
-//
-// The lesson is worth more than the fix: the blocker was never the code, it was a cost estimate
-// nobody re-checked. It had been quoted twice, in this comment and in the plan that scheduled it.
+// ⚠ **`internal/platform/store`'s conformance suite lives in `conformance*_test.go` files for this
+// reason.** BOTH backend drivers must reach `RunConformance` — SQLite in-package, Postgres behind
+// the `integration` tag — and both drivers are `_test.go` files in `package store`, and a test
+// file is visible to every other test file in its package. Keeping the suite in `_test.go` files
+// needs no sibling package (which would mean qualifying every `Store`, `Channel`, `ErrNotFound`
+// reference) and keeps it out of the production build.
 //
 // ⚠ `go list -deps ./cmd/loomarr` STILL reports `testing` and `flag`, and that is not ours —
 // `riverqueue/river/rivershared/testsignal` imports `riversharedtest`, in the job-queue
