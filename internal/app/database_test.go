@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -33,12 +33,12 @@ func TestMigrateRefusedWithoutABackup(t *testing.T) {
 	const dsn = "postgres://u:p@127.0.0.1:1/loomarr?sslmode=disable&connect_timeout=1"
 
 	err := svc.Migrate(context.Background(), dsn)
-	if !errors.Is(err, api.ErrNoBackup) && !errors.Is(err, api.ErrPreflightFailed) {
+	if !errors.Is(err, system.ErrNoBackup) && !errors.Is(err, system.ErrPreflightFailed) {
 		t.Fatalf("migrate without preconditions → %v, want a gate sentinel", err)
 	}
 	// Specifically: with no preflight AND no backup, preflight is reported first because
 	// it is the earlier step — the operator is told the next thing to do, not the last.
-	if !errors.Is(err, api.ErrPreflightFailed) {
+	if !errors.Is(err, system.ErrPreflightFailed) {
 		t.Errorf("want ErrPreflightFailed first, got %v", err)
 	}
 }
@@ -54,7 +54,7 @@ func TestBackupGateFiresAfterPreflight(t *testing.T) {
 	svc.preflighted = dsn
 	svc.mu.Unlock()
 
-	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, api.ErrNoBackup) {
+	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, system.ErrNoBackup) {
 		t.Fatalf("migrate with preflight but no backup → %v, want ErrNoBackup", err)
 	}
 }
@@ -108,11 +108,11 @@ func TestPreflightAuthorizationIsPerTarget(t *testing.T) {
 	svc, _ := newTestDatabaseService(t)
 	svc.mu.Lock()
 	svc.preflighted = "postgres://u:p@host-a:5432/loomarr"
-	svc.backup = &api.DatabaseBackup{Path: "/x", Bytes: 1, WrittenAt: 1}
+	svc.backup = &system.DatabaseBackup{Path: "/x", Bytes: 1, WrittenAt: 1}
 	svc.mu.Unlock()
 
 	err := svc.Migrate(context.Background(), "postgres://u:p@host-b:5432/loomarr")
-	if !errors.Is(err, api.ErrPreflightFailed) {
+	if !errors.Is(err, system.ErrPreflightFailed) {
 		t.Fatalf("migrating to a DIFFERENT target than the one preflighted → %v, want ErrPreflightFailed", err)
 	}
 }
@@ -124,7 +124,7 @@ func TestMigrateRefusesAnEnvironmentPinBeforeQueueing(t *testing.T) {
 	svc.WithMigrationRequest(func(string) error { called = true; return nil })
 
 	err := svc.Migrate(context.Background(), "postgres://u:p@db:5432/loomarr")
-	if !errors.Is(err, api.ErrDatabaseURLPinned) {
+	if !errors.Is(err, system.ErrDatabaseURLPinned) {
 		t.Fatalf("pinned migration = %v, want ErrDatabaseURLPinned", err)
 	}
 	if called {
@@ -137,10 +137,10 @@ func TestMigrateFailsClosedWithoutAProcessRequester(t *testing.T) {
 	const dsn = "postgres://u:p@db:5432/loomarr"
 	svc.mu.Lock()
 	svc.preflighted = dsn
-	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
+	svc.backup = &system.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
 	svc.mu.Unlock()
 
-	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, api.ErrMigrationUnavailable) {
+	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, system.ErrMigrationUnavailable) {
 		t.Fatalf("migration without requester = %v, want ErrMigrationUnavailable", err)
 	}
 }
@@ -152,7 +152,7 @@ func TestMigrationRequestFailureIsVisibleAndRetryable(t *testing.T) {
 	svc.WithMigrationRequest(func(string) error { return want })
 	svc.mu.Lock()
 	svc.preflighted = dsn
-	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
+	svc.backup = &system.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
 	svc.mu.Unlock()
 
 	if err := svc.Migrate(context.Background(), dsn); !errors.Is(err, want) {

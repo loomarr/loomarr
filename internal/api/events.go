@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/sse"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/events"
 )
 
@@ -173,10 +174,10 @@ type LLMPullEvent struct {
 // than elsewhere, because the operator is watching a data migration and a UI that invented
 // progress it had not been told about would be actively misleading.
 type DatabaseEvent struct {
-	Phase  string          `json:"phase" enum:"idle,migrating,verified,failed"`
-	Parity string          `json:"parity" enum:"unknown,match,mismatch"`
-	Tables []DatabaseTable `json:"tables,omitempty" doc:"Per-table progress; empty when idle"`
-	Error  string          `json:"error,omitempty"`
+	Phase  string                 `json:"phase" enum:"idle,migrating,verified,failed"`
+	Parity string                 `json:"parity" enum:"unknown,match,mismatch"`
+	Tables []system.DatabaseTable `json:"tables,omitempty" doc:"Per-table progress; empty when idle"`
+	Error  string                 `json:"error,omitempty"`
 }
 
 // PlayoutEvent fires when a channel starts or stops encoding (§9.1).

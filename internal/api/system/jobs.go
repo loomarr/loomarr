@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -9,6 +9,13 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
+
+// TransformSchema publishes JobView.scheduleKey as a SettingKey: it names the setting the
+// Modify Job dialog edits, whose presets are the job's schedule choices.
+func (JobView) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["scheduleKey"] = httpcore.NamedEnum(r, httpcore.SettingKeySchema, httpcore.SettingKeyWire)
+	return s
+}
 
 // JobService backs the background-job scheduler routes (§18.1). Satisfied by an adapter over
 // *jobs.Scheduler in the composition root (the api package doesn't import jobs).
@@ -76,7 +83,7 @@ type JobExecutionView struct {
 	Trigger    string    `json:"trigger" enum:"scheduled,manual" doc:"Whether the schedule or an operator started the execution"`
 }
 
-func (s *Server) registerJobs(api huma.API) {
+func (s *Handlers) registerJobs(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-list", Method: http.MethodGet, Path: "/v1/jobs",
 		Summary:     "List background jobs",
@@ -116,7 +123,7 @@ type jobsPauseInput struct {
 	}
 }
 
-func (s *Server) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, error) {
+func (s *Handlers) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, error) {
 	if s.jobs == nil {
 		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
@@ -147,7 +154,7 @@ type jobsHistoryOutput struct {
 	Body JobHistoryView
 }
 
-func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHistoryOutput, error) {
+func (s *Handlers) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHistoryOutput, error) {
 	if s.jobs == nil {
 		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
@@ -162,7 +169,7 @@ func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHi
 	return &jobsHistoryOutput{Body: history}, nil
 }
 
-func (s *Server) jobsList(ctx context.Context, _ *struct{}) (*jobsListOutput, error) {
+func (s *Handlers) jobsList(ctx context.Context, _ *struct{}) (*jobsListOutput, error) {
 	if s.jobs == nil {
 		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
@@ -179,7 +186,7 @@ type jobsRunInput struct {
 	Name string `path:"name" doc:"The job's stable id (from GET /v1/jobs)"`
 }
 
-func (s *Server) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, error) {
+func (s *Handlers) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, error) {
 	if s.jobs == nil {
 		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}

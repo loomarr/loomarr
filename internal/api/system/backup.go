@@ -1,4 +1,8 @@
-package api
+// Package system mounts the system routes of the HTTP API: the operator's view of the running
+// server (version and readiness, help, background jobs), its database and encryption, its backups
+// and restart, and the language-model setup. A Handlers holds only what those routes need;
+// internal/api builds one from its options and registers it beside every other area.
+package system
 
 import (
 	"net/http"
@@ -12,7 +16,7 @@ import (
 // handler runs. The guard that used to live here is the reason rawOp exists: an inline check
 // here and another in events.go had already drifted apart on whether a nil authorizer denies
 // or allows — one rule, enforced in one place, cannot disagree with itself (§11).
-func (s *Server) backupHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) backupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.backupSQLite == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Backup unavailable",
 			"In-app backup is available on SQLite installs. On Postgres, back up the database with your usual Postgres tools.")

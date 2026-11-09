@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -99,7 +99,7 @@ type DatabaseStatus struct {
 
 // registerSystemDatabase mounts /v1/system/database* (§18). Admin-only throughout: this
 // moves every row the instance owns, and the backup it writes carries every secret.
-func (s *Server) registerSystemDatabase(api huma.API) {
+func (s *Handlers) registerSystemDatabase(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-status", Method: http.MethodGet, Path: "/v1/system/database",
 		Summary: "Active backend + migration progress",
@@ -140,7 +140,7 @@ type databaseStatusOutput struct {
 	Body DatabaseStatus
 }
 
-func (s *Server) databaseStatus(ctx context.Context, _ *struct{}) (*databaseStatusOutput, error) {
+func (s *Handlers) databaseStatus(ctx context.Context, _ *struct{}) (*databaseStatusOutput, error) {
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -164,7 +164,7 @@ type databasePreflightOutput struct {
 	}
 }
 
-func (s *Server) databasePreflight(ctx context.Context, in *databaseTargetInput) (*databasePreflightOutput, error) {
+func (s *Handlers) databasePreflight(ctx context.Context, in *databaseTargetInput) (*databasePreflightOutput, error) {
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -190,7 +190,7 @@ type databaseBackupOutput struct {
 	Body DatabaseBackup
 }
 
-func (s *Server) databaseBackup(ctx context.Context, _ *struct{}) (*databaseBackupOutput, error) {
+func (s *Handlers) databaseBackup(ctx context.Context, _ *struct{}) (*databaseBackupOutput, error) {
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}
@@ -208,7 +208,7 @@ type databaseMigrateOutput struct {
 	Body DatabaseStatus
 }
 
-func (s *Server) databaseMigrate(ctx context.Context, in *databaseTargetInput) (*databaseMigrateOutput, error) {
+func (s *Handlers) databaseMigrate(ctx context.Context, in *databaseTargetInput) (*databaseMigrateOutput, error) {
 	if s.database == nil {
 		return nil, huma.Error501NotImplemented("database migration is not available on this build")
 	}

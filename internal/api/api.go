@@ -15,8 +15,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/web"
 )
 
@@ -50,18 +53,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	cfg.Transformers = append(cfg.Transformers, httpcore.ErrorTransformer(log))
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
-		// Stamped per handler build, so a restart (§9.2) resets the uptime About reports
-		// — a package-level var would survive the rebuild and keep counting from the
-		// original boot.
-		startedAt: time.Now(),
-		store:     opts.Store, auth: opts.Auth, log: log, metrics: recorder, backupSQLite: opts.BackupSQLite,
+		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
 		intakeLanguages:  opts.IntakeLanguages,
-		jobs:             opts.Jobs,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
@@ -70,8 +68,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		now:               opts.Now,
 		ideaLibrary:       opts.IdeaLibrary,
 		viewing:           viewing.New(),
-		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
-		restartDrift:             opts.RestartDrift,
+		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
 		webPushPublicKey:      opts.WebPushPublicKey,
@@ -107,6 +104,18 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		DevLogin: opts.DevLogin, SSO: opts.SSO,
 		ConfigInt: srv.configInt, LibraryUnconfigured: srv.libraryUnconfigured,
 	}, false).Register(humaAPI)
+	system.New(system.Deps{
+		Log: log,
+		// Stamped per handler build, so a restart (§9.2) resets the uptime About reports — a
+		// package-level var would survive the rebuild and keep counting from the original boot.
+		StartedAt: time.Now(), Ready: ready,
+		StoreFacts:   storeFacts(opts.Store),
+		Operations:   opts.Store,
+		BackupSQLite: opts.BackupSQLite,
+		Backups:      opts.Backups, Database: opts.Database, Encryption: opts.Encryption, Jobs: opts.Jobs,
+		SystemLLM: opts.SystemLLM, Restart: opts.Restart, RestartDrift: opts.RestartDrift,
+		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks,
+	}, false).Register(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
 	srv.registerGuide(humaAPI)
@@ -133,21 +142,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerResearch(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
-	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerDiagnostics(humaAPI)
 	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
-	srv.registerSystemLLM(humaAPI)
-	srv.registerSystemDatabase(humaAPI)
-	srv.registerSystemSecurity(humaAPI)
 	srv.registerDiscoveryQuality(humaAPI)
-	srv.registerSystemBackups(humaAPI)
-	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerLocations(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
-	srv.registerHelp(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerProvisioning(humaAPI)
 	srv.registerOps(humaAPI, opts.Pprof, opts.MetricsToken) // §17 probes/metrics/profiler + the API reference
@@ -206,6 +208,17 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
 	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
+}
+
+// storeFacts is the schema version and backend name GET /v1/system/version reports, read from st on
+// each call; nil on a store-less boot, which leaves both rows absent.
+func storeFacts(st records.Store) func() (int64, string) {
+	if st == nil {
+		return nil
+	}
+	return func() (int64, string) {
+		return store.SchemaVersion(st), string(store.DialectOf(st))
+	}
 }
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {

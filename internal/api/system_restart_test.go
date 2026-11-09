@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -17,7 +19,7 @@ type fakeRestart struct{ calls atomic.Int64 }
 func (f *fakeRestart) Restart() { f.calls.Add(1) }
 
 type systemRestartHarnessConfig struct {
-	Restart         api.RestartService
+	Restart         system.RestartService
 	PlayoutObserver api.PlayoutObserver
 	RestartDrift    func() []string
 }
@@ -82,7 +84,7 @@ func TestSystemRestart_NotAvailable501(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("restart cost with no loop → %d, want 200", resp.StatusCode)
 	}
-	var cost api.RestartCost
+	var cost system.RestartCost
 	if err := json.NewDecoder(resp.Body).Decode(&cost); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +122,7 @@ func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("restart cost → %d, want 200", resp.StatusCode)
 	}
-	var cost api.RestartCost
+	var cost system.RestartCost
 	if err := json.NewDecoder(resp.Body).Decode(&cost); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +144,7 @@ func TestSystemRestart_CostIsZeroWhenNothingIsStreaming(t *testing.T) {
 	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: &fakeRestart{}}).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/restart", adminToken, "")
-	var cost api.RestartCost
+	var cost system.RestartCost
 	if err := json.NewDecoder(resp.Body).Decode(&cost); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +167,7 @@ func TestSystemReload_ReturnsChecksWithoutRestarting(t *testing.T) {
 		t.Fatalf("reload → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Checks []api.SetupCheck `json:"checks"`
+		Checks []httpcore.SetupCheck `json:"checks"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

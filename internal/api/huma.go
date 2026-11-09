@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
@@ -50,9 +50,6 @@ type Server struct {
 	auth     httpcore.Authorizer
 	log      *slog.Logger
 	metrics  *metrics.Recorder
-	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
-	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
-	backupSQLite BackupStreamer
 	// The /v1/auth/*, user, invitation, password and SSO routes are served by people.Handlers,
 	// built from the same Options in Router.
 	//
@@ -119,26 +116,13 @@ type Server struct {
 	sourceProviders *source.Registry
 	// intakeLanguages is Options.IntakeLanguages; nil reports no intake language.
 	intakeLanguages func(context.Context) (string, error)
-	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
-	jobs JobService
-	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
-	systemLLM SystemLLMService
-	// database wires /v1/system/database* — the SQLite→PostgreSQL migration stepper
-	// (§18, V11); nil ⇒ routes 501.
-	database   DatabaseService
-	encryption EncryptionService
-	// backups wires /v1/system/backups* — the backups on disk (§16, V12); nil ⇒ routes
-	// 501, which is the Postgres case (in-app backup is SQLite-only by design).
-	backups BackupsService
-	// startedAt is when THIS GENERATION came up — the instant About counts uptime from
-	// (§16). Set per Server, never a package-level var.
+	// The jobs, database, encryption, backups, restart and help routes are served by
+	// system.Handlers, built from the same Options in Router. A generation's start time
+	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop
+	// (§9.2) proved a package-level start time survives the rebuild and lies about uptime.
 	//
-	// ⚠ It was a package-level `var processStart = time.Now()` and the restart loop
-	// (§9.2) proved that wrong on the first live test: the value survived the rebuild, so
-	// About kept reporting the ORIGINAL boot and would have claimed days of uptime on a
-	// freshly restarted instance. Exactly the silent package-level-state hazard §9.2
-	// warns about — no panic, no log line, just a number quietly lying in a bug report.
-	startedAt time.Time
+	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501. It is also read here.
+	systemLLM system.SystemLLMService
 	// now is an optional request-clock seam for projections whose membership is time-bounded.
 	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
 	now func() time.Time
@@ -165,14 +149,6 @@ type Server struct {
 	clientDiagnostics ClientDiagnosticService
 	// clientCrashes takes crash reports from any signed-in app and serves them to admins (#1816).
 	clientCrashes ClientCrashService
-	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
-	// answer for a handler built without main's generation loop behind it (tests, the
-	// integration harness): a button that silently does nothing is worse than none.
-	restart RestartService
-	// restartDrift names restart-scoped settings whose saved value differs from the one
-	// this application generation is running (config-design §3). nil ⇒ no drift is reported, which is
-	// correct for a handler with no config seam rather than a false "restart needed".
-	restartDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings                 SettingsService
@@ -961,11 +937,7 @@ type Provisioner interface {
 	Bootstrapped(ctx context.Context) (bool, error)
 }
 
-// BackupStreamer streams a consistent DB snapshot (§16). Implemented by the
-// SQLite backend via VACUUM INTO. Matches store.SQLiteBackuper's return type.
-type BackupStreamer interface {
-	StreamBackup(ctx context.Context, w io.Writer) error
-}
+// (BackupStreamer lives in internal/api/system.)
 
 // Options configures the API server.
 type Options struct {
@@ -973,7 +945,7 @@ type Options struct {
 	Auth                 httpcore.Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder
-	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	BackupSQLite         system.BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready                ReadyFunc
 	Now                  func() time.Time                   // optional deterministic request clock for tests
 	Login                people.LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
@@ -1032,15 +1004,15 @@ type Options struct {
 	// IntakeLanguages is the languages intake admits now, the channels' commercial languages
 	// (language.IntakeSet), read live. Split review compares a proposal with it; nil reports none.
 	IntakeLanguages func(context.Context) (string, error)
-	SystemLLM       SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	SystemLLM       system.SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). Production wires it on both backends so a reconnect can observe the
 	// successful cutover; nil is reserved for embeddings without migration status.
-	Database   DatabaseService
-	Encryption EncryptionService
+	Database   system.DatabaseService
+	Encryption system.EncryptionService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
-	Backups BackupsService
+	Backups system.BackupsService
 	// SSO backs /v1/auth/sso/* (§11, V8); nil ⇒ the routes are not mounted.
 	SSO people.SSOService
 	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
@@ -1061,11 +1033,11 @@ type Options struct {
 	StartupReports StartupReportService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
-	Restart RestartService
+	Restart system.RestartService
 	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
 	// (config-design §3).
 	RestartDrift             func() []string
-	Jobs                     JobService                                       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Jobs                     system.JobService                                // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings                 SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	NotificationDestinations NotificationDestinationService                   // redacted product-delivery routing (§11)
 	WebPushPublicKey         string                                           // public half of the generated VAPID identity (§11)

@@ -134,6 +134,6 @@ Never edit these by hand:
 
 `make docs-lint` runs the diagrams check, markdownlint, lychee (offline), the inline-path check
 and Vale. The inline-path check (`scripts/check-doc-paths.sh`) fails when a live doc names a repo
-path in inline code, such as `` `internal/api/help.go` ``, that no longer exists. A doc that must
+path in inline code, such as `` `internal/api/system/help.go` ``, that no longer exists. A doc that must
 name a missing path on purpose, like a retirement note, lists it with its reason in
 `scripts/check-doc-paths.allow`.
