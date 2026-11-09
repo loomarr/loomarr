@@ -6,7 +6,6 @@ import { Action, Badge, Card, Icon, icons, Surface, Text } from "@loomarr/design
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
