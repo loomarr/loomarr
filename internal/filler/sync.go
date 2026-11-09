@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // This file is the catalog sync (§10, revised by §9.1): loomarr scans FILLER_DIR
@@ -34,8 +35,8 @@ import (
 
 // Store is the slice of the store the sync needs.
 type Store interface {
-	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
-	GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error)
+	UpsertClip(ctx context.Context, c clipstore.Clip) error
+	GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error)
 	// LiveClipPaths is every clip the prune can delete, as identity to location. The prune guard
 	// weighs a listing against it (#2673).
 	LiveClipPaths(ctx context.Context) (map[string]string, error)
@@ -440,7 +441,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		}
 		keep = append(keep, rc.ID)
 
-		merged := cliplibrary.StoreClip{UpdatedAt: s.now()}
+		merged := clipstore.Clip{UpdatedAt: s.now()}
 		merged.Hash = rc.ID
 		merged.Path = rc.Path
 		merged.ParentHash = rc.ParentHash
@@ -807,7 +808,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 // repairOpaqueDisplayName removes implementation identifiers from the user-facing title even when
 // the media is already at its canonical path. Both the former 40-character digest and the current
 // 64-character content id are recognised; arbitrary hex-like operator names are left alone.
-func (s *Syncer) repairOpaqueDisplayName(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
+func (s *Syncer) repairOpaqueDisplayName(rc cliplibrary.RawClip, existing clipstore.Clip, found bool) (cliplibrary.RawClip, bool, error) {
 	if !cliplibrary.IsHashDisplayName(rc.Name) {
 		return rc, false, nil
 	}
@@ -842,7 +843,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc cliplibrary.RawClip, existing clipli
 // stem does not match the full hash-shaped identity computed from the bytes. Arbitrary operator
 // filenames are deliberately untouched. The canonical media and sidecar are published without
 // replacement before the stale links are removed, so interruption can only leave a duplicate.
-func (s *Syncer) repairLegacyContentPath(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
+func (s *Syncer) repairLegacyContentPath(rc cliplibrary.RawClip, existing clipstore.Clip, found bool) (cliplibrary.RawClip, bool, error) {
 	stem := strings.TrimSuffix(filepath.Base(filepath.FromSlash(rc.Path)), filepath.Ext(rc.Path))
 	if !split.IsContentHash(rc.ID) || !cliplibrary.IsOpaqueHash(stem) || stem == rc.ID {
 		return rc, false, nil
@@ -950,7 +951,7 @@ func groundedRepairName(c clips.Clip) string {
 // "Untitled <kind>", or the pre-#1452 brand/category/era derivation. A source title or a name a
 // person gave is left alone. The derived name goes to `displayName`, never `originalName`, which
 // is the text era grounding reads.
-func (s *Syncer) repairPlaceholderDisplayName(rc cliplibrary.RawClip, existing cliplibrary.StoreClip, found bool) (cliplibrary.RawClip, bool, error) {
+func (s *Syncer) repairPlaceholderDisplayName(rc cliplibrary.RawClip, existing clipstore.Clip, found bool) (cliplibrary.RawClip, bool, error) {
 	if !found || rc.SidecarInvalid {
 		return rc, false, nil
 	}

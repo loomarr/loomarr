@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // identityFingerprintBudget bounds how long one pass spends decoding. A catalog that needs more
@@ -52,8 +53,7 @@ type Store interface {
 
 // IdentityClip is a catalog clip and when it was admitted, the last tie-break between copies.
 type IdentityClip struct {
-	cliplibrary.StoreClip
-	CreatedAt time.Time
+	clipstore.Clip
 	// Defects is the clip's current defect assessment; nil until the floor has measured it.
 	Defects *defects.Assessment
 }
@@ -106,7 +106,7 @@ func (ci *Job) Run(ctx context.Context) (Result, error) {
 	}
 	published := make([]IdentityClip, 0, len(all))
 	for _, c := range all {
-		if identityCandidate(c.Clip) {
+		if identityCandidate(c.Clip.Clip) {
 			published = append(published, c)
 		}
 	}

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The household defect report (#2034 step 4c): what the floor would retire on this install, and
@@ -60,7 +60,7 @@ type DefectReport struct {
 
 // DefectReportRow is one measured clip.
 type DefectReportRow struct {
-	Clip   cliplibrary.StoreClip
+	Clip   clipstore.Clip
 	Record DefectRecord
 	Label  *DefectLabel
 	// LabelCurrent is false when the clip's era was corrected into another band after labelling:
@@ -113,7 +113,7 @@ func (d *DefectReports) Report(ctx context.Context, f DefectReportFilter) (Defec
 			continue
 		}
 		report.Verdicts[rec.Verdict]++
-		row := DefectReportRow{Clip: c.StoreClip, Record: rec}
+		row := DefectReportRow{Clip: c.Clip, Record: rec}
 		if l, ok := labels[c.Hash]; ok {
 			row.Label = &l
 			row.LabelCurrent = defects.BandFor(l.Era) == rec.Assessment.Band
