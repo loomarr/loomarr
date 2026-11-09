@@ -26,6 +26,6 @@ export type { PlayerMoreProps } from "./player-more";
 export { PlayerMore } from "./player-more";
 export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
-export type { PlayerReadoutProps } from "./player-readout";
-export { PlayerReadout } from "./player-readout";
 export { PlayerSheet } from "./player-sheet";
+export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
+export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

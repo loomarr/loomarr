@@ -243,6 +243,7 @@ export type {
   PlayerOptionsProps,
   PlayerSheetProps,
   PlayerTopRowProps,
+  PlayerWatermark,
   WatchFrameProps,
   WatchingPanelData,
   WatchingPanelDataArgs,
@@ -253,20 +254,22 @@ export type {
 } from "./src/watching-surface";
 export {
   ClipChrome,
+  clearOfWatermark,
   PlayerAudio,
   PlayerChrome,
   PlayerCover,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
-  PlayerReadout,
   PlayerSheet,
+  pictureIn,
   playbarFromTimeline,
   WatchFrame,
   WatchingPanel,
   WatchingSurface,
   watchingPanelFromGuide,
   watchingScheduleTimeMs,
+  watermarkOf,
 } from "./src/watching-surface";
 export type { YearFieldProps } from "./src/year-field";
 export { YearField } from "./src/year-field";

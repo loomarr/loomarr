@@ -1,12 +1,17 @@
 import { playerChrome, ThemeScope } from "@loomarr/design-system";
-import { memo, useDeferredValue } from "react";
-import { View } from "react-native";
+import { memo, useDeferredValue, useState } from "react";
+import { type LayoutChangeEvent, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
 import { gradientOr, webOnly } from "./flat";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
+import { PlayerReadout } from "./player-readout";
 import { PlayerTopRow } from "./player-top-row";
+import { clearOfWatermark, type Frame } from "./watermark-clearance";
+
+// The height of a top-row key.
+const KEY = 48;
 
 // PlayerChrome — the chrome every Loomarr player wears (frontend-design §9; the mock of record is
 // design/watch-player, variant H). Drawn over the picture, back to front: one bottom scrim, the band
@@ -23,9 +28,11 @@ const ChromeBody = memo(
     keys,
     live,
     onGoLive,
+    readout,
     sheet,
     top,
     visible,
+    watermark,
   }: PlayerChromeProps) => {
     const touch = density === "touch";
     // The station-ID card stands in for hidden controls: the band alone, fuller.
@@ -33,8 +40,27 @@ const ChromeBody = memo(
     const controls = visible;
     const shown = controls || card;
     const edge = touch ? 16 : 48;
+    // The channel's watermark is part of the picture, so the chrome steps around it (§9.6): the top
+    // row and the readout start below a top bug; the band and keys lift clear of a bottom one.
+    const [frame, setFrame] = useState<Frame>({ height: 0, width: 0 });
+    const [rowHeight, setRowHeight] = useState(0);
+    const topBase = touch ? 16 : 40;
+    const topRowAt = clearOfWatermark({ base: topBase, edge: "top", extent: KEY, frame, watermark });
+    const bottomBase = touch ? 16 : 48;
+    const bottomAt = clearOfWatermark({
+      base: bottomBase,
+      edge: "bottom",
+      extent: rowHeight,
+      frame,
+      watermark,
+    });
     return (
       <ThemeScope theme="dark">
+        <View
+          onLayout={(e: LayoutChangeEvent) => setFrame(e.nativeEvent.layout)}
+          pointerEvents="none"
+          style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+        />
         <View
           aria-hidden={!shown || undefined}
           pointerEvents="none"
@@ -54,12 +80,13 @@ const ChromeBody = memo(
           }}
         >
           <View
+            onLayout={(e: LayoutChangeEvent) => setRowHeight(e.nativeEvent.layout.height - bottomAt)}
             pointerEvents={shown ? "box-none" : "none"}
             style={{
               alignItems: "flex-end",
               flexDirection: "row",
               gap: touch ? 32 : 64,
-              paddingBottom: touch ? 16 : 48,
+              paddingBottom: bottomAt,
               paddingHorizontal: edge,
             }}
           >
@@ -83,13 +110,22 @@ const ChromeBody = memo(
             opacity: controls ? 1 : 0,
             position: "absolute",
             right: touch ? 16 : 48,
-            top: touch ? 16 : 40,
+            top: topRowAt,
             zIndex: 40,
             ...webOnly({ transition: "opacity 120ms ease" }),
           }}
         >
           <PlayerTopRow {...top} />
         </View>
+        {readout ? (
+          <PlayerReadout
+            density={density}
+            digits={readout.digits}
+            missed={readout.missed}
+            // Under the top row while the controls are up; in its place while they are hidden.
+            top={controls ? topRowAt + KEY + (touch ? 16 : 24) : topRowAt}
+          />
+        ) : null}
         {sheet ? (
           <>
             <View
