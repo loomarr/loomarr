@@ -43,6 +43,9 @@ type LibraryItem struct {
 	RuntimeMs int64
 	// Season, Episode and EpisodeEnd number an episode (EpisodeEnd for a multi-episode file).
 	Season, Episode, EpisodeEnd int
+	// Unnumbered is an episode the scanner could not number by its show's catalog and nobody has
+	// said which order its show's files follow: it keeps its file's name and number (decision 53).
+	Unnumbered bool
 	// Series is an episode's series by its scan origin; the store fills SeriesID from it once the
 	// series is written.
 	Series   LibraryOrigin
