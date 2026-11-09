@@ -179,7 +179,7 @@ type PlayoutEvent struct {
 	Active int `json:"active"`
 }
 
-// eventTypeMap binds each frame's SSE event NAME to its payload type. huma reads the name off
+// EventTypeMap binds each frame's SSE event NAME to its payload type. huma reads the name off
 // the Go type, so this map is what makes `event: title` appear on the wire at all.
 //
 // ⚠ **Adding a frame means adding it here.** Publishing a type absent from this map emits a

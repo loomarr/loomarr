@@ -20,7 +20,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 )
 
@@ -200,19 +199,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		TimelineThumbs:       timelineThumbs,
 		PlayoutSecret:        playoutSecret,
 		PlayoutSecretCurrent: playoutSecretCurrent,
-		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
-		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
-		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont:       playout.CardFontFor(settings.PlayoutFFmpegPath.Get(set)),
-		PlayoutTonemap:    playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)),
-		PlayoutGPUTonemap: playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set)),
-		// Measured, not a build property: the boot class probe publishes it (probeCapacity).
-		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
-		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
-		// always targets whatever model is currently resident. Only the local ollama provider holds
-		// VRAM on this box — a hosted provider has nothing local to reclaim, so it is a no-op there
-		// (the ladder then goes straight to the software fallback).
-		ReclaimVRAM: residentLLM.reclaim,
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,

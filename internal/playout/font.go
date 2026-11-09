@@ -2,7 +2,6 @@ package playout
 
 import (
 	"os"
-	"sync"
 
 	"github.com/loomarr/loomarr/internal/platform/config"
 )
@@ -63,41 +62,3 @@ func fileExists(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && !st.IsDir()
 }
-
-// CardFontFor returns the font a card should be labelled with, or "" when this host cannot
-// render text at all — bound to an ffmpeg path the same way FFprobeTracksNextTo is, and for
-// the same reason.
-//
-// ⚠ A FONT FILE IS NOT ENOUGH. `drawtext` is a compile-time option (libfreetype, plus
-// libharfbuzz on ffmpeg 8), and a build without it rejects the filter at graph-init with
-// "Filter not found" — the encode exits 8 and the channel is DEAD, which is exactly the
-// outcome the comment above promises never to cause. Homebrew's `ffmpeg` bottle is the case
-// that found this: macOS has Arial.ttf, so the font check passed, and every card died.
-// FindFont answers "is there a font?"; only the build answers "can it draw one?".
-//
-// So this asks the binary, the same way listEncoders does — the build itself is the only
-// honest signal, and it costs one `-filters` exec that is memoised for the process. A probe
-// that cannot run resolves to "" (unlabelled card), never to an assumed yes: the failure
-// this exists to prevent is a dead channel, and an unlabelled card is the safe direction.
-func CardFontFor(ffmpegPath string) func() string {
-	var (
-		once sync.Once
-		font string
-	)
-	return func() string {
-		once.Do(func() {
-			if hasDrawText(ffmpegPath) {
-				font = FindFont()
-			}
-		})
-		return font
-	}
-}
-
-// hasDrawText reports whether this ffmpeg build carries the drawtext filter.
-//
-// A thin caller of filters.go's hasFilter, which owns the "a filter is a per-build
-// fact" rule for every optional filter. Kept as a named function
-// because "can this build draw text?" is the question CardFontFor asks, and spelling it out here
-// keeps that reasoning next to the font list it guards.
-func hasDrawText(ffmpegPath string) bool { return hasFilter(ffmpegPath, "drawtext") }

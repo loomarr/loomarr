@@ -65,22 +65,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	cfg.Transformers = append(cfg.Transformers, httpcore.ErrorTransformer(log))
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
-		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
-		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
-		channels:  opts.Channels,
-		suggest:   opts.Suggest,
-		now:       opts.Now,
-		viewing:   viewing.New(),
-		systemLLM: opts.SystemLLM, activity: opts.Activity,
-		liveSettings:      opts.LiveSettings,
-		playoutCapability: opts.PlayoutCapability,
-		playoutSecret:     opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
-		playoutResolver: opts.PlayoutResolver,
-		playout:         opts.Playout,
-		playoutFont:     opts.PlayoutFont,
-		playoutTonemap:  opts.PlayoutTonemap, playoutGPUTonemap: opts.PlayoutGPUTonemap,
-		reclaimVRAM:     opts.ReclaimVRAM,
-		residentLLMVRAM: opts.ResidentLLMVRAM,
+		auth: opts.Auth, log: log,
+		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
+		channels: opts.Channels,
+		viewing:  viewing.New(),
 	}
 	srv.registerMiddleware(humaAPI)
 	setupRoutes := setupapi.New(setupapi.Deps{

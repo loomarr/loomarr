@@ -6,11 +6,11 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (80), filler (53), library (27), channels (21), proposals (19), media (18), playout (12), people (11)
+**Imports from other areas:** any, by design — platform (80), filler (53), library (27), channels (21), proposals (19), media (17), playout (12), people (11)
 
 ## Packages
 
-- **`api`** · 1 importer · → `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `media/encode`, `people/auth`, `platform/activity`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
+- **`api`** · 1 importer · → `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `people/auth`, `platform/activity`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
   Wires Loomarr's inbound HTTP surface (§7).
 - **`api/catalog`** · 2 importers · → `api/httpcore`, `channels/schedule`, `platform/settings`, `platform/store`, `provision`
   Serves the title catalog: the provisioning titles under /v1/titles and the federated catalog search under /v1/search.

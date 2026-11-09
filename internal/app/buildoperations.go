@@ -56,8 +56,7 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 }
 
 type residentLLMBuild struct {
-	probe   func(context.Context) (float64, string)
-	reclaim func(context.Context)
+	probe func(context.Context) (float64, string)
 }
 
 type operationsBuild struct {
@@ -265,20 +264,7 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 		}
 		return total, largest.Name
 	}
-	reclaim := func(ctx context.Context) {
-		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
-			return
-		}
-		provider := llm.NewProvider("ollama", settings.LLMURL.Get(set), settings.LLMModel.Get(set), "")
-		evictor, ok := provider.(llm.Evictor)
-		if !ok {
-			return
-		}
-		if err := evictor.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
-			log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
-		}
-	}
-	return residentLLMBuild{probe: probe, reclaim: reclaim}
+	return residentLLMBuild{probe: probe}
 }
 
 func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {

@@ -19,7 +19,7 @@ import (
 //
 // `drawtext` is the example: it is a compile-time option (libfreetype, plus libharfbuzz on
 // ffmpeg 8), Homebrew's bottle ships without it, and because macOS HAS a font file a font check
-// alone passes and every card dies anyway (see CardFontFor). The answer is to ask the binary;
+// alone passes and every card using it dies anyway. The answer is to ask the binary;
 // this file does that for every optional filter.
 //
 // Both probes here follow the same three rules:
@@ -38,7 +38,7 @@ const filterProbeTimeout = 10 * time.Second
 
 // hasFilter reports whether an ffmpeg build carries a named filter.
 //
-// Not memoised itself: callers wrap it (CardFontFor, TonemapperFor) because each caches a
+// Not memoised itself: callers wrap it (TonemapperFor, GPUFiltersFor) because each caches a
 // DECISION, not the raw answer, and those decisions combine more than one probe.
 func hasFilter(ffmpegPath, name string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), filterProbeTimeout)
@@ -72,7 +72,7 @@ func parseHasFilter(raw []byte, name string) bool {
 }
 
 // TonemapperFor reports whether this ffmpeg build can tone-map HDR to SDR, memoised for the
-// process. Bound to an ffmpeg path the same way CardFontFor is, and for the same reason.
+// process. Bound to an ffmpeg path, so a different binary gets its own answer.
 //
 // BOTH filters are required and neither is universal:
 //

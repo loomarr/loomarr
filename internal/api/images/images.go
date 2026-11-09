@@ -256,7 +256,7 @@ func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.Im
 	}
 }
 
-// libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
+// LibraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
 // arrived, so a surface draws without it rather than showing a broken image.
 func (s *Handlers) LibraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
 	if s.images == nil || hash == "" {
@@ -274,7 +274,7 @@ func (s *Handlers) LibraryImage(ctx context.Context, hash string) *httpcore.Imag
 // them while the title is listed.
 const libraryCandidateImageOwner = "library_candidate"
 
-// candidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
+// CandidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
 // its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
 func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
 	if s.images == nil || url == "" {
@@ -291,7 +291,7 @@ func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *htt
 	return &dto
 }
 
-// imageDTOsByHash resolves a set of image hashes in ONE pass, deduplicated.
+// ImageDTOsByHash resolves a set of image hashes in ONE pass, deduplicated.
 //
 // ⚠ **Every list endpoint that renders images must go through this rather than looking one up per
 // row.** A per-row lookup is an N+1 — the shape a profile here has already caught once — and it

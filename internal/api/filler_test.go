@@ -368,9 +368,8 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.Image
 	// tests across three files went red the moment the migration landed, none of them wrong.
 	//
 	// Clearing here rather than teaching each assertion to say "+4" keeps them readable AND keeps
-	// them honest when the seeded set changes again — which it will. The seeding itself is not
-	// untested: `TestMigrations_SeedDefaultSources` owns exactly that, and is the ONLY test that
-	// should ever depend on what 00034 inserts.
+	// them honest when the seeded set changes again — which it will. No test here should depend on
+	// what 00034 inserts; the seeding belongs to a store-level test, not to these route tests.
 	clearSeededSources(t, st)
 	return srv, st, ff
 }
