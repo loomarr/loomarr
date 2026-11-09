@@ -101,7 +101,7 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         aria-label="Commercial break"
       >
         <div className="bg-border h-px flex-1" />
-        <span className="tracking-wide uppercase">Commercial break</span>
+        <span>Commercial break</span>
         <div className="bg-border h-px flex-1" />
       </li>
     );

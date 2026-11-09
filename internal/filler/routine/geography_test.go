@@ -1,4 +1,4 @@
-package app
+package routine
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func TestGeographyRetirementRemovesOnlyWhatNoPlaceCanAir(t *testing.T) {
 		},
 		channels: []channelstore.Channel{channelAt("US", "lakeside"), channelAt("", "")},
 	}
-	retire := fillerGeographyRetirement{clips: fake, store: fake, policy: retirementPolicy("US"),
+	retire := GeographyRetirement{clips: fake, store: fake, policy: retirementPolicy("US"),
 		log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now}
 	removed, err := retire.Run(t.Context())
 	if err != nil {
@@ -76,7 +76,7 @@ func TestGeographyRetirementNeedsAnInstallationCountry(t *testing.T) {
 	fake := &retirementFake{settled: []records.SettledGeographyClip{
 		{Path: "foreign-ad.mp4", Scope: "national", Country: "GB"},
 	}}
-	retire := fillerGeographyRetirement{clips: fake, store: fake, policy: retirementPolicy(""),
+	retire := GeographyRetirement{clips: fake, store: fake, policy: retirementPolicy(""),
 		log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now}
 	if removed, err := retire.Run(t.Context()); err != nil || removed != 0 || len(fake.removed) != 0 {
 		t.Fatalf("removed %d (%v), %v; want nothing without an installation country", removed, fake.removed, err)

@@ -1,4 +1,4 @@
-package app
+package archive
 
 import (
 	"context"
@@ -11,13 +11,12 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler/fetch"
-	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 )
 
-// remoteRuntimesFile is the runtime cache's file inside the filler folder. Dot-prefixed like the
+// RuntimesFile is the runtime cache's file inside the filler folder. Dot-prefixed like the
 // artwork cache (cliplibrary.ThumbDirName) so scans and intake skip it, and kept beside the clips it
 // is for: they share a lifecycle, and emptying the folder takes the cache with it.
-const remoteRuntimesFile = ".loomarr-remote-runtimes.json"
+const RuntimesFile = ".loomarr-remote-runtimes.json"
 
 // remoteRuntime is what one remote item's metadata said about it.
 type remoteRuntime struct {
@@ -25,7 +24,7 @@ type remoteRuntime struct {
 	Height     int `json:"height,omitempty"`
 }
 
-// remoteRuntimeCache remembers remote items' runtimes, keyed by provider and item id (#1773).
+// RuntimeCache remembers remote items' runtimes, keyed by provider and item id (#1773).
 //
 // Reading an Archive.org runtime costs one throttled metadata call per item (fetch.Enrich:
 // ~25 items in 15–25 s), and while compilation reels are held back every planned pull and
@@ -35,7 +34,7 @@ type remoteRuntime struct {
 //
 // It is derived data. A missing or unreadable file starts empty, and a failed write keeps the
 // runtimes in memory; either way the cost is re-reading, never a wrong runtime.
-type remoteRuntimeCache struct {
+type RuntimeCache struct {
 	// path is the cache file; empty keeps runtimes in memory only.
 	path string
 	log  *slog.Logger
@@ -45,14 +44,14 @@ type remoteRuntimeCache struct {
 	runtimes map[string]remoteRuntime
 }
 
-func newRemoteRuntimeCache(path string, log *slog.Logger) *remoteRuntimeCache {
-	return &remoteRuntimeCache{path: path, log: log}
+func NewRuntimeCache(path string, log *slog.Logger) *RuntimeCache {
+	return &RuntimeCache{path: path, log: log}
 }
 
 func remoteRuntimeKey(provider, id string) string { return provider + "/" + id }
 
 // load reads the file on first use. The caller holds mu.
-func (c *remoteRuntimeCache) load() {
+func (c *RuntimeCache) load() {
 	if c.loaded {
 		return
 	}
@@ -75,7 +74,7 @@ func (c *remoteRuntimeCache) load() {
 }
 
 // lookup returns a remembered runtime.
-func (c *remoteRuntimeCache) lookup(provider, id string) (remoteRuntime, bool) {
+func (c *RuntimeCache) lookup(provider, id string) (remoteRuntime, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.load()
@@ -84,7 +83,7 @@ func (c *remoteRuntimeCache) lookup(provider, id string) (remoteRuntime, bool) {
 }
 
 // remember keeps the known runtimes among learned (item id → runtime) and saves the file.
-func (c *remoteRuntimeCache) remember(provider string, learned map[string]remoteRuntime) {
+func (c *RuntimeCache) remember(provider string, learned map[string]remoteRuntime) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.load()
@@ -105,12 +104,12 @@ func (c *remoteRuntimeCache) remember(provider string, learned map[string]remote
 
 // save replaces the file atomically, so a crash mid-write leaves the previous cache. The caller
 // holds mu.
-func (c *remoteRuntimeCache) save() error {
+func (c *RuntimeCache) save() error {
 	raw, err := json.Marshal(c.runtimes)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(c.path), remoteRuntimesFile+".*")
+	tmp, err := os.CreateTemp(filepath.Dir(c.path), RuntimesFile+".*")
 	if err != nil {
 		return err
 	}
@@ -125,18 +124,23 @@ func (c *remoteRuntimeCache) save() error {
 	return os.Rename(tmp.Name(), c.path)
 }
 
-// cachedArchiveCatalog reads each Archive.org item's runtime once (#1773): remembered items are
+// CachedCatalog reads each Archive.org item's runtime once (#1773): remembered items are
 // filled from the cache and only the rest are asked of Archive.org.
-type cachedArchiveCatalog struct {
-	archiveprovider.Catalog
-	runtimes *remoteRuntimeCache
+type CachedCatalog struct {
+	Catalog
+	runtimes *RuntimeCache
 }
 
-func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []fetch.DiscoveredItem) {
+// NewCachedCatalog wraps catalog so each item's runtime is read once and remembered in runtimes.
+func NewCachedCatalog(catalog Catalog, runtimes *RuntimeCache) CachedCatalog {
+	return CachedCatalog{Catalog: catalog, runtimes: runtimes}
+}
+
+func (c CachedCatalog) Enrich(ctx context.Context, items []fetch.DiscoveredItem) {
 	var unknown []fetch.DiscoveredItem
 	var at []int
 	for i := range items {
-		if r, ok := c.runtimes.lookup(string(archiveprovider.ID), items[i].ID); ok {
+		if r, ok := c.runtimes.lookup(string(ID), items[i].ID); ok {
 			items[i].DurationMS, items[i].Height = r.DurationMS, r.Height
 			continue
 		}
@@ -152,5 +156,5 @@ func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []fetch.Discover
 		items[at[j]].DurationMS, items[at[j]].Height = item.DurationMS, item.Height
 		learned[item.ID] = remoteRuntime{DurationMS: item.DurationMS, Height: item.Height}
 	}
-	c.runtimes.remember(string(archiveprovider.ID), learned)
+	c.runtimes.remember(string(ID), learned)
 }

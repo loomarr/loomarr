@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/routine"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -33,10 +34,12 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 	coordinator := enrichment.NewCoordinator(runner, storeadapter.NewEnrichment(st),
 		func() enrichment.TextSelection { return enrichment.TextSelection{} },
 		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
-	driver := newFillerPipelineDriver(nil, coordinator, nil)
-	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
+	driver := routine.NewDriver(func(context.Context) (filler.PipelineResult, error) {
 		return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
-	}
+	}, func(ctx context.Context) error {
+		_, err := coordinator.Run(ctx)
+		return err
+	})
 	if err := driver.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}

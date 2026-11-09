@@ -1,4 +1,8 @@
-package app
+// Package routine holds the unattended routines the filler jobs run: the ingest pipeline's driver
+// and its detail pass, the retirement of clips no current place can air, the switching of curated
+// sources for the places' nearby stations, and the open archive search those places gate. The
+// composition root declares the jobs and hands each routine what it reads.
+package routine
 
 import (
 	"context"
@@ -34,8 +38,8 @@ func currentAreas(ctx context.Context, channels interface {
 	return policy.UsableAreas(places), nil
 }
 
-// nearbyPlaceStations is every station within the radius of some current place.
-func nearbyPlaceStations(ctx context.Context, channels interface {
+// NearbyPlaceStations is every station within the radius of some current place.
+func NearbyPlaceStations(ctx context.Context, channels interface {
 	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 }, policy pod.Policy) (map[string]bool, error) {
 	areas, err := currentAreas(ctx, channels, policy)
@@ -51,23 +55,31 @@ func nearbyPlaceStations(ctx context.Context, channels interface {
 	return near, nil
 }
 
-// localCuratedSources switches curated sources on for the stations near the current places, and
+// LocalCuratedSources switches curated sources on for the stations near the current places, and
 // back off when no place is near them any more (#2059 decision 10: setting a place is the consent
 // for its local sources). A source the operator switched either way stays as they left it.
-type localCuratedSources struct {
-	store interface {
-		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
-		SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
-	}
+type LocalCuratedSources struct {
+	store  CuratedSwitcher
 	policy func() pod.Policy
 	log    *slog.Logger
 }
 
-func (l localCuratedSources) Run(ctx context.Context) {
+// CuratedSwitcher is the slice of the store the curated-source switch reads and writes.
+type CuratedSwitcher interface {
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
+}
+
+// NewLocalCuratedSources returns the curated-source switch over store and the places' policy.
+func NewLocalCuratedSources(store CuratedSwitcher, policy func() pod.Policy, log *slog.Logger) LocalCuratedSources {
+	return LocalCuratedSources{store: store, policy: policy, log: log}
+}
+
+func (l LocalCuratedSources) Run(ctx context.Context) {
 	if l.store == nil {
 		return
 	}
-	near, err := nearbyPlaceStations(ctx, l.store, l.policy())
+	near, err := NearbyPlaceStations(ctx, l.store, l.policy())
 	if err != nil {
 		l.log.Warn("filler: local curated sources not switched; places unreadable", "err", err)
 		return
@@ -82,10 +94,10 @@ func (l localCuratedSources) Run(ctx context.Context) {
 	}
 }
 
-// openArchiveSearch searches all of archive.org for a nearby station (#2059 decisions 10 and 11).
+// OpenArchiveSearch searches all of archive.org for a nearby station (#2059 decisions 10 and 11).
 // Its gate admits a hit whose title names a station near some current place, held on the title's
 // date.
-type openArchiveSearch struct {
+type OpenArchiveSearch struct {
 	archive interface {
 		Search(ctx context.Context, query string, limit int) (fetch.DiscoveryResult, error)
 	}
@@ -99,7 +111,25 @@ type openArchiveSearch struct {
 	languages func(context.Context) (string, error)
 }
 
-func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]source.Item, error) {
+// NewOpenArchiveSearch returns the open archive search. archive runs the query, channels name the
+// current places, stations resolve a title to a station, and languages reads the wanted set.
+func NewOpenArchiveSearch(
+	archive interface {
+		Search(ctx context.Context, query string, limit int) (fetch.DiscoveryResult, error)
+	},
+	channels interface {
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	},
+	policy func() pod.Policy,
+	stations interface {
+		Get(context.Context) (*station.Directory, error)
+	},
+	languages func(context.Context) (string, error),
+) OpenArchiveSearch {
+	return OpenArchiveSearch{archive: archive, channels: channels, policy: policy, stations: stations, languages: languages}
+}
+
+func (o OpenArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]source.Item, error) {
 	res, err := o.archive.Search(ctx, query, limit)
 	if err != nil {
 		return nil, err
@@ -108,10 +138,10 @@ func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit i
 }
 
 // Provider is the provider an open-search hit is acquired from.
-func (o openArchiveSearch) Provider() source.ID { return archiveprovider.ID }
+func (o OpenArchiveSearch) Provider() source.ID { return archiveprovider.ID }
 
-func (o openArchiveSearch) Gate(ctx context.Context) (acquisition.ListingGate, error) {
-	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())
+func (o OpenArchiveSearch) Gate(ctx context.Context) (acquisition.ListingGate, error) {
+	near, err := NearbyPlaceStations(ctx, o.channels, o.policy())
 	if err != nil {
 		return acquisition.ListingGate{}, err
 	}
@@ -132,10 +162,10 @@ func (o openArchiveSearch) Gate(ctx context.Context) (acquisition.ListingGate, e
 	}}, nil
 }
 
-// nearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
+// NearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
 // nearby station held during an era gap, or ever when there is none. Sorted, so the searches a
 // pass rotates through are stable.
-func nearbyCallSigns(near map[string]bool, eras []pod.EraRange, directory *station.Directory) []string {
+func NearbyCallSigns(near map[string]bool, eras []pod.EraRange, directory *station.Directory) []string {
 	spans := [][2]string{{"", ""}}
 	if len(eras) > 0 {
 		spans = spans[:0]

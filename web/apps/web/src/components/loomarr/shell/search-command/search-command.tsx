@@ -212,13 +212,7 @@ const SearchCommand = ({
         {groups.map((group) => (
           // biome-ignore lint/a11y/useSemanticElements: the rule suggests <fieldset>, which is for form controls and is not a valid listbox child; role="group" is the ARIA-correct way to section options.
           <div key={group.scope} role="group" aria-labelledby={`${listboxId}-${group.scope}`}>
-            <Text
-              as="p"
-              className="px-2 pt-2 pb-1"
-              id={`${listboxId}-${group.scope}`}
-              shout
-              textRole="captionMono"
-            >
+            <Text as="p" className="px-2 pt-2 pb-1" id={`${listboxId}-${group.scope}`} textRole="metadata">
               {SCOPE_LABEL[group.scope]}
             </Text>
             {group.items.map((item) => {

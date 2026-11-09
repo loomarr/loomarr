@@ -215,6 +215,10 @@ type Story = StoryObj<typeof meta>;
 
 const Playing: Story = {};
 
+// The chrome is light words on the picture in both themes (the flat player, #3178), so the light
+// theme's page must not change it. The picture stays dark.
+const LightPlaying: Story = { globals: { theme: "light" } };
+
 // Paused in the seekable past: the band reads how far behind, and Go live offers the way back.
 const Behind: Story = { args: chromeArgs({ lagSeconds: 134, mode: "paused" }) };
 
@@ -326,6 +330,7 @@ export {
   Decade1980,
   Decade1990,
   Info,
+  LightPlaying,
   NoSchedule,
   OffAir,
   Playing,
