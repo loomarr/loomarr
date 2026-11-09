@@ -203,30 +203,28 @@ const ImportDialog = ({
                             />
                             <label
                               htmlFor={id}
-                              className="text-foreground min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none font-normal"
+                              className="min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none"
                             >
-                              <span className="block">
-                                <span className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium">{candidate.name}</span>
-                                  {candidate.imported && (
-                                    <Badge shape="square" tone="lock">
-                                      Already imported
-                                    </Badge>
-                                  )}
-                                  {candidate.disabled && (
-                                    <Badge shape="square" tone="onair">
-                                      Disabled on server
-                                    </Badge>
-                                  )}
-                                  {candidate.isAdmin && (
-                                    <Badge shape="square" tone="tune">
-                                      Server admin
-                                    </Badge>
-                                  )}
-                                </span>
-                                <span className="text-static-400 mt-1 block text-xs">
-                                  Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
-                                </span>
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{candidate.name}</span>
+                                {candidate.imported && (
+                                  <Badge shape="square" tone="lock">
+                                    Already imported
+                                  </Badge>
+                                )}
+                                {candidate.disabled && (
+                                  <Badge shape="square" tone="onair">
+                                    Disabled on server
+                                  </Badge>
+                                )}
+                                {candidate.isAdmin && (
+                                  <Badge shape="square" tone="tune">
+                                    Server admin
+                                  </Badge>
+                                )}
+                              </span>
+                              <span className="text-static-400 mt-1 block text-xs">
+                                Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                               </span>
                             </label>
                           </li>
