@@ -6,11 +6,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/tmdb/tmdbstandin"
+	"github.com/loomarr/loomarr/internal/library/tmdb/tmdbstandin"
 )
 
 // TMDB is the shared TMDB test double (AGENTS.md: one mock per service): the one stand-in in
-// internal/tmdb/tmdbstandin, which the demo library also serves, behind an httptest server that
+// internal/library/tmdb/tmdbstandin, which the demo library also serves, behind an httptest server that
 // records requests. /search/multi returns matches by name substring; /movie|tv/{id} 200s iff the
 // id is in the catalogue, else 404, which is what the suggester's validation drops (§8). The
 // catalogue setters (AddMovie, SetRating, …) are the embedded Catalog's.

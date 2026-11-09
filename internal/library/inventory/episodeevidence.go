@@ -1,5 +1,6 @@
-// Package episodeevidence owns playable structure and bounded editorial facts used for episode curation.
-package episodeevidence
+package inventory
+
+// Episode evidence: playable structure and bounded editorial facts used for episode curation.
 
 import (
 	"errors"

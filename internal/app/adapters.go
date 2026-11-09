@@ -16,7 +16,8 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -24,8 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
@@ -216,7 +215,7 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 	return out, nil
 }
 
-type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
+type movieCollectionAdapter struct{ resolver *tmdb.CollectionResolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,
@@ -421,9 +420,7 @@ type ownCollections interface {
 }
 
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
-// picker (programming-design §2.2): the household's collections (#2151 step 16). The media
-// server's own collections are not consulted: its hand-made ones live in the Library, and its
-// TMDB ones are the Library's ready-made sets.
+// picker (programming-design §2.2): the household's collections (#2151 step 16).
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an

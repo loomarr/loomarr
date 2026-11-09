@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 func inventorySnapshot(authority, externalItemID, externalSourceID, revision, name string, at time.Time) inventory.Snapshot {

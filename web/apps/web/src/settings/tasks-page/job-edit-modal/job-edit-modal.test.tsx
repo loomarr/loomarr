@@ -116,6 +116,22 @@ describe("JobEditModal", () => {
     expect(patches[0]).toEqual({ edits: { "job.reconcile.schedule": "0 30 4 * * 1" } });
   });
 
+  it("saves the trimmed cron when Enter is pressed in the advanced field", async () => {
+    const user = userEvent.setup();
+    const { patches } = captureSettings();
+    const custom: JobView = { ...job, schedule: "0 15 2 * * 3" };
+    render(<JobEditModal job={custom} presets={presets} open onOpenChange={() => {}} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const cronField = await screen.findByRole("textbox", { name: "Cron expression" });
+    await user.clear(cronField);
+    await user.type(cronField, "  0 45 6 * * *  {Enter}");
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ edits: { "job.reconcile.schedule": "0 45 6 * * *" } });
+  });
+
   it("opens straight into the advanced field when the current schedule matches no preset", async () => {
     captureSettings();
     const custom: JobView = { ...job, schedule: "0 15 2 * * 3" };

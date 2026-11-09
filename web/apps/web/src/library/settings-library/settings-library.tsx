@@ -1,6 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibrarySettings } from "@loomarr/ui";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { readyTitleOf } from "../ready-title";
 import { useLibraryFolders } from "../use-library-folders";
 
 // Settings → Library's media folders (#2151 decisions 6 and 29). The server discovers folders from
@@ -32,6 +33,7 @@ const SettingsLibrary = () => {
         held={current.held}
         hooks={current.hooks}
         scan={current.scan}
+        readySoFar={folders.readySoFar.map(readyTitleOf)}
         onRescan={() => rescan.mutate()}
         onConfirmRemoval={(path) => confirmRemoval.mutate({ data: { path } })}
         onAddFolder={folders.onAddFolder}

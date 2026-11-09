@@ -107,8 +107,29 @@ describe("ChannelIdentityField", () => {
     await user.click(screen.getByRole("button", { name: /save channel number/i }));
 
     // The reason shows inline, and the editor stays open (still dirty → Save still there).
-    expect(await screen.findByText(/already in use/i)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/already in use/i);
     expect(screen.getByRole("button", { name: /save channel number/i })).toBeInTheDocument();
+  });
+
+  it("closes the editor once the saved, trimmed value comes back as committed", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(() => Promise.resolve());
+    const { rerender } = render(
+      <ChannelIdentityField label="Channel name" value="90s Action" onSave={onSave} />,
+    );
+
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "  Late Night  ");
+    await user.click(screen.getByRole("button", { name: /save channel name/i }));
+    expect(onSave).toHaveBeenCalledWith("Late Night");
+
+    // The parent re-renders with the value the server stored: the normalised draft.
+    rerender(<ChannelIdentityField label="Channel name" value="Late Night" onSave={onSave} />);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /save channel name/i })).not.toBeInTheDocument(),
+    );
+    expect(input.value).toBe("Late Night");
   });
 
   it("adopts a new committed value from the server when the user hasn't diverged", async () => {

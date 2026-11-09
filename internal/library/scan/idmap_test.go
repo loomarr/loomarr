@@ -92,6 +92,9 @@ func TestIDMapperReplacesTheMapAndKeepsItWhenTheServerFails(t *testing.T) {
 		Roots: []store.LibraryRoot{{Path: "/mnt/media", InUse: true}},
 		Paths: []store.LibraryRootPath{{Authority: string(library.Emby), AuthorityPath: "/srv/media", RootPath: "/mnt/media"}},
 	}}
+	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{{ID: "lib-a", Kind: "movie", Name: "A"}}, at); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{{Path: "/mnt/media/a.mkv", Root: "/mnt/media", Size: 1,
 		ModifiedNs: 1, Identity: "d", Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "lib-a"}}); err != nil {
 		t.Fatal(err)

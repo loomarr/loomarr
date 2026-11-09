@@ -97,12 +97,14 @@ export type {
   LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySetCard,
   LibrarySettingsProps,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,
+  LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
@@ -262,3 +264,11 @@ export {
 } from "./src/watching-surface";
 export type { YearFieldProps } from "./src/year-field";
 export { YearField } from "./src/year-field";
+export type { YearRange, YearRangeListFieldProps } from "./src/year-range-list-field";
+export {
+  isValidYearRange,
+  normalizeYearRanges,
+  YEAR_MAX,
+  YEAR_MIN,
+  YearRangeListField,
+} from "./src/year-range-list-field";

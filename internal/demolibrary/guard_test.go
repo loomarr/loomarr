@@ -251,7 +251,6 @@ var migratedGo = []string{
 	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
 	// (slice 9).
 	"internal/catalog/", "internal/integration/", "internal/library/",
-	"internal/moviecollections/", "internal/tmdb/",
 	"internal/proposals/suggest/date_meaning_test.go",
 	"internal/proposals/suggest/intent_policy_test.go",
 	"internal/proposals/suggest/scopenarrows_test.go",
@@ -261,10 +260,11 @@ var migratedGo = []string{
 	// The filler tests, every package under internal/filler (slices 12 and 16).
 	"internal/filler/",
 	// The channels tests, every package under internal/channels (slices 9, 11 and 13), and the store
-	// and provisionbackstop tests (slice 13).
-	"internal/channels/", "internal/provisionbackstop/", "internal/platform/store/",
-	// The app, requester, provision and proposals/workflow tests (slice 15).
-	"internal/app/", "internal/proposals/workflow/", "internal/provision/", "internal/requester/",
+	// tests (slice 13). The provisionbackstop tests (slice 13) and the requester tests (slice 15) are
+	// covered by internal/library/ above.
+	"internal/channels/", "internal/platform/store/",
+	// The app, provision and proposals/workflow tests (slice 15).
+	"internal/app/", "internal/proposals/workflow/", "internal/provision/",
 	// The eval tests with hand-written fixtures (slice 16). The rest of internal/eval pins its frozen
 	// corpora: the certification_* tests use invented names with synthetic ids that sha256-chained
 	// testdata freezes below ProviderIDBase, and the realDataGo files below exercise real titles on
@@ -300,11 +300,11 @@ var realDataGo = map[string]string{
 	"internal/filler/station/directory_test.go":             "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
 	"internal/platform/llm/ollama_test.go":                  "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
 	"internal/provision/webhook_parity_test.go":             "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
-	"internal/requester/seerr_contract_test.go":             "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
+	"internal/library/requester/seerr_contract_test.go":     "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
 	"internal/proposals/suggest/live_latency_test.go":       "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/proposals/suggest/live_named_titles_test.go":  "drives a real LLM on requests that name real titles",
-	"internal/tmdb/exists_contract_test.go":                 "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
-	"internal/tmdb/fixture_test.go":                         "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/library/tmdb/exists_contract_test.go":         "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
+	"internal/library/tmdb/fixture_test.go":                 "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
 	"internal/playout/watermark/render_samplelogos_test.go": "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
 }
 

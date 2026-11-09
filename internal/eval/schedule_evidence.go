@@ -15,11 +15,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 const (
@@ -64,7 +64,7 @@ type ScheduleEpisodeEvidence struct {
 // snapshot evidence and the live Library adapter. Source-field differences are
 // handled before this seam; scheduler facts and defensive copies are not.
 func (e ScheduleEpisodeEvidence) resolvedProgram() schedule.ResolvedProgram {
-	evidence := episodeevidence.Sanitize(e.CommunityRating, e.Overview, e.Tags)
+	evidence := inventory.Sanitize(e.CommunityRating, e.Overview, e.Tags)
 	return schedule.ResolvedProgram{
 		LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs,
 		Season: e.Season, Episode: e.Episode, EpisodeEnd: e.EpisodeEnd, Year: e.Year,

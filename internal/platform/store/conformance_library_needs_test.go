@@ -23,6 +23,8 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 		{ID: "m2", Kind: "movie", Name: "Mystery Film", Origin: origin("/media/b/b.mkv")},
 		{ID: "s1", Kind: "series", Name: "Mystery Show", Origin: origin("/media/show")},
 		{ID: "m3", Kind: "movie", Name: "Gone Film", Origin: origin("/media/c/c.mkv")},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}

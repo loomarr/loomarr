@@ -29,12 +29,6 @@ const SOURCE_NAMES: Record<LibraryDetailsFromDTODescription, string> = {
 };
 const sourceName = (source?: LibraryDetailsFromDTODescription) => (source ? SOURCE_NAMES[source] : undefined);
 
-// A call that answers with an error status still resolves; this makes it a rejection, so the page
-// says it didn't go through.
-const done = (res: { status: number }) => {
-  if (res.status !== 204) throw new Error(`status ${res.status}`);
-};
-
 const LibraryTitlePage = ({ id }: { id: string }) => {
   const navigate = useNavigate();
   const router = useRouter();
@@ -54,8 +48,9 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() }),
       queryClient.invalidateQueries({ queryKey: ["/v1/library/items"] }),
     ]);
-  const act = async (call: Promise<{ status: number }>) => {
-    done(await call);
+  // A call that answers with an error status rejects, so the page says it didn't go through.
+  const act = async (call: Promise<unknown>) => {
+    await call;
     await refresh();
   };
 
@@ -88,6 +83,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         unplayable: item.unplayable,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
+        channels: body.channels,
         detailsFrom: {
           description: sourceName(body.detailsFrom.description),
           rating: sourceName(body.detailsFrom.rating),

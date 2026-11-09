@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 func twoTitleCorpus() *catalogfixture.Corpus {

@@ -327,7 +327,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
-| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
+| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### channel_lineup
 
@@ -474,9 +474,9 @@ The Keep, Less like this, Never and Surprise me choices people make about titles
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the choice. | `TEXT` · key |
-| `actor_id` | The person who made it (users.id). | `TEXT` |
+| `actor_id` | The person who made it (users.id), or `api-token` for a choice sent with the API token. | `TEXT` |
 | `scope` | Where it applies. `household` for every channel, or `channel` for one channel. | `TEXT` |
-| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`; empty for `household`. | `TEXT` |
+| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`. | `TEXT` · may be empty · → `channels.id` |
 | `target_key` | The title it is about, by its key, such as `movie:tmdb:603`. | `TEXT` |
 | `action` | `keep` (favour this title), `less` (less like this, which also lowers titles of its genres), `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear` (remove an earlier choice). | `TEXT` |
 | `reason` | An optional reason the person gave. | `TEXT` |
@@ -590,8 +590,8 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
-| `inventory_item_id` | The title the file was last written as (a library_items id); empty until known. | `TEXT` |
-| `inventory_series_id` | For an episode, its show (a library_items id); empty otherwise or until known. | `TEXT` |
+| `inventory_item_id` | The title the file was last written as (a library_items id); null until known. | `TEXT` · may be empty · → `library_items.id` |
+| `inventory_series_id` | For an episode, its show (a library_items id); null otherwise or until known. | `TEXT` · may be empty · → `library_items.id` |
 
 ### library_items
 
@@ -652,7 +652,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `episode_end` | The last episode number a multi-episode file covers; 0 for a single episode. | `INTEGER` |
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
-| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; null otherwise. | `TEXT` · may be empty · → `library_items.id` |
 | `unnumbered` | 1 for an episode its show's catalog could not number, because the catalog numbers the show in more than one order or its seasons end elsewhere than the disk's, and nobody has said which order the show's files follow. It keeps its file's name and number, and its show is in Needs you. 0 otherwise. | `BOOLEAN` |
 
 **Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
@@ -924,7 +924,7 @@ The catalog search results for a movie or show Loomarr can't identify, offered i
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
+| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
 | `external_id` | The result's id in that catalog. | `TEXT` |

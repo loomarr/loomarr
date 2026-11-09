@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 

@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // The stand-in is only useful if Loomarr's REAL media-server client reads it correctly, so every

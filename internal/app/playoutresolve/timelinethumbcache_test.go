@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // countingTMDB serves one episode still (series 90000456 S1E6 → /pip.jpg) and counts EVERY request,
