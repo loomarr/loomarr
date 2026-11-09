@@ -54,7 +54,8 @@ for (const width of [900, 1348]) {
       };
       await route.fulfill({ json: body });
     });
-    await page.goto("/guide");
+    // The guide opens on Now & next (#2787); these previews are the full grid's.
+    await page.goto("/guide?view=grid");
     await page.getByRole("button", { name: "Show 4 hours", exact: true }).click();
     const episode = (number: number) =>
       page.getByRole("button", { name: new RegExp(`Invented series.*Episode ${number},`) }).first();
@@ -159,7 +160,7 @@ for (const width of [900, 1280, 1920]) {
   }, info) => {
     await page.setViewportSize({ width, height: 900 });
     await installGuide(page);
-    await page.goto("/guide");
+    await page.goto("/guide?view=grid");
     const first = page.getByRole("button", { name: /^First programme 1,/ });
     await expect(first).toBeVisible();
     await expect(page.getByRole("tooltip")).toHaveCount(0);
@@ -193,7 +194,7 @@ test("keyboard and short filler previews preserve navigation, supplied identity,
 }, info) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await installGuide(page);
-  await page.goto("/guide");
+  await page.goto("/guide?view=grid");
   const first = page.getByRole("button", { name: /^First programme 1,/ });
   await first.focus();
   const preview = page.getByRole("tooltip");

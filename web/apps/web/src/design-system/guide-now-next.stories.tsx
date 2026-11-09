@@ -57,13 +57,27 @@ const evening = {
 } as GuideOutputBody;
 const layout = layoutGuide(evening, now);
 
+// Nothing on (#2787): off air with a known return, off air with none listed, and admin-paused.
+const quiet = layoutGuide(
+  {
+    ...evening,
+    channels: [
+      channel(3, "Evening News", "live", [show(22 * 60, 22 * 60 + 30, "The Ten O'Clock Report")]),
+      channel(4, "Quiet Hours", "empty", []),
+      channel(6, "Holiday Films", "paused", [show(20 * 60 + 50, 22 * 60 + 40, "A Snowy Evening")]),
+    ],
+  } as GuideOutputBody,
+  now,
+);
+
 const meta = {
   title: "Loomarr Components/Guide Now And Next",
   component: GuideNowNext,
   args: { layout, nowMs: now, onWatch: () => undefined },
   decorators: [
-    (Story) => (
-      <div style={{ display: "flex", flexDirection: "column", height: 720, width: 390 }}>
+    // A phone's width, or a desktop's for the wide list.
+    (Story, { args }) => (
+      <div style={{ display: "flex", flexDirection: "column", height: 720, width: args.wide ? 1280 : 390 }}>
         <Story />
       </div>
     ),
@@ -118,5 +132,41 @@ const WithHeader: Story = {
   },
 };
 
+// Off air until 10:00 PM, off air with nothing listed, and paused: no progress bar on any.
+const NothingOn: Story = { args: { layout: quiet } };
+
+// Sitcom Corner and Late Movies are favourites, so they lead; each group runs by channel number.
+const FavouritesFirst: Story = { args: { favouriteIds: ["ch9", "ch5"] } };
+
+// The desktop list (the Direction mock's variant C, desktop): Channel, On now and Next in columns.
+// The ⋯ for channel info shows on a row's hover or focus.
+const Desktop: Story = {
+  args: { onOpenChannelInfo: () => undefined, wide: true },
+  render: (args) => {
+    const [view, setView] = useState<"grid" | "list">("list");
+    return (
+      <>
+        <GuidePhoneHeader
+          subtitle={`${formatGuideTime(now, "America/New_York")} · ${args.layout.channels.length} channels`}
+          title="What's on"
+          wide
+        >
+          <SegmentedControl
+            accessibilityLabel="Guide view"
+            onValueChange={setView}
+            options={VIEWS}
+            value={view}
+          />
+        </GuidePhoneHeader>
+        <GuideNowNext {...args} />
+      </>
+    );
+  },
+};
+
+const DesktopNothingOn: Story = {
+  args: { layout: quiet, onOpenChannelInfo: () => undefined, wide: true },
+};
+
 export default meta;
-export { Decades, DecadesLight, Evening, WithHeader };
+export { Decades, DecadesLight, Desktop, DesktopNothingOn, Evening, FavouritesFirst, NothingOn, WithHeader };
