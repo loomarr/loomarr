@@ -10,7 +10,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error) {
@@ -21,15 +20,18 @@ func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool,
 }
 
 type storeRepository struct {
-	store store.ProposalRepository
-	newID func() string
-	now   func() time.Time
+	store      store.ProposalRepository
+	newID      func() string
+	now        func() time.Time
+	intentHash func(proposals.Intent) string
 }
 
 // New installs the Store-backed durable workflow. Identifier and clock
-// functions are injected so crash/replay tests stay deterministic.
-func New(st store.ProposalRepository, newID func() string, now func() time.Time) *Workflow {
-	repository := &storeRepository{store: st, newID: newID, now: now}
+// functions are injected so crash/replay tests stay deterministic, and so is the
+// Intent hash that keys the generation cache: the suggester owns what makes two
+// Intents the same request (suggest.IntentHash), and this package does not import it.
+func New(st store.ProposalRepository, newID func() string, now func() time.Time, intentHash func(proposals.Intent) string) *Workflow {
+	repository := &storeRepository{store: st, newID: newID, now: now, intentHash: intentHash}
 	return newWorkflow(repository)
 }
 
@@ -117,10 +119,10 @@ func (r *storeRepository) ClaimAttempts(
 	return works, nil
 }
 
-func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Completion) (suggest.WorkflowProposal, error) {
+func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Completion) (CommittedProposal, error) {
 	job, err := r.store.GetJob(ctx, completion.Work.JobID)
 	if err != nil {
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
 	now := r.now()
 	row := proposalstore.Proposal{
@@ -129,11 +131,11 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 	}
 	if err := r.store.CommitSuggestionSuccess(ctx, job.ID, completion.Work.Attempt, row, now); err != nil {
 		if errors.Is(err, proposalstore.ErrJobNotRunning) {
-			return suggest.WorkflowProposal{}, ErrStaleAttempt
+			return CommittedProposal{}, ErrStaleAttempt
 		}
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
-	return suggest.WorkflowProposal{
+	return CommittedProposal{
 		ID: row.ID, JobID: row.JobID, CreatedBy: row.CreatedBy,
 		Proposal: completion.Proposal, CreatedAt: row.CreatedAt,
 	}, nil

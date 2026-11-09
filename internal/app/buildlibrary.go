@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/header"
@@ -27,7 +28,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/requester"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.

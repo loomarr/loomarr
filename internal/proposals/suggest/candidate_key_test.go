@@ -62,7 +62,7 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 			}
 			proposal, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &proposals.DecisionTrace{}, meaning)
 			if tc.want == "" {
-				if !errors.Is(err, ErrNoGroundedTitles) || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 {
+				if !errors.Is(err, proposals.ErrNoGroundedTitles) || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 {
 					t.Fatalf("ungrounded key survived: %+v, err = %v", proposal, err)
 				}
 			} else {

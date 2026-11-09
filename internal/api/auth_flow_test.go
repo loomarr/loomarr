@@ -44,7 +44,7 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 
 		return api.Router(defaults.Log, api.Options{
 			Store:        defaults.Store,
-			Auth:         api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Auth:         sessionAuth(mgr, "break-glass-token"),
 			Log:          defaults.Log,
 			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
 			Sessions:     mgr,

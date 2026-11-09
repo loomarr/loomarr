@@ -8,9 +8,9 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
 // ideaLibraryTTL is how long one library listing serves channel ideas (#1665). Listing reads the

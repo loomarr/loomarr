@@ -513,21 +513,6 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// Advance moves ONE clip as far as it can go this pass. Exported for the on-demand paths (an
-// operator pressing a button should not wait for the next cron tick).
-func (p *Pipeline) Advance(ctx context.Context, hash string) error {
-	row, found, err := p.store.GetClipPipeline(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("clip %s is not enrolled in the pipeline", hash)
-	}
-	var s spend
-	_, err = p.advance(ctx, row, &s)
-	return err
-}
-
 // advance walks the stages for one clip until it blocks, defers, or reaches a terminal state.
 func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, s *spend) (pipelinestate.Disposition, error) {
 	clip, found, err := p.clips.GetClip(ctx, row.ClipHash)

@@ -610,6 +610,50 @@ func (s *sqlStore) SetFillerSourceFetchPolicy(ctx context.Context, id string, ev
 	return nil
 }
 
+// FillerSourceChange is one operator edit of a registered source: the switch always, and the
+// asserted coverage and the automatic-download tuning when the edit names them.
+type FillerSourceChange struct {
+	Enabled bool
+	// Geography replaces the source's asserted coverage; nil leaves it alone.
+	Geography *pod.Geography
+	// FetchPolicy replaces both fetch overrides; nil leaves them alone.
+	FetchPolicy *FillerFetchPolicy
+}
+
+// FillerFetchPolicy is a source's two fetch overrides. A nil field is "inherit the global", which
+// is a real operator choice and so is written as NULL, never as zero (0 means never fetch).
+type FillerFetchPolicy struct {
+	EverySeconds *int
+	MaxPerRun    *int
+}
+
+// ChangeFillerSource applies one edit of a registered source as a single statement, so the switch,
+// the coverage and the tuning land together or not at all. It returns store.ErrNotFound for an
+// unknown id. The three narrower setters remain for callers that change one thing.
+func (s *sqlStore) ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error {
+	set, args := []string{"enabled = ?"}, []any{change.Enabled}
+	if change.Geography != nil {
+		set, args = append(set, "country = ?"), append(args, change.Geography.Normalize().Country)
+	}
+	if change.FetchPolicy != nil {
+		set = append(set, "fetch_every_seconds = ?", "fetch_max_per_run = ?")
+		args = append(args, nullableInt(change.FetchPolicy.EverySeconds), nullableInt(change.FetchPolicy.MaxPerRun))
+	}
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE filler_sources SET `+strings.Join(set, ", ")+` WHERE id = ?`), append(args, id)...)
+	if err != nil {
+		return fmt.Errorf("change filler source %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("change filler source %s: %w", id, err)
+	}
+	if n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
 // DeleteFillerSource forgets a source.
 //
 // ⚠ Clips it brought in are deliberately NOT deleted. They are real files in the drop-folder,

@@ -177,6 +177,8 @@ func (s *Handlers) libraryPosters(ctx context.Context, items []store.LibraryItem
 type listLibraryItemsInput struct {
 	Kind   string `query:"kind" enum:"movie,series" doc:"Only movies or only series; both when absent"`
 	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case"`
+	Ready  bool   `query:"ready" doc:"Only titles with every file's details read"`
+	Sort   string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
 	Offset int    `query:"offset" minimum:"0"`
 }
@@ -194,7 +196,8 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 		return nil, err
 	}
 	page, err := svc.Items(ctx, store.LibraryItemQuery{
-		Kind: in.Kind, Search: in.Search, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
+		Kind: in.Kind, Search: in.Search, Ready: in.Ready, Recent: in.Sort == "recent",
+		Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
@@ -283,6 +286,14 @@ type libraryItemDetailDTO struct {
 	Seasons       []librarySeasonDTO    `json:"seasons" doc:"A series' episodes by season; empty for a movie"`
 	Match         libraryMatchDTO       `json:"match"`
 	DetailsFrom   libraryDetailsFromDTO `json:"detailsFrom"`
+	Channels      []libraryChannelDTO   `json:"channels" doc:"The channels whose lineup holds it, by number"`
+}
+
+// libraryChannelDTO is a channel as the Library names it: on a title's page, or using a collection.
+type libraryChannelDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Number int    `json:"number"`
 }
 
 type getLibraryItemInput struct {
@@ -318,6 +329,7 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 		RuntimeMillis: d.Facts.RuntimeMillis,
 		Files:         make([]libraryItemFileDTO, 0, len(d.Files)),
 		Seasons:       make([]librarySeasonDTO, 0, len(d.Seasons)),
+		Channels:      make([]libraryChannelDTO, 0, len(d.Channels)),
 		Match:         libraryMatchOf(d.Match),
 		DetailsFrom: libraryDetailsFromDTO{
 			Description: string(d.From.Description), Rating: string(d.From.Rating), EpisodeNames: string(d.EpisodeNamesFrom),
@@ -328,6 +340,9 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 	}
 	for _, f := range d.Files {
 		out.Files = append(out.Files, libraryFileOf(f))
+	}
+	for _, c := range d.Channels {
+		out.Channels = append(out.Channels, libraryChannelDTO{ID: c.ID, Name: c.Name, Number: c.Number})
 	}
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}

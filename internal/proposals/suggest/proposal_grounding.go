@@ -125,9 +125,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// what a legitimately-empty result does.
 	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates) == 0 {
 		if membershipRejected && !otherRejection {
-			return proposals.Proposal{}, fmt.Errorf("%w: %w", ErrNoGroundedTitles, errNamedSetMembershipUnproven)
+			return proposals.Proposal{}, fmt.Errorf("%w: %w", proposals.ErrNoGroundedTitles, errNamedSetMembershipUnproven)
 		}
-		return proposals.Proposal{}, ErrNoGroundedTitles
+		return proposals.Proposal{}, proposals.ErrNoGroundedTitles
 	}
 
 	// Ground the extracted policy (programming-design §8): the model proposed rule

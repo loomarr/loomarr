@@ -150,8 +150,7 @@ func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, art
 		downloaders[youtubeprovider.ID] = fetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return fetch.New(downloaders, layout.WatchDir(), log).
-		WithArtifactWriter(artifacts).
+	return fetch.New(downloaders, layout.WatchDir(), artifacts, log).
 		WithStorageGovernor(governor)
 }
 
