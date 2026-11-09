@@ -231,6 +231,7 @@ export type {
   PlaybarSegment,
   PlaybarSpot,
   PlaybarWindow,
+  PlayerArt,
   PlayerBandData,
   PlayerChromeProps,
   PlayerCoverProps,
@@ -255,6 +256,7 @@ export type {
 export {
   ClipChrome,
   clearOfWatermark,
+  logoSize,
   PlayerAudio,
   PlayerChrome,
   PlayerCover,
@@ -265,6 +267,7 @@ export {
   PORTRAIT_PICTURE_TOP,
   pictureIn,
   playbarFromTimeline,
+  rungFor,
   WatchFrame,
   WatchingPanel,
   WatchingSurface,

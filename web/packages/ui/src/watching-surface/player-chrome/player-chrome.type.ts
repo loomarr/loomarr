@@ -1,6 +1,7 @@
 import type { Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
+import type { PlayerArt } from "./art";
 import type { PlayerWatermark } from "./watermark-clearance";
 
 /** One spot in a break's pod: a commercial, a bumper, a station ID… (§9.3). */
@@ -67,6 +68,10 @@ interface PlayerBandData {
    * back. It is the logo's text fallback and the logo's accessible name (§9.2).
    */
   title?: string;
+  /** The programme's clear logo; without one the title is set as text (§9.2). */
+  logo?: PlayerArt;
+  /** The programme's fanart, dimmed behind the station-ID card; drawn contained at 16:9, never stretched. */
+  backdrop?: PlayerArt;
   /** `S2 E4 "Episode"` for an episode, `1994 · Drama` for a film. */
   line?: string;
   /** The programme's own time slot, for the progress line's clocks. */
@@ -222,6 +227,7 @@ export type {
   PlaybarSegment,
   PlaybarSpot,
   PlaybarWindow,
+  PlayerArt,
   PlayerBandData,
   PlayerChromeProps,
   PlayerInfoData,

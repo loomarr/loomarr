@@ -119,11 +119,16 @@ interface ChromeChannel {
 const fraction = (at: number, from: number, to: number) =>
   to > from ? Math.min(1, Math.max(0, (at - from) / (to - from))) : 0;
 
-// A programme's name and second line, as the band and the playbar read them.
+// A programme's name, second line and art, as the band and the playbar read them. The art is the title's
+// own clear logo and backdrop (an episode's show's), absent when the Library holds none.
 const programmeOf = (airing: TimelineAiring) => {
   const segment = segmentOf(airing);
+  const art = {
+    ...(airing.logoImage ? { logo: airing.logoImage } : {}),
+    ...(airing.backdropImage ? { backdrop: airing.backdropImage } : {}),
+  };
   return segment.kind === "programme"
-    ? { line: segment.line, name: segment.name }
+    ? { ...art, line: segment.line, name: segment.name }
     : { line: undefined, name: airing.title };
 };
 
@@ -156,7 +161,9 @@ const bandOf = (
       airings.filter((a) => a.kind !== "filler"),
       airing,
     );
-    const shown = returning ? programmeOf(returning) : { line: undefined, name: airing.title };
+    const shown: ReturnType<typeof programmeOf> = returning
+      ? programmeOf(returning)
+      : { line: undefined, name: airing.title };
     return {
       ...base,
       ...(behindLabel ? { behindLabel } : {}),
@@ -167,9 +174,11 @@ const bandOf = (
       startMs: returning?.startMs ?? airing.startMs,
       stopMs: returning?.stopMs ?? airing.stopMs,
       title: shown.name,
+      ...("logo" in shown ? { logo: shown.logo } : {}),
+      ...("backdrop" in shown ? { backdrop: shown.backdrop } : {}),
     };
   }
-  const { line, name } = programmeOf(airing);
+  const { line, name, ...art } = programmeOf(airing);
   const behind = playheadMs < nowMs - 1000;
   return {
     ...base,
@@ -181,6 +190,7 @@ const bandOf = (
     startMs: airing.startMs,
     stopMs: airing.stopMs,
     title: name,
+    ...art,
   };
 };
 

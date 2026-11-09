@@ -7,8 +7,9 @@ import {
   useFocusLook,
 } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Image, PixelRatio, Pressable, View } from "react-native";
 
+import { logoSize, type PlayerArt, rungFor } from "../art";
 import { webOnly } from "../flat";
 import type { PlayerBandData, PlayerLiveState } from "../player-chrome.type";
 
@@ -151,6 +152,47 @@ const GoLive = ({ density, onPress }: { density: Density; onPress: () => void })
   );
 };
 
+/**
+ * The programme's title: its clear logo in place of the text, sized by area so a wide wordmark and a
+ * square logo carry the same weight (§9.2), with the text as the logo's accessible name and as the
+ * fallback when there is no logo or it will not load.
+ */
+const BandTitle = ({
+  density,
+  logo,
+  title,
+}: {
+  density: Density;
+  logo: PlayerArt | undefined;
+  title: string;
+}) => {
+  const [failedSrc, setFailedSrc] = useState<string | undefined>(undefined);
+  if (logo && failedSrc !== logo.src) {
+    const size = logoSize(logo, density);
+    return (
+      <Image
+        accessibilityLabel={title}
+        accessibilityRole="image"
+        onError={() => setFailedSrc(logo.src)}
+        resizeMode="contain"
+        source={{ uri: rungFor(logo, size.width, PixelRatio.get()) }}
+        style={{ alignSelf: "flex-start", height: size.height, width: size.width }}
+      />
+    );
+  }
+  return (
+    <Text
+      density={density}
+      numberOfLines={1}
+      strong
+      textRole={density === "touch" ? "title" : "display"}
+      tone="primary"
+    >
+      {title}
+    </Text>
+  );
+};
+
 /** The programme's time slot: white on a faint track; behind live, a red tick marks live. */
 const Progress = ({ liveProgress, progress }: { liveProgress?: number | undefined; progress: number }) => (
   <View
@@ -263,15 +305,7 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
               }
             >
               <View style={{ gap: 4 }}>
-                <Text
-                  density={density}
-                  numberOfLines={1}
-                  strong
-                  textRole={compact ? "title" : "display"}
-                  tone="primary"
-                >
-                  {band.title}
-                </Text>
+                <BandTitle density={density} logo={band.logo} title={band.title} />
                 {band.inBreak && band.breakMinutesLeft !== undefined ? (
                   <Text density={density} numberOfLines={1} strong textRole="compact" tone="info">
                     {`Back in ${band.breakMinutesLeft} min`}

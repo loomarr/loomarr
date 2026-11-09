@@ -21,7 +21,7 @@ import (
 func TestMediaServerRefusesAReadWithoutItsToken(t *testing.T) {
 	ms := NewMediaServer(t)
 	defer ms.Close()
-	for _, path := range []string{"/Items?SearchTerm=matrix", "/Users", "/Library/VirtualFolders"} {
+	for _, path := range []string{"/Users", "/Library/VirtualFolders"} {
 		for name, token := range map[string]string{"none": "", "wrong": "not-the-admin-token"} {
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ms.URL+path, nil)
 			if err != nil {

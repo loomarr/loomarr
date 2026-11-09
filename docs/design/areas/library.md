@@ -13,17 +13,17 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`library`** · 13 importers · → `library/inventory`, `platform/httpx`, `platform/metrics`
+- **`library`** · 13 importers · → `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
-- **`library/inventory`** · 10 importers
+- **`library/inventory`** · 9 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library/provisionbackstop`** · 1 importer · → `library`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`
   Provisioning backstop (design §4, §7, §18).
 - **`library/requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/tmdb`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `platform/store/librarystore`, `provision`
+- **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/tmdb`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `platform/store/librarystore`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
 - **`library/titlesearch`** · 6 importers · → `library`, `platform/store/librarystore`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
@@ -43,5 +43,5 @@ One area of the [package map](../package-map.md#start-here).
   Conformance suite every metadata provider runs.
 - **`metadataprovider/tmdb`** · 1 importer · → `library/tmdb`, `metadataprovider`, `platform/httpx`, `platform/rating`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
-- **`provision`** · 35 importers
+- **`provision`** · 34 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.

@@ -8,9 +8,9 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 32 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
+- **platform** · 34 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
 - **media** · 28 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
-- **channels** · 1 import — the holiday season and filler selection a channel's `channels/schedule` asks for
+- **channels** · 2 imports — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
@@ -38,7 +38,7 @@ One area of the [package map](../package-map.md#start-here).
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`filler/operator`** · 2 importers · → `filler`, `filler/acquisition`, `filler/fetch`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/source`, `filler/split`, `filler/storeadapter`, `platform/storagegovernor`, `platform/store`
+- **`filler/operator`** · 2 importers · → `channels`, `filler`, `filler/acquisition`, `filler/clips`, `filler/fetch`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/source`, `filler/split`, `filler/storeadapter`, `platform/storagegovernor`, `platform/store`, `platform/store/channelstore`, `platform/store/clipstore`
   Runs what a filler operator asks for: downloading clips into the drop folder, splitting a compilation, rewinding a clip's ladder, syncing the catalog, and reporting the readiness of the whole filler pipeline.
 - **`filler/pipelinestate`** · 9 importers
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
