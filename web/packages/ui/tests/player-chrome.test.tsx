@@ -253,6 +253,27 @@ describe("PlayerChrome", () => {
     expect(block(plain)).toBe(rgb(playerChrome.signal));
   });
 
+  it("flips to the next channel quietly: the band stays up and names it, the sweep and dip add nothing to the tree", () => {
+    const host = doc.createElement("div");
+    doc.body.append(host);
+    const root = createRoot(host);
+    const draw = (channelNumber: string, channelName: string) =>
+      act(() =>
+        root.render(
+          <LoomarrProvider theme="dark">
+            {chrome({ band: { ...band, channelName, channelNumber } })}
+          </LoomarrProvider>,
+        ),
+      );
+    draw("7", "Coast 90s");
+    draw("9", "Movie Matinee");
+    expect(host.textContent).toContain("Movie Matinee");
+    expect(host.textContent).toContain("CH9");
+    expect(bandHidden(host)).toBe(false);
+    act(() => root.unmount());
+    host.remove();
+  });
+
   it("leaves the picture bare when hidden, out of reach of the pointer and assistive tech", () => {
     expect(bandHidden(mount(chrome()))).toBe(false);
     expect(bandHidden(mount(chrome({ visible: false })))).toBe(true);

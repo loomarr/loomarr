@@ -14,6 +14,7 @@ import {
   PlayerSheet,
   PORTRAIT_PICTURE_TOP,
   playbarFromTimeline,
+  rungFor,
   watermarkOf,
 } from "@loomarr/ui";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -26,6 +27,7 @@ import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { TunerOSD } from "../tuner-osd";
 import { useSwitchSound } from "../use-switch-sound";
+import { useTunePhase } from "../use-tune-phase";
 import type { WatchChannels } from "../use-watch-channels";
 import type { WatchPlayer } from "../use-watch-player";
 import { useWatchShortcuts } from "../use-watch-shortcuts";
@@ -255,6 +257,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
   const osdChannel = channel;
   const tuning = player.status === "loading";
+  // The tune only dresses the wait (§9.4): a quiet flip first, the full signature only when the picture
+  // is slow (960 ms), and its length is playback readiness, never a timer.
+  const tunePhase = useTunePhase(tuning, channel.id);
+  const signature = tuning && tunePhase !== "flip";
   const channelLabel = `CH ${osdChannel.number} · ${osdChannel.name}`;
 
   // The lower third and the playbar, read from the timeline the way every client reads it (§9). The
@@ -275,6 +281,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     playheadMs: viewerTimeMs,
   });
   const { info, startOverMs } = chromeData;
+  // The hold (a wait of 1.5 s or more): the programme's fanart, from the rung this screen will draw.
+  const holdArt = chromeData.band.backdrop;
+  const holdBackdrop =
+    tunePhase === "hold" && holdArt
+      ? rungFor(holdArt, window.innerWidth, window.devicePixelRatio)
+      : undefined;
 
   // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
   // hidden. A retune drops it until the new channel settles, then shows it afresh.
@@ -469,7 +481,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             pointer: !touch,
           }}
           unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
-          visible={onPhone || (chrome.controlsShown && !tuning)}
+          // The quiet flip keeps the band up (§9.4); only the full signature hides it.
+          visible={onPhone || (chrome.controlsShown && !signature)}
           watermark={onPhone ? undefined : watermark}
         />
       )}
@@ -491,12 +504,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
       // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        tuning ? (
+        signature ? (
           <>
             {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
+            <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }

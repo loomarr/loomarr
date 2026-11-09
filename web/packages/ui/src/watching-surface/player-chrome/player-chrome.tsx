@@ -10,6 +10,7 @@ import { PlayerKeys } from "./player-keys";
 import { PlayerReadout } from "./player-readout";
 import { PlayerTopRow } from "./player-top-row";
 import { PortraitChrome } from "./portrait-chrome";
+import { TuneDip } from "./tune-dip";
 import { UnmutePill } from "./unmute-pill";
 import { clearOfWatermark, type Frame } from "./watermark-clearance";
 
@@ -99,6 +100,7 @@ const ChromeBody = memo(
           pointerEvents="none"
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
+        <TuneDip tuneKey={band.channelNumber} />
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}

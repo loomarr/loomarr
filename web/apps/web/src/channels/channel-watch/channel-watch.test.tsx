@@ -87,9 +87,10 @@ const makeWrapper = () => {
 // Every test but the first-play ones is past the session's first play (the sound is on).
 beforeEach(() => sessionStorage.setItem("loomarr.player.first-play", "1"));
 
-// The tuner's wash: up while a channel is tuning in, under the chrome.
+// The tuner's wash: the full signature, up only when a wait outlasts the quiet flip (960 ms, §9.4).
 const wash = () => document.querySelector<HTMLElement>("[data-wash]");
-const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull());
+const SIGNATURE_WAIT = { timeout: 3_000 };
+const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull(), SIGNATURE_WAIT);
 
 // The Audio sheet, opened from the top row's Audio key.
 const openAudio = async () => {
@@ -685,7 +686,7 @@ describe("ChannelWatch switch readout", () => {
     await screen.findByRole("button", { name: "More" });
     hls.status = "loading";
     view.rerender(<ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} />);
-    await waitFor(() => expect(wash()).not.toBeNull());
+    await waitFor(() => expect(wash()).not.toBeNull(), SIGNATURE_WAIT);
     return view;
   };
 
@@ -698,11 +699,71 @@ describe("ChannelWatch switch readout", () => {
 
   it("hides the player's channel title while the readout names the channel, and restores it with the picture", async () => {
     const view = await switchTo(next);
-    expect(visibleNames("Saturday Cartoons")).toEqual([]);
+    await waitFor(() => expect(visibleNames("Saturday Cartoons")).toEqual([]));
 
     hls.status = "playing";
     view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
+  });
+
+  // The tune only dresses a wait that already exists (§9.4): a switch that is ready inside 960 ms is
+  // the quiet flip, with the chrome up and none of the signature; only a slow one earns it.
+  it("never shows the full signature for a switch that is ready inside 960 ms", async () => {
+    hls.status = "playing";
+    const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByRole("button", { name: "More" });
+    hls.status = "loading";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
+    expect(wash()).toBeNull();
+    // The band stays up and names the new channel through the flip.
+    await waitFor(() => expect(screen.queryAllByText("Saturday Cartoons").length).toBeGreaterThan(0));
+    hls.status = "playing";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(wash()).toBeNull();
+  });
+
+  it("holds on the programme's fanart, contained, once a wait runs past 1.5 s", async () => {
+    server.use(
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_000_000,
+        airings: [
+          {
+            backdropImage: {
+              animated: false,
+              dominantHex: "#333333",
+              hash: "fanart",
+              height: 720,
+              placeholder: "",
+              role: "backdrop",
+              src: "/v1/images/fanart",
+              srcSetAvif: "",
+              srcSetWebp: "/v1/images/fanart?w=780 780w, /v1/images/fanart?w=1280 1280w",
+              width: 1280,
+            },
+            kind: "program",
+            scheduleBlockId: "p",
+            startMs: 900_000,
+            stopMs: 2_000_000,
+            title: "A Programme",
+          },
+        ],
+      }),
+    );
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await tuningIn();
+    // The signature shows first; the fanart waits for the hold.
+    expect(document.querySelector("img[src*='fanart']")).toBeNull();
+    await waitFor(
+      () =>
+        expect(document.querySelector<HTMLImageElement>("img[src*='fanart']")?.style.objectFit).toBe(
+          "contain",
+        ),
+      { timeout: 3_000 },
+    );
   });
 
   it("starts the dial set once when a switch begins, on the player's own element", async () => {
@@ -768,7 +829,7 @@ describe("ChannelWatch switch readout", () => {
     hls.status = "loading";
     rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />);
 
-    await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
+    await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"), SIGNATURE_WAIT);
   });
 
   it("does not drain on a cold start, where no frame is held", async () => {
@@ -791,6 +852,7 @@ describe("ChannelWatch switch readout", () => {
     expect(osd).toHaveTextContent("CH 12");
     // The wash's centred channel line is the visible readout; the card would repeat it on screen.
     expect(osd).toHaveClass("sr-only");
+    await tuningIn();
     expect(wash()?.closest("[aria-hidden]")).toHaveTextContent("CH 12Saturday Cartoons");
   });
 });
