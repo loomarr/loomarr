@@ -379,8 +379,7 @@
       "legacyUi": 3
     },
     "src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
-      "tailwindClasses": 5,
-      "legacyUi": 1
+      "tailwindClasses": 4
     },
     "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
       "tailwindClasses": 4
