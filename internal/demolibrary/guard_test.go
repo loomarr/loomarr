@@ -65,7 +65,7 @@ var realTitles = []string{
 	"Battlestar Galactica", "Mad Max", "Marge vs. the Monorail", "Wings of the Dope", "Dog of Death",
 	"Canine Mutiny", "Halloween of Horror", "Life on the Fast Lane", "Farpoint", "Tribble", "Realm of Fear",
 	"Truffaut", "Jules & Jim", "Top Goon", "Halloweeners",
-	// The filler, fillerenrichment and fillerstore tests (slice 12). Brands that are ordinary words
+	// The filler, filler/enrichment and filler/records tests (slice 12). Brands that are ordinary words
 	// ("Ford", "Fox", "Puma", "Coke", "Mustang", "Total", "Five") are left out: they would match
 	// ordinary prose.
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
@@ -289,7 +289,7 @@ var migratedGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in filler/enrichment's deterministic.go end to end, whose phrases are real brands",
 	"internal/eval/corpus_live_test.go":                     "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
 	"internal/eval/mood_review_test.go":                     "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
 	"internal/eval/query_expansion_test.go":                 "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
