@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -252,11 +253,11 @@ func buildChannels(
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{titles: st})
+		channelEngine.WithRatings(resolvers.NewRatings(st))
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{own: st, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(resolvers.NewBoxSets(st, 15*time.Minute))
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)

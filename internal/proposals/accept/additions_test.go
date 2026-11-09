@@ -1,4 +1,4 @@
-package app
+package accept_test
 
 import (
 	"context"
@@ -7,15 +7,16 @@ import (
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
-func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
+func TestAdditionResolverOwnsLibraryPresenceAtTheGate(t *testing.T) {
 	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000672: {LibraryItemID: "library-90000672", OfficialRating: "PG", Genres: []string{"Fantasy"}, SizeBytes: 4_200_000_000},
 	}}
-	adapter := approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence { return presence }}
+	adapter := accept.NewAdditionResolver(func() titlesearch.LibraryPresence { return presence })
 
 	owned, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned", InLibrary: false, OfficialRating: "G",

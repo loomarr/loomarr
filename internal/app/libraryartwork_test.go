@@ -16,6 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
 	"github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -61,7 +62,7 @@ func artworkFixture(t *testing.T) (context.Context, records.Store, *images.Servi
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
-	svc := imagetestkit.NewService(t, t.TempDir(), "", imageStore{st})
+	svc := imagetestkit.NewService(t, t.TempDir(), "", storeadapter.New(st))
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha"}}, at); err != nil {
 		t.Fatal(err)
