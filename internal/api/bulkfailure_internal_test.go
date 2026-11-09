@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // Every status the single-approve handlers raise, classified the way a bulk result reports it
@@ -15,12 +17,12 @@ func TestBulkFailure_RetriesOnlyTransientServerFaults(t *testing.T) {
 		status    int
 		retryable bool
 	}{
-		{"not found", errNotFound("Suggestion not found", "Gone."), http.StatusNotFound, false},
-		{"already handled", errConflict("Already handled", "Decided."), http.StatusConflict, false},
-		{"invalid", errUnprocessable("Choose at least one title", "Empty."), http.StatusUnprocessableEntity, false},
-		{"not set up", errNotImplemented("Filler isn't set up", "No dir."), http.StatusNotImplemented, false},
-		{"store fault", apiErrWithCause(http.StatusInternalServerError, "Read failed", "Try again.", errors.New("disk")), http.StatusInternalServerError, true},
-		{"upstream fault", apiErrWithCause(http.StatusBadGateway, "Couldn't start the pull", "Try again.", errors.New("exit 1")), http.StatusBadGateway, true},
+		{"not found", httpcore.NotFound("Suggestion not found", "Gone."), http.StatusNotFound, false},
+		{"already handled", httpcore.Conflict("Already handled", "Decided."), http.StatusConflict, false},
+		{"invalid", httpcore.Unprocessable("Choose at least one title", "Empty."), http.StatusUnprocessableEntity, false},
+		{"not set up", httpcore.NotImplemented("Filler isn't set up", "No dir."), http.StatusNotImplemented, false},
+		{"store fault", httpcore.ProblemWithCause(http.StatusInternalServerError, "Read failed", "Try again.", errors.New("disk")), http.StatusInternalServerError, true},
+		{"upstream fault", httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't start the pull", "Try again.", errors.New("exit 1")), http.StatusBadGateway, true},
 		{"plain error", errors.New("approve: approval coordinator is not configured"), http.StatusInternalServerError, true},
 	}
 	for _, c := range cases {

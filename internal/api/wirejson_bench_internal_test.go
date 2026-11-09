@@ -6,7 +6,19 @@ import (
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
+
+// The Guide body has nothing to change — its only nil slices are omitempty genres — so the walk
+// must not allocate: a plan that copies or re-derives per value is what made the encoder 5× the
+// cost of the encode itself (BenchmarkWireJSON_Guide holds the timing).
+func TestWireJSONUnchangedBodyDoesNotAllocate(t *testing.T) {
+	body := guideBenchBody()
+	httpcore.EmptyNotNull(body) // build the plans
+	if allocs := testing.AllocsPerRun(5, func() { httpcore.EmptyNotNull(body) }); allocs != 0 {
+		t.Fatalf("walking an unchanged Guide body allocated %v times, want 0", allocs)
+	}
+}
 
 // guideBenchBody is the Guide's response body at fleet scale: 100 channels × 200 airings, half
 // the airings with no genres (nil, omitempty) and every tenth a filler block with a pod. It
@@ -51,7 +63,7 @@ func BenchmarkWireJSON_GuideDefault(b *testing.B) {
 // The served encoder. Its overhead over the baseline is the cost of the no-null guarantee on
 // the API's largest body; keep it within 10%.
 func BenchmarkWireJSON_Guide(b *testing.B) {
-	benchmarkGuide(b, wireJSONFormat)
+	benchmarkGuide(b, httpcore.WireJSONFormat)
 }
 
 func benchmarkGuide(b *testing.B, format huma.Format) {

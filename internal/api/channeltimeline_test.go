@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -56,7 +57,7 @@ func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.Ti
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:          st,
-		Auth:           api.NewTokenAuthorizer(adminToken),
+		Auth:           httpcore.NewTokenAuthorizer(adminToken),
 		Log:            slog.New(slog.DiscardHandler),
 		PlayoutGuide:   g,
 		TimelineThumbs: thumbs,

@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
@@ -28,7 +29,7 @@ func (s *Server) registerClientCrashes(api huma.API) {
 	// Huma still decodes the body: malformed JSON, a wrong JSON type or an unknown field (the
 	// closed decoder refuses a body naming its own sender) remain its 422. MaxBodyBytes refuses
 	// an oversized body with 413 before it is read.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "report-client-crash", Method: http.MethodPost, Path: "/v1/diagnostics/client-crashes",
 		Summary: "Report an app crash",
 		Description: "Stores one crash report from a signed-in app. The server records the user and paired " +
@@ -37,21 +38,21 @@ func (s *Server) registerClientCrashes(api huma.API) {
 			"per device (429).",
 		Tags: []string{"diagnostics"}, DefaultStatus: http.StatusAccepted,
 		MaxBodyBytes: diagnostics.ClientCrashMaxBodyBytes, SkipValidateBody: true,
-	}, RoleMember), s.reportClientCrash)
+	}, httpcore.RoleMember), s.reportClientCrash)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-client-crashes", Method: http.MethodGet, Path: "/v1/diagnostics/client-crashes",
 		Summary:     "List app crash reports",
-		Description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. " + operatorAPI,
+		Description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. " + httpcore.OperatorAPI,
 		Tags:        []string{"diagnostics"},
-	}, RoleAdmin), s.listClientCrashes)
+	}, httpcore.RoleAdmin), s.listClientCrashes)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-client-crash", Method: http.MethodGet, Path: "/v1/diagnostics/client-crashes/{id}",
 		Summary:     "Get one app crash report",
 		Description: "Admin only. The full report, including stack, breadcrumbs and native payload.",
 		Tags:        []string{"diagnostics"},
-	}, RoleAdmin), s.getClientCrash)
+	}, httpcore.RoleAdmin), s.getClientCrash)
 }
 
 type clientCrashReportInput struct {
@@ -83,21 +84,21 @@ type clientCrashOutput struct {
 
 func (s *Server) reportClientCrash(ctx context.Context, in *clientCrashReportInput) (*clientCrashReportOutput, error) {
 	if s.clientCrashes == nil {
-		return nil, errNotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
+		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}
 	reporter := s.clientCrashReporter(ctx)
 	id, err := s.clientCrashes.Report(ctx, reporter, in.Body)
 	switch {
 	case errors.Is(err, diagnostics.ErrInvalidClientCrash):
-		return nil, errBadRequest("Invalid crash report",
+		return nil, httpcore.BadRequest("Invalid crash report",
 			strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidClientCrash.Error()+": "))
 	case errors.Is(err, diagnostics.ErrClientCrashRateLimited):
-		return nil, errTooManyRequests("Crash reports rate limited",
+		return nil, httpcore.TooManyRequests("Crash reports rate limited",
 			"This device sent too many crash reports. Keep the report and try again later.")
 	case err != nil:
 		s.log.Error("client crash report failed", "event", "diagnostics.client_crash_failed",
 			"subsystem", "diagnostics", "err", err)
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Crash report failed",
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Crash report failed",
 			"The crash report couldn't be stored.", err)
 	}
 	// One line in the Diagnostics timeline points an admin at the report; the report itself
@@ -138,11 +139,11 @@ func (s *Server) clientCrashReporter(ctx context.Context) diagnostics.ClientCras
 
 func (s *Server) listClientCrashes(ctx context.Context, in *clientCrashListInput) (*clientCrashListOutput, error) {
 	if s.clientCrashes == nil {
-		return nil, errNotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
+		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}
 	page, err := s.clientCrashes.List(ctx, in.Limit, in.Cursor)
 	if errors.Is(err, diagnostics.ErrInvalidClientCrashQuery) {
-		return nil, errBadRequest("Invalid crash report query",
+		return nil, httpcore.BadRequest("Invalid crash report query",
 			strings.TrimPrefix(err.Error(), diagnostics.ErrInvalidClientCrashQuery.Error()+": "))
 	}
 	if err != nil {
@@ -155,11 +156,11 @@ func (s *Server) listClientCrashes(ctx context.Context, in *clientCrashListInput
 
 func (s *Server) getClientCrash(ctx context.Context, in *clientCrashInput) (*clientCrashOutput, error) {
 	if s.clientCrashes == nil {
-		return nil, errNotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
+		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}
 	report, err := s.clientCrashes.Get(ctx, in.ID)
 	if errors.Is(err, diagnostics.ErrClientCrashNotFound) {
-		return nil, errNotFound("Crash report not found", "That crash report doesn't exist or has expired.")
+		return nil, httpcore.NotFound("Crash report not found", "That crash report doesn't exist or has expired.")
 	}
 	if err != nil {
 		s.log.Error("client crash read failed", "event", "diagnostics.client_crash_read_failed",

@@ -1,14 +1,16 @@
-package api
+package httpcore
 
 import (
 	"context"
 	"crypto/subtle"
 	"net/http"
 	"strings"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// constantEq is a constant-time string equality (auth tokens).
-func constantEq(a, b string) bool {
+// ConstantEq is a constant-time string equality (auth tokens).
+func ConstantEq(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
@@ -57,8 +59,13 @@ func (a tokenAuthorizer) Authorize(r *http.Request) Role {
 
 type roleCtxKey struct{}
 
-// roleFrom reads the role resolved by the auth middleware.
-func roleFrom(ctx context.Context) Role {
+// ContextWithRole is ctx carrying the role the auth middleware resolved, for RoleFrom.
+func ContextWithRole(ctx huma.Context, role Role) huma.Context {
+	return huma.WithValue(ctx, roleCtxKey{}, role)
+}
+
+// RoleFrom reads the role resolved by the auth middleware.
+func RoleFrom(ctx context.Context) Role {
 	if v, ok := ctx.Value(roleCtxKey{}).(Role); ok {
 		return v
 	}

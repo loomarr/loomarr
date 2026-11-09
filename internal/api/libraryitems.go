@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -18,37 +19,37 @@ import (
 const libraryItemsPageMax = 200
 
 func (s *Server) registerLibraryItems(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryItems", Method: http.MethodGet, Path: "/v1/library/items",
 		Summary:     "List the library's titles",
 		Description: "Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryItems)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.listLibraryItems)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getLibraryItem", Method: http.MethodGet, Path: "/v1/library/items/{id}",
 		Summary:     "One title",
 		Description: "A movie with its files, or a series with its episodes by season. 404 when no file of it is present.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.getLibraryItem)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.getLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "updateLibraryItemDetails", Method: http.MethodPost, Path: "/v1/library/items/{id}/refresh",
 		Summary:     "Update a title's details",
 		Description: "Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.updateLibraryItemDetails)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.updateLibraryItemDetails)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "checkLibraryItemFiles", Method: http.MethodPost, Path: "/v1/library/items/{id}/check",
 		Summary:     "Check a title's files again",
 		Description: "Opens the title's files and reads their details again, such as after a file was replaced.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.checkLibraryItemFiles)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RoleAdmin), s.checkLibraryItemFiles)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "removeLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/remove-copy",
 		Summary: "Remove a title's extra copy",
 		Description: "Moves one of the title's files that never plays into its media folder's trash " +
 			"(.loomarr-trash), which empties after 30 days.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.removeLibraryExtraCopy)
+	}, httpcore.RoleAdmin), s.removeLibraryExtraCopy)
 }
 
 type removeLibraryExtraCopyInput struct {
@@ -68,14 +69,14 @@ func (s *Server) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryEx
 	case err == nil:
 		return nil, nil
 	case errors.Is(err, store.ErrNotFound):
-		return nil, apiErr(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
+		return nil, httpcore.Problem(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
 	case errors.Is(err, scan.ErrPlays):
-		return nil, apiErr(http.StatusConflict, "That copy is the one that plays", "Only an extra copy can be removed.")
+		return nil, httpcore.Problem(http.StatusConflict, "That copy is the one that plays", "Only an extra copy can be removed.")
 	case errors.Is(err, scan.ErrTrash):
-		return nil, apiErrWithCause(http.StatusConflict, "Couldn't move the extra copy",
+		return nil, httpcore.ProblemWithCause(http.StatusConflict, "Couldn't move the extra copy",
 			"Loomarr may not be allowed to change this folder.", err)
 	default:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't remove the extra copy", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't remove the extra copy", "Try again in a moment.", err)
 	}
 }
 
@@ -89,11 +90,11 @@ func (s *Server) updateLibraryItemDetails(ctx context.Context, in *libraryItemID
 	case err == nil:
 		return nil, nil
 	case errors.Is(err, store.ErrNotFound):
-		return nil, apiErr(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
+		return nil, httpcore.Problem(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
 	case errors.Is(err, scan.ErrCatalogUnreachable):
-		return nil, apiErr(http.StatusServiceUnavailable, "Couldn't reach TMDB", "Try again in a moment.")
+		return nil, httpcore.Problem(http.StatusServiceUnavailable, "Couldn't reach TMDB", "Try again in a moment.")
 	default:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update this title", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't update this title", "Try again in a moment.", err)
 	}
 }
 
@@ -107,9 +108,9 @@ func (s *Server) checkLibraryItemFiles(ctx context.Context, in *libraryItemIDInp
 	case err == nil:
 		return nil, nil
 	case errors.Is(err, store.ErrNotFound):
-		return nil, apiErr(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
+		return nil, httpcore.Problem(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
 	default:
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't check this title's files", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't check this title's files", "Try again in a moment.", err)
 	}
 }
 
@@ -210,7 +211,7 @@ func (s *Server) listLibraryItems(ctx context.Context, in *listLibraryItemsInput
 		Kind: in.Kind, Search: in.Search, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
 	}
 	out := &listLibraryItemsOutput{}
 	out.Body.Total = page.Total
@@ -313,10 +314,10 @@ func (s *Server) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*
 	}
 	d, err := svc.Item(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, apiErr(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
+		return nil, httpcore.Problem(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
 	posters := s.libraryPosters(ctx, []store.LibraryItemSummary{d.LibraryItemSummary})
 	body := libraryItemDetailOf(d, posters)

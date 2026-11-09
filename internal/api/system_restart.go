@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // /v1/system/restart* + /v1/system/reload — the restart control (§9.2, §7, V13).
@@ -50,16 +51,16 @@ type RestartCost struct {
 // registerSystemRestart mounts the restart + reload routes. Admin-only: restarting
 // interrupts playback for every internally-streamed channel.
 func (s *Server) registerSystemRestart(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-restart-cost", Method: http.MethodGet, Path: "/v1/system/restart",
 		Summary: "What a restart would cost right now",
 		Description: "Admin only. The live count of channels Loomarr is streaming (which drop for a few " +
 			"seconds; Tunarr-backed channels keep playing), plus any restart-scoped setting waiting on a " +
 			"restart. Read-only — this does not restart anything.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemRestartCost)
+	}, httpcore.RoleAdmin), s.systemRestartCost)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-restart", Method: http.MethodPost, Path: "/v1/system/restart",
 		Summary: "Restart Loomarr in place",
 		Description: "Admin only. Drains connections, tears down playout, and rebuilds every subsystem in " +
@@ -67,16 +68,16 @@ func (s *Server) registerSystemRestart(api huma.API) {
 			"a client that never gets a reply cannot tell 'restarting' from 'crashed'.",
 		Tags:          []string{"system"},
 		DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.systemRestart)
+	}, httpcore.RoleAdmin), s.systemRestart)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-reload", Method: http.MethodPost, Path: "/v1/system/reload",
 		Summary: "Re-probe every configured service",
 		Description: "Admin only. Re-runs the connection checks without restarting or tearing anything " +
 			"down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two " +
-			"can never disagree. " + operatorAPI,
+			"can never disagree. " + httpcore.OperatorAPI,
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemReload)
+	}, httpcore.RoleAdmin), s.systemReload)
 }
 
 type systemRestartCostOutput struct {
@@ -107,7 +108,7 @@ func (s *Server) systemRestartCost(ctx context.Context, _ *struct{}) (*systemRes
 
 func (s *Server) systemRestart(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if s.restart == nil {
-		return nil, errNotImplemented("Restart unavailable",
+		return nil, httpcore.NotImplemented("Restart unavailable",
 			"This build can't restart itself. Restart the container or service the way you started it.")
 	}
 	// Returns immediately; the drain happens after this response is written.

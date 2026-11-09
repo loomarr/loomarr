@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -29,7 +30,7 @@ import (
 // authenticated user; tag edit, sync, and the AI-tagging job require admin
 // (filler ingestion is an admin concern, §7).
 func (s *Server) registerFiller(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
 		Summary: "List filler clips",
 		Description: "Filter by kind/era/audience/category, search across name/brand/on-screen-text/tags, sort, and page (§10 V51d). " +
@@ -39,9 +40,9 @@ func (s *Server) registerFiller(api huma.API) {
 			"without the two disagreeing. " +
 			"Held clips and composites are excluded unless asked for, because neither is in the playable catalog.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.listFiller)
+	}, httpcore.RoleMember), s.listFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-pool", Method: http.MethodGet, Path: "/v1/filler/pool",
 		Summary: "Catalog-wide filler health",
 		Description: "How well the catalog can fill breaks across the whole install (§10 V35) — the Filler page's pool strip. " +
@@ -50,63 +51,63 @@ func (s *Server) registerFiller(api huma.API) {
 			"so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. " +
 			"Read-only, so any authenticated user may call it.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.fillerPool)
+	}, httpcore.RoleMember), s.fillerPool)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-readiness", Method: http.MethodGet, Path: "/v1/filler/readiness",
 		Summary:     "Filler readiness and next action",
 		Description: "One server-owned operational projection across acquisition limits, durable runs, pipeline ownership, playable inventory, and worst-first channel coverage (§10 V59). Clients render the typed next action rather than reconstructing priorities from counters.",
 		Tags:        []string{"filler"},
-	}, RoleMember), s.fillerReadiness)
+	}, httpcore.RoleMember), s.fillerReadiness)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-filler-storage-cleanup", Method: http.MethodGet, Path: "/v1/filler/storage/cleanup",
 		Summary:     "Preview disposable filler staging",
 		Description: "Admin only. Counts terminal private download staging older than the safety grace that no recovery evidence still needs. It never selects catalog clips, repair evidence, symlinks, or unknown files.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.previewFillerStorageCleanup)
+	}, httpcore.RoleAdmin), s.previewFillerStorageCleanup)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "cleanup-filler-storage", Method: http.MethodPost, Path: "/v1/filler/storage/cleanup",
 		Summary:     "Remove disposable filler staging",
 		Description: "Admin only. Revalidates and removes only the private terminal download staging returned by the preview contract, then reports a fresh remaining preview.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.cleanupFillerStorage)
+	}, httpcore.RoleAdmin), s.cleanupFillerStorage)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-filler-acquisition", Method: http.MethodGet, Path: "/v1/filler/acquisitions/{jobId}",
 		Summary:     "Read one clip download",
 		Description: "Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.getFillerAcquisition)
+	}, httpcore.RoleAdmin), s.getFillerAcquisition)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
 		Summary: "Edit a clip's classification", Description: "Admin only. Corrects name, kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a). A name is the operator's curated name for viewers (#1990).", Tags: []string{"filler"},
-	}, RoleAdmin), s.patchFillerClip)
+	}, httpcore.RoleAdmin), s.patchFillerClip)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "sync-filler", Method: http.MethodPost, Path: "/v1/filler/sync",
 		Summary: "Sync the clip catalog from the media server", Description: "Admin only (§10).",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.syncFiller)
+	}, httpcore.RoleAdmin), s.syncFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "rewind-filler-clip", Method: http.MethodPost, Path: "/v1/filler/rewind",
 		Summary: "Re-run a clip's ingest pipeline from one stage",
 		Description: "Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. " +
 			"Re-running transcode requires force because the original bytes are no longer available and another encode loses quality.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.rewindFillerClip)
+	}, httpcore.RoleAdmin), s.rewindFillerClip)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
 		Summary:     "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
-		Description: operatorAPI,
+		Description: httpcore.OperatorAPI,
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.ingestFiller)
+	}, httpcore.RoleAdmin), s.ingestFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discover-filler", Method: http.MethodGet, Path: "/v1/filler/discover",
 		Summary: "Search archive.org for clips to add",
 		Description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates " +
@@ -117,9 +118,9 @@ func (s *Server) registerFiller(api huma.API) {
 			"Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream " +
 			"request, no job to poll.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.discoverFiller)
+	}, httpcore.RoleAdmin), s.discoverFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discover-filler-stats", Method: http.MethodGet, Path: "/v1/filler/discover/stats",
 		Summary: "Runtime and quality for specific search results",
 		Description: "Admin only (§10, V35). Fills in the duration and quality a search deliberately " +
@@ -128,9 +129,9 @@ func (s *Server) registerFiller(api huma.API) {
 			"full page of 25 measured 22.6s. An id archive.org cannot answer for is ABSENT from the " +
 			"response rather than zero: 0 would be indistinguishable from a genuinely empty clip.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.discoverFillerStats)
+	}, httpcore.RoleAdmin), s.discoverFillerStats)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		// ⚠ The clip is a QUERY parameter, not a path segment, and that is forced rather than
 		// stylistic. Clip identity is a PATH (§9.1 — `ads/cereal.mp4`), so `/v1/filler/{id}/fit`
 		// collides with every literal segment under /v1/filler: Go's ServeMux refuses to register
@@ -148,12 +149,12 @@ func (s *Server) registerFiller(api huma.API) {
 			"channel is listed, including paused ones — pinning to a paused channel is a decision that " +
 			"takes effect when it resumes.",
 		Tags: []string{"filler", "channels"},
-	}, RoleMember), s.clipChannelFit)
+	}, httpcore.RoleMember), s.clipChannelFit)
 
 	// Compilation splitting (§10, V34). Propose is a job (detection runs minutes
 	// per file); the proposal read and the confirm are synchronous. All admin:
 	// these routes write the catalog, which is the same trust level as ingest.
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "split-filler", Method: http.MethodPost, Path: "/v1/filler/split",
 		Summary: "Propose splits for a compilation clip",
 		Description: "Admin only (§10, V34). The clip is identified by `path` in the body (§10 V45a). Runs " +
@@ -162,17 +163,17 @@ func (s *Server) registerFiller(api huma.API) {
 			"split proposal. Nothing enters the catalog: review is not optional, because detection quality " +
 			"is a property of the source.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.splitFiller)
+	}, httpcore.RoleAdmin), s.splitFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
 		Summary: "Read a split proposal",
 		Description: "Admin only (§10, V34). The review surface's source of truth on SSE reconnect — " +
 			"the same pattern as /v1/proposals/{id}.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.getFillerSplit)
+	}, httpcore.RoleAdmin), s.getFillerSplit)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirm-filler-split", Method: http.MethodPost, Path: "/v1/filler/splits/{proposalId}/confirm",
 		Summary: "Commit a reviewed split",
 		Description: "Admin only (§10, V34). The body is the operator's confirmed cut list — the " +
@@ -181,7 +182,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"clips: cut with ffmpeg stream copy, and the original compilation row removed — its identity " +
 			"is a path that now means twenty clips, not one.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.confirmFillerSplit)
+	}, httpcore.RoleAdmin), s.confirmFillerSplit)
 
 	// The three clip byte routes (V30/V35/V39). Member-visible, matching `list-filler`: the
 	// catalog listing is visible to any authenticated user, and an asset is strictly less
@@ -204,14 +205,14 @@ func (s *Server) registerFiller(api huma.API) {
 	// ⚠ Media type ranges, not a single type: this route serves whatever the clip's extension
 	// maps to in the `mediaTypes` allowlist (video/mp4, video/x-matroska, audio/mpeg, …). Naming
 	// one of them would be a documented lie, and enumerating eleven says less than the range does.
-	rawOp[hashInput](api, bytesResponse(huma.Operation{
+	httpcore.RawOp[httpcore.HashInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "filler-media", Method: http.MethodGet, Path: "/v1/filler/media/{hash}",
 		Summary: "A clip's own bytes",
 		Description: "Any authenticated user. The clip itself, so an operator can watch one before " +
 			"deciding about it. Range-capable, so a <video> element can seek. The exact media type " +
 			"comes from a short server-side allowlist keyed by extension.",
 		Tags: []string{"filler"},
-	}, "The clip's own bytes.", "video/*", "audio/*"), RoleMember, s.serveFillerMedia)
+	}, "The clip's own bytes.", "video/*", "audio/*"), httpcore.RoleMember, s.serveFillerMedia)
 }
 
 type rewindFillerClipInput struct {
@@ -228,16 +229,16 @@ func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput
 		return nil, huma.Error501NotImplemented("the filler pipeline is not configured")
 	}
 	if _, err := s.store.GetClip(ctx, in.Body.Hash); errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Clip not found", "That clip is no longer in the catalog.")
+		return nil, httpcore.NotFound("Clip not found", "That clip is no longer in the catalog.")
 	} else if err != nil {
 		return nil, err
 	}
 	err := rewinder.Rewind(ctx, in.Body.Hash, pipelinestate.StageID(in.Body.From), in.Body.Force)
 	switch {
 	case errors.Is(err, filler.ErrUnknownStage):
-		return nil, errUnprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")
+		return nil, httpcore.Unprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")
 	case errors.Is(err, filler.ErrTranscodeNeedsForce):
-		return nil, errConflict("Re-encoding needs confirmation", err.Error())
+		return nil, httpcore.Conflict("Re-encoding needs confirmation", err.Error())
 	case err != nil:
 		return nil, err
 	default:
@@ -691,14 +692,14 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		if len(in.Hashes) == 1 {
 			states, err := s.store.ListFillerEnrichment(ctx, c.Hash)
 			if err != nil {
-				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip details", "The clip's background details could not be read. Try again.", err)
+				return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read clip details", "The clip's background details could not be read. Try again.", err)
 			}
 			d.Enrichment = clipEnrichmentDTO(states)
 			report, err := s.store.LatestFillerResearchReport(ctx, c.Hash)
 			if err == nil {
 				d.ContextSuggestion = clipContextSuggestionDTO(report, c.Era, c.Country)
 			} else if !errors.Is(err, store.ErrNotFound) {
-				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read likely context", "The clip's likely context could not be read. Try again.", err)
+				return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read likely context", "The clip's likely context could not be read. Try again.", err)
 			}
 			provenanceClip := c
 			if c.ParentHash != "" {
@@ -709,7 +710,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 			}
 			artifact, found, err := s.store.AcquisitionArtifactForClip(ctx, provenanceClip.Path, provenanceClip.Hash)
 			if err != nil {
-				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip source", "The recorded source could not be read. Try again.", err)
+				return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read clip source", "The recorded source could not be read. Try again.", err)
 			}
 			// A reused filename does not prove this clip came from the newer acquisition.
 			if found && artifact.ClipHash == provenanceClip.Hash {
@@ -776,16 +777,16 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	var operatorForest *taxonomy.Forest
 	var operatorGeography *enrichment.Value
 	if in.Body.Hash == "" {
-		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
+		return nil, httpcore.Unprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
 	name := ""
 	if in.Body.Name != nil {
 		name = strings.TrimSpace(*in.Body.Name)
 		if name == "" {
-			return nil, errUnprocessable("Name is empty", "A clip needs a name. Enter one, or leave the name out to keep the current one.")
+			return nil, httpcore.Unprocessable("Name is empty", "A clip needs a name. Enter one, or leave the name out to keep the current one.")
 		}
 		if utf8.RuneCountInString(name) > 120 {
-			return nil, errUnprocessable("Name is too long", "A clip name can be at most 120 characters.")
+			return nil, httpcore.Unprocessable("Name is too long", "A clip name can be at most 120 characters.")
 		}
 	}
 	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/classification update/
@@ -794,7 +795,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	clip, err := s.store.GetClip(ctx, in.Body.Hash)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+			return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
 		return nil, err
 	}
@@ -828,13 +829,13 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		// never rescanned, so the row alone is enough for it.
 		if full, ok := s.clipFileOnDisk(clip.Path); ok {
 			if err := filler.WriteCuratedName(full, name); err != nil {
-				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the name",
+				return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't save the name",
 					"The clip's metadata file could not be updated, so nothing was changed. Try again.", err)
 			}
 		}
 		if err := s.store.RenameClip(ctx, clip.Hash, name, clips.NameFromCurated, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			return nil, err
 		}
@@ -842,10 +843,10 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Tags != nil {
 		if err := s.store.SetClipTags(ctx, clip.Hash, operatorLeaves); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			if errors.Is(err, clipstore.ErrTaxonConflict) {
-				return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
+				return nil, httpcore.Conflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
 			}
 			return nil, err
 		}
@@ -854,7 +855,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// has a verified one (clipContextSuggestionDTO).
 	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+			return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
 		return nil, err
 	}
@@ -864,7 +865,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Role != "" {
 		if err := s.store.UpdateClipRole(ctx, clip.Hash, in.Body.Role, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			return nil, err
 		}
@@ -931,7 +932,7 @@ type syncFillerOutput struct {
 
 func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput, error) {
 	if s.filler == nil || s.featureOff(ctx, "filler") {
-		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
 	// ⚠ A switched-off drop-folder is not a failure, and must not be reported as one. Left as a
@@ -941,7 +942,7 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 		return nil, errSourceDisabled()
 	}
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't sync filler",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't sync filler",
 			"Loomarr couldn't sync the filler catalog from your media server. Check its connection in Settings and try again.", err)
 	}
 	out := &syncFillerOutput{}
@@ -968,14 +969,14 @@ type ingestFillerOutput struct {
 // same contract as the §8.1 model pull.
 func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*ingestFillerOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
+		return nil, httpcore.NotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	// ⚠ `IngestAsked`, not `Ingest`: this is the one path where an OPERATOR named the target, so
 	// it is the one path that registers a source. Auto-fetch and approved pulls carry the items
 	// inside an already-registered collection and must not add a row per clip.
 	jobID, err := s.filler.IngestAsked(ctx, in.Body.URLs)
 	if errors.Is(err, filler.ErrProviderPaused) {
-		return nil, errConflict("That provider is paused",
+		return nil, httpcore.Conflict("That provider is paused",
 			"Resume it under Filler → Sources before downloading from it.")
 	}
 	if errors.Is(err, ErrIngestUnavailable) {
@@ -984,7 +985,7 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 		// single image always ships the tooling, §16), so the remedy it named was a dead
 		// end of exactly the kind §7 warns about. Unavailable now means a degraded
 		// install, and the message says what an operator can actually check.
-		return nil, errConflict("Downloads aren't available here",
+		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
 	if err != nil {
@@ -1031,7 +1032,7 @@ type discoverFillerOutput struct {
 // discoverFiller searches for clips the operator could add, downloading nothing.
 func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*discoverFillerOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
 	}
 	if err := s.requireFillerProvider(ctx, "archive"); err != nil {
@@ -1043,7 +1044,7 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	// exists to prevent.
 	query, collection := strings.TrimSpace(in.Query), strings.TrimSpace(in.Collection)
 	if query == "" && collection == "" {
-		return nil, apiErr(http.StatusUnprocessableEntity, "Ask for one thing",
+		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "Ask for one thing",
 			"Send q to search Archive.org, collection to list one collection, or both to search within it.")
 	}
 
@@ -1061,7 +1062,7 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 		// A listing failure is upstream (archive.org unreachable or refusing), not the
 		// caller's fault — so it is a 502-shaped problem, and the message says which side
 		// broke rather than blaming the query.
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't search for clips",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't search for clips",
 			"archive.org didn't answer. Try again in a moment.", err)
 	}
 
@@ -1092,11 +1093,11 @@ func (s *Server) requireFillerProvider(ctx context.Context, kind string) error {
 			if provider.Enabled {
 				return nil
 			}
-			return errConflict("That provider is paused",
+			return httpcore.Conflict("That provider is paused",
 				"Resume it under Filler → Sources before searching or downloading from it.")
 		}
 	}
-	return errNotFound("Provider not found", "That filler provider isn't available on this install.")
+	return httpcore.NotFound("Provider not found", "That filler provider isn't available on this install.")
 }
 
 type discoverStatsInput struct {
@@ -1134,11 +1135,11 @@ type discoverStatsOutput struct {
 // is not ours to tune away. Asking only for rows a person is looking at is the fix.
 func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput) (*discoverStatsOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
 	}
 	if len(in.IDs) == 0 {
-		return nil, apiErr(http.StatusUnprocessableEntity, "Nothing to describe",
+		return nil, httpcore.Problem(http.StatusUnprocessableEntity, "Nothing to describe",
 			"Send at least one id.")
 	}
 	if err := s.requireFillerProvider(ctx, "archive"); err != nil {
@@ -1147,7 +1148,7 @@ func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput
 
 	stats, err := s.filler.EnrichDiscovered(ctx, in.IDs)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't read clip details",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't read clip details",
 			"archive.org didn't answer. Try again in a moment.", err)
 	}
 
@@ -1202,13 +1203,13 @@ type clipFitOutput struct {
 // clipChannelFit answers "where does this clip land on each channel's ladder" (§10, V35 1.7).
 func (s *Server) clipChannelFit(ctx context.Context, in *clipFitInput) (*clipFitOutput, error) {
 	if s.pods == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Set up commercials and filler before choosing which channels use a clip.")
 	}
 
 	fits, err := s.pods.ClipFit(ctx, in.Clip)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Clip not found", "That clip isn't in the catalog — it may have been removed.")
+		return nil, httpcore.NotFound("Clip not found", "That clip isn't in the catalog — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -1260,18 +1261,18 @@ type splitFillerOutput struct {
 // the SSE bus and the proposal is read back when the terminal frame lands.
 func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitFillerOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before splitting a compilation.")
 	}
 	if in.Body.Hash == "" {
-		return nil, errUnprocessable("Missing clip", "A split must name the compilation clip by its hash.")
+		return nil, httpcore.Unprocessable("Missing clip", "A split must name the compilation clip by its hash.")
 	}
 	jobID, err := s.filler.Split(ctx, in.Body.Hash)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+		return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 	}
 	if errors.Is(err, ErrSplitUnavailable) {
-		return nil, errConflict("Splitting isn't set up",
+		return nil, httpcore.Conflict("Splitting isn't set up",
 			"Splitting needs the filler drop-folder (filler.dir). Set it in Settings → Filler.")
 	}
 	if err != nil {
@@ -1319,14 +1320,14 @@ type getFillerSplitOutput struct {
 func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*getFillerSplitOutput, error) {
 	p, err := s.store.GetSplitProposal(ctx, in.ProposalID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Split proposal not found",
+		return nil, httpcore.NotFound("Split proposal not found",
 			"That proposal doesn't exist — it may have been confirmed, rejected, or replaced by a re-run of detection.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !p.Ready() {
-		return nil, errNotFound("Split proposal not found",
+		return nil, httpcore.NotFound("Split proposal not found",
 			"Detection is still running; the proposal will appear here when its cut list is ready.")
 	}
 	hashes := make([]string, 0, len(p.Segments))
@@ -1386,7 +1387,7 @@ type confirmFillerSplitOutput struct {
 // minutes belong to detection, which already ran.
 func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitInput) (*confirmFillerSplitOutput, error) {
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Enable filler in Settings before confirming a split.")
 	}
 	segments := make([]split.Segment, len(in.Body.Segments))
@@ -1396,13 +1397,13 @@ func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitI
 	if err := s.filler.ConfirmSplit(ctx, in.ProposalID, segments); err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			return nil, errNotFound("Split proposal not found",
+			return nil, httpcore.NotFound("Split proposal not found",
 				"That proposal doesn't exist — it may have been confirmed already, or replaced by a re-run of detection.")
 		case errors.Is(err, filler.ErrSplitParentNotHeld):
-			return nil, errConflict("This clip is already filed",
+			return nil, httpcore.Conflict("This clip is already filed",
 				"Only a recording held for split review can be cut. This clip is already in the catalog, so these cuts can't be confirmed — reject the proposal instead.")
 		case errors.Is(err, filler.ErrSplitValidation):
-			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid cut list",
+			return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid cut list",
 				"The edited segments are outside the clip, overlap, or too short — fix the cuts and try again.", err)
 		default:
 			return nil, err

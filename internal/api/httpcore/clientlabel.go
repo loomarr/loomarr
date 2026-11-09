@@ -1,11 +1,11 @@
-package api
+package httpcore
 
 import "strings"
 
-// clientLabel names a browser the way a person recognises it ("Firefox on macOS") from its
+// ClientLabel names a browser the way a person recognises it ("Firefox on macOS") from its
 // User-Agent. Coarse on purpose: family and system only, never versions, so it reads the same
 // after every browser update and says nothing a fingerprint would want.
-func clientLabel(ua string) string {
+func ClientLabel(ua string) string {
 	browser := ""
 	switch {
 	case strings.Contains(ua, "Edg/"):

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 // JobService backs the background-job scheduler routes (§18.1). Satisfied by an adapter over
@@ -76,36 +77,36 @@ type JobExecutionView struct {
 }
 
 func (s *Server) registerJobs(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-list", Method: http.MethodGet, Path: "/v1/jobs",
 		Summary:     "List background jobs",
 		Description: "Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.",
 		Tags:        []string{"jobs"},
-	}, RoleAdmin), s.jobsList)
+	}, httpcore.RoleAdmin), s.jobsList)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-run", Method: http.MethodPost, Path: "/v1/jobs/{name}/run",
 		Summary:       "Run a job now",
 		Description:   "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it). A job this backend cannot run (a non-empty disabledReason) returns 409.",
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.jobsRun)
+	}, httpcore.RoleAdmin), s.jobsRun)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-history", Method: http.MethodGet, Path: "/v1/jobs/{name}/history",
 		Summary:     "Get recent job executions",
 		Description: "Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).",
 		Tags:        []string{"jobs"},
-	}, RoleAdmin), s.jobsHistory)
+	}, httpcore.RoleAdmin), s.jobsHistory)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-pause", Method: http.MethodPost, Path: "/v1/jobs/{name}/pause",
 		Summary: "Pause or resume a job",
 		Description: "Admin only. Pausing stops a job running on its schedule (§18.1); it stays listed, keeps its cron, and reports no next run. " +
 			"Run now still works on a paused job — pause stops the schedule, not the task. " +
 			"A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference.",
 		Tags: []string{"jobs"},
-	}, RoleAdmin), s.jobsPause)
+	}, httpcore.RoleAdmin), s.jobsPause)
 }
 
 type jobsPauseInput struct {
@@ -117,16 +118,16 @@ type jobsPauseInput struct {
 
 func (s *Server) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, error) {
 	if s.jobs == nil {
-		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	if err := s.jobs.SetPaused(ctx, in.Name, in.Body.Paused); err != nil {
 		if errors.Is(err, ErrJobNotFound) {
-			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+			return nil, httpcore.NotFound("Job not found", "There's no scheduled job with that name.")
 		}
 		if errors.Is(err, ErrJobDisabled) {
 			return nil, huma.Error409Conflict("This job can't run on this backend, so it can't be paused or resumed.")
 		}
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't change the job",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't change the job",
 			"Loomarr couldn't update that job. Try again in a moment.", err)
 	}
 	return &struct{}{}, nil
@@ -148,14 +149,14 @@ type jobsHistoryOutput struct {
 
 func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHistoryOutput, error) {
 	if s.jobs == nil {
-		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	history, err := s.jobs.History(ctx, in.Name)
 	if err != nil {
 		if errors.Is(err, ErrJobNotFound) {
-			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+			return nil, httpcore.NotFound("Job not found", "There's no scheduled job with that name.")
 		}
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load job history",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't load job history",
 			"Loomarr couldn't read that task's recent executions. Try again in a moment.", err)
 	}
 	return &jobsHistoryOutput{Body: history}, nil
@@ -163,11 +164,11 @@ func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHi
 
 func (s *Server) jobsList(ctx context.Context, _ *struct{}) (*jobsListOutput, error) {
 	if s.jobs == nil {
-		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	list, err := s.jobs.List(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't list jobs", "Loomarr couldn't read the scheduled jobs. Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't list jobs", "Loomarr couldn't read the scheduled jobs. Try again in a moment.", err)
 	}
 	out := &jobsListOutput{}
 	out.Body.Jobs = list
@@ -180,16 +181,16 @@ type jobsRunInput struct {
 
 func (s *Server) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, error) {
 	if s.jobs == nil {
-		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+		return nil, httpcore.NotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	if err := s.jobs.Trigger(ctx, in.Name); err != nil {
 		if errors.Is(err, ErrJobNotFound) {
-			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+			return nil, httpcore.NotFound("Job not found", "There's no scheduled job with that name.")
 		}
 		if errors.Is(err, ErrJobDisabled) {
 			return nil, huma.Error409Conflict("This job isn't available on this backend, so it can't be run.")
 		}
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't run the job", "Loomarr couldn't trigger that job. Try again in a moment.", err)
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't run the job", "Loomarr couldn't trigger that job. Try again in a moment.", err)
 	}
 	return &struct{}{}, nil
 }

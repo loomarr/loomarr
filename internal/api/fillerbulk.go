@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -56,16 +57,16 @@ type bulkResultOutput struct {
 }
 
 func (s *Server) registerFillerBulk(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-tag-filler", Method: http.MethodPost, Path: "/v1/filler/bulk/tag",
 		Summary: "Retag a selection of clips",
 		Description: "Admin only (§10 V35) — the Catalog tab's bulk bar. Each tag field is INDEPENDENT: omitting " +
 			"one leaves it alone, so setting only the audience never blanks the era. Selected clips that no longer " +
 			"exist are counted as `missing` rather than failing the batch, because a selection races a re-scan.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.bulkTagFiller)
+	}, httpcore.RoleAdmin), s.bulkTagFiller)
 
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-remove-filler", Method: http.MethodPost, Path: "/v1/filler/bulk/remove",
 		Summary: "Remove a selection from the catalog",
 		Description: "Admin only (§10 V35). ⚠ A TOMBSTONE, not a delete: the clip stops appearing in the catalog " +
@@ -73,7 +74,7 @@ func (s *Server) registerFillerBulk(api huma.API) {
 			"Loomarr deletes an operator's media. It survives re-scans, which a row delete could not — the next " +
 			"scan would find the file and put it back. Pass `restore:true` to undo.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.bulkRemoveFiller)
+	}, httpcore.RoleAdmin), s.bulkRemoveFiller)
 }
 
 func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bulkResultOutput, error) {
@@ -119,7 +120,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if in.Body.Tags != nil {
 			if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
 				if errors.Is(err, clipstore.ErrTaxonConflict) {
-					return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while these clips were being edited. Review the tags and try again.")
+					return nil, httpcore.Conflict("Taxonomy changed", "The tag vocabulary changed while these clips were being edited. Review the tags and try again.")
 				}
 				return nil, huma.Error500InternalServerError("retag clips", err)
 			}

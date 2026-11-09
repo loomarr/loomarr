@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -110,14 +111,14 @@ type playoutStatusOutput struct {
 
 // registerPlayoutStatus mounts GET /v1/playout/status (§9.1 V47).
 func (s *Server) registerPlayoutStatus(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-playout-status", Method: http.MethodGet, Path: "/v1/playout/status",
 		Summary: "Playout status — why a channel is (or isn't) playing (admin)",
 		Description: "A read-only health projection of live internal playout: per (channel, target) " +
 			"encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM " +
 			"contention picture that a black-frame diagnosis needs. Admin only. Changes nothing.",
 		Tags: []string{"dashboard"},
-	}, RoleAdmin), s.getPlayoutStatus)
+	}, httpcore.RoleAdmin), s.getPlayoutStatus)
 }
 
 func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutStatusOutput, error) {

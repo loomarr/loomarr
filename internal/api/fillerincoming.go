@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -117,12 +118,12 @@ type incomingCursor struct {
 }
 
 func (s *Server) registerFillerIncoming(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
 		Summary:     "Filler clips being prepared, needing help, or recently ready",
 		Description: "Admin-only hands-off Incoming projection (§10). Each disjoint group is bounded, newest first, and carries its full server-counted total plus an opaque next-page cursor. Needs help contains only a current durable choice; operational and audit history are excluded.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerIncoming)
+	}, httpcore.RoleAdmin), s.fillerIncoming)
 }
 
 func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*fillerIncomingOutput, error) {

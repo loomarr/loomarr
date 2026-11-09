@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"context"
@@ -19,11 +19,11 @@ const requestIDHeader = "X-Request-Id"
 
 type ctxKeyRequestID struct{}
 
-// newRequestID mints a short, log-greppable id ("req_" + 8 random bytes hex), matching
+// NewRequestID mints a short, log-greppable id ("req_" + 8 random bytes hex), matching
 // the house id style (see internal/app/ids.go, suggestions.go "ch_"). crypto/rand can't
 // fail in practice here; on the vanishingly unlikely error we fall back to a fixed marker
 // rather than panic — a correlation id is a convenience, never a correctness dependency.
-func newRequestID() string {
+func NewRequestID() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "req_unknown"
@@ -31,22 +31,22 @@ func newRequestID() string {
 	return "req_" + hex.EncodeToString(b[:])
 }
 
-// requestIDFrom returns the correlation id carried on ctx, or "" if none (e.g. a code path
+// RequestIDFrom returns the correlation id carried on ctx, or "" if none (e.g. a code path
 // that never passed through the middleware, such as a unit test calling a handler directly).
-func requestIDFrom(ctx context.Context) string {
+func RequestIDFrom(ctx context.Context) string {
 	id, _ := ctx.Value(ctxKeyRequestID{}).(string)
 	return id
 }
 
-// withRequestID is the outermost app middleware: it establishes the correlation id for the
+// WithRequestID is the outermost app middleware: it establishes the correlation id for the
 // request and echoes it back so a caller can quote it in a bug report. A well-formed inbound
 // X-Request-Id (from a trusted reverse proxy) is honored so the id spans hops; anything
 // unreasonable is replaced, so a client can't inject arbitrary log content via the header.
-func withRequestID(next http.Handler) http.Handler {
+func WithRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := sanitizeRequestID(r.Header.Get(requestIDHeader))
 		if id == "" {
-			id = newRequestID()
+			id = NewRequestID()
 		}
 		w.Header().Set(requestIDHeader, id)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyRequestID{}, id)))

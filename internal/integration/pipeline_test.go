@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -132,7 +133,7 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly

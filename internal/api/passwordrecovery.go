@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
@@ -15,21 +16,21 @@ func (s *Server) registerPasswordRecovery(api huma.API) {
 	if s.passwordRecovery == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, withRole(huma.Operation{
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "request-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/request", Summary: "Request local password recovery",
 		Tags: []string{"auth"}, DefaultStatus: http.StatusAccepted,
-	}, RolePublic), s.requestPasswordRecovery)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RolePublic), s.requestPasswordRecovery)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/preview", Summary: "Preview a password recovery grant",
 		Tags: []string{"auth"},
-	}, RolePublic), s.previewPasswordRecovery)
-	huma.Register(api, withRole(huma.Operation{
+	}, httpcore.RolePublic), s.previewPasswordRecovery)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "redeem-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/redeem", Summary: "Set a new local password",
 		Tags: []string{"auth"}, DefaultStatus: http.StatusNoContent,
-	}, RolePublic), s.redeemPasswordRecovery)
+	}, httpcore.RolePublic), s.redeemPasswordRecovery)
 }
 
 type requestPasswordRecoveryInput struct {
@@ -51,7 +52,7 @@ func (s *Server) requestPasswordRecovery(
 	rateKey := s.clientIP(requestFrom(ctx)) + "|" + strings.ToLower(strings.TrimSpace(in.Body.Username))
 	if err := s.passwordRecovery.Request(ctx, in.Body.Username, rateKey); err != nil {
 		if errors.Is(err, auth.ErrRateLimited) {
-			return nil, errTooManyRequests("Too many requests", "Wait a moment before requesting another password reset.")
+			return nil, httpcore.TooManyRequests("Too many requests", "Wait a moment before requesting another password reset.")
 		}
 		return nil, err
 	}
@@ -107,11 +108,11 @@ func (s *Server) redeemPasswordRecovery(
 func passwordRecoveryError(err error) error {
 	switch {
 	case errors.Is(err, auth.ErrInvalidPasswordRecovery):
-		return errGone("Password reset unavailable", "This password reset link is invalid, expired, revoked, or already used. Request a new one.")
+		return httpcore.Gone("Password reset unavailable", "This password reset link is invalid, expired, revoked, or already used. Request a new one.")
 	case errors.Is(err, auth.ErrWeakPassword):
 		return errPasswordTooShort()
 	case errors.Is(err, auth.ErrRateLimited):
-		return errTooManyRequests("Too many attempts", "Wait a moment before trying this password reset again.")
+		return httpcore.TooManyRequests("Too many attempts", "Wait a moment before trying this password reset again.")
 	default:
 		return err
 	}

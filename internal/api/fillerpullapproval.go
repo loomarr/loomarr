@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -30,20 +31,20 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
 	if s.filler == nil {
-		return nil, errNotImplemented("Filler isn't set up",
+		return nil, httpcore.NotImplemented("Filler isn't set up",
 			"Set up commercials and filler before approving a pull.")
 	}
 
 	p, err := s.store.GetPull(ctx, in.ID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Pull not found", "That pull doesn't exist — it may have been removed.")
+			return nil, httpcore.NotFound("Pull not found", "That pull doesn't exist — it may have been removed.")
 		}
 		return nil, huma.Error500InternalServerError("read pull", err)
 	}
 	// Fast feedback for a visible decision; the transaction below owns concurrent decisions.
 	if p.Status != filler.PullPending {
-		return nil, errConflict("That pull has already been decided",
+		return nil, httpcore.Conflict("That pull has already been decided",
 			"Someone already "+string(p.Status)+" this pull. Propose a new one if you still want the clips.")
 	}
 
@@ -62,7 +63,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 
 	committed := p.Committed()
 	if len(committed) == 0 {
-		return nil, errConflict("Nothing left to pull",
+		return nil, httpcore.Conflict("Nothing left to pull",
 			"Every source in this plan was dropped, so there's nothing to fetch. Dismiss it instead.")
 	}
 
@@ -76,7 +77,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	// downloads before the installation has a location, attended or not.
 	home := s.fillerHomeGeography()
 	if home.Normalize().Country == "" {
-		return nil, errConflict("Set your location first",
+		return nil, httpcore.Conflict("Set your location first",
 			"Loomarr only downloads filler for a location it knows. Choose your location in Settings, then approve this pull again.")
 	}
 	live := make(map[string]records.FillerSource, len(srcs))
@@ -109,18 +110,18 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	for _, row := range committed {
 		src, ok := live[row.SourceID]
 		if !ok {
-			return nil, errConflict("A source in this pull is no longer available",
+			return nil, httpcore.Conflict("A source in this pull is no longer available",
 				"“"+row.Name+"” has been switched off or removed since this pull was proposed. Dismiss it and propose a new one.")
 		}
 		if row.Identity().Validate() == nil && remoteStates[row.Identity().Key()] != "" {
-			return nil, errConflict("A candidate in this pull is already acquired or queued",
+			return nil, httpcore.Conflict("A candidate in this pull is already acquired or queued",
 				"Another decision reached “"+row.Name+"” while this pull was waiting. Dismiss it and propose a fresh plan.")
 		}
 		url := row.URL
 		if url == "" {
 			url = src.URI // compatibility for source-level V35-V65 pull records
 		} else if row.Provider != src.Kind || row.RemoteID == "" {
-			return nil, errConflict("A candidate in this pull no longer matches its source",
+			return nil, httpcore.Conflict("A candidate in this pull no longer matches its source",
 				"The candidate identity no longer belongs to the registered provider. Dismiss it and propose a new pull.")
 		}
 		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url, Gap: row.Gap})
@@ -134,13 +135,13 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		return s.store.CommitPullApproval(commitCtx, p, run)
 	}); err != nil {
 		if errors.Is(err, records.ErrPullNotPending) {
-			return nil, errConflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
+			return nil, httpcore.Conflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
 		}
 		if errors.Is(err, ErrIngestUnavailable) {
-			return nil, errConflict("Downloading isn't available on this install",
+			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling, so an approved pull would have nothing to fetch with.")
 		}
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't start the pull",
+		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't start the pull",
 			"Loomarr couldn't start downloading. Check the Filler sources and try again.", err)
 	}
 
@@ -230,12 +231,12 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	p, err := s.store.GetPull(ctx, in.ID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, errNotFound("Pull not found", "That pull doesn't exist — it may have been removed.")
+			return nil, httpcore.NotFound("Pull not found", "That pull doesn't exist — it may have been removed.")
 		}
 		return nil, huma.Error500InternalServerError("read pull", err)
 	}
 	if p.Status != filler.PullPending {
-		return nil, errConflict("That pull has already been decided",
+		return nil, httpcore.Conflict("That pull has already been decided",
 			"Someone already "+string(p.Status)+" this pull.")
 	}
 	p.Status = filler.PullDismissed
@@ -243,7 +244,7 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	p.DecidedBy = auditActor(ctx)
 	if err := s.store.DismissPull(ctx, p); err != nil {
 		if errors.Is(err, records.ErrPullNotPending) {
-			return nil, errConflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")
+			return nil, httpcore.Conflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")
 		}
 		return nil, huma.Error500InternalServerError("save pull decision", err)
 	}
