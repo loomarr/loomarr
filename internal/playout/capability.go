@@ -357,8 +357,10 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 		}
 	}()
 	speed := lastSpeedObserved(stdout, run)
-	err = cmd.Wait()
+	// The stderr reader finishes before Wait: Wait closes the pipe, which would drop whatever the
+	// reader has not yet taken.
 	<-stderrDone
+	err = cmd.Wait()
 	if run != nil {
 		run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil, TerminationReason: capabilityTerminationReason(ctx)})
 	}
