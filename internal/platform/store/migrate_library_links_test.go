@@ -20,7 +20,7 @@ func TestLibraryLinksMigration(t *testing.T) {
 	testLibraryLinksMigration(t, db, DialectSQLite, "migrations/sqlite")
 }
 
-// testLibraryLinksMigration proves the migration keeps every link that names a row, turns '' and
+// testLibraryLinksMigration proves the migration keeps every link that names a row, turns ” and
 // a link naming no row into NULL, drops a candidate whose title is gone, carries a title's
 // descendants across whole, and that afterwards the links are enforced.
 func testLibraryLinksMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {

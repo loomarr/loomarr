@@ -155,7 +155,7 @@ func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeByte
 }
 
 // libraryLink writes a link to another library_items row: NULL for "" (not known yet), which the
-// foreign key allows, since no row has "" as its id. Reads turn it back with COALESCE(col, '').
+// foreign key allows, since no row has "" as its id. Reads turn it back with COALESCE(col, ”).
 func libraryLink(id string) any {
 	if id == "" {
 		return nil
