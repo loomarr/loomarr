@@ -46,24 +46,25 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 	}, true
 }
 
-// catalogKey is the catalog row a title's details come from: a movie's or series' TMDB id, the
-// one catalog a title is fetched from, or an episode's own TVDB id, by which TMDB finds its view
-// of the episode (decision 53; never its season and number). A title with none has the zero key.
-func catalogKey(kind mp.Kind, ids []mp.ExternalID) store.LibraryCatalogKey {
-	if kind == mp.KindEpisode {
-		for _, id := range ids {
-			if id.Namespace == mp.NamespaceTVDB && id.Value != "" {
-				return store.LibraryCatalogKey{Provider: string(mp.NamespaceTVDB), Kind: string(kind), ExternalID: id.Value}
-			}
+// CatalogKeys is what the catalog provider fetches, in the order it declares it
+// (Capabilities.Resolves). The Library names no catalog of its own: a title's catalog row is the
+// first of its ids the provider can fetch, so swapping the provider swaps the rows, not the code.
+// None fetches nothing.
+type CatalogKeys []mp.Resolvable
+
+// For is the catalog row a title's details come from: the first resolvable for kind whose
+// namespace one of ids is in (an episode's by its own id, never its season and number; decision
+// 53). A title with none, or a kind the provider does not fetch, has the zero key. The key's
+// provider is the namespace the Enricher fetches it by.
+func (c CatalogKeys) For(kind mp.Kind, ids []mp.ExternalID) store.LibraryCatalogKey {
+	for _, r := range c {
+		if r.Kind != kind {
+			continue
 		}
-		return store.LibraryCatalogKey{}
-	}
-	if kind != mp.KindMovie && kind != mp.KindSeries {
-		return store.LibraryCatalogKey{}
-	}
-	for _, id := range ids {
-		if id.Namespace == mp.NamespaceTMDB && id.Value != "" {
-			return store.LibraryCatalogKey{Provider: string(mp.IDTMDB), Kind: string(kind), ExternalID: id.Value}
+		for _, id := range ids {
+			if id.Namespace == r.Namespace && id.Value != "" {
+				return store.LibraryCatalogKey{Provider: string(r.Namespace), Kind: string(kind), ExternalID: id.Value}
+			}
 		}
 	}
 	return store.LibraryCatalogKey{}

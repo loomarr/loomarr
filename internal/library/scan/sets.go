@@ -94,7 +94,7 @@ func (l *Library) set(ctx context.Context, key store.LibraryCatalogKey, titles [
 	// A movie's place is found by the catalog row its details come from, the key its part names.
 	place := map[store.LibraryCatalogKey]int{}
 	for i, part := range rec.Children {
-		if key := catalogKey(mp.KindMovie, part.IDs); key.String() != "" {
+		if key := l.Keys.For(mp.KindMovie, part.IDs); key.String() != "" {
 			place[key] = i
 		}
 	}

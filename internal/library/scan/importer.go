@@ -80,6 +80,8 @@ type Importer struct {
 	Artwork Artwork
 	// Catalog is the cache of catalog records a title's details come from; nil reads none.
 	Catalog CatalogStore
+	// Keys is what the catalog provider fetches; a title it fetches nothing for has no catalog row.
+	Keys CatalogKeys
 	// Answers is the maintainer's Needs you answers; nil reads none.
 	Answers AnswerStore
 	// Resolver applies precedence.

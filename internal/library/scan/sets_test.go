@@ -46,7 +46,7 @@ func TestReadyMadeSets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}
-	lib := &Library{ItemStore: h.st, CollectionStore: h.st, SetRecords: h.st}
+	lib := &Library{ItemStore: h.st, CollectionStore: h.st, SetRecords: h.st, Keys: fakeCatalogKeys}
 
 	// The movies' records arrive first: their set is asked for, and listed only once it arrives.
 	if err := e.Tick(ctx); err != nil {

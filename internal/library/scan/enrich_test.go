@@ -26,7 +26,17 @@ type fakeCatalog struct {
 func (f *fakeCatalog) ID() mp.ID { return mp.IDTMDB }
 
 func (f *fakeCatalog) Capabilities() mp.Capabilities {
-	return mp.Capabilities{Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	return mp.Capabilities{Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB, Resolves: fakeCatalogKeys}
+}
+
+// fakeCatalogKeys is what fakeCatalog fetches, declared as TMDB declares it; the harness's
+// Importer keys its titles by it.
+var fakeCatalogKeys = CatalogKeys{
+	{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
+	{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
+	{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
 }
 
 func (f *fakeCatalog) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
