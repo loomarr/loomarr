@@ -8,28 +8,30 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **media** · 20 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **media** · 24 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **platform** · 17 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
 - **channels** · 1 import — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
-- **`filler`** · 7 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 5 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
 - **`filler/acquisition`** · 6 importers · → `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split`
   How filler decides what to fetch and keeps the record of it: the intent a source is searched with, the plan that selects candidates, the durable download manifests and their repair, the per-pass Fetcher, and the gates that keep a compilation or an unlisted source out.
-- **`filler/asset`** · 10 importers · → `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor`
+- **`filler/asset`** · 11 importers · → `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor`
   The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
-- **`filler/cliplibrary`** · 10 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
+- **`filler/cliplibrary`** · 11 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
   On-disk clip library: the clip folder's layout, the one intake route every clip takes into it, the folder and library scans that find clips, the names derived for them, and the thumbnail and preview artwork rendered from them.
-- **`filler/clips`** · 9 importers
+- **`filler/clips`** · 14 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`filler/defectfloor`** · 2 importers · → `filler`, `filler/asset`, `filler/cliplibrary`, `filler/pipelinestate`, `media/creative`, `media/defects`, `platform/llm`
+- **`filler/defectfloor`** · 2 importers · → `filler`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/identity`, `filler/pipelinestate`, `media/creative`, `media/defects`, `media/tools`, `platform/llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/media/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`filler/enrichment`** · 3 importers · → `filler/station`, `filler/taxonomy`, `platform/llm`
   Owns progressive descriptive understanding for filler clips.
 - **`filler/fetch`** · 3 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
+- **`filler/identity`** · 2 importers · → `filler/asset`, `filler/cliplibrary`, `filler/clips`, `media/creative`, `media/defects`, `media/tools`
+  Merges copies of the same advert: it fingerprints the catalog's clips, picks the best copy of each, retires the inferior ones and re-points everything that referenced them.
 - **`filler/language`** · 6 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
 - **`filler/location`** · 2 importers
@@ -38,7 +40,7 @@ One area of the [package map](../package-map.md#start-here).
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
 - **`filler/pod`** · 8 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
-- **`filler/records`** · 3 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
+- **`filler/records`** · 3 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 5 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
@@ -56,7 +58,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`filler/structure`** · 7 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
-- **`filler/structure/assessment`** · 2 importers · → `filler`, `filler/asset`, `filler/cliplibrary`, `filler/split`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
+- **`filler/structure/assessment`** · 2 importers · → `filler/asset`, `filler/cliplibrary`, `filler/split`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
 - **`filler/structure/cut`** · 4 importers · → `filler/structure`, `media/encode`, `media/tools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.

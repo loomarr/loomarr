@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 // near-total dead air is objective; a long span that may be an intentional creative choice is not.
 // Keeping this policy behind one interface lets offline calibration measure the production rule
 // without copying thresholds that could silently drift.
-func EvaluateMediaQuality(q MediaQuality) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
+func EvaluateMediaQuality(q tools.MediaQuality) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
 	if q.DurationMs <= 0 {
 		return pipelinestate.VerdictContinue, "", ""
 	}
@@ -45,7 +46,7 @@ func EvaluateMediaQuality(q MediaQuality) (pipelinestate.Verdict, pipelinestate.
 	}
 }
 
-func intervalFacts(spans []Interval) (totalMs, longestMs int64) {
+func intervalFacts(spans []tools.Interval) (totalMs, longestMs int64) {
 	for _, span := range spans {
 		if d := span.EndMs - span.StartMs; d > 0 {
 			totalMs += d

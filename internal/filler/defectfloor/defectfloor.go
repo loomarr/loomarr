@@ -12,12 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // defectMeasureBudget bounds how long one pass spends decoding. A pass that runs out leaves the rest
@@ -84,7 +86,7 @@ type MeasureDefectsFunc func(ctx context.Context, file string, width, height int
 // that definitively fails is retired here and its files deleted.
 type DefectFloor struct {
 	store       DefectStore
-	probe       filler.Prober
+	probe       tools.Prober
 	measure     MeasureDefectsFunc
 	fingerprint FingerprintFunc
 	judge       DefectJudge
@@ -109,7 +111,7 @@ type DefectFloorResult struct {
 }
 
 // NewDefectFloor builds the defect floor job. A nil judge is the same as no vision model.
-func NewDefectFloor(store DefectStore, probe filler.Prober, measure MeasureDefectsFunc, fingerprint FingerprintFunc,
+func NewDefectFloor(store DefectStore, probe tools.Prober, measure MeasureDefectsFunc, fingerprint FingerprintFunc,
 	judge DefectJudge, clipDir string, now func() time.Time, log *slog.Logger) *DefectFloor {
 	return &DefectFloor{store: store, probe: probe, measure: measure, fingerprint: fingerprint, judge: judge,
 		clipDir: clipDir, now: now, log: log, released: map[string]bool{}}
@@ -324,7 +326,7 @@ func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, fi
 
 // retire records the copy's fingerprint when it has none (identity has not reached it yet), takes it off
 // the catalog, then deletes its own files. The durable write commits before any unlink, as in
-// CreativeIdentity.merge, so a failed unlink leaves only bytes, never a failing copy on air.
+// identity.Job.merge, so a failed unlink leaves only bytes, never a failing copy on air.
 func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]creative.Fingerprint, referenced map[string]int) (bool, error) {
 	full, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil {
@@ -356,7 +358,7 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 	} else if err != nil {
 		return false, err
 	}
-	for f, err := range filler.RemoveRetiredCopy(d.clipDir, c.Path, tags, referenced) {
+	for f, err := range identity.RemoveRetiredCopy(d.clipDir, c.Path, tags, referenced) {
 		d.warn("defects: a retired copy's file could not be removed; it is already off the catalog",
 			"clip", c.Hash, "file", f, "err", err)
 	}
@@ -369,7 +371,7 @@ func (d *DefectFloor) referenced(ctx context.Context) (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filler.ReferencedAssets(d.clipDir, paths), nil
+	return identity.ReferencedAssets(d.clipDir, paths), nil
 }
 
 // judgeState is the judge as one pass sees it: asked which model it is once, then counted down.
@@ -451,7 +453,7 @@ func (d *DefectFloor) ask(ctx context.Context, ask *defectAsk, judge *judgeState
 }
 
 // ruleOn asks the judge about one clip, probing the file for its length when the catalog has none.
-func (d *DefectFloor) ruleOn(ctx context.Context, rec *DefectRecord, c filler.Clip) (defects.Judgement, error) {
+func (d *DefectFloor) ruleOn(ctx context.Context, rec *DefectRecord, c clips.Clip) (defects.Judgement, error) {
 	file, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil {
 		return defects.Judgement{}, fmt.Errorf("%w: %w", ErrDefectJudgeClip, err)
@@ -487,7 +489,7 @@ func needsRuling(j *defects.Judgement, judge judgeState) bool {
 
 // measureClip probes the playback file for its frame size and sound, then measures it. The file
 // judged is the one that airs.
-func (d *DefectFloor) measureClip(ctx context.Context, c filler.Clip) (defects.Readings, error) {
+func (d *DefectFloor) measureClip(ctx context.Context, c clips.Clip) (defects.Readings, error) {
 	full, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil {
 		return defects.Readings{}, err
@@ -503,8 +505,8 @@ func (d *DefectFloor) measureClip(ctx context.Context, c filler.Clip) (defects.R
 // recorded break and is judged through its segments; an unplayable clip has no picture to judge.
 // A held clip is not yet placed: the score rung, last in the conveyor, classifies it, so until then
 // it reads as not playable and that says nothing about it.
-func defectCandidate(c filler.Clip) bool {
-	return !c.IsComposite && c.RemovedAt.IsZero() && (c.Held || c.Placement != filler.PlacementNotPlayable)
+func defectCandidate(c clips.Clip) bool {
+	return !c.IsComposite && c.RemovedAt.IsZero() && (c.Held || c.Placement != clips.PlacementNotPlayable)
 }
 
 func (d *DefectFloor) warn(msg string, args ...any) {

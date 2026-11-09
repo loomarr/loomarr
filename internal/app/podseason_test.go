@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
@@ -30,7 +30,7 @@ func TestPodAdapter_DatesHolidaysOnTheHouseholdCalendar(t *testing.T) {
 		want    pod.FitReason
 	}{{"GB", ""}, {"US", pod.FitSeason}} {
 		// A national ad of the household's own country, so only the season can refuse it.
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
+		ad := clips.Clip{Hash: "ad", Path: "ad.mp4", Role: clips.Commercial, Audience: clips.General,
 			DurationMs: 15_000, Tags: []string{"pancake-day"}, AssertedTags: []string{"pancake-day"},
 			GeographicScope: pod.GeographicNational, Country: tc.country}
 		set := visionSet(t, map[string]string{"filler.home_country": tc.country})
@@ -51,7 +51,7 @@ func TestPodAdapter_TheHouseholdLanguageIsEveryChannelsDefault(t *testing.T) {
 		household string
 		want      pod.FitReason
 	}{{"es", ""}, {"en", pod.FitLanguage}} {
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
+		ad := clips.Clip{Hash: "ad", Path: "ad.mp4", Role: clips.Commercial, Audience: clips.General,
 			DurationMs: 15_000, Language: "es"}
 		set := visionSet(t, map[string]string{"filler.language": tc.household})
 		pods := buildPodAdapter(nil, set, householdCalendar(set, holidays, log), log)

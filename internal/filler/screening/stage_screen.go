@@ -79,7 +79,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip cliplibrary.StoreC
 	if err := asset.WriteSidecarTags(playbackPath, tags, false); err != nil {
 		return segmentScreeningReview(clip, "rendered-child screening evidence could not be attached"), nil
 	}
-	filler.ReportProgress(ctx, pipelinestate.StageScreen, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageScreen, 100)
 
 	if axes := segmentScreeningAxesWithOutcome(aggregate, ScreenReject); len(axes) != 0 {
 		return filler.StageResult{

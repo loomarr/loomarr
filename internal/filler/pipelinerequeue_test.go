@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -17,7 +18,7 @@ import (
 // that structurally could not pass, and a requeue that carried them forward would exhaust the
 // budget on the way to succeeding — the same reason migration 00050 reset the column.
 func seedParkedReel(st *pipeMemStore, hash string) {
-	st.put(cliplibrary.StoreClip{Clip: filler.Clip{Hash: hash, Path: "reels/" + hash + ".mp4", Name: hash}})
+	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: "reels/" + hash + ".mp4", Name: hash}})
 	st.rows[hash] = pipelinestate.ClipPipeline{
 		ClipHash: hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
 		Disposition: pipelinestate.DispositionReview, Attempts: 3,
@@ -145,7 +146,7 @@ func TestRequeue_LeavesARunningRowAlone(t *testing.T) {
 // create one at a stage the enroller never chose.
 func TestRequeue_IsANoOpWithNoPipelineRow(t *testing.T) {
 	st := newPipeMemStore()
-	st.put(cliplibrary.StoreClip{Clip: filler.Clip{Hash: "reel1", Path: "reels/reel1.mp4", Name: "reel1"}})
+	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "reel1", Path: "reels/reel1.mp4", Name: "reel1"}})
 
 	moved, err := p2(st).Requeue(context.Background(), "reel1")
 	if err != nil {

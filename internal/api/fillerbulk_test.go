@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -47,9 +47,9 @@ func listPaths(t *testing.T, st store.Store, f clipstore.ClipFilter) []string {
 // an operator (or the tagger) already established.
 func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{
-		Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000,
-		Era: 1992, Audience: filler.General, Category: "cars",
+	putClip(t, st, clips.Clip{
+		Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000,
+		Era: 1992, Audience: clips.General, Category: "cars",
 	})
 
 	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag",
@@ -65,7 +65,7 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Audience != filler.Kids {
+	if got.Audience != clips.Kids {
 		t.Errorf("audience = %q, want kids", got.Audience)
 	}
 	if got.Era != 1992 || got.Category != "cars" {
@@ -85,7 +85,7 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 // be worse than applying the rest, so a missing clip is counted rather than fatal.
 func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000})
 
 	_, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag",
 		`{"hashes":["`+clipHashFor("a.mp4")+`","`+clipHashFor("gone.mp4")+`"],"tags":["toys"]}`, adminToken)
@@ -99,8 +99,8 @@ func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {
 // an operator's media — and the row survives so a restore can put it back.
 func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000})
-	putClip(t, st, filler.Clip{Path: "b.mp4", Name: "b.mp4", Role: filler.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "b.mp4", Name: "b.mp4", Role: clips.Commercial, DurationMs: 30_000})
 
 	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
 	if res.StatusCode != http.StatusOK {
@@ -126,7 +126,7 @@ func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
 func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000})
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
 
 	// Exactly what a scan does when it finds the file again: upsert the row from the
@@ -135,7 +135,7 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 	// updating the tombstoned one — and the test would pass for the wrong reason (the tombstone
 	// survives because nothing touched it). Identity is the hash since V38c.
 	if err := st.UpsertClip(ctx, clipstore.Clip{
-		Clip:      filler.Clip{Hash: clipHashFor("a.mp4"), Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000},
+		Clip:      clips.Clip{Hash: clipHashFor("a.mp4"), Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000},
 		UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 // Restore is the same write with the zero time, so undo cannot drift from removal.
 func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000})
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
 	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 0 {
 		t.Fatalf("setup: clip not removed, catalog = %v", got)
@@ -166,7 +166,7 @@ func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
 // §19 negatives: both routes edit the catalog.
 func TestFillerBulkRoutes_RequireAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Role: filler.Commercial, DurationMs: 30_000})
+	putClip(t, st, clips.Clip{Path: "a.mp4", Name: "a.mp4", Role: clips.Commercial, DurationMs: 30_000})
 
 	for _, path := range []string{"/v1/filler/bulk/tag", "/v1/filler/bulk/remove"} {
 		body := `{"hashes":["` + clipHashFor("a.mp4") + `"],"tags":["toys"]}`

@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -35,12 +37,12 @@ type spanTools struct {
 func (s *spanTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, errors.New("vision call used unbounded KeyframesIn; it must use VisionKeyframesIn")
 }
-func (s *spanTools) Keyframes(context.Context, string, int) ([][]byte, error) { return s.frames, s.err }
-func (s *spanTools) Chapters(context.Context, string) ([]Chapter, error)      { return nil, nil }
-func (s *spanTools) Boundaries(context.Context, string, int64, int64) ([]Interval, []Interval, error) {
+func (s *spanTools) Keyframes(context.Context, string, int) ([][]byte, error)  { return s.frames, s.err }
+func (s *spanTools) Chapters(context.Context, string) ([]tools.Chapter, error) { return nil, nil }
+func (s *spanTools) Boundaries(context.Context, string, int64, int64) ([]tools.Interval, []tools.Interval, error) {
 	return nil, nil, nil
 }
-func (s *spanTools) Transcribe(context.Context, string, int64, int64) ([]TranscriptSegment, error) {
+func (s *spanTools) Transcribe(context.Context, string, int64, int64) ([]tools.TranscriptSegment, error) {
 	return nil, nil
 }
 func (s *spanTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
@@ -152,7 +154,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	// THE assertion: the same gate that refused above now accepts.
 	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
@@ -185,7 +187,7 @@ func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
 	segments[0].Name = fallbackSegmentName("80s-tv-commercials.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if model.calls != 1 {
 		t.Fatalf("provider calls = %d, want the existing single grounding call", model.calls)
@@ -210,7 +212,7 @@ func TestSegmentVisionRejectsUnsupportedNameWithoutDiscardingOtherFields(t *test
 	segments[0].Name = fallbackSegmentName("holiday-reel.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" {
 		t.Fatalf("unsupported identity replaced fallback: %+v", segments[0])
@@ -229,7 +231,7 @@ func TestSegmentVisionDropsMalformedTitleWithoutDiscardingOtherFields(t *testing
 	segments[0].Name = fallbackSegmentName("reel.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" || segments[0].Category != "toys" {
 		t.Fatalf("malformed title poisoned independent fields: %+v", segments[0])
@@ -417,7 +419,7 @@ func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment per pass — two passes for two segments
 	})
-	clip := cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}
+	clip := cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}
 	segs := twoSegments()
 
 	first := s.ground(context.Background(), clip, segs)
@@ -456,7 +458,7 @@ func TestSegmentVision_APassThatAchievesNothingReportsNoProgress(t *testing.T) {
 		Budget: func() int { return 0 }, // vision switched off
 	})
 
-	got := s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	got := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if got.Looked != 0 || got.Pending != 2 {
 		t.Fatalf("zero-budget pass = %+v, want {Looked:0 Pending:2} — Looked>0 would defer forever", got)
 	}
@@ -473,7 +475,7 @@ func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testin
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 1 {
 		t.Errorf("model called %d times, want 1 — the budget is not bounding the pass", model.calls)
@@ -498,7 +500,7 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 		segs[i].Name = fallbackSegmentName("reel.mp4", i+1)
 		segs[i].NameOrigin = SplitNameFallback
 	}
-	pass := s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	pass := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if pass.Looked != 0 || pass.Pending != 2 {
 		t.Fatalf("provider failure pass = %+v, want no consumed segments", pass)
 	}
@@ -522,7 +524,7 @@ func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 0 {
 		t.Errorf("model called %d times with vision off, want 0", model.calls)
@@ -541,12 +543,12 @@ func TestSegmentVision_ResumesAfterTheCheckedBatch(t *testing.T) {
 	})
 	segs := twoSegments()
 
-	first := s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	first := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if first.Looked != 1 || first.Pending != 1 || !segs[0].Looked || segs[1].Looked {
 		t.Fatalf("first batch = %+v segments %+v", first, segs)
 	}
 
-	second := s.ground(context.Background(), cliplibrary.StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
+	second := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if second.Looked != 1 || second.Pending != 0 || model.calls != 2 {
 		t.Fatalf("second batch = %+v calls %d", second, model.calls)
 	}

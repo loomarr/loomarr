@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	catalogclips "github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -273,9 +273,9 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 	clips := s.db.Clips(tx)
 	switch state.Axis {
 	case enrichment.AxisRole:
-		if kind := filler.Role(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
-			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial ||
-			kind == filler.Political || kind == filler.News {
+		if kind := catalogclips.Role(state.Value.Text); kind == catalogclips.Commercial || kind == catalogclips.Bumper ||
+			kind == catalogclips.StationID || kind == catalogclips.PSA || kind == catalogclips.Trailer || kind == catalogclips.Interstitial ||
+			kind == catalogclips.Political || kind == catalogclips.News {
 			err = clips.ClassifyRole(ctx, state.ClipHash, kind, updatedAt)
 		}
 	case enrichment.AxisEra:
@@ -283,7 +283,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 			err = clips.SetEra(ctx, state.ClipHash, state.Value.Year, updatedAt)
 		}
 	case enrichment.AxisAudience:
-		if audience := filler.AudienceFromString(state.Value.Text); audience != "" {
+		if audience := catalogclips.AudienceFromString(state.Value.Text); audience != "" {
 			err = clips.FillAudience(ctx, state.ClipHash, string(audience), updatedAt)
 		}
 	case enrichment.AxisBrand:

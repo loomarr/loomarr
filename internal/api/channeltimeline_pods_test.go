@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -101,13 +101,13 @@ func timelineBreakGuide(now time.Time) *fakeXMLTVGuide {
 // seedPodClips stores two spots: "clip-still" has a still and a hover loop, "clip-bare" has neither.
 func seedPodClips(t *testing.T, st records.Store) {
 	t.Helper()
-	for _, c := range []filler.Clip{
+	for _, c := range []clips.Clip{
 		{
-			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial,
+			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: clips.Commercial,
 			DurationMs: 30_000, ThumbImageHash: "spot-still", HoverImageHash: "spot-hover",
 		},
 		{
-			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID,
+			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: clips.StationID,
 			DurationMs: 10_000,
 		},
 	} {
@@ -122,8 +122,8 @@ func timelinePodsFixture() (*fakePods, *fakeImageService) {
 		MatchLevel: pod.MatchExact,
 		TotalMs:    40_000,
 		Entries: []pod.Entry{
-			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial, DurationMs: 30_000},
-			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID, DurationMs: 10_000},
+			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: clips.Commercial, DurationMs: 30_000},
+			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: clips.StationID, DurationMs: 10_000},
 		},
 	}}
 	img := newFakeImageService()
@@ -194,7 +194,7 @@ func TestChannelTimeline_FallbackCardHasNoStill(t *testing.T) {
 	fp, img := timelinePodsFixture()
 	fp.pod = pod.Pod{
 		MatchLevel: pod.MatchBumperCard, TotalMs: 5_000,
-		Entries: []pod.Entry{{Name: "Please stand by", Role: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
+		Entries: []pod.Entry{{Name: "Please stand by", Role: clips.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
 	}
 	h := startTimelinePodsHarness(t, timelineBreakGuide(now), fp, img, false)
 	seedChannel(t, h.Store, "ch1", "Kettleton Classics", 1, "internal")

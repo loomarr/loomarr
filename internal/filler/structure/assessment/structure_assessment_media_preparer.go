@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -27,7 +26,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	mediaRoot  string
 	ffmpegPath string
 	profile    cut.Profile
-	probe      filler.Prober
+	probe      tools.Prober
 	identify   func(context.Context, string) (tools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
 	decode     func(context.Context, string, string) error

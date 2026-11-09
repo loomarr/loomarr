@@ -1,6 +1,9 @@
 package filler
 
-import "github.com/loomarr/loomarr/internal/filler/split"
+import (
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
+)
 
 type structureDecisionIntervalAuthority struct {
 	sha256 string
@@ -27,20 +30,20 @@ func structureDecisionAuthorityForInterval(proposal SplitProposal, segment split
 	return structureDecisionIntervalAuthority{}, false
 }
 
-func catalogRoleForStructureRole(role split.Role) (Role, bool) {
+func catalogRoleForStructureRole(role split.Role) (clips.Role, bool) {
 	switch role {
 	case split.RoleCommercial:
-		return Commercial, true
+		return clips.Commercial, true
 	case split.RolePromo, split.RoleInterstitial:
-		return Interstitial, true
+		return clips.Interstitial, true
 	case split.RoleBumper:
-		return Bumper, true
+		return clips.Bumper, true
 	case split.RoleStationID:
-		return StationID, true
+		return clips.StationID, true
 	case split.RolePSA:
-		return PSA, true
+		return clips.PSA, true
 	case split.RoleTrailer:
-		return Trailer, true
+		return clips.Trailer, true
 	default:
 		return "", false
 	}

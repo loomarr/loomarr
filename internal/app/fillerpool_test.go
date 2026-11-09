@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -20,7 +20,7 @@ import (
 // makes one thing non-negotiable about anything ladder-shaped: it must consume the SAME pools
 // assembly does, never a second copy that agrees today. These tests are what keeps that true.
 
-func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []channelstore.Channel) (podPreviewAdapter, store.Store) {
+func newPoolAdapter(t *testing.T, clips []clips.Clip, chans []channelstore.Channel) (podPreviewAdapter, store.Store) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -54,11 +54,11 @@ func liveChannel(id, name string, number, era int) channelstore.Channel {
 	}
 }
 
-func commercial(path string, era int, aud filler.Audience) filler.Clip {
-	return filler.Clip{
+func commercial(path string, era int, aud clips.Audience) clips.Clip {
+	return clips.Clip{
 		// Hash AND Path — identity is the hash since V38c, and the store keys on it.
 		Hash: path,
-		Path: path, Name: path, Role: filler.Commercial,
+		Path: path, Name: path, Role: clips.Commercial,
 		Era: era, Audience: aud, Category: "toys", DurationMs: 30_000,
 		TunarrProgramID: "tp-" + path,
 	}
@@ -73,10 +73,10 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	a, _ := newPoolAdapter(t,
-		[]filler.Clip{
-			commercial("1992/toys.mp4", 1992, filler.Kids),
-			commercial("1992/cereal.mp4", 1992, filler.Kids),
-			commercial("1978/cars.mp4", 1978, filler.General),
+		[]clips.Clip{
+			commercial("1992/toys.mp4", 1992, clips.Kids),
+			commercial("1992/cereal.mp4", 1992, clips.Kids),
+			commercial("1978/cars.mp4", 1978, clips.General),
 		},
 		[]channelstore.Channel{
 			liveChannel("ch-90s", "Saturday Mornings", 42, 1990),
@@ -114,11 +114,11 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 // with none reads as a role gap and acquisition takes bumpers and station IDs first.
 func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 	t.Parallel()
-	ident := commercial("ident.mp4", 1992, filler.General)
-	ident.Role = filler.StationID
+	ident := commercial("ident.mp4", 1992, clips.General)
+	ident.Role = clips.StationID
 	chans := []channelstore.Channel{liveChannel("ch-90s", "Saturday Mornings", 42, 1990)}
-	without, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)}, chans)
-	with, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids), ident}, chans)
+	without, _ := newPoolAdapter(t, []clips.Clip{commercial("1992/toys.mp4", 1992, clips.Kids)}, chans)
+	with, _ := newPoolAdapter(t, []clips.Clip{commercial("1992/toys.mp4", 1992, clips.Kids), ident}, chans)
 	for _, tc := range []struct {
 		a         podPreviewAdapter
 		bookends  int
@@ -142,9 +142,9 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 	a, _ := newPoolAdapter(t,
 		// Only 1990s kids material exists, so the 90s channel matches exactly and the
 		// others fall further down the ladder.
-		[]filler.Clip{
-			commercial("1992/toys.mp4", 1992, filler.Kids),
-			commercial("1994/cereal.mp4", 1994, filler.Kids),
+		[]clips.Clip{
+			commercial("1992/toys.mp4", 1992, clips.Kids),
+			commercial("1994/cereal.mp4", 1994, clips.Kids),
 		},
 		[]channelstore.Channel{
 			liveChannel("ch-90s", "Saturday Mornings", 42, 1990),
@@ -205,7 +205,7 @@ func TestPool_ExcludesPausedAndDetachedChannels(t *testing.T) {
 	detached.Status = schedule.StatusDetached
 
 	a, _ := newPoolAdapter(t,
-		[]filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)},
+		[]clips.Clip{commercial("1992/toys.mp4", 1992, clips.Kids)},
 		[]channelstore.Channel{liveChannel("ch-live", "Live One", 1, 1990), paused, detached},
 	)
 
@@ -228,13 +228,13 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	a, _ := newPoolAdapter(t,
-		[]filler.Clip{
-			commercial("1992/toys.mp4", 1992, filler.Kids),
+		[]clips.Clip{
+			commercial("1992/toys.mp4", 1992, clips.Kids),
 			// Untagged: a commercial with no era/audience/category. The store owns this
 			// predicate; the assertion below is what proves Pool asked it rather than
 			// counting in Go.
-			{Hash: "mystery.mp4", Path: "mystery.mp4", Name: "mystery.mp4", Role: filler.Commercial, DurationMs: 20_000},
-			{Hash: "bump.mp4", Path: "bump.mp4", Name: "bump.mp4", Role: filler.Bumper, DurationMs: 5_000},
+			{Hash: "mystery.mp4", Path: "mystery.mp4", Name: "mystery.mp4", Role: clips.Commercial, DurationMs: 20_000},
+			{Hash: "bump.mp4", Path: "bump.mp4", Name: "bump.mp4", Role: clips.Bumper, DurationMs: 5_000},
 		},
 		nil,
 	)
@@ -272,12 +272,12 @@ func TestPool_UntaggedCountsTheCatalogNotTheReviewQueue(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	a, st := newPoolAdapter(t,
-		[]filler.Clip{
+		[]clips.Clip{
 			// Filed and untagged: this one IS the operator's work, and must count.
-			{Hash: "filed.mp4", Path: "filed.mp4", Name: "filed.mp4", Role: filler.Commercial, DurationMs: 20_000},
+			{Hash: "filed.mp4", Path: "filed.mp4", Name: "filed.mp4", Role: clips.Commercial, DurationMs: 20_000},
 			// Downloaded, untagged, and still awaiting review below.
-			{Hash: "held-a.mp4", Path: "held-a.mp4", Name: "held-a.mp4", Role: filler.Commercial, DurationMs: 20_000},
-			{Hash: "held-b.mp4", Path: "held-b.mp4", Name: "held-b.mp4", Role: filler.Commercial, DurationMs: 20_000},
+			{Hash: "held-a.mp4", Path: "held-a.mp4", Name: "held-a.mp4", Role: clips.Commercial, DurationMs: 20_000},
+			{Hash: "held-b.mp4", Path: "held-b.mp4", Name: "held-b.mp4", Role: clips.Commercial, DurationMs: 20_000},
 		},
 		nil,
 	)

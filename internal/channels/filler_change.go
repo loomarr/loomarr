@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
@@ -13,13 +13,13 @@ import (
 // PodFiller lets older backends retain their existing assembly interface while this latency path
 // reuses the exact predicates behind coverage, preview and playout (§10 V57).
 type fillerFitter interface {
-	FitForChannel(channelID string, sel pod.Selection, clip filler.Clip) pod.Fit
+	FitForChannel(channelID string, sel pod.Selection, clip clips.Clip) pod.Fit
 }
 
 // ReconcileFillerChange immediately converges only channels that could use at least one before or
 // after snapshot. It is best-effort and idempotent; callers have already committed the catalog
 // mutation, and the ordinary sweep remains the crash-safe retry.
-func (e *Engine) ReconcileFillerChange(ctx context.Context, snapshots []filler.Clip) error {
+func (e *Engine) ReconcileFillerChange(ctx context.Context, snapshots []clips.Clip) error {
 	all, err := e.store.ListChannels(ctx)
 	if err != nil {
 		return fmt.Errorf("list channels for filler eligibility change: %w", err)

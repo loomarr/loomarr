@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
@@ -205,7 +206,7 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) jobs.Job {
 // clips, folds every copy of an ad into its best copy, and links variants. Hourly, so a better
 // copy that becomes ready replaces the old one within the hour; a pass only decodes clips it has
 // never measured, bounded to well inside the long-queue ceiling.
-func fillerIdentityJob(ci *filler.CreativeIdentity) jobs.Job {
+func fillerIdentityJob(ci *identity.Job) jobs.Job {
 	return jobs.Job{
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-identity", Group: jobs.GroupFiller, Title: "Keep one copy of each ad",

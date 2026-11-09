@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -39,7 +40,9 @@ func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c cli
 // derivativeStage is a transcode stage whose one encode writes body, on host when one is given.
 func derivativeStage(t *testing.T, dir string, host *encode.HostProfile, body string) *TranscodeStage {
 	t.Helper()
-	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	probe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
+	}
 	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	if host != nil {
 		stage.WithEncodeHost(func() encode.HostProfile { return *host })
@@ -50,12 +53,12 @@ func derivativeStage(t *testing.T, dir string, host *encode.HostProfile, body st
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(body), 0o600)
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+		return tools.MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(body), 0o600)
 	}
-	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (tools.MediaQuality, error) {
 		t.Fatal("a top-level clip's playback rendition was encoded a second time")
-		return MediaQuality{}, nil
+		return tools.MediaQuality{}, nil
 	}
 	return stage
 }
@@ -69,7 +72,7 @@ func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStag
 	dir := t.TempDir()
 	hash := writeContentAddressedClip(t, dir, []byte("the airing clip's source master"), ".mkv")
 	out, err := derivativeStage(t, dir, nil, "software derivative").Run(context.Background(),
-		cliplibrary.StoreClip{Clip: Clip{Hash: hash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mkv")), Name: "Advert", Role: Commercial}})
+		cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(hash, ".mkv")), Name: "Advert", Role: clips.Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}

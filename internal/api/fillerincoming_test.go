@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -69,7 +70,7 @@ func clipHashFor(path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func putClip(t *testing.T, st store.Store, clip filler.Clip) {
+func putClip(t *testing.T, st store.Store, clip clips.Clip) {
 	t.Helper()
 	if clip.Hash == "" {
 		clip.Hash = clipHashFor(clip.Path)
@@ -83,7 +84,7 @@ func putClip(t *testing.T, st store.Store, clip filler.Clip) {
 func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWork(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
-	for _, clip := range []filler.Clip{
+	for _, clip := range []clips.Clip{
 		{Hash: "preparing", Path: "preparing.mp4", Name: "Preparing clip", Held: true},
 		{Hash: "ready", Path: "ready.mp4", Name: "Ready clip"},
 		{Hash: "old-ready", Path: "old-ready.mp4", Name: "Old Ready clip"},
@@ -132,7 +133,7 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentStage(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
-	putClip(t, st, filler.Clip{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true})
+	putClip(t, st, clips.Clip{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true})
 	if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
 		ClipHash: "retrying", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning, Progress: 47,
 		Disposition: pipelinestate.DispositionRunning, Attempts: 2, UpdatedAt: now,
@@ -177,7 +178,7 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 func TestFillerIncoming_ShowsNextTryOnlyWhileTheCurrentStepWaitsForRetry(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
-	for _, clip := range []filler.Clip{
+	for _, clip := range []clips.Clip{
 		{Hash: "active", Path: "active.mp4", Name: "Active clip", Held: true},
 		{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true},
 	} {
@@ -231,7 +232,7 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC)
 			srv, st, _ := newFillerServerWithIncomingConfig(t, tc.window, now)
-			for _, clip := range []filler.Clip{
+			for _, clip := range []clips.Clip{
 				{Hash: "at-cutoff", Path: "at-cutoff.mp4", Name: "At cutoff"},
 				{Hash: "before-cutoff", Path: "before-cutoff.mp4", Name: "Before cutoff"},
 			} {
@@ -266,7 +267,7 @@ func TestFillerIncoming_PagesPreparingWithTheSamePredicateAsItsTotal(t *testing.
 	now := time.Now().UTC().Truncate(time.Second)
 	for i := range 22 {
 		hash := fmt.Sprintf("preparing-%02d", i)
-		putClip(t, st, filler.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Clip %02d", i), Held: true})
+		putClip(t, st, clips.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Clip %02d", i), Held: true})
 		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
 			ClipHash: hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
 			Disposition: pipelinestate.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
@@ -302,7 +303,7 @@ func TestFillerIncoming_ProjectsAndPagesOnlyReadySplitsAsDurableHelp(t *testing.
 	now := time.Now().UTC().Truncate(time.Second)
 	for i := range 22 {
 		hash := fmt.Sprintf("compilation-%02d", i)
-		putClip(t, st, filler.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Reel %02d", i), Held: true, IsComposite: true})
+		putClip(t, st, clips.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Reel %02d", i), Held: true, IsComposite: true})
 		if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
 			ID: fmt.Sprintf("split-%02d", i), ClipHash: hash, CreatedAt: now.Add(time.Duration(i) * time.Second),
 			Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},

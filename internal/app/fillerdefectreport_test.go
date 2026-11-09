@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -25,7 +25,7 @@ func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 	at := time.Unix(1_800_000_000, 0).UTC()
 	for _, hash := range []string{"measured", "unmeasured"} {
 		c := clipstore.Clip{}
-		c.Hash, c.Path, c.Name, c.Role, c.Era = hash, hash+".mp4", hash, filler.Commercial, 1988
+		c.Hash, c.Path, c.Name, c.Role, c.Era = hash, hash+".mp4", hash, clips.Commercial, 1988
 		if err := st.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
 		}

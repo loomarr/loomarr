@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -15,7 +16,7 @@ import (
 // Split confirmation owns domain enrollment; splitPublication owns only filesystem visibility.
 type preparedSplitCut struct {
 	segment  split.Segment
-	kind     Role
+	kind     clips.Role
 	hash     string
 	path     string
 	staged   string

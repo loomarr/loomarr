@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -48,16 +49,16 @@ func borderlineCatalog(t *testing.T, n int) ([]DefectClip, *defectMemStore) {
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 8.5}
 	st := &defectMemStore{records: map[string]DefectRecord{}}
-	var clips []DefectClip
+	var pool []DefectClip
 	for i := range n {
 		hash := writeContentAddressedClip(t, dir, []byte{byte('a' + i)}, ".mp4")
 		c := DefectClip{CreatedAt: t0.Add(time.Duration(i) * time.Minute)}
-		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.DurationMs = hash, cliplibrary.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
-		clips = append(clips, c)
+		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.DurationMs = hash, cliplibrary.ClipRelPath(hash, ".mp4"), 1988, clips.Commercial, clips.PlacementBreakBody, 30_000
+		pool = append(pool, c)
 		st.records[hash] = DefectRecord{ClipHash: hash, Readings: soft, Era: 1988, Assessment: defects.Assess(soft, 1988)}
 	}
-	st.clips = clips
-	return clips, st
+	st.clips = pool
+	return pool, st
 }
 
 func runFloor(t *testing.T, st *defectMemStore, judge DefectJudge) DefectFloorResult {
@@ -65,7 +66,7 @@ func runFloor(t *testing.T, st *defectMemStore, judge DefectJudge) DefectFloorRe
 	return runFloorProbing(t, st, judge, nil)
 }
 
-func runFloorProbing(t *testing.T, st *defectMemStore, judge DefectJudge, probe filler.Prober) DefectFloorResult {
+func runFloorProbing(t *testing.T, st *defectMemStore, judge DefectJudge, probe tools.Prober) DefectFloorResult {
 	t.Helper()
 	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
 		t.Fatal("a clip with a current measurement was decoded")
@@ -179,11 +180,11 @@ func TestDefectFloor_ProbesALengthTheCatalogLacks(t *testing.T) {
 	clips, st := borderlineCatalog(t, 2)
 	st.clips[0].DurationMs, st.clips[1].DurationMs = 0, 0
 	judge := &scriptedJudge{model: "m1"}
-	probe := func(_ context.Context, file string) (filler.Probed, error) {
+	probe := func(_ context.Context, file string) (tools.Probed, error) {
 		if strings.Contains(file, clips[1].Hash) {
-			return filler.Probed{}, errors.New("moov atom not found")
+			return tools.Probed{}, errors.New("moov atom not found")
 		}
-		return filler.Probed{DurationMs: 12_000}, nil
+		return tools.Probed{DurationMs: 12_000}, nil
 	}
 	res := runFloorProbing(t, st, judge, probe)
 	if len(judge.asked) != 1 || judge.durations[0] != 12_000 || res.Ruled != 1 {
@@ -245,11 +246,11 @@ func (l *judgeLedger) SettleDefectJudge(ctx context.Context, id string, _ Defect
 }
 
 type judgeFrames struct {
-	filler.MediaTools // only VisionKeyframesIn is called
-	frames            [][]byte
-	file              string
-	span              [2]int64
-	n                 int
+	tools.MediaTools // only VisionKeyframesIn is called
+	frames           [][]byte
+	file             string
+	span             [2]int64
+	n                int
 }
 
 func (f *judgeFrames) VisionKeyframesIn(_ context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {

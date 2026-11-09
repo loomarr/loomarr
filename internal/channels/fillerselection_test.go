@@ -5,7 +5,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
@@ -80,18 +80,18 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		filler       *schedule.FillerSelection
-		wantAudience filler.Audience
+		wantAudience clips.Audience
 		wantEra      pod.EraRange
 	}{
-		{"no filler policy derives", nil, filler.Kids, pod.EraRange{From: 1994, To: 1998}},
-		{"an empty filler policy derives", &schedule.FillerSelection{}, filler.Kids, pod.EraRange{From: 1994, To: 1998}},
+		{"no filler policy derives", nil, clips.Kids, pod.EraRange{From: 1994, To: 1998}},
+		{"an empty filler policy derives", &schedule.FillerSelection{}, clips.Kids, pod.EraRange{From: 1994, To: 1998}},
 		{
 			"an explicit audience wins over derivation",
-			&schedule.FillerSelection{Audience: "general"}, filler.General, pod.EraRange{From: 1994, To: 1998},
+			&schedule.FillerSelection{Audience: "general"}, clips.General, pod.EraRange{From: 1994, To: 1998},
 		},
 		{
 			"an explicit any-era wins over derivation",
-			&schedule.FillerSelection{Era: &schedule.Range{}}, filler.Kids, pod.EraRange{},
+			&schedule.FillerSelection{Era: &schedule.Range{}}, clips.Kids, pod.EraRange{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -105,17 +105,17 @@ func (e taxonomyEditor) preview(ctx context.Context, edit clipstore.TaxonomyEdit
 	return out, nil
 }
 
-func (e taxonomyEditor) playableSnapshots(ctx context.Context, hashes []string) ([]filler.Clip, error) {
+func (e taxonomyEditor) playableSnapshots(ctx context.Context, hashes []string) ([]clips.Clip, error) {
 	if len(hashes) == 0 {
 		return nil, nil
 	}
-	clips, err := e.store.ListClips(ctx, clipstore.ClipFilter{Hashes: hashes})
+	rows, err := e.store.ListClips(ctx, clipstore.ClipFilter{Hashes: hashes})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Clip, len(clips))
-	for i := range clips {
-		out[i] = clips[i].Clip
+	out := make([]clips.Clip, len(rows))
+	for i := range rows {
+		out[i] = rows[i].Clip
 	}
 	return out, nil
 }

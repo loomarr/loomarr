@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type capturedStructureDecisioner struct {
@@ -34,7 +35,7 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 28_000, Title: "detector left"},
 		{StartMs: 28_000, EndMs: 60_000, Title: "detector right"},
 	}}
@@ -79,7 +80,7 @@ func TestSplitStageNeverMixesTwoStructureRuntimesInOneSplit(t *testing.T) {
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 28_000}, {StartMs: 28_000, EndMs: 60_000},
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir())
@@ -126,7 +127,7 @@ func TestSplitStageNeverMixesTwoStructureRuntimesInOneSplit(t *testing.T) {
 func TestHeldCompleteTimelineDecisionDoesNotReplaceDetectorAssessment(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/held-timeline.mp4", 60_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 28_000}, {StartMs: 28_000, EndMs: 60_000},
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir())
@@ -151,7 +152,7 @@ func TestHeldCompleteTimelineDecisionDoesNotReplaceDetectorAssessment(t *testing
 func TestRolelessConfirmedDecisionIsKeptWithoutReplacingDetectorAssessment(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/roleless-timeline.mp4", 60_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 28_000}, {StartMs: 28_000, EndMs: 60_000},
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir())
@@ -191,7 +192,7 @@ func TestSplitStageAssessmentFailureHoldsProposalForReview(t *testing.T) {
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000},
 	}}
 	drop := t.TempDir()
@@ -228,7 +229,7 @@ func TestSplitStageAssessmentCancellationRemainsResumable(t *testing.T) {
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000},
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir())
@@ -250,7 +251,7 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 145_000, Title: "detector left"},
 		{StartMs: 145_000, EndMs: 300_000, Title: "detector right"},
 	}}

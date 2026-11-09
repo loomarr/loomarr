@@ -631,7 +631,7 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 			return row.Disposition, err
 		}
 
-		stageCtx := WithProgress(ctx, p.stageProgress(ctx, &row, clip))
+		stageCtx := pipelinestate.WithProgress(ctx, p.stageProgress(ctx, &row, clip))
 		out, runErr := p.runYielding(stageCtx, s, stage, clip)
 		s.charge(stage.Cost())
 
@@ -989,7 +989,7 @@ const (
 )
 
 // stageProgress builds the ProgressFunc for one stage run, owning that run's throttle state.
-func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) ProgressFunc {
+func (p *Pipeline) stageProgress(ctx context.Context, row *pipelinestate.ClipPipeline, clip cliplibrary.StoreClip) pipelinestate.ProgressFunc {
 	// Seeded from the write the runner just made when it set the stage RUNNING at 0.
 	t := &progressThrottle{lastWritten: 0, lastWriteAt: p.now()}
 	return func(id pipelinestate.StageID, percent int) {
@@ -1014,8 +1014,8 @@ func (p *Pipeline) onProgress(ctx context.Context, row *pipelinestate.ClipPipeli
 	// the fabricated-progress claim §10 explicitly forbids. `tag` and `vision` both report it, so
 	// every run of either stage showed a false 0% bar. It fires once per stage, so always writing
 	// it costs one row update, not a write per sample.
-	if percent == NoMeasurement {
-		row.Progress = NoMeasurement
+	if percent == pipelinestate.NoMeasurement {
+		row.Progress = pipelinestate.NoMeasurement
 		p.writeProgress(ctx, row, clip, t, percent)
 		return
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
@@ -33,9 +34,9 @@ func completedReadyRow(hash string, at time.Time) pipelinestate.ClipPipeline {
 }
 
 func readyClip(hash string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: filler.Clip{
+	return cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: hash, Path: "clip.mp4", Source: "archive:classic_tv_commercials",
-		Role: filler.Unclassified, Held: true, DurationMs: 30_000,
+		Role: clips.Unclassified, Held: true, DurationMs: 30_000,
 	}}
 }
 
@@ -91,7 +92,7 @@ func TestReadyCommitRejectsInvalidAuthorityAndPlacement(t *testing.T) {
 	valid := filler.ReadyCommit{Event: filler.ReadyEvent{
 		ID: "ready:clip-hash", ClipHash: "clip-hash", AcquisitionID: "acquisition-1",
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: "acquisition-1"},
-		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+		Placement:  clips.PlacementBreakBody, CreatedAt: at,
 	}, Pipeline: row}
 	tests := []struct {
 		name   string
@@ -130,7 +131,7 @@ func TestReadyCommitRequiresExactTerminalLadderAdvance(t *testing.T) {
 	commit := filler.ReadyCommit{Event: filler.ReadyEvent{
 		ID: "ready:clip-hash", ClipHash: "clip-hash", AcquisitionID: "acquisition-1",
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: "acquisition-1"},
-		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+		Placement:  clips.PlacementBreakBody, CreatedAt: at,
 	}, Pipeline: settled}
 	current := settled
 	current.Disposition = pipelinestate.DispositionRunning

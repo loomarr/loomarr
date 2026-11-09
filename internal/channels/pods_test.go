@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -41,13 +41,13 @@ type fakePods struct {
 	fitChannels   map[string]bool
 }
 
-type fixedClipCatalog []filler.Clip
+type fixedClipCatalog []clips.Clip
 
-func (catalog fixedClipCatalog) AllClips(context.Context) ([]filler.Clip, error) {
+func (catalog fixedClipCatalog) AllClips(context.Context) ([]clips.Clip, error) {
 	return catalog, nil
 }
 
-func (f *fakePods) FitForChannel(channelID string, _ pod.Selection, _ filler.Clip) pod.Fit {
+func (f *fakePods) FitForChannel(channelID string, _ pod.Selection, _ clips.Clip) pod.Fit {
 	if f.fitChannels == nil || f.fitChannels[channelID] {
 		return pod.Fit{}
 	}
@@ -123,7 +123,7 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 	// impossible unheld row, the real pod adapter must not turn it into a scheduled break.
 	pods := pod.NewAdapter(fixedClipCatalog{{
 		Hash: "unclassified", Path: "unclassified.mp4", TunarrProgramID: "unclassified-program",
-		Name: "Unknown clip", Role: filler.Unclassified, DurationMs: 30_000,
+		Name: "Unknown clip", Role: clips.Unclassified, DurationMs: 30_000,
 	}}, nil, func() pod.Policy {
 		return pod.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, testkit.Logger())
@@ -159,7 +159,7 @@ func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 	pods := &fakePods{ids: []string{"clip-a"}, fitChannels: map[string]bool{"fits": true}}
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil).WithPods(pods)
 
-	if err := e.ReconcileFillerChange(context.Background(), []filler.Clip{{Hash: "clip-a", Role: filler.Commercial}}); err != nil {
+	if err := e.ReconcileFillerChange(context.Background(), []clips.Clip{{Hash: "clip-a", Role: clips.Commercial}}); err != nil {
 		t.Fatal(err)
 	}
 	fit, _ := st.GetChannel(context.Background(), "fits")

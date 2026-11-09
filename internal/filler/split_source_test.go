@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -31,16 +32,16 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 		ExecutableSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
-		ClipDir: root, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
+		ClipDir: root, Source: master, Input: tools.Probed{DurationMs: 61_000, Height: 480},
 		Recipe: tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine()), Tool: tool,
-		Probe: func(context.Context, string) (Probed, error) {
-			return Probed{DurationMs: 61_000, Height: 480}, nil
+		Probe: func(context.Context, string) (tools.Probed, error) {
+			return tools.Probed{DurationMs: 61_000, Height: 480}, nil
 		},
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
-		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, []byte("evidence derivative bytes"), 0o600)
+		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+			return tools.MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, []byte("evidence derivative bytes"), 0o600)
 		},
 	})
 	if err != nil {
@@ -64,7 +65,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	clip := cliplibrary.StoreClip{Clip: Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
+	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
 
 	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, split.SourceAsset{})
 	if err != nil {

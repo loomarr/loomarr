@@ -32,7 +32,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -53,13 +53,13 @@ const adminToken = "admin-integration-token"
 // clipCatalogAdapter — the pod assembler's catalog source).
 type clipCatalog struct{ st store.Store }
 
-func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
+func (a clipCatalog) AllClips(ctx context.Context) ([]clips.Clip, error) {
+	rows, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Clip, len(clips))
-	for i, c := range clips {
+	out := make([]clips.Clip, len(rows))
+	for i, c := range rows {
 		out[i] = c.Clip
 	}
 	return out, nil
@@ -220,12 +220,12 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Propo
 // handle for the same distinct clip.
 func seedFillerClips(t *testing.T, st store.Store) {
 	t.Helper()
-	clips := []filler.Clip{
-		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Role: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
+	clips := []clips.Clip{
+		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Role: clips.Bumper, Era: 1992, Audience: clips.Kids, DurationMs: 5000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: clips.Commercial, Era: 1992, Audience: clips.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {

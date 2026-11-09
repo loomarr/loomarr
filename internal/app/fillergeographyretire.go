@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -44,7 +44,7 @@ func (r fillerGeographyRetirement) Run(ctx context.Context) (int, error) {
 	}
 	var paths []string
 	for _, c := range settled {
-		clip := filler.Clip{GeographicScope: pod.GeographicScope(c.Scope), Country: c.Country, Station: c.Station}
+		clip := clips.Clip{GeographicScope: pod.GeographicScope(c.Scope), Country: c.Country, Station: c.Station}
 		if !pod.UsableIn(clip, areas) {
 			paths = append(paths, c.Path)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -19,7 +20,7 @@ func (c *optsCapture) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOpti
 // temperature with no output limit (a runaway answer holds a single-slot server for minutes).
 func TestFindAdBreaks_SendsBoundedLowTemperatureJSONRequest(t *testing.T) {
 	model := &optsCapture{}
-	_, _ = findAdBreaks(context.Background(), model, []TranscriptSegment{{StartMs: 0, EndMs: 25000, Text: "buy soap"}}, 30000, newSegmentFloor(0))
+	_, _ = findAdBreaks(context.Background(), model, []tools.TranscriptSegment{{StartMs: 0, EndMs: 25000, Text: "buy soap"}}, 30000, newSegmentFloor(0))
 	if len(model.opts) != 1 {
 		t.Fatalf("calls = %d", len(model.opts))
 	}

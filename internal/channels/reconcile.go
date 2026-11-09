@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/rating"
@@ -730,7 +730,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	sel := pod.Selection{}
 	inheritEra := true
 	if f != nil {
-		sel.Audience = filler.Audience(f.Audience)
+		sel.Audience = clips.Audience(f.Audience)
 		sel.Categories = append([]string(nil), f.Categories...)
 		sel.Roles = append([]string(nil), f.Roles...)
 		sel.Pinned = append([]string(nil), f.Pinned...)
@@ -768,7 +768,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	// the seed always writes one — so it derives. A kids ceiling then reaches the ladder's
 	// fail-closed audience rules instead of the open general pool.
 	if sel.Audience == "" {
-		sel.Audience = filler.Audience(derived.Audience)
+		sel.Audience = clips.Audience(derived.Audience)
 	}
 	return sel
 }

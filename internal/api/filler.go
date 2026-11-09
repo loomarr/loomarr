@@ -633,9 +633,9 @@ type listFillerOutput struct {
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
 	f := clipstore.ClipFilter{
-		Role:                filler.Role(in.Role),
+		Role:                clips.Role(in.Role),
 		Era:                 in.Era,
-		Audience:            filler.Audience(in.Audience),
+		Audience:            clips.Audience(in.Audience),
 		Category:            in.Category,
 		GeographicScope:     pod.GeographicScope(in.GeographicScope),
 		Country:             in.Country,

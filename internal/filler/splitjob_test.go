@@ -46,10 +46,10 @@ func (splitCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.
 
 // fakeTools scripts MediaTools per test (§19 — unit tests never exec a binary).
 type fakeTools struct {
-	chapters      []filler.Chapter
-	blacks        []filler.Interval
-	silences      []filler.Interval
-	transcripts   map[string][]filler.TranscriptSegment // "start:end" → utterances
+	chapters      []tools.Chapter
+	blacks        []tools.Interval
+	silences      []tools.Interval
+	transcripts   map[string][]tools.TranscriptSegment // "start:end" → utterances
 	transcribeErr error
 	spans         map[string]creative.Fingerprint // "path|start|end" → creative
 	keyframes     map[string][][]byte             // basename → JPEG frames (V44 vision/heuristic input)
@@ -57,7 +57,7 @@ type fakeTools struct {
 	chapterCalls     int
 	blackSilenceCall int
 	boundarySpans    [][2]int64
-	boundaryFn       func(context.Context, int64, int64) ([]filler.Interval, error)
+	boundaryFn       func(context.Context, int64, int64) ([]tools.Interval, error)
 	cutCalls         []string
 	fingerprintCalls []string
 	keyframeSpans    [][2]int64
@@ -102,22 +102,22 @@ func (s *splitShadowCapture) ObserveStructureSplit(_ context.Context, proposal f
 
 func key3(path string, start, end int64) string { return fmt.Sprintf("%s|%d|%d", path, start, end) }
 
-func (f *fakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
+func (f *fakeTools) Chapters(context.Context, string) ([]tools.Chapter, error) {
 	f.chapterCalls++
 	return f.chapters, nil
 }
 
-func (f *fakeTools) Boundaries(ctx context.Context, _ string, startMs, endMs int64) ([]filler.Interval, []filler.Interval, error) {
+func (f *fakeTools) Boundaries(ctx context.Context, _ string, startMs, endMs int64) ([]tools.Interval, []tools.Interval, error) {
 	f.blackSilenceCall++
 	f.boundarySpans = append(f.boundarySpans, [2]int64{startMs, endMs})
 	if f.boundaryFn != nil {
 		gaps, err := f.boundaryFn(ctx, startMs, endMs)
 		return gaps, nil, err
 	}
-	return append([]filler.Interval(nil), f.blacks...), append([]filler.Interval(nil), f.silences...), nil
+	return append([]tools.Interval(nil), f.blacks...), append([]tools.Interval(nil), f.silences...), nil
 }
 
-func (f *fakeTools) Transcribe(_ context.Context, _ string, start, end int64) ([]filler.TranscriptSegment, error) {
+func (f *fakeTools) Transcribe(_ context.Context, _ string, start, end int64) ([]tools.TranscriptSegment, error) {
 	if f.transcribeErr != nil {
 		return nil, f.transcribeErr
 	}
@@ -735,7 +735,7 @@ func seedCompilation(st *splitMemStore, path string, durationMs int64) string {
 	c.Hash = splitFixtureIdentity(path)
 	c.Path = path
 	c.Name = filepath.Base(path)
-	c.Role = filler.Commercial
+	c.Role = clips.Commercial
 	c.DurationMs = durationMs
 	c.Source = "archive"
 	c.License = "https://creativecommons.org/licenses/by/4.0/"
@@ -767,7 +767,7 @@ func stageParentForSplitReview(st *splitMemStore, hash string) {
 	}
 }
 
-func newSplitter(st filler.SplitStore, tools filler.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
+func newSplitter(st filler.SplitStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
 	materializeSplitSources(st, dropDir)
 	var p llm.Provider
 	if provider != nil {
@@ -823,7 +823,7 @@ func TestSplitStage_LongBoundaryScanResumesFromDurableChunkAfterRestartAndTimeou
 	hash := seedCompilation(st, "comps/three-hour-shape.mp4", duration)
 	var cancelSecondBoundary context.CancelFunc
 	cancelDuringSecondBoundary := false
-	tools := &fakeTools{boundaryFn: func(ctx context.Context, startMs, endMs int64) ([]filler.Interval, error) {
+	tools := &fakeTools{boundaryFn: func(ctx context.Context, startMs, endMs int64) ([]tools.Interval, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -832,9 +832,9 @@ func TestSplitStage_LongBoundaryScanResumesFromDurableChunkAfterRestartAndTimeou
 			cancelSecondBoundary()
 			return nil, ctx.Err()
 		}
-		var gaps []filler.Interval
+		var gaps []tools.Interval
 		for cut := startMs + 30_000; cut < endMs; cut += 30_000 {
-			gaps = append(gaps, filler.Interval{StartMs: cut - 100, EndMs: cut + 100})
+			gaps = append(gaps, tools.Interval{StartMs: cut - 100, EndMs: cut + 100})
 		}
 		return gaps, nil
 	}}
@@ -916,11 +916,11 @@ func TestSplitStage_BoundaryConfidenceSurvivesDetectionCheckpoint(t *testing.T) 
 	clip.IsComposite = true
 	st.clips[hash] = clip
 	tools := &fakeTools{
-		blacks: []filler.Interval{
+		blacks: []tools.Interval{
 			{StartMs: 20_000, EndMs: 21_000},
 			{StartMs: 40_000, EndMs: 41_000},
 		},
-		silences: []filler.Interval{
+		silences: []tools.Interval{
 			{StartMs: 20_000, EndMs: 21_000},
 			{StartMs: 40_000, EndMs: 41_000},
 		},
@@ -955,7 +955,7 @@ func TestSplitStage_UntitledChapterEvidenceSurvivesDetectionCheckpoint(t *testin
 	clip := st.clips[hash]
 	clip.IsComposite = true
 	st.clips[hash] = clip
-	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 60_000}}}
+	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 60_000}}}
 	newStage := func() *filler.SplitStage {
 		return filler.NewSplitStage(newSplitter(st, tools, nil, t.TempDir()), st)
 	}
@@ -981,7 +981,7 @@ func TestSplitStage_UntitledChapterEvidenceSurvivesDetectionCheckpoint(t *testin
 func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
 		{StartMs: 30000, EndMs: 61000, Title: "Brickle"},
 	}}
@@ -1021,7 +1021,7 @@ func TestPropose_PreparesRepresentativeArtworkForEachExactSpan(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/with-artwork.mp4", 61_000)
 	tools := &fakeTools{
-		chapters: []filler.Chapter{
+		chapters: []tools.Chapter{
 			{StartMs: 0, EndMs: 30_000, Title: "First"},
 			{StartMs: 30_000, EndMs: 61_000, Title: "Second"},
 		},
@@ -1058,7 +1058,7 @@ func TestPropose_PreparesRepresentativeArtworkForEachExactSpan(t *testing.T) {
 func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/mixed-language.mp4", 60_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
 		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
@@ -1116,7 +1116,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 func TestPropose_KeepsEveryLanguageAChannelAirs(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/three-languages.mp4", 60_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
 		{StartMs: 40_000, EndMs: 60_000, Title: "French advert"},
@@ -1149,7 +1149,7 @@ func TestPropose_KeepsEveryLanguageAChannelAirs(t *testing.T) {
 func TestPropose_AFailedChannelReadFailsThePass(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/unread.mp4", 40_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "One"}, {StartMs: 20_000, EndMs: 40_000, Title: "Two"},
 	}}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
@@ -1165,7 +1165,7 @@ func TestPropose_AFailedChannelReadFailsThePass(t *testing.T) {
 func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/uncertain-language.mp4", 40_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "Unknown advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Temporarily unavailable advert"},
 	}}
@@ -1203,7 +1203,7 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/unavailable-language.mp4", 40_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "First advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Second advert"},
 	}}
@@ -1238,7 +1238,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	st := newSplitMemStore()
 	st.roundTripProposals = true
 	hash := seedCompilation(st, "comps/resumable-language.mp4", 60_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
 		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
@@ -1299,7 +1299,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForReview(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/polish-only.mp4", 40_000)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 20_000, Title: "First Polish advert"},
 		{StartMs: 20_000, EndMs: 40_000, Title: "Second Polish advert"},
 	}}
@@ -1340,8 +1340,8 @@ func TestPropose_CoarseSplit(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 90_000)
 	tools := &fakeTools{
-		blacks:   []filler.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 29800, EndMs: 30200}},
-		silences: []filler.Interval{{StartMs: 59900, EndMs: 60100}},
+		blacks:   []tools.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 29800, EndMs: 30200}},
+		silences: []tools.Interval{{StartMs: 59900, EndMs: 60100}},
 	}
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["cars"]}`),
@@ -1384,7 +1384,7 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/late-night.mp4", 149_000)
 	tools := &fakeTools{ // no chapters, no black, no silence — the measured shape
-		transcripts: map[string][]filler.TranscriptSegment{
+		transcripts: map[string][]tools.TranscriptSegment{
 			"0:149000": {
 				{StartMs: 0, EndMs: 27000, Text: "The Dustwick sweeper picks up dust"},
 				{StartMs: 27400, EndMs: 54000, Text: "Drip Orbs water your plants since 1987"},
@@ -1441,7 +1441,7 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/infomercial.mp4", 121_000)
 	tools := &fakeTools{
-		transcripts: map[string][]filler.TranscriptSegment{
+		transcripts: map[string][]tools.TranscriptSegment{
 			"0:121000": {{StartMs: 0, EndMs: 121000, Text: "The amazing knife slices, dices, and juliennes"}},
 		},
 	}
@@ -1484,7 +1484,7 @@ func TestPropose_WhisperFailureMarksUnsplittable(t *testing.T) {
 func TestPropose_NoLLMDegradesHonestly(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 160_000)
-	tools := &fakeTools{blacks: []filler.Interval{{StartMs: 29800, EndMs: 30200}}}
+	tools := &fakeTools{blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}}}
 	sp := newSplitter(st, tools, nil, t.TempDir())
 
 	p, err := sp.Propose(context.Background(), hash)
@@ -1518,7 +1518,7 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	st.clips[existing.Hash] = existing
 
 	tools := &fakeTools{
-		blacks: []filler.Interval{{StartMs: 29800, EndMs: 30200}},
+		blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}},
 		spans: map[string]creative.Fingerprint{
 			key3("1987.mp4", 0, 30000):        spot(1),
 			key3("1987.mp4", 30000, 60_000):   spot(2), // matches ONLY the compilation
@@ -1553,7 +1553,7 @@ func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
 	st.clips[existing.Hash] = existing
 
 	tools := &fakeTools{
-		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
+		chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
 		spans: map[string]creative.Fingerprint{
 			key3("catalog-ad.mp4", 0, 30_000): spot(1),
 			key3("first.mp4", 0, 30_000):      spot(1),
@@ -1600,7 +1600,7 @@ func TestPropose_CatalogFingerprintCompletedAtDeadlineIsStillPersisted(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 	canceled := false
 	tools := &fakeTools{
-		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
+		chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
 		spans: map[string]creative.Fingerprint{
 			key3("deadline-candidate.mp4", 0, 30_000): spot(1),
 			key3("deadline.mp4", 0, 30_000):           spot(1),
@@ -1639,7 +1639,7 @@ func TestPropose_CatalogFingerprintCacheFailureFallsBackToMedia(t *testing.T) {
 	st.fingerprintWriteErr = errors.New("cache write unavailable")
 
 	tools := &fakeTools{
-		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
+		chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
 		spans: map[string]creative.Fingerprint{
 			key3("cache-failure-candidate.mp4", 0, 30_000): spot(1),
 			key3("cache-failure.mp4", 0, 30_000):           spot(1),
@@ -1828,7 +1828,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	hash = bindCompilationIdentity(t, st, hash, src)
 	stageParentForSplitReview(st, hash)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		{StartMs: 61_000, EndMs: 91_000, Title: "Boundary edit"},
@@ -1856,12 +1856,12 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	// The operator's EDITED list accepts tags but also forges language evidence. Language is detector
 	// evidence, not an editable tag: Confirm must bind it back to the persisted exact intervals.
 	edited := []split.Segment{
-		{StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
-		{StartMs: 30000, EndMs: 61000, Name: "Brickle", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
+		{StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: clips.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
+		{StartMs: 30000, EndMs: 61000, Name: "Brickle", Era: 1987, Audience: clips.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
 		// Moving the start makes this a different audio span, so even a truthful copied answer must
 		// not bypass the child's downstream language check.
 		// The operator left this one's era unset, so its guessed era becomes an uncited observation.
-		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", SuggestedEra: 1985, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
+		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", SuggestedEra: 1985, Audience: clips.General, Category: "retail", Language: "en", LanguageChecked: true},
 	}
 	if _, err := sp.Confirm(context.Background(), propID, edited); err != nil {
 		t.Fatal(err)
@@ -1893,7 +1893,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if c.IsComposite {
 			continue // the kept parent, not a segment
 		}
-		if c.DurationMs <= 0 || c.Role != filler.Commercial || c.License == "" || c.Source != "archive" {
+		if c.DurationMs <= 0 || c.Role != clips.Commercial || c.License == "" || c.Source != "archive" {
 			t.Errorf("clip %s missing duration/kind/provenance: %+v", path, c.Clip)
 		}
 		if c.ParentHash != comp.Hash {
@@ -2053,7 +2053,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
-	mediaTools := &fakeTools{chapters: []filler.Chapter{
+	mediaTools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
 	}}
@@ -2118,12 +2118,12 @@ func TestConfirm_SourceReplacementAfterValidationPublishesNothing(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "reviewed-parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	stageParentForSplitReview(st, parentHash)
 	replaced := false
-	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
+	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
 	tools.cutFn = func(in string, start, end int64, out string) error {
 		if !replaced {
 			replaced = true
@@ -2181,10 +2181,10 @@ func TestConfirm_SparseIdentityCollisionCannotHideCompositeReplacement(t *testin
 	if replacementHash, err := asset.ClipID(check); err != nil || replacementHash != parentHash {
 		t.Fatalf("fixture does not collide under ClipID: %q, %v", replacementHash, err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "reviewed-parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
-	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
+	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
 	tools.cutFn = func(_ string, _, _ int64, out string) error {
 		if err := os.WriteFile(parentFull, replacement, 0o600); err != nil {
 			return err
@@ -2222,10 +2222,10 @@ func TestConfirm_ExistingChildReuseRejectsBytesThatDoNotMatchTheirAddress(t *tes
 	}
 	delete(st.clips, parentHash)
 	parentHash = honestParentHash
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
-	sp := newSplitter(st, &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}, nil, drop)
+	sp := newSplitter(st, &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}, nil, drop)
 	proposal, err := sp.Propose(context.Background(), parentHash)
 	if err != nil {
 		t.Fatal(err)
@@ -2273,11 +2273,11 @@ func TestConfirm_ExistingChildRequiresExactStagedBytesBeyondClipID(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	stagedBytes, existingBytes := testkit.SparseIdentityCollision()
-	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
+	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
 	tools.cutFn = func(_ string, _, _ int64, out string) error {
 		return os.WriteFile(out, stagedBytes, 0o600)
 	}
@@ -2340,16 +2340,16 @@ func TestConfirm_ConcurrentScanNeverObservesAnUnboundChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	parentHash := parentFileHash
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(parentHash, ".mp4")),
-		Name: "Compilation", Role: filler.Commercial, DurationMs: 30_000,
+		Name: "Compilation", Role: clips.Commercial, DurationMs: 30_000,
 	}}
 	stageParentForSplitReview(st, parentHash)
 	// The large reviewed display name makes the historical media-first then sidecar-write window
 	// deterministic enough for the scanner to enter; atomic sidecar-first publication has no such
 	// state regardless of how long metadata encoding takes.
 	name := "Reviewed child " + strings.Repeat("x", 4<<20)
-	tools := &fakeTools{chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: name}}}
+	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: name}}}
 	sp := newSplitter(st, tools, nil, drop)
 	proposal, err := sp.Propose(context.Background(), parentHash)
 	if err != nil {
@@ -2404,7 +2404,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+			base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 				Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 			}}
 			failOn := 1
@@ -2412,7 +2412,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 				failOn = 2
 			}
 			store := &failingSplitStore{splitMemStore: base, operation: operation, failOn: failOn}
-			tools := &fakeTools{chapters: []filler.Chapter{
+			tools := &fakeTools{chapters: []tools.Chapter{
 				{StartMs: 0, EndMs: 30_000, Title: "First"},
 				{StartMs: 30_000, EndMs: 60_000, Title: "Second"},
 			}}
@@ -2476,10 +2476,10 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 	}}
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "First"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second"},
 	}}
@@ -2547,11 +2547,11 @@ func TestConfirm_LaterCutFailurePublishesNoGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 	}}
 	cuts := 0
-	tools := &fakeTools{chapters: []filler.Chapter{
+	tools := &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "First"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second"},
 	}}
@@ -2591,7 +2591,7 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	stageParentForSplitReview(base, parentHash)
@@ -2795,7 +2795,7 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 			if err != nil {
 				t.Fatal(err)
 			}
-			base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+			base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 				Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 			}}
 			stageParentForSplitReview(base, parentHash)
@@ -2926,7 +2926,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	proposal := filler.SplitProposal{ID: "cancel", ClipHash: parentHash, CreatedAt: time.Now(), Segments: []split.Segment{
@@ -2988,7 +2988,7 @@ func TestConfirm_StaleRollbackCannotDeleteRecoveredWinnersMedia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: filler.Clip{
+	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	stageParentForSplitReview(base, parentHash)
