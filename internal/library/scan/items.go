@@ -136,6 +136,9 @@ type Episode struct {
 	End int
 	// Ready is false while any of its files' headers is unread.
 	Ready bool
+	// FromFile is an episode named and numbered by its file until its show's order is said
+	// (#2151 decision 53).
+	FromFile bool
 }
 
 // Items lists the movies and series with a present file.
@@ -271,6 +274,7 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 		facts := episode.facts
 		bySeason[facts.SeasonNumber] = append(bySeason[facts.SeasonNumber], Episode{
 			ID: id, Name: facts.Name, Number: facts.EpisodeNumber, End: facts.EpisodeEnd, Ready: ready[id],
+			FromFile: episode.unnumbered,
 		})
 		if episode.from.Name != "" {
 			named[episode.from.Name]++
@@ -323,9 +327,11 @@ func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]
 // scannedItem is what the scanner wrote about an item: its newest present scan origin's facts and
 // their provenance, and each present file by path.
 type scannedItem struct {
-	facts   inventory.ItemFacts
-	from    DetailsFrom
-	sources map[string]scannedSource
+	facts inventory.ItemFacts
+	from  DetailsFrom
+	// unnumbered is an episode that keeps its file's name and number until its show's order is said.
+	unnumbered bool
+	sources    map[string]scannedSource
 }
 
 // scannedSource is one of an item's present files: its header facts, and whether its arr lists it.
@@ -358,6 +364,7 @@ func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
 	}
 	if best != nil {
 		out.facts, out.from = best.Observation.Facts, ext[best.Key].From
+		out.unnumbered = ext[best.Key].Listed != nil && ext[best.Key].Listed.Unnumbered
 	}
 	// A file's source origin shares its item origin's key, which says whether an arr lists it.
 	for _, s := range item.Sources {

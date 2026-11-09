@@ -362,6 +362,41 @@ const Series: Story = {
   ),
 };
 
+// A show whose files don't say which of TMDB's orders they follow (#2151 decision 53): a hint
+// that opens Needs you, and the waiting episodes named from their files. Season 2 starts open.
+const SeriesOrderWaiting: Story = {
+  render: () => (
+    <LibraryTitle
+      {...titleActions}
+      onChooseOrder={() => {}}
+      title={{
+        kind: "series",
+        name: "Tidewater",
+        year: 2011,
+        poster: art("#3b4a63"),
+        genres: ["Drama"],
+        files: [],
+        unplayable: 0,
+        seasons: [1, 2].map((number) => ({
+          number,
+          episodes: Array.from({ length: number === 1 ? 12 : 8 }, (_, i) => ({
+            id: `9000${number}${String(i + 1).padStart(3, "0")}`,
+            name: number === 2 && i >= 5 ? `Tidewater S02E0${i + 1}` : `Episode ${i + 1}`,
+            number: i + 1,
+            ready: true,
+            fromFile: number === 2 && i >= 5,
+          })),
+        })),
+        match: { by: "file" },
+        detailsFrom: { description: "TMDB", episodeNames: "TMDB" },
+      }}
+    />
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: /Season 2/ }));
+  },
+};
+
 // Collections: the household's own, one brought over and on a channel, and the ready-made sets.
 const pile = (...colors: (string | undefined)[]) =>
   colors.map((color, i) => ({ name: TITLES[i]?.name ?? "", poster: color ? art(color) : undefined }));
@@ -520,6 +555,7 @@ export {
   NothingNeedsYou,
   Paused,
   Series,
+  SeriesOrderWaiting,
   WizardStep,
   WizardStepAdding,
 };

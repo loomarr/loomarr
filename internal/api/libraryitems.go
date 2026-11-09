@@ -272,6 +272,8 @@ type libraryEpisodeDTO struct {
 	Number int    `json:"number"`
 	End    int    `json:"end,omitempty" doc:"The last episode a multi-episode file holds"`
 	Ready  bool   `json:"ready"`
+	// FromFile waits on the household saying which order the show's files follow (#2151 decision 53).
+	FromFile bool `json:"fromFile" doc:"Its name and number are its file's, until the show's episode order is said"`
 }
 
 type librarySeasonDTO struct {
@@ -343,7 +345,8 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) librar
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}
 		for _, ep := range season.Episodes {
-			dto.Episodes = append(dto.Episodes, libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready})
+			dto.Episodes = append(dto.Episodes, libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready,
+				FromFile: ep.FromFile})
 		}
 		out.Seasons = append(out.Seasons, dto)
 	}
