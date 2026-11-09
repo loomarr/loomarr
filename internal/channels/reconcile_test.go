@@ -17,6 +17,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -45,7 +47,7 @@ func (m mapAvail) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
 // seedChannel writes a channel with the given approved lineup, unreconciled.
 func seedChannel(t *testing.T, st store.Store, id string, number int, entries ...schedule.LineupEntry) {
 	t.Helper()
-	ch := store.Channel{Lineup: entries}
+	ch := channelstore.Channel{Lineup: entries}
 	ch.ID = id
 	ch.Name = "Ch " + id
 	ch.Number = number
@@ -199,7 +201,7 @@ func TestReconcilePublishesOutcomeToGenerationMetrics(t *testing.T) {
 func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 	st := newStore(t)
 	jobID := "private-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {
@@ -239,7 +241,7 @@ func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 	st := newStore(t)
 	jobID := "recovering-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {
@@ -285,7 +287,7 @@ func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 func TestReconcileDoesNotCallEmptyOrAlreadyLiveSchedulingQuality(t *testing.T) {
 	st := newStore(t)
 	jobID := "empty-proposal-job"
-	if err := st.CreateJob(t.Context(), store.Job{
+	if err := st.CreateJob(t.Context(), proposalstore.Job{
 		ID: jobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "intent",
 		CreatedAt: time.Unix(1_799_999_000, 0).UTC(), UpdatedAt: time.Unix(1_799_999_000, 0).UTC(),
 	}); err != nil {
@@ -1038,7 +1040,7 @@ func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
 	}
 	close(allowDelete)
 
-	if err := <-done; !errors.Is(err, store.ErrChannelStale) {
+	if err := <-done; !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("purge error = %v, want ErrChannelStale", err)
 	}
 	got, err := st.GetChannel(context.Background(), "c-purge-race")
@@ -1115,7 +1117,7 @@ func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 		WithRatings(fakeRatings{"movie:tmdb:90000001": "TV-Y7"})
 
 	// A channel whose approved entry has NO rating, under a TV-Y7 audience ceiling.
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: "movie:tmdb:90000001", Title: "Kids Pick", DurationMs: 3600000}, // OfficialRating unset
 	}}
 	ch.ID, ch.Number, ch.Strategy, ch.Status = "cheal", 7, schedule.Sequential, schedule.StatusBuilding
@@ -1448,7 +1450,7 @@ func TestReconcile_GuidePokeFailureIsNonFatal(t *testing.T) {
 }
 
 // programCount counts real program slots in a persisted channel's desired lineup.
-func programCount(ch store.Channel) int {
+func programCount(ch channelstore.Channel) int {
 	return schedule.DesiredLineup{Slots: ch.Desired}.ProgramCount()
 }
 

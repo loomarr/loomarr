@@ -73,10 +73,9 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 	}
 	exec(`INSERT INTO library_collections (id, name, created_at_ms, updated_at_ms) VALUES ('c1', 'Kept', 1, 1)`)
 	exec(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position) VALUES ('c1', 'lib-member', 0)`)
-	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, tmdb_id, name) VALUES ('lib-gone', 0, 'movie', '90000220', 'Guess')`)
+	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, namespace, external_id, name) VALUES ('lib-gone', 0, 'movie', 'tmdb', '90000220', 'Guess')`)
 	exec(`INSERT INTO images (hash, origin, mime) VALUES ('img-gone', 'remote', 'image/png')`)
-	exec(`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role) VALUES ('img-gone', ?, 'lib-gone', 'poster')`,
-		LibraryItemImageOwner)
+	exec(`INSERT INTO library_item_images (image_hash, item_id, role) VALUES ('img-gone', 'lib-gone', 'poster')`)
 	named := sampleRecord("movie:tmdb:90000210", provision.Available, time.Time{})
 	named.LibraryID = "lib-named"
 	if err := st.UpsertTitle(ctx, named); err != nil {
@@ -99,10 +98,10 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 2 reports + 1 source + 1 item + 1 file + 1 candidate + 1 image ref + 1 library row
-	// + 2 catalog records.
-	if n != 10 {
-		t.Errorf("purged %d rows, want 10", n)
+	// 2 reports + 1 source + 1 item + 1 file + 1 candidate + 1 library row + 2 catalog records.
+	// The library row's image ref goes by cascade, which RowsAffected doesn't count.
+	if n != 9 {
+		t.Errorf("purged %d rows, want 9", n)
 	}
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM inventory_items`:                                               2,
@@ -115,7 +114,7 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 		`SELECT count(*) FROM library_items`:                                                 7,
 		`SELECT count(*) FROM library_items WHERE id = 'lib-gone'`:                           0,
 		`SELECT count(*) FROM library_candidates`:                                            0,
-		`SELECT count(*) FROM image_refs`:                                                    0,
+		`SELECT count(*) FROM library_item_images`:                                           0,
 		`SELECT count(*) FROM library_catalog`:                                               3,
 		`SELECT count(*) FROM library_catalog WHERE external_id IN ('90000202', '90000204')`: 0,
 	} {

@@ -107,6 +107,25 @@ describe("DemoTour", () => {
     );
   });
 
+  // #2750: the finished banner stayed on every page until the visitor found the X. It says the tour
+  // is done on the page that finished it, then goes.
+  it("dismisses itself once the visitor moves on from the finished tour", async () => {
+    server.use(demoSite(true));
+    const router = renderTour("/watch/ch-1");
+    expect(await screen.findByText("Step 2 of 3")).toBeInTheDocument();
+    await go(router, "/guide");
+    expect(await screen.findByText("Step 3 of 3")).toBeInTheDocument();
+    await go(router, "/channels/ch-1");
+    expect(await screen.findByText(/That's the tour/)).toBeInTheDocument();
+
+    await go(router, "/home");
+    expect(await screen.findByText("/home")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Demo tour" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}").dismissed).toBe(true),
+    );
+  });
+
   it("stays hidden once dismissed, across a reload", async () => {
     server.use(demoSite(true));
     renderTour();

@@ -6,6 +6,12 @@ type TuneReason = "catalog" | "channel" | "number" | "previous" | "retry" | "ste
 
 type PlayerStatus = "empty" | "idle" | "tuning" | "playing" | "paused" | "failed";
 
+/**
+ * What stopped a picture for good: the server couldn't be reached or couldn't hand out a stream,
+ * the server answered but the channel never started, or a stream that had started ended.
+ */
+type PlayerFailureCause = "channel" | "server" | "stream";
+
 type LivePlaybackMode = "behind" | "live" | "paused";
 
 interface LivePlaybackState {
@@ -95,6 +101,8 @@ interface PlayerSnapshot {
   catalog: readonly PlayerChannel[];
   channel?: PlayerChannel;
   error?: string;
+  /** Present while `status` is "failed": which of the three causes stopped the picture. */
+  failureCause?: PlayerFailureCause;
   livePlayback?: LivePlaybackState;
   previousChannelId?: string;
   reconnecting?: PlayerReconnecting;
@@ -152,6 +160,7 @@ export type {
   PlayerController,
   PlayerControllerOptions,
   PlayerErrorReport,
+  PlayerFailureCause,
   PlayerReconnecting,
   PlayerRecoveryOptions,
   PlayerSnapshot,

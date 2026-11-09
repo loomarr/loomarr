@@ -48,8 +48,8 @@ import (
 // young (h264/hevc encode landed only recently, ~ffmpeg 8.x) and vary by driver, and on NVIDIA the
 // native NVENC path is more mature and better quality per bit. Raw throughput is not the constraint
 // for live playout — even ~14x realtime is many channels of headroom — so maturity and quality win.
-// The representative trial (trialEncode) still refuses anything that does not actually feed the HLS
-// remux, so a young Vulkan driver that stalls is demoted automatically rather than by exclusion.
+// The representative trial (trialEncode) still refuses anything that does not actually feed the
+// packager, so a young Vulkan driver that stalls is demoted automatically rather than by exclusion.
 //
 // Anything ahead of software here must EARN its place by working; ordering only decides
 // who gets asked first.
@@ -145,15 +145,16 @@ type Capacity struct {
 	EncodeHostBytes int64
 }
 
+// DetectObserved probes what the local ffmpeg can do and returns the best working encoder with its
+// measured capacity, recording best-effort diagnostics when manager is non-nil. "No hardware" is
+// expected on many machines; software remains a correct answer. gpuVendor is the probed GPU name or
+// vendor substring; pass "" to use the cross-vendor default order.
+//
 // HARDWARE WINS by default when it works (maintainer's call). The reason is CPU HEADROOM
 // rather than raw throughput: measured here, nvenc sustains 14x and libx264 veryfast 13.6x
 // at 720p25 — nearly identical channel counts, but libx264 burns cores the rest of the app
 // needs while nvenc offloads to otherwise-idle silicon. The gap widens with resolution,
 // which is why the probe runs at the PROFILE's resolution rather than a fixed one.
-// DetectObserved probes what the local ffmpeg can do and returns the best working encoder with its
-// measured capacity, recording best-effort diagnostics when manager is non-nil. "No hardware" is
-// expected on many machines; software remains a correct answer. gpuVendor is the probed GPU name or
-// vendor substring; pass "" to use the cross-vendor default order.
 func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string,
 	manager *diagnostics.ProcessManager,
 ) Capacity {
@@ -244,11 +245,11 @@ func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagn
 // "not found" and "cannot open" among others — which also matches a missing input file, so
 // an unrelated failure could permanently demote a box to software.
 //
-// ⚠ **The trial mirrors the LIVE pipeline shape — same scale filter, muxed to MPEG-TS, and the
-// output is then checked for a keyframe.** It used to encode to `-f null` (decode/encode only,
-// output discarded), which is NOT representative: an encoder whose driver produces a stream the
-// mpegts muxer cannot segment on a keyframe passed the trial and was then CHOSEN, only to stall the
-// live `-c copy -f hls` remux and black the channel for the full 45s timeout. Muxing to a real .ts
+// ⚠ **The trial mirrors the LIVE pipeline shape — same graph and encoder, muxed to MPEG-TS, and the
+// output is then checked for a keyframe.** Encoding to `-f null` (decode/encode only,
+// output discarded) is NOT representative: an encoder whose driver produces a stream with no
+// keyframe the channel packager can cut a fragment on would pass the trial, be CHOSEN, and then
+// stall the channel (black until the start deadline). Muxing to a real .ts
 // and asserting a keyframe is present makes the probe fail that encoder here instead — which is what
 // lets ordering prefer a vendor-native encoder while an immature cross-vendor driver is demoted
 // automatically rather than by a hard-coded exclusion.
@@ -263,7 +264,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	probe := p
 	probe.Encoder = enc
 
-	// A real MPEG-TS output file, mirroring the live child (which muxes mpegts). Removed after the
+	// A real MPEG-TS output file, so the keyframe check can read it with ffprobe. Removed after the
 	// check. Stdout stays reserved for `-progress`, so the mux target must be a file, not pipe:1.
 	out, err := os.CreateTemp("", "loomarr-trial-*.ts")
 	if err != nil {
@@ -299,6 +300,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	// which is exactly what a vacuous probe reports. The header comment above quotes real per-
 	// encoder results, but those were measured by running ffmpeg BY HAND — a measurement the code
 	// never reproduced.
+	//
 	// The live pipeline for a source the GPU cannot decode (MediaFormat{}: codec unknown), which is
 	// exactly what testsrc's CPU frames are: the upload, then the family's GPU scale/pad and encoder.
 	// A filter-graph mismatch (CPU frames into a GPU encoder, a GPU filter missing from the build) is
@@ -317,7 +319,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 			seconds, probe.Width, probe.Height, probe.Framerate))
 	args = append(args, "-vf", pipe.VideoFilter)
 	args = append(args, pipe.VideoEncode...)
-	// Mux to MPEG-TS exactly like the child, so an encoder that cannot feed the muxer fails HERE.
+	// Mux to a real container, so an encoder that cannot feed a muxer fails HERE.
 	args = append(args, "-f", "mpegts", outPath)
 
 	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
@@ -372,8 +374,8 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 		return Capability{Encoder: enc, Err: msg}
 	}
 
-	// The encode exited 0 — but Works also requires the muxed stream to carry a keyframe the HLS
-	// remux could cut on. An empty/keyframeless .ts here is exactly the live stall, caught early.
+	// The encode exited 0 — but Works also requires the muxed stream to carry a keyframe the packager
+	// could cut on. An empty/keyframeless .ts here is exactly the live stall, caught early.
 	probeCtx := ctx
 	if run != nil {
 		probeCtx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{ParentRunID: run.ID()})
@@ -385,7 +387,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 }
 
 // hasKeyframe reports whether an MPEG-TS file carries at least one video keyframe. This is the
-// property the HLS remux needs to cut a segment; an encoder whose output has none would stall the
+// property the packager needs to cut a segment; an encoder whose output has none would stall the
 // live pipeline, so the trial rejects it. Best-effort: if ffprobe cannot run we do NOT fail the
 // encoder on that basis (the encode itself already exited 0) — we only fail on a definitive "no
 // keyframe" answer.
@@ -446,16 +448,15 @@ const (
 	capacityCeiling = 12
 )
 
-// lastSpeed reads ffmpeg's `-progress` key=value stream and returns the final speed.
-//
-// Structured k=v on its own pipe, NOT stderr scraping: viewra read stderr in 4096-byte
-// chunks looking for substrings, and a chunked read can split a token across the buffer
-// boundary. A bufio.Scanner over the progress pipe cannot.
 // lastSpeedObserved returns the PEAK realtime multiple across a trial encode's progress samples —
 // the encoder's sustained capability once warmed, not whichever sample happened to be last — and
 // reports each complete sample to run when it is non-nil.
 //
-// ⚠ **Peak, not last, and that is the fix for a capacity under-count.** ffmpeg's early progress
+// It reads ffmpeg's `-progress` key=value stream: structured k=v on its own pipe, NOT stderr
+// scraping, because a chunked stderr read can split a token across the buffer boundary and a
+// bufio.Scanner over the progress pipe cannot.
+//
+// ⚠ **Peak, not last, to avoid a capacity under-count.** ffmpeg's early progress
 // samples are depressed by cold encoder init (CUDA/VAAPI context setup, filter-graph warmup); for a
 // short 5s trial the LAST sample can still be one of those cold ones, or `N/A`/`0x` during teardown.
 // Taking the last collapsed a warm ~8x NVENC to ~1x → channelsFromSpeed → 1 hardware channel on a

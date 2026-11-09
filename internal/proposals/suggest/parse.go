@@ -128,10 +128,8 @@ func parsePicks(content string) (finalOutput, error) {
 	return out, nil
 }
 
-// extractJSONObject unwraps a code fence / strips prose around the model's JSON. It now delegates
-// to llm.ExtractJSONObject — the same logic the V44 filler tagger and vision tier need, promoted to
-// the `llm` package so one implementation serves every caller (this used to be a package-private
-// copy here). Kept as a thin local alias so the call sites in this file read unchanged.
+// extractJSONObject unwraps a code fence / strips prose around the model's JSON. It delegates
+// to llm.ExtractJSONObject, the one implementation shared with the filler tagger and vision tier.
 func extractJSONObject(s string) string {
 	return llm.ExtractJSONObject(s)
 }

@@ -18,9 +18,11 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -77,16 +79,16 @@ func (w ideasWire) ids() []string {
 // recordingNotifier counts the "a request is waiting" notices admins get.
 type recordingNotifier struct {
 	mu        sync.Mutex
-	submitted []store.Proposal
+	submitted []proposalstore.Proposal
 }
 
-func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p store.Proposal) {
+func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p proposalstore.Proposal) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.submitted = append(n.submitted, p)
 }
-func (n *recordingNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (n *recordingNotifier) ProposalDenied(context.Context, store.Proposal)           {}
+func (n *recordingNotifier) ProposalApproved(context.Context, proposalstore.Proposal, string) {}
+func (n *recordingNotifier) ProposalDenied(context.Context, proposalstore.Proposal)           {}
 
 func (n *recordingNotifier) count() int {
 	n.mu.Lock()
@@ -167,7 +169,7 @@ func TestChannelIdeasFromLibraryAndCalendar(t *testing.T) {
 	}
 	now := time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
 	h := newIdeasHarness(t, lib, now)
-	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	if _, err := h.Store.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
 	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
 		t.Fatal(err)
@@ -272,7 +274,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
 	notify := &recordingNotifier{}
 	h := newIdeasHarnessNotifying(t, lib, now, notify)
-	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	if _, err := h.Store.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
 	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
 		t.Fatal(err)
@@ -370,7 +372,7 @@ func newManualChannelHarness(
 		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
-		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
+		approver := accept.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
 		return api.Router(defaults.Log, api.Options{
 			Suggest:          service,

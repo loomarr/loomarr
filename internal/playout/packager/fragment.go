@@ -229,7 +229,7 @@ const (
 	sampleNonSync        = 1 << 16
 )
 
-// unmarshalFragment parses a moof+mdat, restoring what mediacommon v2.9.5 drops: trun's
+// unmarshalFragment parses a moof+mdat, restoring what mediacommon v2 drops: trun's
 // first_sample_flags. ffmpeg marks each fragment's IDR only there, over a non-sync tfhd default,
 // so without this every re-marshalled item start would be labelled non-sync and an MSE player
 // would discard it as not a random-access point.

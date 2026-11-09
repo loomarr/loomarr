@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -28,7 +28,7 @@ func requireSettingsFrame(t *testing.T, frames <-chan events.Event) {
 		if got.Type != "settings" {
 			t.Fatalf("event type = %q, want settings", got.Type)
 		}
-		if _, ok := got.Payload.(api.SettingsEvent); !ok {
+		if _, ok := got.Payload.(opsapi.SettingsEvent); !ok {
 			t.Fatalf("payload type = %T, want api.SettingsEvent", got.Payload)
 		}
 	default:

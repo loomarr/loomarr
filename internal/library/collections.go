@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 // Collection is one media-server collection — a BoxSet in Emby/Jellyfin vocabulary
@@ -102,7 +103,7 @@ func (c *Client) CollectionMembers(ctx context.Context, collectionID string) ([]
 	}
 	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
 
-	var out searchResponse
+	var out collectionMembersResponse
 	if err := c.do(req, &out); err != nil {
 		return nil, err
 	}
@@ -122,4 +123,43 @@ func (c *Client) CollectionMembers(ctx context.Context, collectionID string) ([]
 		})
 	}
 	return results, nil
+}
+
+// collectionMember is the slice of an /Items entry the collection import reads.
+type collectionMember struct {
+	ID             string   `json:"Id"`
+	Name           string   `json:"Name"`
+	ProductionYear int      `json:"ProductionYear"`
+	Type           string   `json:"Type"`
+	Genres         []string `json:"Genres"`
+	Overview       string   `json:"Overview"`
+	OfficialRating string   `json:"OfficialRating"`
+	ProviderIds    struct {
+		Tmdb string `json:"Tmdb"`
+		Tvdb string `json:"Tvdb"`
+		Imdb string `json:"Imdb"`
+	} `json:"ProviderIds"`
+}
+
+type collectionMembersResponse struct {
+	Items []collectionMember `json:"Items"`
+}
+
+// mediaTypeFromEmby maps Emby's "Type" to our MediaType (Movie/Series).
+func mediaTypeFromEmby(t string) MediaType {
+	switch t {
+	case "Series":
+		return Series
+	default:
+		return Movie
+	}
+}
+
+// atoiSafe parses an int, returning 0 on any error (a missing/blank provider id).
+func atoiSafe(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
 }

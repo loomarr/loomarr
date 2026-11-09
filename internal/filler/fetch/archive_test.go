@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -134,18 +134,17 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	}
 
 	// ⚠ **THE APPROVAL GATE.** A clip Loomarr DOWNLOADED must be marked as ours, or the sync
-	// files it on sight instead of holding it in Incoming for a human (§10 V38c). Nothing wrote
-	// this mark until V38c.8 — the `fetched=true` branch of `TakeIn` had no caller at all — so
-	// every auto-fetched clip went straight to air unreviewed. Found by running auto-fetch
+	// files it on sight instead of holding it in Incoming for a human (§10 V38c). Without the mark
+	// every auto-fetched clip goes straight to air unreviewed — found by running auto-fetch
 	// against real archive.org collections and reading `held=false` off every row.
 	//
-	// Asserted through `filler.SidecarFetchedMarkForAcquisition` rather than a literal, so this test and the
-	// sync's `wasFetchedByUs` cannot drift apart into two spellings of the same key.
-	ours, ok := sc[filler.SidecarLoomarrKey()].(map[string]any)
+	// Asserted through `asset.SidecarFetchedMarkForAcquisition` rather than a literal, so this test and the
+	// sync's `asset.SidecarFetchedByUs` cannot drift apart into two spellings of the same key.
+	ours, ok := sc[asset.SidecarLoomarrKey()].(map[string]any)
 	if !ok {
 		t.Fatalf("downloaded clip is not marked as ours — it would file WITHOUT REVIEW: %+v", sc)
 	}
-	for k, want := range filler.SidecarFetchedMarkForAcquisition("", "") {
+	for k, want := range asset.SidecarFetchedMarkForAcquisition("", "") {
 		if ours[k] != want {
 			t.Errorf("fetched mark %s = %v, want %v", k, ours[k], want)
 		}
@@ -168,7 +167,7 @@ func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 		if err := json.Unmarshal(raw, &sc); err != nil {
 			t.Fatal(err)
 		}
-		ours, _ := sc[filler.SidecarLoomarrKey()].(map[string]any)
+		ours, _ := sc[asset.SidecarLoomarrKey()].(map[string]any)
 		if ours["sourceId"] != "archive:classic" || ours["acquisitionId"] != "acq-17" {
 			t.Fatalf("loomarr sidecar = %#v, want source and acquisition provenance", ours)
 		}

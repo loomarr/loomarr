@@ -41,6 +41,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 	mux.HandleFunc("/tv/90000701/season/1", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_tv_90000701_season_1.json")
 	})
+	mux.HandleFunc("/tv/episode_group/90000799a", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_episode_group_90000799a.json")
+	})
 	mux.HandleFunc("/collection/90000611", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_collection_90000611.json")
 	})
@@ -174,11 +177,11 @@ func TestFetchMovie(t *testing.T) {
 	}
 	// The cast in billing order, then the key crew once each; an editor is not key crew.
 	wantPeople := []mp.Person{
-		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", TMDB: "90003001",
+		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", ID: tmdbID("90003001"),
 			Photo: "https://image.tmdb.org/t/p/original/person-90003001.jpg"},
-		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", TMDB: "90003002"},
-		{Name: "Lamp Director", Role: mp.PersonDirector, TMDB: "90003101"},
-		{Name: "Ledger Writer", Role: mp.PersonWriter, TMDB: "90003102"},
+		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", ID: tmdbID("90003002")},
+		{Name: "Lamp Director", Role: mp.PersonDirector, ID: tmdbID("90003101")},
+		{Name: "Ledger Writer", Role: mp.PersonWriter, ID: tmdbID("90003102")},
 	}
 	if !reflect.DeepEqual(d.People, wantPeople) {
 		t.Errorf("people = %+v\nwant     %+v", d.People, wantPeople)
@@ -261,8 +264,8 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("descriptive = %+v", d)
 	}
 	if want := []mp.Person{
-		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", TMDB: "90003202"},
-		{Name: "Station Creator", Role: mp.PersonCreator, TMDB: "90003201",
+		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", ID: tmdbID("90003202")},
+		{Name: "Station Creator", Role: mp.PersonCreator, ID: tmdbID("90003201"),
 			Photo: "https://image.tmdb.org/t/p/original/person-90003201.jpg"},
 	}; !reflect.DeepEqual(d.People, want) {
 		t.Errorf("series people = %+v", d.People)
@@ -301,8 +304,9 @@ func TestFetchSeries(t *testing.T) {
 	if len(rec.Children) != 0 {
 		t.Error("TMDB's season layout differs from TVDB's, so a series carries no episodes; they are fetched by their own ids")
 	}
-	if d.Orderings == nil || *d.Orderings != 1 {
-		t.Errorf("orderings = %v, want the one episode group", d.Orderings)
+	wantOrders := []mp.EpisodeOrder{{ID: "90000799a", Name: "DVD Order", Kind: mp.OrderDVD, Seasons: 3, Episodes: 26}}
+	if !reflect.DeepEqual(d.Orders, wantOrders) {
+		t.Errorf("orders = %+v, want the one episode group, named and sized", d.Orders)
 	}
 }
 
@@ -326,6 +330,46 @@ func TestFetchSeason(t *testing.T) {
 	}
 	for _, bad := range []string{"90000701", "x/1", "90000701/-1"} {
 		if _, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
+			t.Errorf("%q = %v, want unsupported", bad, err)
+		}
+	}
+}
+
+// An episode order lists its episodes as it numbers them, whatever order TMDB sends them in, and
+// sizes each season by its places, an episode with no id included; a path-like id is refused.
+func TestFetchEpisodeOrder(t *testing.T) {
+	f := newFakeTMDB(t)
+	p := f.provider(nil)
+	rec, err := p.Fetch(context.Background(), ref(mp.KindEpisodeOrder, mp.NamespaceTMDB, "90000799a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req := f.last(t); req.URL.Query().Get("language") == "" {
+		t.Errorf("request = %s, want it read in the household language", req.URL)
+	}
+	type numbered struct {
+		season, episode int
+		title           string
+	}
+	var got []numbered
+	for _, e := range rec.Children {
+		got = append(got, numbered{e.Numbering.Season, e.Numbering.Episode, e.Descriptive.Title})
+	}
+	want := []numbered{{0, 1, "Behind the Light"}, {1, 1, "First Light"}, {1, 2, "Low Water"}, {2, 1, "High Water"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("episodes = %+v, want %+v", got, want)
+	}
+	wantSeasons := []mp.SeasonSize{{Number: 0, Episodes: 1}, {Number: 1, Episodes: 2}, {Number: 2, Episodes: 2}}
+	if rec.Kind != mp.KindEpisodeOrder || !reflect.DeepEqual(rec.Descriptive.Seasons, wantSeasons) {
+		t.Errorf("order = %s with seasons %+v, want %+v", rec.Kind, rec.Descriptive.Seasons, wantSeasons)
+	}
+	series := []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}}
+	if !reflect.DeepEqual(rec.Parent, series) || !reflect.DeepEqual(rec.Children[2].Parent, series) ||
+		!reflect.DeepEqual(rec.Children[2].IDs, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000792"}}) {
+		t.Errorf("parent %+v, low water %+v: want the series and the episode's own id", rec.Parent, rec.Children[2])
+	}
+	for _, bad := range []string{"", "90000799a/x", "x?y"} {
+		if _, err := p.Fetch(context.Background(), ref(mp.KindEpisodeOrder, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
 			t.Errorf("%q = %v, want unsupported", bad, err)
 		}
 	}
@@ -371,7 +415,7 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 // not movies or series are left out.
 func TestFilmography(t *testing.T) {
 	f := newFakeTMDB(t)
-	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), "90003001")
+	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), tmdbID("90003001"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,18 +423,25 @@ func TestFilmography(t *testing.T) {
 		t.Errorf("language = %q, want the household's", q.Get("language"))
 	}
 	want := []mp.FilmCredit{
-		{Kind: mp.KindMovie, TMDB: "90000602", Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
-		{Kind: mp.KindSeries, TMDB: "90000701", Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
-		{Kind: mp.KindMovie, TMDB: "90000601", Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
-		{Kind: mp.KindMovie, TMDB: "90000603", Title: "Unreleased Lamp", Role: mp.PersonActor},
+		{Kind: mp.KindMovie, ID: tmdbID("90000602"), Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
+		{Kind: mp.KindSeries, ID: tmdbID("90000701"), Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
+		{Kind: mp.KindMovie, ID: tmdbID("90000601"), Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
+		{Kind: mp.KindMovie, ID: tmdbID("90000603"), Title: "Unreleased Lamp", Role: mp.PersonActor},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("filmography =\n%+v\nwant\n%+v", got, want)
 	}
-	if _, err := f.provider(nil).Filmography(context.Background(), "abc"); !errors.Is(err, mp.ErrUnsupported) {
+	if _, err := f.provider(nil).Filmography(context.Background(), tmdbID("abc")); !errors.Is(err, mp.ErrUnsupported) {
 		t.Errorf("a person id that is not a number: err = %v, want ErrUnsupported", err)
 	}
+	imdb := mp.ExternalID{Namespace: mp.NamespaceIMDB, Value: "nm90003001"}
+	if _, err := f.provider(nil).Filmography(context.Background(), imdb); !errors.Is(err, mp.ErrUnsupported) {
+		t.Errorf("a person by another catalog's id: err = %v, want ErrUnsupported", err)
+	}
 }
+
+// tmdbID is an id in TMDB's namespace.
+func tmdbID(v string) mp.ExternalID { return mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: v} }
 
 // One language is spelled one way: a bare code takes the country as its region, none is English,
 // and the record says the language it was read in.

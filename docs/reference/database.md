@@ -42,6 +42,25 @@ clients show them beside the data.
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
 (each table's retention says when).
 
+## Which tables are growing
+
+Every night, after its clean-up, the housekeeping task records how many rows each table holds in
+`database_table_rows`, and keeps 400 days of counts. A table that keeps growing month after month
+is one nothing trims. This lists the ten that grew most over the last 30 days, on SQLite or
+Postgres:
+
+```sql
+SELECT latest.table_name, latest.row_count AS rows_now,
+       latest.row_count - COALESCE(earlier.row_count, 0) AS grew_by
+FROM database_table_rows latest
+LEFT JOIN database_table_rows earlier
+  ON earlier.table_name = latest.table_name
+ AND earlier.recorded_at = latest.recorded_at - 30 * 86400
+WHERE latest.recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)
+ORDER BY grew_by DESC
+LIMIT 10;
+```
+
 ## Reading the values
 
 - **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
@@ -57,14 +76,14 @@ Every layer is pruned: the nightly housekeeping deletes reports, files and libra
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
-- [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
-- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports)
+- [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`title_requesters`](#title_requesters), [`channel_requesters`](#channel_requesters)
+- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
 
 ## People and sign-in
@@ -279,7 +298,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | `tunarr_id` | The id of the channel's copy in Tunarr, an outside playout server, kept from the first time Loomarr pushed the channel there. Empty for a channel that never went to Tunarr. | `TEXT` |
 | `status` | The channel's state. `building` (being set up), `live` (ready to play), `drifted` (a scheduled programme left the library and was replaced), `empty` (every lineup entry was filtered out, so nothing can air), `paused` (taken off air by an admin but kept), or `detached` (no longer managed by Loomarr). | `TEXT` |
 | `shuffle_seed` | The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it is worked out from the channel id. | `BIGINT` |
-| `lineup_json` | The approved lineup, a list of entries. Each names a title by its key (such as `movie:tmdb:603`), with its display name, known runtime, any season range or episode selection, and the rating, genres and year the channel rules filter on. | `TEXT` |
 | `desired_json` | The last computed schedule, a list of slots. Each slot is a programme, a pending title not yet in the library, a filler break, or flexible padding, with its title, length and episode numbers. | `TEXT` |
 | `reconcile_deadline` | When the channel is next due to be checked and brought up to date, in Unix seconds. Moved forward while one check holds it. 0 means due now. | `BIGINT` |
 | `updated_at` | When the row last changed, in Unix seconds. | `BIGINT` |
@@ -290,6 +308,19 @@ One row per channel. A channel is created by approving a channel request or by h
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
+
+### channel_lineup
+
+A channel's approved lineup, one row per title in order: what should play on it. Whether each title becomes a programme or waits as "coming soon" is decided when the channel is checked.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `position` | Where the title sits in the lineup, from 0. | `INTEGER` · key |
+| `title_key` | The title, by its key (such as `movie:tmdb:603`). A title added by hand may have no titles row yet, until something asks for it. | `TEXT` |
+| `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
 
 ### airings
 
@@ -602,6 +633,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+| `unnumbered` | 1 for an episode its show's catalog could not number, because the catalog numbers the show in more than one order or its seasons end elsewhere than the disk's, and nobody has said which order the show's files follow. It keeps its file's name and number, and its show is in Needs you. 0 otherwise. | `BOOLEAN` |
 
 **Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
 
@@ -672,16 +704,17 @@ Everyone credited on a title in the library. A person with a TMDB id is one row 
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `id` | The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name. | `TEXT` · key |
+| `id` | The person: <namespace>:<id> for a person a catalog knows (tmdb:<id> for TMDB), name:<name> for one kept by name. | `TEXT` · key |
 | `name` | Their name. | `TEXT` |
-| `tmdb_id` | Their TMDB person id; empty when unlinked. | `TEXT` |
+| `external_id` | Their id in that catalog; empty when unlinked. | `TEXT` |
 | `photo` | The web address of their headshot; empty when no source had one. | `TEXT` |
 | `filmography_at_ms` | When their filmography was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `filmography_retry_at_ms` | After a failed filmography fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
+| `namespace` | The catalog that knows them, such as tmdb; empty when unlinked. | `TEXT` |
 
 ### library_filmography
 
-The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as the catalog that knows them lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its namespace and id in library_ids, with library_items.kind matching kind.
 
 **Kept:** Replaced whenever the person's filmography is fetched again; goes with its person (deleted once no title credits them).
 
@@ -690,11 +723,12 @@ The movies and series of the people who directed or created a title, are among a
 | `person_id` | The person (a library_people id). | `TEXT` · key · → `library_people.id` |
 | `position` | Where the title comes in their filmography, newest first, from 0. | `INTEGER` · key |
 | `kind` | movie or series. | `TEXT` |
-| `tmdb_id` | The title's TMDB id. | `TEXT` |
-| `title` | The title's name, in the household's language when TMDB has it. | `TEXT` |
+| `external_id` | The title's id in that catalog. | `TEXT` |
+| `title` | The title's name, in the household's language when the catalog has it. | `TEXT` |
 | `year` | The year it came out; 0 when unknown. | `INTEGER` |
 | `role` | What they did on it, one of actor, creator, director or writer. | `TEXT` |
 | `character_name` | An actor's part; empty for crew or when unknown. | `TEXT` |
+| `namespace` | The catalog the title's id is from, such as tmdb. | `TEXT` |
 
 ### library_id_map
 
@@ -864,7 +898,7 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 
 ### library_candidates
 
-The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
+The catalog search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
 
 **Kept:** Replaced each time the title is searched again; a title's last results are kept.
 
@@ -873,18 +907,19 @@ The TMDB search results for a movie or show Loomarr can't identify, offered in N
 | `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The result's TMDB id. | `TEXT` |
+| `external_id` | The result's id in that catalog. | `TEXT` |
 | `name` | The result's name. | `TEXT` |
 | `year` | The result's year, or 0 when unknown. | `INTEGER` |
 | `overview` | The result's description, or empty. | `TEXT` |
-| `poster` | The result's poster URL at TMDB, or empty. | `TEXT` |
+| `poster` | The result's poster URL at its catalog, or empty. | `TEXT` |
 | `name_match` | 1 when the result's name agrees with what is on disk. | `BOOLEAN` |
 | `year_match` | 1 when the result's year agrees with what is on disk. | `BOOLEAN` |
 | `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `BOOLEAN` |
+| `namespace` | The catalog that found the result, such as tmdb. | `TEXT` |
 
 ### library_answers
 
-The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
+The answer for a movie or show nothing else identifies, either the catalog title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
 
 **Kept:** Kept until someone takes the answer back, even after the title leaves the library.
 
@@ -893,10 +928,24 @@ The answer for a movie or show nothing else identifies, either the TMDB title it
 | `origin_authority` | The scanned folder of the title's scan origin, as in library_items. | `TEXT` · key |
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The TMDB title it is linked to; empty when ignored. | `TEXT` |
+| `external_id` | The title's id in that catalog; empty when ignored. | `TEXT` |
 | `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
-| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one TMDB result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one catalog result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored. | `TEXT` |
+
+### library_episode_orders
+
+Which order a show's episode files follow, as a person answered in Needs you, for a show whose catalog numbers it in more than one order or whose seasons end elsewhere than the disk's. Kept against the show's catalog row rather than in the catalog cache, which retention clears, so it outlives the records.
+
+**Kept:** Kept until someone answers again for the show; one row per show.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `series_catalog` | The show's catalog row, as provider:series:id (library_items.catalog). | `TEXT` · key |
+| `choice` | One of catalog (the catalog's own seasons, as first aired), order (one of the catalog's other orders, in order_id) or files (the name and number in each file). | `TEXT` |
+| `order_id` | The catalog's id for the order picked; empty unless choice is order. | `TEXT` |
+| `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 
 ### library_collections
 
@@ -979,18 +1028,65 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `duration_ms` | An animation's length in milliseconds; 0 for a still image. | `INTEGER` |
 | `loop_count` | How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop. | `INTEGER` · may be empty |
 
-### image_refs
+### clip_images
 
-What each image is used for. An image can serve several owners (the same poster as a title's art and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
+A clip's images, such as its thumbnail. One of five tables saying what each image is used for, one per kind of owner, so each owner is a real reference; an image with no row in any of them is cleaned up.
 
-**Kept:** Kept while the thing using the image keeps it; removed when that thing drops or replaces its images, and goes with its image.
+**Kept:** Goes with its clip or its image; a clip re-keyed to new bytes keeps its rows.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
+| `clip_hash` | The clip (a clips hash). | `TEXT` · key · → `clips.hash` |
+| `role` | What the image is for, such as thumb. | `TEXT` · key |
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
-| `owner_kind` | What kind of thing uses it, such as channel, clip, library_item (a title's poster), library_candidate (a Needs you result's poster) or filler_split_proposal. | `TEXT` · key |
-| `owner_id` | The id of the thing that uses it, in that kind's own table. | `TEXT` · key |
-| `role` | What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo. | `TEXT` · key |
+
+### filler_split_proposal_images
+
+The stills a proposed split shows, one per cut.
+
+**Kept:** Goes with its proposal or its image.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `proposal_id` | The proposal (a filler_split_proposals id). | `TEXT` · key · → `filler_split_proposals.id` |
+| `role` | What the image is for, such as thumb. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### channel_images
+
+A channel's icon and watermark.
+
+**Kept:** Goes with its channel or its image; replaced when the icon or watermark changes.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `role` | What the image is for, icon or watermark. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### library_item_images
+
+A title's poster, backdrop and logo, the one record of which image each is.
+
+**Kept:** Goes with its title or its image; a kind replaces only its own role's row.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `role` | What the image is for, one of poster, backdrop or logo. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### library_candidate_images
+
+The posters of what a search found for a title that Needs you.
+
+**Kept:** Goes with its title or its image.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title the candidates are for (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `role` | What the image is for, poster. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
 
 ### image_derivatives
 
@@ -1861,17 +1957,28 @@ One row per try at sending a notification to one destination. A failure that may
 | `outcome_code` | What went wrong, in terms an admin can act on. delivery_disabled, destination_unavailable, preference_disabled (reasons for suppressing); means_unavailable, recipient_rejected, configuration_invalid, transport_unavailable, acceptance_ambiguous, cancelled, worker_interrupted (reasons for failing). Empty when delivered or still in progress. | `TEXT` |
 | `created_at` | When the attempt was queued, in Unix seconds. | `BIGINT` |
 
-### notification_reference_recipients
+### title_requesters
 
-One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them.
+One row per person who asked for a title, recorded when an admin approves their request, so later news about it (the title arrived) reaches them.
 
-**Kept:** Kept while the title, the channel and the person exist. Once one is gone, the nightly housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
+**Kept:** Goes with the title or the person.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `reference_kind` | What was asked for. title or channel. | `TEXT` · key |
-| `reference_id` | The title's key or the channel's id. | `TEXT` · key |
-| `person_id` | The person who asked for it, from users. | `TEXT` · key |
+| `title_key` | The title asked for (a titles key). | `TEXT` · key · → `titles.key` |
+| `person_id` | The person who asked for it, from users. | `TEXT` · key · → `users.id` |
+| `created_at` | When their request was approved, in Unix seconds. | `BIGINT` |
+
+### channel_requesters
+
+One row per person who asked for a channel, recorded when an admin approves their request, so later news about it (the channel went live) reaches them.
+
+**Kept:** Goes with the channel or the person.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel asked for (a channels id). | `TEXT` · key · → `channels.id` |
+| `person_id` | The person who asked for it, from users. | `TEXT` · key · → `users.id` |
 | `created_at` | When their request was approved, in Unix seconds. | `BIGINT` |
 
 ## Settings and housekeeping
@@ -2062,6 +2169,18 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `stack` | The stack trace, or empty. | `TEXT` |
 | `breadcrumbs_json` | A JSON list of up to 50 things the app did just before the crash, each with a time, a category (navigation, http, lifecycle or log) and a short message. | `TEXT` |
 | `native_payload` | For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise. | `TEXT` |
+
+### database_table_rows
+
+How many rows each table held, counted once a day by the nightly housekeeping task after its clean-up. A table whose count only ever rises is one that nothing trims; "Which tables are growing" near the top of this page shows how to compare the latest count with a month ago.
+
+**Kept:** The nightly housekeeping task forgets counts older than 400 days.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `recorded_at` | The day counted, as the Unix time in seconds of that day's midnight (UTC). | `INTEGER` · key |
+| `table_name` | The table counted. Every table except goose_db_version and this one. | `TEXT` · key |
+| `row_count` | How many rows the table held after that night's clean-up. | `INTEGER` |
 
 ## Tables other libraries own
 

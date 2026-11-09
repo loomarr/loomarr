@@ -9,8 +9,8 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// QueueItem is one title's download status from the arr queue — what the queue poller (§18.1,
-// Phase 4) reports to drive the Grabbed transition + surface progress. Progress is a 0..1
+// QueueItem is one title's download status from the arr queue — what the queue poller (§18.1)
+// reports to drive the Grabbed transition + surface progress. Progress is a 0..1
 // fraction (1 - sizeleft/size); zero size ⇒ 0. Grabbed reports whether the title is genuinely
 // in flight (a real download record exists), which promotes requested→downloading.
 type QueueItem struct {
@@ -52,7 +52,7 @@ type arrQueuePage struct {
 	Records []arrQueueRecord `json:"records"`
 }
 
-// QueueStatus reports download status for a set of in-flight titles (Phase 4). It fetches each
+// QueueStatus reports download status for a set of in-flight titles. It fetches each
 // configured arr's queue ONCE, indexes records by the arr-internal id, then resolves each
 // title's arr id via a lookup and probes the index — so the poll costs one queue fetch per arr
 // plus one lookup per title (the in-flight set is small). A title with no queue record is

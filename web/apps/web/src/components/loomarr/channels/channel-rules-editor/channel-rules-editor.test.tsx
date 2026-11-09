@@ -1,6 +1,6 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { ruleVocabularyFixture } from "@loomarr/fixtures";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
@@ -107,8 +107,10 @@ describe("ChannelRulesEditor", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /when for weekend · syndication/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "Weekday" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /when for weekend · syndication/i }),
+      "Weekday",
+    );
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.lastCall?.[0] as ChannelPolicy;
@@ -126,8 +128,11 @@ describe("ChannelRulesEditor", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /what for christmas · marathon/i }));
-    expect(await screen.findByRole("option", { name: "Series: Copperline Foundry" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("combobox", { name: /what for christmas · marathon/i })).getByRole("option", {
+        name: "Series: Copperline Foundry",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("selecting a series WHAT option lowers to a scope intersected with that key", async () => {
@@ -141,8 +146,10 @@ describe("ChannelRulesEditor", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /what for weekend/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "Series: Copperline Foundry" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /what for weekend/i }),
+      "Series: Copperline Foundry",
+    );
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.lastCall?.[0] as ChannelPolicy;
@@ -163,8 +170,8 @@ describe("ChannelRulesEditor", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /how for weekend/i }));
-    await userEvent.click(await screen.findByRole("option", { name: /marathon/i }));
+    const how = screen.getByRole("combobox", { name: /how for weekend/i });
+    await userEvent.selectOptions(how, within(how).getByRole("option", { name: /marathon/i }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.lastCall?.[0] as ChannelPolicy;

@@ -37,6 +37,7 @@ import {
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
+  getSystemBackupsListMockHandler,
   getSystemEncryptionStatusMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
@@ -198,6 +199,14 @@ const appHandlers = (): RequestHandler[] => [
   getMyChannelsMockHandler({ favourites: [], recent: [] }),
   getRecordChannelTuneMockHandler({ favourites: [], recent: [] }),
   getJobsListMockHandler({ jobs: [] }),
+  // The Settings index's Server card reads backup gaps; no backups yet is no gap.
+  getSystemBackupsListMockHandler({
+    backups: [],
+    dir: "/backups",
+    retain: 7,
+    schedule: "0 3 * * *",
+    supported: true,
+  }),
   getListActivityMockHandler({ activity: [] }),
   // The AI connection block reads both of these on mount, and it renders on the wizard's
   // connections step AS WELL AS on Settings → AI — so they are common surface, not one screen's
@@ -217,7 +226,8 @@ const appHandlers = (): RequestHandler[] => [
   getFillerWatchMockHandler({
     clips: 0,
     health: "healthy",
-    held: 0,
+    preparing: 0,
+    needsYou: 0,
     sourcesOn: 0,
     sourcesReady: 0,
     sourcesTotal: 0,

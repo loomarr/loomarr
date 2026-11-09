@@ -63,7 +63,7 @@ aesthetic whose correctness is enforced by the Playwright visual suite.
 **Aesthetic direction:** a modern, dark broadcast console — calm surfaces, precise data, mono-set channel numbers — with retro-TV warmth used as *seasoning, not sauce*. Loomarr's product soul is era-matched: Saturday-morning cartoons with period cereal ads. The UI should feel like the master control room that makes that possible: professional first, nostalgic in the margins.
 
 **Rules that keep it tasteful:**
-- CRT/scanline/static flourishes appear **only** on idle surfaces — onboarding, empty states, the login screen. Never on data, tables, or forms.
+- CRT/scanline/static flourishes appear **only** at entry moments: the login screen, the setup wizard, and the player's tune-in loader (#2789). Never on resting pages (the Guide's empty state included), data, tables, or forms.
 - All flourishes are disabled under `prefers-reduced-motion` **and** in visual-test mode (determinism, §5).
 - Nostalgia lives mostly in **microcopy** ("Dead air — create your first channel", "You're on the air") and in the `onair`/channel-number idiom, not in texture overlays.
 
@@ -175,7 +175,7 @@ that disappears with the legacy Web consumers.
 ## 3. Legacy component library — three layers
 
 **Layer 0 — tokens** (§2).
-**Layer 1 — primitives:** shadcn/ui (new-york style, Tailwind v4), copy-in per its philosophy. Restyled **only** via tokens/CSS variables — never fork primitive logic. **Base UI** (`@base-ui/react`) underneath gives focus management and a11y for free; shadcn ships a Base UI variant of every component the app uses, so the copy-in path is unchanged. ⚠ "For free" has one documented exception: Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
+**Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Dialog`, `Disclosure`, `Text`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
 **Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
@@ -247,15 +247,15 @@ not Tamagui. This keeps a rejected spike recoverable and makes replacing the imp
 
 ### 4.3 Forms & state
 
-- **TanStack Form + zod**, the zod schema passed straight to the form as a **Standard Schema** validator — no resolver adapter. Zod schemas live in `packages/core` so mobile reuses validation verbatim, and `@tanstack/form-core` lets it reuse the form logic too. (Not shadcn's `<Form>`: that wrapper is react-hook-form-bound and Loomarr hand-composes `Label`+`Input`, so there was nothing to inherit.)
+- **TanStack Form + zod**, the zod schema passed straight to the form as a **Standard Schema** validator — no resolver adapter. Zod schemas live in `packages/core` so mobile reuses validation verbatim, and `@tanstack/form-core` lets it reuse the form logic too. (Not shadcn's `<Form>`: that wrapper is react-hook-form-bound, and Loomarr's fields are the design system's `Field`, so there was nothing to inherit.)
 - **No global state library.** TanStack Query owns server state (SSE-invalidated, main doc §12); local UI state is React state. Introducing zustand/jotai requires updating this doc first.
 
 ### 4.4 Route payloads are bounded
 
 File-route code splitting only helps when a route's imports stay behind that route boundary. Production
-code imports the nearest component or domain barrel (`@/components/ui/button`,
-`@/components/loomarr/dashboard`, `@/filler/filler-page`), never an app-wide barrel such as
-`@/components/ui`, `@/components/loomarr`, `@/channels`, `@/filler`, or `@/settings`. The same rule
+code imports the nearest component or domain barrel (`@/components/loomarr/dashboard`,
+`@/filler/filler-page`), never an app-wide barrel such as `@/components/loomarr`, `@/channels`,
+`@/filler`, or `@/settings`. The same rule
 applies to workspace packages: runtime code imports a tag/model subpath from `@loomarr/api` and a
 single module from `@loomarr/core`, while their package roots remain the complete public catalogs for
 tests and tooling. Using a catalog barrel in the running app lets the bundler merge unrelated screens
@@ -291,9 +291,9 @@ evidence.**
 **Why Storybook over a hand-rolled `/__gallery`:** stories are the industry-standard component contract (CSF), they double as the dev workshop (controls, autodocs, the a11y panel), and they carry to the future mobile app (§4.2) via `@storybook/react-native`. The mechanics below preserve **every guarantee** of the earlier registry plan — offline, deterministic, committed baselines, 100%-coverage-enforced. **Chromatic is rejected on the record:** it is a hosted SaaS visual-diff service that would send our UI off-box and break the offline/self-hosted rule (§2.2, main doc §16); visual regression stays self-hosted Playwright against the offline `storybook-static` build.
 
 ### 5.1 Stories are the contract
-- **Co-located CSF stories** — every Layer-1 primitive and every Layer-2 component has a `*.stories.tsx` beside it (folder-per-component), enumerating **every registered state**. Storybook 10 (`@storybook/react-vite`) indexes them; the built `storybook-static/` is the offline gallery. **A component without a story fails the build** — a coverage test enumerates the component barrels against the story index (the successor to "unregistered components are a lint error").
+- **Co-located CSF stories** — every Layer-2 component has a `*.stories.tsx` beside it (folder-per-component), and every Layer-1 design-system piece has its workshop stories under `apps/web/src/design-system/`, enumerating **every registered state**. Storybook 10 (`@storybook/react-vite`) indexes them; the built `storybook-static/` is the offline gallery. **A component without a story fails the build** — a coverage test enumerates the component barrels against the story index (the successor to "unregistered components are a lint error").
 
-  ⚠ **Layer 1 is in scope, and was not always.** The original rule said "100% of Layer-2", on the premise that primitives are vendored shadcn nobody touches. That premise does not survive §2.5: primitives are restyled **through the token layer**, so a palette or alpha edit changes all nine of them — and with no primitive stories, neither the gallery nor the visual suite would show it. The tokens are precisely the thing most likely to change and least likely to be noticed, which makes the primitives the *last* place to skip coverage. A primitive's story enumerates its variants (every `Button` intent × size, every `Badge` tone), because those variants are what the token edit moves.
+  ⚠ **Layer 1 is in scope.** Primitives are restyled **through the token layer** (§2.5), so a palette or alpha edit moves all of them at once — and with no primitive stories, neither the gallery nor the visual suite would show it. The tokens are precisely the thing most likely to change and least likely to be noticed, which makes the primitives the *last* place to skip coverage. A primitive's story enumerates its variants (every `Action` variant and tone, every `Badge` tone), because those variants are what the token edit moves.
 
 ### 5.1a The library is browsable, not just complete
 

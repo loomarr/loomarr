@@ -11,6 +11,14 @@ const acknowledgedKey = (id: string) => `loomarr.health.ack.${id}`;
 const signatureKey = (generationID: string) => `loomarr.health.signature.${generationID}`;
 const sequenceKey = (generationID: string) => `loomarr.health.sequence.${generationID}`;
 
+// A build stamped with its commit rather than a release tag reports the full 40-character SHA; the
+// notice shows the short form people recognise (#2750). A release tag passes through unchanged.
+const displayVersion = (version: string) =>
+  /^[0-9a-f]{12,40}$/i.test(version) ? version.slice(0, 7) : version;
+
+const checksNeedingAttention = (count: number) =>
+  count === 1 ? "1 check needs attention" : `${count} checks need attention`;
+
 const healthSignature = (health: HealthReport) => {
   const affected = health.checks
     .filter((check) => ["warning", "failed", "stale"].includes(check.status))
@@ -70,7 +78,7 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
     const phone = typeof window.matchMedia === "function" && window.matchMedia(PHONE_QUERY).matches;
     const duration = state === "healthy" || phone ? 6_000 : Number.POSITIVE_INFINITY;
     const options = {
-      description: `${version}${affected > 0 ? ` · ${affected} check${affected === 1 ? "" : "s"} need attention` : ""}`,
+      description: `${displayVersion(version)}${affected > 0 ? ` · ${checksNeedingAttention(affected)}` : ""}`,
       duration,
       action,
       closeButton: true,

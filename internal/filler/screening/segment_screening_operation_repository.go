@@ -10,7 +10,8 @@ import (
 	"io/fs"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -49,7 +50,7 @@ func newSegmentScreeningOperationRecord(evidence SegmentScreeningAxisEvidence) (
 
 func validateSegmentScreeningOperationRecord(record segmentScreeningOperationRecord) error {
 	if record.SchemaVersion != segmentScreeningOperationSchemaVersion || record.ContractVersion != segmentScreeningOperationContractVersion ||
-		!filler.IsContentHash(record.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(record.Profile) != nil || !filler.IsContentHash(record.EvidenceSHA256) ||
+		!split.IsContentHash(record.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(record.Profile) != nil || !split.IsContentHash(record.EvidenceSHA256) ||
 		record.OperationSHA256 != segmentScreeningOperationSHA256(record.SubjectSHA256, record.Profile) {
 		return fmt.Errorf("segment screening operation record is invalid")
 	}
@@ -70,7 +71,7 @@ func segmentScreeningOperationSHA256(subjectSHA256 string, profile SegmentScreen
 	if err != nil {
 		return ""
 	}
-	return filler.ScreeningBytesSHA256(raw)
+	return asset.ScreeningBytesSHA256(raw)
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) putSegmentScreeningOperation(ctx context.Context, evidence SegmentScreeningAxisEvidence) error {
@@ -89,7 +90,7 @@ func (r *FileSegmentScreeningEvidenceRepository) putSegmentScreeningOperation(ct
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) FindSegmentScreeningAxisEvidence(ctx context.Context, subjectSHA256 string, profile SegmentScreeningAxisProfile) (RecordedSegmentScreeningAxisEvidence, bool, error) {
-	if r == nil || r.files == nil || !filler.IsContentHash(subjectSHA256) || ValidateSegmentScreeningAxisProfile(profile) != nil {
+	if r == nil || r.files == nil || !split.IsContentHash(subjectSHA256) || ValidateSegmentScreeningAxisProfile(profile) != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, false, fmt.Errorf("segment screening operation identity is invalid")
 	}
 	operationSHA256 := segmentScreeningOperationSHA256(subjectSHA256, profile)

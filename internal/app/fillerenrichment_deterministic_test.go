@@ -5,13 +5,13 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// This test pins the production brand dictionary (phraseMappings in fillerenrichment's
+// This test pins the production brand dictionary (phraseMappings in filler/enrichment's
 // deterministic.go: "hp sauce", "tootsie pop") and its "on Five" network rule end to end, so it
 // keeps their real names. A dictionary phrase is the only text that fires a trusted product mapping.
 
@@ -19,8 +19,8 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_000, 0).UTC()
 	for _, clip := range []clipstore.Clip{
-		{Clip: filler.Clip{Hash: "hp", Path: "hp.mp4", Name: "HP Sauce Advert", Role: filler.Commercial}, UpdatedAt: at, CreatedAt: at},
-		{Clip: filler.Clip{Hash: "tootsie", Path: "tootsie.mp4", Name: "Tootsie Pop Classic Commercial", Role: filler.Commercial}, UpdatedAt: at, CreatedAt: at.Add(time.Second)},
+		{Clip: clips.Clip{Hash: "hp", Path: "hp.mp4", Name: "HP Sauce Advert", Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at},
+		{Clip: clips.Clip{Hash: "tootsie", Path: "tootsie.mp4", Name: "Tootsie Pop Classic Commercial", Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at.Add(time.Second)},
 	} {
 		if err := st.UpsertClip(t.Context(), clip); err != nil {
 			t.Fatal(err)

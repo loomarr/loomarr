@@ -3,10 +3,9 @@
 // the suggester — the LLM selects from real TMDB ids, and every acquisition is
 // re-validated against TMDB (exists) before it's actionable (§8).
 //
-// Built against TMDB's documented v3 API (api.themoviedb.org/3); the live fixture
-// capture is deferred (no TMDB_API_KEY this session) — see
-// testkit/fixtures/llm/FINDINGS.md. When a key is supplied, pin real fixtures and
-// reconcile any shape difference doc-first.
+// Built against TMDB's documented v3 API (api.themoviedb.org/3); the contract was confirmed by a
+// live capture — see testkit/fixtures/tmdb/FINDINGS.md. A shape difference is reconciled
+// doc-first against those pinned fixtures.
 package tmdb
 
 import (
@@ -770,10 +769,9 @@ func (c *Client) ContentRating(ctx context.Context, mt provision.MediaType, tmdb
 // the canonical base, but it's stable and documented, so we hardcode it (one fewer round-trip)
 // — same pragmatism as the other pinned TMDB shapes.
 //
-// ⚠ **`original`, not `w500`, since V52 phase 7 — and the width choice moved for a reason worth
-// keeping.** These URLs used to be handed straight to a browser and to Tunarr, so a mid-size
-// rendition was the right compromise: crisp on a guide tile without being a full-res download.
-// They are no longer fetched by any client. Every caller now hands the URL to `images.Adopt`,
+// ⚠ **`original`, not `w500`.** A URL handed straight to a browser would want a mid-size
+// rendition (crisp on a guide tile without a full-res download), but no client fetches these.
+// Every caller hands the URL to `images.Adopt`,
 // which downloads it once server-side and generates the whole width ladder locally (§22) — so
 // asking TMDB for a pre-shrunk copy would throw away the resolution the ladder's larger rungs
 // need, and would make our 780px poster an upscale of their 500px one.
@@ -790,9 +788,8 @@ const imageBase = "https://image.tmdb.org/t/p/original"
 // channel a themed icon from its primary series/movie. A poster (portrait) reads better as a
 // channel tile than a backdrop.
 //
-// ⚠ The caller ADOPTS this URL (§22); nothing fetches it from a browser. This comment used to
-// say "Tunarr fetches this URL directly, so no proxying is needed" — true until V52 phase 7,
-// when the image service became what Tunarr and the operator's browser both fetch from.
+// ⚠ The caller ADOPTS this URL (§22); nothing fetches it from a browser. The image service is
+// what Tunarr and the operator's browser both fetch from.
 func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
 	ctx, err := c.operation(ctx)
 	if err != nil {

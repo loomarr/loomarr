@@ -14,7 +14,7 @@ import (
 const PromptVersion = "filler-context-v3"
 
 // StationResolver finds the one broadcast station that held callSign during [from, to) (YYYY-MM-DD,
-// either open when empty) and its country, the way broadcaststation.Directory.ResolveDuring does.
+// either open when empty) and its country, the way station.Directory.ResolveDuring does.
 type StationResolver func(callSign, from, to string) (id, country string, ok bool)
 
 // researchMaxTokens bounds the answer: the schema is ~130 tokens on average, so 512 costs nothing.

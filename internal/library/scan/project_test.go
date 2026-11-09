@@ -99,7 +99,8 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	present.Observation.Facts.Tagline = "Kept, at last."
 	present.Observation.Facts.Trailer = "https://www.youtube.com/watch?v=kept9000"
 	present.Observation.Facts.People = []inventory.Person{
-		{Name: "Kept Lead", Role: "actor", Character: "Keeper", TMDB: "90003301", Photo: "https://img.invalid/kept.jpg"},
+		{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: inventory.ExternalID{Namespace: "tmdb", Value: "90003301"},
+			Photo: "https://img.invalid/kept.jpg"},
 		{Name: "Kept Director", Role: "director"},
 	}
 	gone := origin(authorityPrefix+"a", "file:2", "Gone Film", at.Add(time.Hour), true, listed("https://radarr.invalid/2"))
@@ -117,7 +118,8 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 		Studios: []string{"Ironbell Pictures", "Second Shift Films"}, Countries: []string{"Canada"},
 		Tagline: "Kept, at last.", Trailer: "https://www.youtube.com/watch?v=kept9000",
 		Credits: []store.LibraryCredit{
-			{Name: "Kept Lead", Role: "actor", Character: "Keeper", TMDB: "90003301", Photo: "https://img.invalid/kept.jpg"},
+			{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: store.LibraryID{Namespace: "tmdb", Value: "90003301"},
+				Photo: "https://img.invalid/kept.jpg"},
 			{Name: "Kept Director", Role: "director"},
 		}}
 	if !reflect.DeepEqual(got, want) {

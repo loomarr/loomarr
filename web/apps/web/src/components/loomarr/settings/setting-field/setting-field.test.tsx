@@ -62,6 +62,19 @@ describe("SettingField", () => {
     expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
   });
 
+  // `sr-only` is `position: absolute`. The info icon's hidden copy of the detail sits in an
+  // unpositioned button, so without a positioned field it lands against the page, below the
+  // viewport, and stretches the document so scroll chains out of main (#2724).
+  it("anchors the info icon's visually hidden detail to the field", () => {
+    const { container } = render(
+      <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
+    );
+    const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
+    const field = container.querySelector(".group");
+    expect(field).toHaveClass("relative");
+    expect(field).toContainElement(detail);
+  });
+
   it("uses the registry-owned label instead of deriving product copy from the key", () => {
     render(<SettingField entry={entry({ label: "Media server address" })} value="" onChange={vi.fn()} />);
     expect(screen.getByLabelText("Media server address")).toBeInTheDocument();
@@ -119,16 +132,59 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Every 6 hours");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Every 6 hours");
     expect(screen.queryByLabelText("Custom check interval")).not.toBeInTheDocument();
 
-    await userEvent.click(schedule);
-    expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
+    expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
+    await userEvent.selectOptions(schedule, "Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("6");
     fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });
     expect(onChange).toHaveBeenLastCalledWith("28800s");
+  });
+
+  // The backup default (0 30 3 * * *) is in no preset. It used to render as a raw cron string.
+  it("shows a once-a-day cron as a time, not as cron fields", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "backup.schedule",
+          kind: "cron",
+          label: "Automatic backup schedule",
+          presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+        })}
+        value="0 30 3 * * *"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue(
+      "Every day at a time I choose",
+    );
+    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveDisplayValue(":30");
+    expect(screen.queryByDisplayValue("0 30 3 * * *")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule minute"), ":45");
+    expect(onChange).toHaveBeenLastCalledWith("0 45 3 * * *");
+  });
+
+  it("stores a named schedule's value and keeps an unusual cron behind Custom schedule", async () => {
+    const onChange = vi.fn();
+    const weekly = entry({
+      key: "backup.schedule",
+      kind: "cron",
+      label: "Automatic backup schedule",
+      presets: [{ value: "0 0 * * * *", label: "Every hour" }],
+    });
+    const { unmount } = render(<SettingField entry={weekly} value="0 30 3 * * 1" onChange={onChange} />);
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue("Custom schedule");
+    expect(screen.getByLabelText("Automatic backup schedule custom schedule")).toHaveValue("0 30 3 * * 1");
+    unmount();
+
+    render(<SettingField entry={weekly} value="0 30 3 * * *" onChange={onChange} />);
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule"), "Every hour");
+    expect(onChange).toHaveBeenLastCalledWith("0 0 * * * *");
   });
 
   it("offers the registry's presets and stores a selected one", async () => {
@@ -147,13 +203,13 @@ describe("SettingField", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Look for new clips"));
-    const options = await screen.findAllByRole("option");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       ...downloadSchedulePresets.map((preset) => preset.label),
       "Custom",
     ]);
-    await userEvent.click(screen.getByRole("option", { name: "Every 12 hours" }));
+    await userEvent.selectOptions(schedule, "Every 12 hours");
     expect(onChange).toHaveBeenLastCalledWith("12h0m0s");
   });
 
@@ -174,11 +230,10 @@ describe("SettingField", () => {
       />,
     );
 
-    const schedule = screen.getByLabelText("Look for new clips");
-    expect(schedule).toHaveTextContent("Custom");
+    const schedule = screen.getByRole("combobox", { name: "Look for new clips" });
+    expect(schedule).toHaveDisplayValue("Custom");
     expect(screen.getByLabelText("Custom check interval")).toHaveValue("5");
-    await userEvent.click(schedule);
-    const options = within(await screen.findByRole("listbox")).getAllByRole("option");
+    const options = within(schedule).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Every 3 hours", "Custom"]);
   });
 
@@ -369,9 +424,15 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("true");
   });
 
-  it("locks an env-pinned field and says so", () => {
+  // #2759: a pinned value is read-only, not disabled. Disabled dims it to placeholder grey, and a
+  // real value must never be mistaken for an empty hint.
+  it("locks an env-pinned field read-only at full strength and says so", () => {
     render(<SettingField entry={entry({ provenance: "env" })} value="http://x" onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Library URL")).toBeDisabled();
+    const input = screen.getByLabelText("Library URL");
+    expect(input).toHaveAttribute("readonly");
+    expect(input).not.toBeDisabled();
+    expect(input).toHaveValue("http://x");
+    expect(input).not.toHaveStyle({ opacity: "0.62" });
     expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
   });
 
@@ -507,14 +568,13 @@ describe("SettingField", () => {
         onChange={onChange}
       />,
     );
-    // The trigger shows the capitalized LABEL, not the raw value.
-    const trigger = screen.getByLabelText("Library flavor");
-    expect(trigger).toHaveTextContent("Jellyfin");
+    // The select shows the capitalized LABEL, not the raw value.
+    const select = screen.getByRole("combobox", { name: "Library flavor" });
+    expect(select).toHaveDisplayValue("Jellyfin");
 
-    await userEvent.click(trigger);
     // Options show labels ("Emby"), not "emby".
-    expect(await screen.findByRole("option", { name: "Emby" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Emby" }));
+    expect(screen.getByRole("option", { name: "Emby" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Emby");
     // …but the stored value stays lowercase (the BE contract).
     expect(onChange).toHaveBeenCalledWith("emby");
   });
@@ -574,5 +634,37 @@ describe("SettingField", () => {
     const field = screen.getByRole("textbox", { name: "Media server address" });
     expect(field).toBeInvalid();
     expect(field).toHaveAccessibleDescription("Base URL of your Emby/Jellyfin server. must include a scheme");
+  });
+
+  // #2736: the audit footer names the person in words, never a raw id.
+  describe("audit footer", () => {
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString();
+
+    it("names the person who changed it, in whole words", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by Sam, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("says you for the caller's own change", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedByYou: true, updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by you, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("leaves an unknown author unnamed", () => {
+      render(<SettingField entry={entry({ updatedAt: nineDaysAgo })} value="http://x" onChange={vi.fn()} />);
+      expect(screen.getByText("Changed 9 days ago")).toBeInTheDocument();
+    });
   });
 });

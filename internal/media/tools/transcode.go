@@ -121,7 +121,7 @@ type TranscodeRequest struct {
 	// output verification.
 	DurationMs int64
 	// InputProbe carries optional preservation facts. V66 derivative builders always provide it;
-	// legacy callers may leave it nil.
+	// other callers may leave it nil.
 	InputProbe *Probed
 	// HadAudio is whether the INPUT carried an audio stream, so the verification can require one
 	// in the output only when there was one to begin with.

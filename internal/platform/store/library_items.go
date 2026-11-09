@@ -43,6 +43,9 @@ type LibraryItem struct {
 	RuntimeMs int64
 	// Season, Episode and EpisodeEnd number an episode (EpisodeEnd for a multi-episode file).
 	Season, Episode, EpisodeEnd int
+	// Unnumbered is an episode the scanner could not number by its show's catalog and nobody has
+	// said which order its show's files follow: it keeps its file's name and number (decision 53).
+	Unnumbered bool
 	// Series is an episode's series by its scan origin; the store fills SeriesID from it once the
 	// series is written.
 	Series   LibraryOrigin
@@ -87,22 +90,31 @@ type LibrarySource struct {
 }
 
 // LibraryCredit is one person credited on a title. Role is what they did (actor, director, writer,
-// creator); Character an actor's part. A person with a TMDB id is one library_people row wherever
-// they are credited; one without is kept by name, unlinked (decision 49).
+// creator); Character an actor's part. A person with a catalog id is one library_people row
+// wherever they are credited; one without is kept by name, unlinked (decision 49).
 type LibraryCredit struct {
 	Name, Role, Character string
-	TMDB                  string
+	// ID is the person's id in a catalog of people; zero when unlinked.
+	ID LibraryID
 	// Photo is an http(s) URL of their headshot.
 	Photo string
 }
 
-// PersonID is the library_people row the credit names: "tmdb:<id>" when linked, else
-// "name:<name>".
+// PersonID is the library_people row the credit names: "<namespace>:<id>" when linked, such as
+// "tmdb:<id>", else "name:<name>".
 func (c LibraryCredit) PersonID() string {
-	if c.TMDB != "" {
-		return "tmdb:" + c.TMDB
+	if id := c.Linked(); id != (LibraryID{}) {
+		return id.Namespace + ":" + id.Value
 	}
 	return "name:" + c.Name
+}
+
+// Linked is the person's catalog id when it names both a catalog and an id; zero otherwise.
+func (c LibraryCredit) Linked() LibraryID {
+	if c.ID.Namespace == "" || c.ID.Value == "" {
+		return LibraryID{}
+	}
+	return c.ID
 }
 
 // LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.
@@ -194,7 +206,7 @@ type LibraryOrigin struct {
 	Key       string
 }
 
-// LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
+// LibraryItemImageOwner is the image owner kind of a library item's artwork (library_item_images). The ref is the
 // one record of which image is its poster: an adopted image changes hash when its bytes arrive,
 // and the image service moves the refs with it.
 const LibraryItemImageOwner = "library_item"
@@ -295,8 +307,8 @@ const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
 // countFiles is how many of title i's files hold also, a condition on f ("" for all).
 // itemImage is the image hash a title's ref in role names, or "".
 func itemImage(role string) string {
-	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+	return `COALESCE((SELECT MIN(r.image_hash) FROM library_item_images r
+			WHERE r.item_id = i.id AND r.role = '` + role + `'), '')`
 }
 
 func countFiles(also string) string {

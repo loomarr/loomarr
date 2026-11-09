@@ -3,7 +3,6 @@ package library
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -141,9 +140,6 @@ func TestDynamicConnection_IncompleteFailsClosedWithoutHTTP(t *testing.T) {
 			if _, err := client.ListUsers(context.Background()); !errors.Is(err, ErrConnectionRequired) {
 				t.Errorf("ListUsers error = %v, want ErrConnectionRequired", err)
 			}
-			if _, err := client.ItemMetadataByID(context.Background(), nil); !errors.Is(err, ErrConnectionRequired) {
-				t.Errorf("ItemMetadataByID error = %v, want ErrConnectionRequired", err)
-			}
 			if got := script.Calls(); got != 0 {
 				t.Errorf("incomplete connection made %d HTTP requests, want 0", got)
 			}
@@ -192,45 +188,6 @@ func TestDynamicConnection_SnapshotsRefreshGuideAcrossRotation(t *testing.T) {
 	assertJellyfinConnection(t, requests[2], "jellyfin-b.invalid", "token-b")
 	if got := providerCalls.Load(); got != 2 {
 		t.Errorf("provider calls after next operation = %d, want 2", got)
-	}
-}
-
-func TestDynamicConnection_SnapshotsBatchedMetadataAcrossRotation(t *testing.T) {
-	script := httpfixture.NewScriptedTransport(
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `{"Items":[]}`)},
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `{"Items":[]}`)},
-	)
-	var connection atomic.Value
-	connection.Store(Connection{Flavor: Emby, BaseURL: "https://emby-a.invalid", Token: "token-a"})
-	var providerCalls atomic.Int64
-	var requestCount atomic.Int64
-	transport := httpfixture.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		if requestCount.Add(1) == 1 {
-			connection.Store(Connection{Flavor: Jellyfin, BaseURL: "https://jellyfin-b.invalid", Token: "token-b"})
-		}
-		return script.RoundTrip(request)
-	})
-	client := dynamicClient(func() Connection {
-		providerCalls.Add(1)
-		return connection.Load().(Connection)
-	}, transport)
-	ids := make([]string, maxIDsPerRequest+1)
-	for i := range ids {
-		ids[i] = fmt.Sprintf("item-%03d", i)
-	}
-
-	if _, err := client.ItemMetadataByID(context.Background(), ids); err != nil {
-		t.Fatal(err)
-	}
-	requests := script.Requests()
-	if len(requests) != 2 {
-		t.Fatalf("metadata requests = %d, want 2 batches", len(requests))
-	}
-	for _, request := range requests {
-		assertEmbyConnection(t, request, "emby-a.invalid", "token-a")
-	}
-	if got := providerCalls.Load(); got != 1 {
-		t.Errorf("provider calls during batched metadata = %d, want 1", got)
 	}
 }
 

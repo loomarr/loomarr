@@ -39,6 +39,16 @@ const parseIntent = (draft: IntentDraft) =>
     mustExclude: terms(draft.mustExclude),
   });
 
+const hasDetails = (intent?: Intent): boolean =>
+  Boolean(
+    intent?.era ||
+      intent?.tone ||
+      intent?.runtimeTargetMin ||
+      intent?.maxAcquisitions ||
+      intent?.mustInclude?.length ||
+      intent?.mustExclude?.length,
+  );
+
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,
 // runtime target, and an acquisition cap. They stay behind a disclosure because the
 // blank-page problem is solved by ONE good sentence, not by a form — but they are here,
@@ -50,7 +60,9 @@ const IntentForm = ({
   onSubmit,
   submitting = false,
 }: IntentFormProps) => {
-  const [refining, setRefining] = useState(false);
+  // Details the viewer already filled in stay open when the form comes back (a submit that failed, a
+  // draft kept across the setup trip): closing them hides what the request is about to use (#2746).
+  const [refining, setRefining] = useState(() => hasDetails(initialIntent));
   const form = useAppForm({
     defaultValues: {
       description: initialIntent?.description ?? initialDescription,

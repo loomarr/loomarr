@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 import {
-  isOriginating,
+  legacyGuideOrigination,
   originationHeading,
   originationStage,
   parseOriginationSearch,
@@ -20,26 +20,39 @@ const run = (over: Partial<SuggestionRun>): SuggestionRun => ({
 });
 
 describe("parseOriginationSearch", () => {
-  // The router parses `?new=1` as the number 1; a link built in code passes the string.
-  it("accepts the flags as the router parses them", () => {
-    expect(parseOriginationSearch({ new: 1, manual: "1" })).toEqual({ new: "1", manual: "1" });
+  // `?manual=1` is the number 1 to the router, so the flag is numeric; an old link or a link built
+  // in code may still pass the string.
+  it("reads the manual flag as a number, from either spelling", () => {
+    expect(parseOriginationSearch({ manual: 1 })).toEqual({ manual: 1 });
+    expect(parseOriginationSearch({ manual: "1" })).toEqual({ manual: 1 });
   });
 
   it("drops what is not a flow param", () => {
-    expect(parseOriginationSearch({ new: "yes", job: 42, intent: "cartoons", other: "x" })).toEqual({
+    expect(parseOriginationSearch({ manual: "yes", job: 42, intent: "cartoons", other: "x" })).toEqual({
       intent: "cartoons",
     });
   });
 });
 
-describe("isOriginating", () => {
-  it("is open while any flow param is present", () => {
-    expect(isOriginating({})).toBe(false);
-    expect(isOriginating({ ideaId: "genre:comedy" })).toBe(false);
-    expect(isOriginating({ new: "1" })).toBe(true);
-    expect(isOriginating({ job: "job-1" })).toBe(true);
-    expect(isOriginating({ intent: "cartoons" })).toBe(true);
-    expect(isOriginating({ manual: "1" })).toBe(true);
+// #2746: the flow had a home on the Guide route, as `/guide?new=%221%22`. Those URLs still arrive.
+describe("legacyGuideOrigination", () => {
+  it("sends an old describe-form URL to the request route with no params", () => {
+    expect(legacyGuideOrigination({ new: 1 })).toEqual({});
+    expect(legacyGuideOrigination({ new: "1" })).toEqual({});
+  });
+
+  it("carries the flow's own params over", () => {
+    expect(legacyGuideOrigination({ job: "job-1" })).toEqual({ job: "job-1" });
+    expect(legacyGuideOrigination({ manual: 1, ideaId: "genre:comedy" })).toEqual({
+      ideaId: "genre:comedy",
+      manual: 1,
+    });
+    expect(legacyGuideOrigination({ intent: "cartoons", new: 1 })).toEqual({ intent: "cartoons" });
+  });
+
+  it("leaves an ordinary Guide visit alone", () => {
+    expect(legacyGuideOrigination({})).toBeUndefined();
+    expect(legacyGuideOrigination({ other: "x" })).toBeUndefined();
   });
 });
 

@@ -6,20 +6,20 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type languageChannels struct {
-	channels []store.Channel
+	channels []channelstore.Channel
 	err      error
 }
 
-func (l languageChannels) ListChannels(context.Context) ([]store.Channel, error) {
+func (l languageChannels) ListChannels(context.Context) ([]channelstore.Channel, error) {
 	return l.channels, l.err
 }
 
-func languageChannel(status schedule.ChannelStatus, language string) store.Channel {
-	ch := store.Channel{Channel: schedule.Channel{Status: status}}
+func languageChannel(status schedule.ChannelStatus, language string) channelstore.Channel {
+	ch := channelstore.Channel{Channel: schedule.Channel{Status: status}}
 	if language != "" {
 		ch.Policy.Filler = &schedule.FillerSelection{Language: language}
 	}
@@ -31,7 +31,7 @@ func languageChannel(status schedule.ChannelStatus, language string) store.Chann
 // paused one resumes with its language, so it still does.
 func TestIntakeLanguages_ReadsTheChannelsLive(t *testing.T) {
 	set := visionSet(t, map[string]string{"filler.language": "en"})
-	lister := languageChannels{channels: []store.Channel{
+	lister := languageChannels{channels: []channelstore.Channel{
 		languageChannel(schedule.StatusLive, ""),
 		languageChannel(schedule.StatusPaused, "es"),
 		languageChannel(schedule.StatusDetached, "ja"),

@@ -31,7 +31,7 @@ Channels and what they play. A channel's lineup becomes an ordered schedule, and
 
 ### [Proposals](areas/proposals.md)
 
-Turning "I want a channel that feels like X" into a lineup a person can approve. The suggester checks every title against the real library and catalog, the workflow tracks each request through to the household's first channel, and the outlook explains a pending proposal before anyone approves it. The quality and planner-reference packages measure how good the suggestions are.
+Turning "I want a channel that feels like X" into a lineup a person can approve. The suggester checks every title against the real library and catalog, the workflow tracks each request through to the household's first channel, and the outlook explains a pending proposal before anyone approves it. Accepting a proposal, by a person's approval or the auto-approve grant within its pending-acquisition quota, is its own package. The quality and planner-reference packages measure how good the suggestions are.
 
 ### [Playout](areas/playout.md)
 
@@ -51,7 +51,7 @@ The ground everything else stands on: the store and its two databases, settings 
 
 ### [Edge](areas/edge.md)
 
-Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it.
+Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it. `api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, request ids, roles and the route-role marker. `app/playoutresolve` is the composition root's playout wiring: it reads the stores and settings that `playout` must not know about.
 
 ### [Test support](areas/test.md)
 
@@ -73,11 +73,21 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `catalog` | `library`, `provision` |
+| `api/httpcore` | `channels/schedule`, `filler/source`, `media/images`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
+| `catalog` | `library`, `platform/store`, `provision` |
 | `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
-| `filler` | `channels/schedule`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
+| `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
+| `filler/acquisition` | `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split` |
+| `filler/asset` | `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor` |
+| `filler/cliplibrary` | `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor` |
+| `filler/clips` | — |
+| `filler/language` | `media/bgexec`, `media/tools` |
+| `filler/pipelinestate` | — |
+| `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |
+| `filler/research` | `platform/llm` |
 | `filler/source` | — |
-| `filler/station` | — |
+| `filler/split` | `filler/clips`, `filler/structure`, `media/tools` |
+| `filler/station` | `filler/research` |
 | `filler/structure` | — |
 | `filler/structure/window` | `filler/structure` |
 | `filler/taxonomy` | — |
@@ -86,13 +96,15 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/bgexec` | — |
 | `media/creative` | — |
 | `media/defects` | — |
-| `media/encode` | `platform/config` |
+| `media/encode` | — |
+| `media/images` | `platform/httpx`, `platform/jobs`, `platform/settings`, `platform/store/activitystore` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `metadataprovider` | — |
 | `people/access` | `people/contact` |
 | `people/contact` | — |
 | `people/notifications` | `platform/httpx` |
-| `platform/config` | — |
+| `platform/activity` | `platform/store/activitystore` |
+| `platform/buildinfo` | — |
 | `platform/diagnostics` | `platform/storagegovernor` |
 | `platform/holidayvocab` | — |
 | `platform/httpx` | `platform/metrics` |
@@ -100,13 +112,21 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library`, `platform/config` |
+| `platform/settings` | `library`, `platform/buildinfo` |
 | `platform/storagegovernor` | — |
-| `platform/store` | `channels/schedule`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
-| `playout` | `channels/schedule`, `media/encode`, `platform/config`, `platform/diagnostics`, `provision` |
+| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
+| `platform/store/activitystore` | `platform/store/storedb` |
+| `platform/store/channeldatastore` | `platform/store/storedb`, `provision` |
+| `platform/store/channelstore` | `channels/schedule`, `platform/store/storedb` |
+| `platform/store/clipstore` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb` |
+| `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb` |
+| `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
+| `platform/store/storedb` | — |
+| `playout` | `channels/schedule`, `media/encode`, `platform/diagnostics`, `provision` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
+| `proposals/accept` | `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
-| `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `provision`, `tmdb` |
+| `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/quality`, `provision`, `tmdb` |
 | `provision` | — |
 | `tmdb` | `catalog`, `platform/httpx`, `platform/metrics`, `provision` |
 

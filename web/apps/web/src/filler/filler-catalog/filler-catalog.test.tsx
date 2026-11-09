@@ -221,15 +221,14 @@ describe("FillerCatalog", () => {
       return screen.findByRole("button", { name: "View details for Local soda commercial" });
     };
 
-    it("lays clips out 2-up as compact cards", async () => {
+    it("lays clips out 2-up", async () => {
       stubWidth(false);
       const name = await showCatalog();
       const grid = name.closest(".grid") as HTMLElement;
       expect(grid).toHaveClass("grid-cols-2");
       expect(grid).not.toHaveClass("lg:grid-cols-3");
-      // Compact: the role/era chips and the aired line move to the details sheet.
-      expect(within(grid).queryByText("Commercial")).not.toBeInTheDocument();
-      expect(within(grid).queryByText("Never aired")).not.toBeInTheDocument();
+      // The same card as on a wide screen: its metadata line wraps instead of dropping parts.
+      expect(within(grid).getAllByText("Commercial")).toHaveLength(2);
     });
 
     it("keeps the full cards and three columns on a wide screen", async () => {

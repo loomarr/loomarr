@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -44,7 +44,7 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		return api.Router(defaults.Log, api.Options{
 			Events:           events.NewBus(),
 			ProposalWorkflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now),
-			Approver:         suggest.NewApprover(defaults.Store, chBinder, time.Now),
+			Approver:         accept.NewApprover(defaults.Store, chBinder, time.Now),
 			Binder:           chBinder,
 			Store:            defaults.Store,
 			Auth:             api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),

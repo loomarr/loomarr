@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // EnrollmentKind names the durable user choice that put a clip into Filler.
@@ -24,7 +28,7 @@ type Enrollment struct {
 // EnrollmentFor derives authority from facts already persisted with the clip and conveyor. A
 // remote fetch or explicit queue has an acquisition id; watched folders and libraries retain their
 // source id on the clip. Nothing guesses from a label or classification score.
-func EnrollmentFor(clip Clip, row ClipPipeline) (Enrollment, bool) {
+func EnrollmentFor(clip clips.Clip, row pipelinestate.ClipPipeline) (Enrollment, bool) {
 	if row.AcquisitionID != "" {
 		return Enrollment{Kind: EnrollmentAcquisition, Reference: row.AcquisitionID}, true
 	}
@@ -40,14 +44,14 @@ type ReadyEvent struct {
 	ClipHash      string
 	AcquisitionID string
 	Enrollment    Enrollment
-	Placement     Placement
+	Placement     clips.Placement
 	CreatedAt     time.Time
 }
 
 // ReadyCommit is the complete state one atomic store operation must publish.
 type ReadyCommit struct {
 	Event    ReadyEvent
-	Pipeline ClipPipeline
+	Pipeline pipelinestate.ClipPipeline
 }
 
 // Validate proves the caller is committing the one finished, playable outcome shape. The store
@@ -57,8 +61,8 @@ func (c ReadyCommit) Validate() error {
 	e, p := c.Event, c.Pipeline
 	if e.ID != "ready:"+e.ClipHash || e.ClipHash == "" || e.ClipHash != p.ClipHash ||
 		e.AcquisitionID != p.AcquisitionID || e.Enrollment.Reference == "" ||
-		(e.Placement != PlacementBreakBody && e.Placement != PlacementBookend) ||
-		p.Disposition != DispositionReady || e.CreatedAt.IsZero() {
+		(e.Placement != clips.PlacementBreakBody && e.Placement != clips.PlacementBookend) ||
+		p.Disposition != pipelinestate.DispositionReady || e.CreatedAt.IsZero() {
 		return fmt.Errorf("%w: incomplete ready commit", ErrReadyStale)
 	}
 	switch e.Enrollment.Kind {
@@ -81,14 +85,14 @@ func (c ReadyCommit) Validate() error {
 // the proposed value may add only that rung's successful record and the terminal Ready fields.
 // This prevents a caller with an old or fabricated completed ladder from publishing over a newer
 // conveyor row whose four header strings happen to match.
-func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
+func (c ReadyCommit) ValidateAgainst(current pipelinestate.ClipPipeline) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
 	p := c.Pipeline
 	if current.ClipHash != p.ClipHash || current.AcquisitionID != p.AcquisitionID ||
-		current.Stage != p.Stage || current.Stage != StageFinish || current.Status != StatusRunning ||
-		current.Disposition != DispositionRunning || current.Attempts != p.Attempts ||
+		current.Stage != p.Stage || current.Stage != pipelinestate.StageFinish || current.Status != pipelinestate.StatusRunning ||
+		current.Disposition != pipelinestate.DispositionRunning || current.Attempts != p.Attempts ||
 		p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
 		current.PreparationAttempt != p.PreparationAttempt ||
@@ -108,7 +112,7 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		}
 	}
 	last := p.Stages[len(p.Stages)-1]
-	if last.Stage != StageFinish || last.Status != StatusDone {
+	if last.Stage != pipelinestate.StageFinish || last.Status != pipelinestate.StatusDone {
 		return fmt.Errorf("%w: final finish record is not complete", ErrReadyStale)
 	}
 	return nil
@@ -151,12 +155,12 @@ func NewTerminalReady(repository ReadyRepository, now func() time.Time) *Termina
 }
 
 // Commit makes one completed non-composite playable. It never changes Kind.
-func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipeline) (ClipPipeline, error) {
+func (t *TerminalReady) Commit(ctx context.Context, clip cliplibrary.StoreClip, row pipelinestate.ClipPipeline) (pipelinestate.ClipPipeline, error) {
 	if t == nil || t.repository == nil {
 		return row, ErrReadyUnavailable
 	}
 	if clip.Hash == "" || clip.Path == "" || row.ClipHash != clip.Hash || !clip.Held ||
-		!clip.RemovedAt.IsZero() || row.Disposition != DispositionRunning {
+		!clip.RemovedAt.IsZero() || row.Disposition != pipelinestate.DispositionRunning {
 		return row, fmt.Errorf("%w: clip and pipeline identity must be current", ErrReadyStale)
 	}
 	if clip.IsComposite {
@@ -169,13 +173,13 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 	if !ok {
 		return row, fmt.Errorf("%w: enrollment authority is missing", ErrReadyStale)
 	}
-	placement := PlacementForRole(clip.Role, true, false)
-	if placement == PlacementNotPlayable {
+	placement := clips.PlacementForRole(clip.Role, true, false)
+	if placement == clips.PlacementNotPlayable {
 		return row, fmt.Errorf("%w: no playable placement", ErrReadyStale)
 	}
 	at := t.now().UTC()
-	row.Disposition = DispositionReady
-	row.Status = StatusDone
+	row.Disposition = pipelinestate.DispositionReady
+	row.Status = pipelinestate.StatusDone
 	row.Progress = 100
 	row.PreparationProgress = 100
 	row.NextRun = time.Time{}
@@ -203,19 +207,19 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 // per-stage result, the final finish rung must have completed (it is never optional), and the row
 // itself must describe that same final state. Skipped optional/non-applicable work is evidence too;
 // a missing, queued, running, or failed record is not.
-func validateCompletedReadyLadder(row ClipPipeline) error {
-	if len(StageOrder) == 0 || row.Stage != StageOrder[len(StageOrder)-1] ||
-		row.Status != StatusDone || len(row.Stages) != len(StageOrder) {
+func validateCompletedReadyLadder(row pipelinestate.ClipPipeline) error {
+	if len(pipelinestate.StageOrder) == 0 || row.Stage != pipelinestate.StageOrder[len(pipelinestate.StageOrder)-1] ||
+		row.Status != pipelinestate.StatusDone || len(row.Stages) != len(pipelinestate.StageOrder) {
 		return fmt.Errorf("%w: pipeline has not completed its final stage", ErrReadyStale)
 	}
-	for i, stage := range StageOrder {
+	for i, stage := range pipelinestate.StageOrder {
 		record := row.Stages[i]
-		if record.Stage != stage || (record.Status != StatusDone && record.Status != StatusSkipped) {
+		if record.Stage != stage || (record.Status != pipelinestate.StatusDone && record.Status != pipelinestate.StatusSkipped) {
 			return fmt.Errorf("%w: pipeline stage %s is not complete", ErrReadyStale, stage)
 		}
 	}
-	if row.Stages[StageIndex(StageProbe)].Status != StatusDone ||
-		row.Stages[StageIndex(StageFinish)].Status != StatusDone {
+	if row.Stages[pipelinestate.StageIndex(pipelinestate.StageProbe)].Status != pipelinestate.StatusDone ||
+		row.Stages[pipelinestate.StageIndex(pipelinestate.StageFinish)].Status != pipelinestate.StatusDone {
 		return fmt.Errorf("%w: required probe and finish rungs did not run", ErrReadyStale)
 	}
 	return nil

@@ -7,7 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The library re-encode (#2121, decisions 8, 9 and 11): a clip already on air is re-encoded from
@@ -23,13 +27,13 @@ import (
 
 // ReplacementCheck measures the staged bytes that would replace an airing clip's file
 // (fillerdefectfloor's CheckReplacement). Bytes it admits switch with the record it returns.
-type ReplacementCheck func(ctx context.Context, c StoreClip, staged string) (defects.Record, error)
+type ReplacementCheck func(ctx context.Context, c cliplibrary.StoreClip, staged string) (defects.Record, error)
 
 // AiringReplacementStore commits an airing clip's switch to its re-encoded bytes.
 type AiringReplacementStore interface {
 	// ReplaceAiringClip re-keys the clip like ReplaceClipIdentity and records the replacement's
 	// defect verdict under the new hash, in one transaction.
-	ReplaceAiringClip(ctx context.Context, oldHash string, c StoreClip, defects defects.Record) error
+	ReplaceAiringClip(ctx context.Context, oldHash string, c cliplibrary.StoreClip, defects defects.Record) error
 }
 
 // ErrReplacementRefused is a re-encode that ran but did not pass; the airing file stays.
@@ -49,7 +53,7 @@ func (s *TranscodeStage) WithAiringReplacement(store AiringReplacementStore, che
 // from again, and a split child is cut from its parent, so neither is replaced. Nor is anything
 // replaced on a host without a hardware encoder: the re-encode is what moves the library onto the
 // GPU, and on the CPU it would spend the machine for no saving.
-func (s *TranscodeStage) NeedsReencode(c StoreClip) bool {
+func (s *TranscodeStage) NeedsReencode(c cliplibrary.StoreClip) bool {
 	if s == nil || s.airingStore == nil || s.airingCheck == nil || s.evidenceTranscode == nil ||
 		c.Held || !c.RemovedAt.IsZero() || c.IsComposite || c.ParentHash != "" || c.Path == "" {
 		return false
@@ -58,27 +62,27 @@ func (s *TranscodeStage) NeedsReencode(c StoreClip) bool {
 	if profile.Family == "" {
 		return false
 	}
-	tags, ok := ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path)))
 	return ok && tags.MediaAssets != nil && tags.MediaAssets.Playback != nil && tags.Mezzanine != profile.ID()
 }
 
 // ReplaceAiring re-encodes an airing clip that NeedsReencode and switches it to the new bytes,
 // returning the clip under its new identity. Any error leaves it airing as it was; a replacement
 // that ran and did not pass is ErrReplacementRefused.
-func (s *TranscodeStage) ReplaceAiring(ctx context.Context, c StoreClip) (StoreClip, error) {
+func (s *TranscodeStage) ReplaceAiring(ctx context.Context, c cliplibrary.StoreClip) (cliplibrary.StoreClip, error) {
 	if !s.NeedsReencode(c) {
-		return StoreClip{}, fmt.Errorf("re-encode %s: not an airing clip with an original to encode from", c.Path)
+		return cliplibrary.StoreClip{}, fmt.Errorf("re-encode %s: not an airing clip with an original to encode from", c.Path)
 	}
 	swap := &airingSwap{store: s.airingStore, check: s.airingCheck}
-	if tags, ok := ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path))); ok {
-		swap.oldEvidence = derivativePath(tags.MediaAssets.Evidence)
+	if tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path))); ok {
+		swap.oldEvidence = asset.DerivativePath(tags.MediaAssets.Evidence)
 	}
 	res, err := s.run(ctx, c, swap)
 	if err != nil {
-		return StoreClip{}, err
+		return cliplibrary.StoreClip{}, err
 	}
 	if !swap.committed {
-		return StoreClip{}, fmt.Errorf("re-encode %s: the profile changed while it ran; nothing was replaced", c.Path)
+		return cliplibrary.StoreClip{}, fmt.Errorf("re-encode %s: the profile changed while it ran; nothing was replaced", c.Path)
 	}
 	return res.Clip, nil
 }
@@ -96,11 +100,11 @@ type airingSwap struct {
 
 // admit is the gate between the verified encode and its publication: the media-quality report
 // and the defect floor must both pass the staged bytes.
-func (w *airingSwap) admit(ctx context.Context, c StoreClip, staged, newHash string, quality MediaQuality) error {
+func (w *airingSwap) admit(ctx context.Context, c cliplibrary.StoreClip, staged, newHash string, quality tools.MediaQuality) error {
 	if newHash == c.Hash {
 		return fmt.Errorf("%w: the re-encode reproduced the airing bytes", ErrReplacementRefused)
 	}
-	if verdict, _, detail := EvaluateMediaQuality(quality); verdict != VerdictContinue {
+	if verdict, _, detail := EvaluateMediaQuality(quality); verdict != pipelinestate.VerdictContinue {
 		return fmt.Errorf("%w: %s", ErrReplacementRefused, detail)
 	}
 	record, err := w.check(ctx, c, staged)
@@ -117,10 +121,10 @@ func (w *airingSwap) admit(ctx context.Context, c StoreClip, staged, newHash str
 // commit switches the clip to its published replacement. When the switch fails the replacement
 // is taken down again: the clip still airs its old file, and the next scan must not find the new
 // one and catalogue it as a second clip.
-func (w *airingSwap) commit(ctx context.Context, oldHash string, c StoreClip, published string) error {
+func (w *airingSwap) commit(ctx context.Context, oldHash string, c cliplibrary.StoreClip, published string) error {
 	if err := w.store.ReplaceAiringClip(ctx, oldHash, c, w.record); err != nil {
 		_ = os.Remove(published)
-		_ = os.Remove(sidecarPathFor(published))
+		_ = os.Remove(tools.SidecarPathFor(published))
 		return err
 	}
 	w.committed = true
@@ -136,8 +140,8 @@ func (w *airingSwap) discardUncommitted(clipDir, evidence string) {
 
 // removeOldEvidence removes the airing clip's own evidence copy once it switched. Evidence is
 // encoded from one clip's master, so no other clip names it; the master itself always stays.
-func (w *airingSwap) removeOldEvidence(clipDir string, assets MediaAssetManifest) {
-	if w.oldEvidence == "" || w.oldEvidence == derivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
+func (w *airingSwap) removeOldEvidence(clipDir string, assets asset.Manifest) {
+	if w.oldEvidence == "" || w.oldEvidence == asset.DerivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
 		return
 	}
 	_ = os.Remove(filepath.Join(clipDir, filepath.FromSlash(w.oldEvidence)))

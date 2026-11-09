@@ -98,10 +98,7 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		if err := exec("library candidates", `DELETE FROM library_candidates WHERE inventory_item_id = ?`, id); err != nil {
 			return 0, err
 		}
-		if err := exec("library image refs", `DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`,
-			LibraryItemImageOwner, id); err != nil {
-			return 0, err
-		}
+		// Its artwork refs go with it (library_item_images cascades).
 		if err := exec("library items", `DELETE FROM library_items WHERE id = ?`, id); err != nil {
 			return 0, err
 		}

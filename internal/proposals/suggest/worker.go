@@ -16,7 +16,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -31,7 +32,7 @@ import (
 // ProposalStore is the slice of the store the worker needs outside the durable workflow: the
 // channel a re-curation job belongs to. Every job lifecycle transition goes through the workflow.
 type ProposalStore interface {
-	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends
@@ -48,7 +49,7 @@ type Service struct {
 	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
 	// which is the correct default: the gate is closed unless something opens it.
-	auto *AutoApprover
+	auto AutoApprover
 	// autoCurate applies the §8.2 channel-scoped auto-curate grant to a re-curation
 	// proposal. nil ⇒ re-curation proposals wait for an admin (the closed default). Distinct
 	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
@@ -72,9 +73,9 @@ func (s *Service) WithQualityRecorder(recorder QualityRecorder) *Service {
 }
 
 type ProposalNotifier interface {
-	ProposalSubmitted(context.Context, store.Proposal)
-	ProposalApproved(context.Context, store.Proposal, string)
-	ProposalDenied(context.Context, store.Proposal)
+	ProposalSubmitted(context.Context, proposalstore.Proposal)
+	ProposalApproved(context.Context, proposalstore.Proposal, string)
+	ProposalDenied(context.Context, proposalstore.Proposal)
 }
 
 func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
@@ -86,9 +87,16 @@ func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
 // re-curation proposal may auto-approve because its CHANNEL opted in (AutoCurate), bounded by
 // the quality bar + title cap — never a user quota. The suggest package declares the interface
 // (dependency inversion); internal/channels/recurate implements it, wired at the composition root, so
-// suggest never imports recurate. Returns the same Decision shape the per-user grant does.
+// suggest never imports recurate. Returns the same AutoDecision shape the per-user grant does.
 type ChannelAutoCurator interface {
-	Consider(ctx context.Context, p store.Proposal) (Decision, error)
+	Consider(ctx context.Context, p proposalstore.Proposal) (proposals.AutoDecision, error)
+}
+
+// AutoApprover applies the per-user auto-approve grant (§8, §11) to a just-produced proposal. The
+// suggest package declares the interface; internal/proposals/accept implements it, wired at the
+// composition root, so suggest never imports accept.
+type AutoApprover interface {
+	Consider(ctx context.Context, p proposalstore.Proposal) (proposals.AutoDecision, error)
 }
 
 const (
@@ -101,7 +109,7 @@ const (
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
 // composition root, where the settings service and the full store are both available.
-func (s *Service) WithAutoApprove(a *AutoApprover) *Service {
+func (s *Service) WithAutoApprove(a AutoApprover) *Service {
 	s.auto = a
 	return s
 }
@@ -182,9 +190,9 @@ func (s *Service) Submit(ctx context.Context, intent proposals.Intent, createdBy
 		return "", err
 	}
 	if submission.CachedProposal != nil {
-		s.settleSubmitted(ctx, store.Job{
+		s.settleSubmitted(ctx, proposalstore.Job{
 			ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
-		}, store.Proposal{
+		}, proposalstore.Proposal{
 			ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
 			CreatedBy: createdBy, Body: submission.CachedProposal.Proposal,
 			CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
@@ -212,11 +220,11 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent proposals.Intent, buil
 	if err != nil {
 		return "", err
 	}
-	row := store.Proposal{
+	row := proposalstore.Proposal{
 		ID: recorded.ID, JobID: recorded.JobID, Status: "submitted", CreatedBy: createdBy,
 		Body: recorded.Proposal, CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
 	}
-	s.settleSubmitted(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
+	s.settleSubmitted(ctx, proposalstore.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
 	return recorded.JobID, nil
 }
 
@@ -314,11 +322,11 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		return
 	}
 	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
-	row := store.Proposal{
+	row := proposalstore.Proposal{
 		ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
 		Body: completed.Proposal, CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
 	}
-	s.settleSubmitted(ctx, store.Job{
+	s.settleSubmitted(ctx, proposalstore.Job{
 		ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
 	}, row)
 	s.emitPhase(work.JobID, PhaseDone, 0)
@@ -362,7 +370,7 @@ func (s *Service) executionIntent(ctx context.Context, kind, jobID string, inten
 // approvers a request is waiting only if a person still has to act on it. An auto-approved or
 // auto-curated proposal never sends the waiting notice, so no one is told about a proposal and
 // then told it was approved.
-func (s *Service) settleSubmitted(ctx context.Context, job store.Job, p store.Proposal) {
+func (s *Service) settleSubmitted(ctx context.Context, job proposalstore.Job, p proposalstore.Proposal) {
 	if s.considerAutomaticApproval(ctx, job, p) {
 		return
 	}
@@ -376,7 +384,7 @@ func (s *Service) settleSubmitted(ctx context.Context, job store.Job, p store.Pr
 // distinct lifecycles: done means inference produced a persisted proposal;
 // approval may move that proposal from submitted to approved immediately after.
 // It reports whether a grant approved the proposal.
-func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) (approved bool) {
+func (s *Service) considerAutomaticApproval(ctx context.Context, job proposalstore.Job, p proposalstore.Proposal) (approved bool) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
@@ -476,7 +484,7 @@ func classifySuggestionQuality(
 		retrievalOutcome := quality.OutcomeEmpty
 		if trace.SurfacedTotal > 0 {
 			retrievalOutcome = quality.OutcomeSucceeded
-		} else if trace.Terminal == TerminalRetrievalFailure {
+		} else if trace.Terminal == proposals.TerminalRetrievalFailure {
 			retrievalOutcome = quality.OutcomeFailed
 		}
 		retrieval := observation(quality.StageRetrieval, retrievalOutcome)
@@ -495,9 +503,9 @@ func classifySuggestionQuality(
 		retrieval := observation(quality.StageRetrieval, quality.OutcomeSucceeded)
 		retrieval.CandidateCount = trace.SurfacedTotal
 		result = append(result, retrieval)
-	} else if trace.Terminal == ReasonRetrievalEmpty || trace.Terminal == TerminalRetrievalFailure {
+	} else if trace.Terminal == proposals.ReasonRetrievalEmpty || trace.Terminal == proposals.TerminalRetrievalFailure {
 		outcome := quality.OutcomeEmpty
-		if trace.Terminal == TerminalRetrievalFailure {
+		if trace.Terminal == proposals.TerminalRetrievalFailure {
 			outcome = quality.OutcomeFailed
 		}
 		result = append(result, observation(quality.StageRetrieval, outcome))
@@ -532,15 +540,15 @@ func normalizeContextFailure(cause error) error {
 	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
 		return cause
 	}
-	trace := proposals.DecisionTrace{Version: DecisionTraceVersion}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion}
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace.Clone()
 		if trace.Version == 0 {
-			trace.Version = DecisionTraceVersion
+			trace.Version = proposals.DecisionTraceVersion
 		}
 	}
-	trace.Terminal = TerminalGenerationFailure
+	trace.Terminal = proposals.TerminalGenerationFailure
 	return NewFailure(FailureCodeGenerationFailed, trace, cause)
 }
 

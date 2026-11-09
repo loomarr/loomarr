@@ -45,8 +45,9 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	want := []LibraryTitle{
-		{ID: "film", Kind: "movie", Name: "Film", TMDBID: "90000001", Rating: "PG", SizeBytes: 4_000},
-		{ID: "show", Kind: "series", Name: "Show", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
+		{ID: "film", Kind: "movie", Name: "Film", IDs: []LibraryID{{"imdb", "tt90000001"}, {"tmdb", "90000001"}},
+			Rating: "PG", SizeBytes: 4_000},
+		{ID: "show", Kind: "series", Name: "Show", IDs: []LibraryID{{"tmdb", "90000003"}, {"tvdb", "90000002"}}, Rating: "TV-Y"},
 	}
 	if !slices.EqualFunc(all, want, sameTitle) {
 		t.Errorf("all titles = %+v, want %+v", all, want)
@@ -130,7 +131,8 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	found, err := st.SearchLibraryTitles(ctx, " SHOW ", 10)
-	if err != nil || len(found) != 2 || found[0].ID != "show" || found[1].ID != "showtime" || found[1].TMDBID != "90000005" {
+	if err != nil || len(found) != 2 || found[0].ID != "show" || found[1].ID != "showtime" ||
+		IDIn(found[1].IDs, "tmdb") != "90000005" {
 		t.Errorf("search show = %+v, %v; want Show, then Showtime 100%%", found, err)
 	}
 	if one, err := st.SearchLibraryTitles(ctx, "show", 1); err != nil || len(one) != 1 || one[0].ID != "show" {
@@ -147,6 +149,6 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 }
 
 func sameTitle(a, b LibraryTitle) bool {
-	return a.ID == b.ID && a.Kind == b.Kind && a.Name == b.Name && a.TMDBID == b.TMDBID && a.TVDBID == b.TVDBID &&
+	return a.ID == b.ID && a.Kind == b.Kind && a.Name == b.Name && slices.Equal(a.IDs, b.IDs) &&
 		a.Rating == b.Rating && a.SizeBytes == b.SizeBytes
 }

@@ -61,7 +61,8 @@ describe("IntentForm", () => {
       />,
     );
 
-    openConstraints();
+    // The details the failed request carried are already open (#2746): nothing to expand.
+    expect(screen.getByRole("button", { name: /hide details/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
     await waitFor(() =>
@@ -76,6 +77,13 @@ describe("IntentForm", () => {
         }),
       ),
     );
+  });
+
+  it("starts with the details closed when the request carried none", () => {
+    render(<IntentForm initialIntent={{ description: "90s action movies" }} onSubmit={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /add details/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/must include/i)).not.toBeInTheDocument();
   });
 
   it("carries mustInclude and mustExclude to the server", async () => {

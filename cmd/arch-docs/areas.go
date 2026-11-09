@@ -7,7 +7,12 @@ import "sort"
 //
 // The table below is the single source of truth for which area a package belongs to, and
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
-// into one directory per area, the directory is the area and this table goes.
+// into one directory per area, the directory is the area and this table goes. Most areas already
+// have their directory (media, channels, proposals, playout, filler, people, platform); still
+// directly under internal/ are the library area's catalog, inventory, metadataprovider,
+// moviecollections, episodeevidence, provision, provisionbackstop, requester and tmdb, the edge
+// area is the two directories api and app, and the test area's demolibrary, eval, integration,
+// testkit, tmdb/tmdbstandin and platform/store/storetest sit outside any single directory.
 type area struct {
 	Name        string
 	Title       string
@@ -95,11 +100,12 @@ var areas = []area{
 		Description: "Turning \"I want a channel that feels like X\" into a lineup a person can approve. " +
 			"The suggester checks every title against the real library and catalog, the workflow tracks " +
 			"each request through to the household's first channel, and the outlook explains a pending " +
-			"proposal before anyone approves it. The quality and planner-reference packages measure how " +
-			"good the suggestions are.",
+			"proposal before anyone approves it. Accepting a proposal, by a person's approval or the " +
+			"auto-approve grant within its pending-acquisition quota, is its own package. The quality " +
+			"and planner-reference packages measure how good the suggestions are.",
 		Packages: []string{
 			"proposals", "proposals/workflow", "proposals/outlook", "proposals/suggest",
-			"proposals/webreference", "proposals/quality",
+			"proposals/accept", "proposals/webreference", "proposals/quality",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
@@ -120,7 +126,7 @@ var areas = []area{
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
 			"real hardware.",
 		Packages: []string{
-			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/tunarr",
+			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
 			"playout/landiscovery",
 		},
@@ -149,7 +155,7 @@ var areas = []area{
 			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
 			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
-			"filler/source/youtube", "filler/location",
+			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate", "filler/cliplibrary", "filler/acquisition", "filler/identity",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -186,7 +192,7 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
@@ -210,8 +216,12 @@ var areas = []area{
 		Name:  "edge",
 		Title: "Edge",
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
-			"is the composition root that builds every other area and hands them to it.",
-		Packages:       []string{"api", "app"},
+			"is the composition root that builds every other area and hands them to it. " +
+			"`api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, " +
+			"request ids, roles and the route-role marker. " +
+			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
+			"settings that `playout` must not know about.",
+		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{
@@ -226,7 +236,8 @@ var areas = []area{
 			"testkit", "testkit/execfixture", "testkit/httpfixture",
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
-			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "platform/store/storetest",
+			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
+			"platform/store/storetest",
 			"demolibrary", "tmdb/tmdbstandin", "integration", "eval",
 		},
 		ImportsAnyArea: true,

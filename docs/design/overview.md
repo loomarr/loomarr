@@ -85,7 +85,7 @@ declares.
 | Programmer | interface `Programmer.Reconcile(channel, lineup)` | Tunarr |
 | Suggester | struct `suggest.Suggester` | a local model over the Ollama API, or an OpenAI-compatible endpoint |
 | Catalog | struct `catalog.Catalog` | Library + TMDB/TVDB; grounds the model and backs `GET /v1/search` |
-| FillerSource | interface `filler.FillerSource` | `folder`, `youtube`, `archive`, `library` |
+| FillerSource | interface `cliplibrary.FillerSource` | `folder`, `youtube`, `archive`, `library` |
 | StorageGovernor | struct `storagegovernor.Governor` | host filesystem capacity, managed-root usage, atomic reservations |
 | Store | interface `Store` | Postgres, SQLite |
 | Events | struct `events.Bus` | internal (to the scheduler) and optional outbound webhook |
@@ -163,7 +163,7 @@ served docs all derive from it, and hand-kept API docs are not allowed (decision
 (`make openapi-verify`).
 
 - **Every `/v1` route is a Huma operation**, including binary downloads, images, SSE, multipart and
-  redirects (`rawOp` in `internal/api/rawop.go`). That keeps one fail-closed authorization
+  redirects (`RawOp` in `internal/api/httpcore/rawop.go`). That keeps one fail-closed authorization
   middleware, CSRF and the router/exporter drift guard covering every route.
 - **Arrays are never nullable**, and `null` is not an empty list anywhere. `humaConfig` sets
   `DefaultArrayNullable = false`, and the API's one JSON encoder (`wireJSONFormat`, also behind

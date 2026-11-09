@@ -3,7 +3,7 @@ package app
 import (
 	"sort"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
@@ -76,7 +76,7 @@ func restartDrift(
 // canonicalFillerRestartBaseline records the topology the generation actually uses, not the raw
 // spelling persisted in Settings. Equivalent edits such as `/data/x/../filler` must not ask for a
 // restart, and an empty watch setting must track the derived `<clip>/_watch` path.
-func canonicalFillerRestartBaseline(applied map[string]string, layout filler.Layout) {
+func canonicalFillerRestartBaseline(applied map[string]string, layout cliplibrary.Layout) {
 	if _, ok := applied[settings.FillerDir.Key()]; ok {
 		applied[settings.FillerDir.Key()] = layout.ClipDir()
 	}
@@ -92,7 +92,7 @@ func canonicalRestartCurrent(set resolved) func(string) string {
 		if key != settings.FillerDir.Key() && key != settings.FillerWatchDir.Key() {
 			return settings.ValueString(set.Value(key))
 		}
-		layout, err := filler.NewLayout(settings.FillerDir.Get(set), settings.FillerWatchDir.Get(set))
+		layout, err := cliplibrary.NewLayout(settings.FillerDir.Get(set), settings.FillerWatchDir.Get(set))
 		if err != nil {
 			return settings.ValueString(set.Value(key))
 		}

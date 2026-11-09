@@ -12,7 +12,6 @@ package catalog
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -195,7 +194,6 @@ type Presence struct {
 // (§10), so representing one as a Candidate would push an unprovisionable row with an
 // invalid media type into the grounding path. Clip search lives on GET /v1/filler?q=,
 // which returns real ClipDTOs carrying a Tunarr program id.
-// Wired in Phase 12 when the clip catalog exists; nil until then.
 // Catalog federates the corpora. TMDB may be nil (scope skipped).
 type Catalog struct {
 	lib      LibrarySearcher
@@ -289,7 +287,7 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 	// Library first, so its in_library + library item id win on merge.
 	if scopeIncludes(scope, ScopeLibrary) && c.lib != nil {
 		res, err := c.lib.Search(ctx, term, limit)
-		if err != nil && (scope != ScopeAll || !errors.Is(err, library.ErrConnectionRequired)) {
+		if err != nil {
 			return nil, err
 		}
 		for i, r := range res {
@@ -594,7 +592,7 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 // share of a full page (by default one quarter) is reserved for outside-Library
 // discovery. Each partition is sorted by
 // upstream relevance order intact within each partition. Provider responses are
-// ordered evidence; alphabetizing here used to discard that evidence.
+// ordered evidence; alphabetizing here would discard that evidence.
 func dedupeAndOrderWithPolicy(
 	byKey map[string]*Candidate,
 	order []string,

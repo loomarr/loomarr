@@ -4,16 +4,15 @@ import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { SettingUnit } from "@loomarr/api/models/settingUnit";
-import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, CompactSelect, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
+import { Badge, CompactSelect, Field, FieldHint, Surface, Text, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { CronField } from "./cron-field";
 import { DurationField, type DurationUnit } from "./duration-field";
 import type { SettingFieldProps } from "./setting-field.type";
 
@@ -89,6 +88,8 @@ const SettingField = ({
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
+  // ⚠ A pinned VALUE is real, so it is shown read-only at full strength, never in the dimmed
+  // disabled look that reads as an empty placeholder (#2759): every control takes `readOnly`.
   const overriding = entry.envOverride === true;
   // Offer the affordance only where it can actually do something: the environment must set
   // the key, and the surface must have supplied a handler.
@@ -144,26 +145,21 @@ const SettingField = ({
     }
     if (entry.kind === SettingKind.enum) {
       return (
-        <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
-          <SelectTrigger
-            id={id}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Prefer the registry-owned {value,label} options (config-design §5) so the
-                dropdown shows "OpenAI"/"Emby", not the raw stored value. Fall back to the
-                bare value list for any enum that ships no labels. */}
-            {(entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))).map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          // Prefer the registry-owned {value,label} options (config-design §5) so the dropdown
+          // shows "OpenAI"/"Emby", not the raw stored value. Fall back to the bare value list for
+          // any enum that ships no labels.
+          options={entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))}
+          readOnly={pinned}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.filler_download_schedule) {
@@ -173,9 +169,13 @@ const SettingField = ({
       const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
       return (
         <div className="flex flex-col gap-2">
-          <Select
-            value={preset}
-            disabled={pinned || disabledReason !== undefined}
+          <CompactSelect
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            disabled={disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            label={label}
             onValueChange={(next) => {
               if (next === CUSTOM_PRESET) {
                 setEditingCustomSchedule(true);
@@ -184,24 +184,10 @@ const SettingField = ({
               setEditingCustomSchedule(false);
               onChange(next);
             }}
-          >
-            <SelectTrigger
-              id={id}
-              aria-describedby={describedBy}
-              aria-labelledby={labelledBy}
-              aria-invalid={invalid ? "true" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_PRESET}>Custom</SelectItem>
-            </SelectContent>
-          </Select>
+            options={[...presets, { label: "Custom", value: CUSTOM_PRESET }]}
+            readOnly={pinned}
+            value={preset}
+          />
           {preset === CUSTOM_PRESET && (
             <DurationField
               amountLabel="Custom check interval"
@@ -213,6 +199,22 @@ const SettingField = ({
             />
           )}
         </div>
+      );
+    }
+    if (entry.kind === SettingKind.cron) {
+      return (
+        <CronField
+          id={id}
+          label={label}
+          value={value}
+          presets={entry.presets ?? []}
+          onChange={onChange}
+          disabled={disabledReason !== undefined}
+          readOnly={pinned}
+          invalid={invalid}
+          describedBy={describedBy}
+          labelledBy={labelledBy}
+        />
       );
     }
     if (entry.kind === SettingKind.duration) {
@@ -285,10 +287,11 @@ const SettingField = ({
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
+            disabled={disabledReason !== undefined}
             id={id}
             invalid={invalid}
             onAmount={(amount) => onChange(String(Math.round(amount * 1024 ** 2)))}
+            readOnly={pinned}
           />
         </WithUnit>
       );
@@ -301,12 +304,13 @@ const SettingField = ({
           autoCapitalize="none"
           autoComplete={entry.secret ? "new-password" : "off"}
           autoCorrect={false}
-          disabled={pinned || disabledReason !== undefined}
+          disabled={disabledReason !== undefined}
           id={id}
           invalid={invalid}
           keyboardType={keyboardFor(entry.kind)}
           onChangeText={onChange}
           placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
+          readOnly={pinned}
           secureTextEntry={entry.secret}
           value={value}
         />
@@ -334,7 +338,8 @@ const SettingField = ({
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
     <div
       className={cn(
-        "group",
+        // `relative` anchors the absolutely positioned `sr-only` doc below to this field.
+        "group relative",
         inlineSwitch
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
           : "flex flex-col gap-1.5",
@@ -342,7 +347,9 @@ const SettingField = ({
       )}
     >
       <div className="flex items-center gap-2">
-        <Label htmlFor={id}>{label}</Label>
+        <Text as="label" htmlFor={id} textRole="label">
+          {label}
+        </Text>
         {/* The registry's one plain sentence sits under the field; the rest of the help (trade-offs,
             units, edge cases) waits behind this (i), so the form reads at a glance (#2741). */}
         {entry.detail && <FieldHelp label={label}>{entry.detail}</FieldHelp>}
@@ -506,8 +513,12 @@ const SettingField = ({
             inlineSwitch && "col-span-2",
           )}
         >
-          {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
-          {formatRelative(entry.updatedAt)}
+          {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
+          {entry.updatedByYou
+            ? `Changed by you, ${formatAgo(entry.updatedAt)}`
+            : entry.updatedBy
+              ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
+              : `Changed ${formatAgo(entry.updatedAt)}`}
         </p>
       )}
 

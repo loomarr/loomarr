@@ -193,7 +193,8 @@ test("a fetched arrival becomes playable automatically after its checks complete
         sourcesReady: 1,
         sourcesTotal: 1,
         clips: fetched ? 1 : 0,
-        held: fetched && !readyCommitted ? 1 : 0,
+        preparing: fetched && !readyCommitted ? 1 : 0,
+        needsYou: 0,
         health: "healthy",
       });
     }

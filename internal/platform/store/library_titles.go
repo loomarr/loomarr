@@ -10,15 +10,15 @@ import (
 )
 
 // LibraryTitle is a movie or series the Library holds with a file to play (#2151 step 15), by the
-// provider ids a title record knows it by: what availability, presence and ratings asked the media
-// server until the cutover.
+// external ids its record knows it by: what availability, presence and ratings read; the media
+// server is never asked.
 type LibraryTitle struct {
 	ID string
 	// Kind is movie or series.
-	Kind   string
-	Name   string
-	TMDBID string
-	TVDBID string
+	Kind string
+	Name string
+	// IDs are every external id the title is known by, by namespace then value.
+	IDs    []LibraryID
 	Rating string
 	Genres []string
 	// SizeBytes is a movie's playing file's size; 0 for a series.
@@ -35,10 +35,67 @@ type LibraryTitleReader interface {
 	LibraryTitleByProviderID(ctx context.Context, kind, namespace, value string) (title LibraryTitle, ok bool, err error)
 }
 
-const libraryTitleColumns = `i.id, i.kind, i.name,
-	COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tmdb'), ''),
-	COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tvdb'), ''),
-	i.rating,
+// IDIn is the first of ids in namespace, by value; "" when none is. A caller that speaks one
+// catalog's ids (acquisition, discovery) reads them by naming it.
+func IDIn(ids []LibraryID, namespace string) string {
+	for _, id := range ids {
+		if id.Namespace == namespace {
+			return id.Value
+		}
+	}
+	return ""
+}
+
+// libraryIDsChunk bounds one IN list of item ids, well inside both dialects' parameter limits.
+const libraryIDsChunk = 500
+
+// libraryIDsOf is every external id of each item, by namespace then value.
+func (s *sqlStore) libraryIDsOf(ctx context.Context, itemIDs []string) (map[string][]LibraryID, error) {
+	out := map[string][]LibraryID{}
+	for start := 0; start < len(itemIDs); start += libraryIDsChunk {
+		chunk := itemIDs[start:min(start+libraryIDsChunk, len(itemIDs))]
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT item_id, namespace, value FROM library_ids
+			WHERE item_id IN (?`+strings.Repeat(`, ?`, len(chunk)-1)+`) ORDER BY item_id, namespace, value`), args...)
+		if err != nil {
+			return nil, fmt.Errorf("library ids: %w", err)
+		}
+		for rows.Next() {
+			var item string
+			var id LibraryID
+			if err := rows.Scan(&item, &id.Namespace, &id.Value); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("library ids: %w", err)
+			}
+			out[item] = append(out[item], id)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return nil, fmt.Errorf("library ids: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// withLibraryIDs fills each title's external ids.
+func (s *sqlStore) withLibraryIDs(ctx context.Context, titles []LibraryTitle) error {
+	ids := make([]string, len(titles))
+	for i, t := range titles {
+		ids[i] = t.ID
+	}
+	byItem, err := s.libraryIDsOf(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range titles {
+		titles[i].IDs = byItem[titles[i].ID]
+	}
+	return nil
+}
+
+const libraryTitleColumns = `i.id, i.kind, i.name, i.rating,
 	CASE WHEN i.kind = 'movie' THEN COALESCE((SELECT MAX(s.size_bytes) FROM library_sources s
 		WHERE s.item_id = i.id AND s.plays), 0) ELSE 0 END
 	FROM library_items i`
@@ -57,7 +114,7 @@ func (s *sqlStore) LibraryTitles(ctx context.Context, since time.Time) ([]Librar
 	var out []LibraryTitle
 	for rows.Next() {
 		var t LibraryTitle
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.TMDBID, &t.TVDBID, &t.Rating, &t.SizeBytes); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Rating, &t.SizeBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library titles: %w", err)
 		}
@@ -69,6 +126,9 @@ func (s *sqlStore) LibraryTitles(ctx context.Context, since time.Time) ([]Librar
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("library titles: %w", err)
 	}
+	if err := s.withLibraryIDs(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -77,13 +137,18 @@ func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
 		WHERE i.kind = ? AND i.id IN (SELECT item_id FROM library_ids WHERE namespace = ? AND value = ?)
 		AND `+itemListed+` ORDER BY i.id LIMIT 1`), kind, namespace, value).Scan(
-		&t.ID, &t.Kind, &t.Name, &t.TMDBID, &t.TVDBID, &t.Rating, &t.SizeBytes)
+		&t.ID, &t.Kind, &t.Name, &t.Rating, &t.SizeBytes)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return LibraryTitle{}, false, nil
 	case err != nil:
 		return LibraryTitle{}, false, fmt.Errorf("library title by %s id: %w", namespace, err)
 	}
+	one := []LibraryTitle{t}
+	if err := s.withLibraryIDs(ctx, one); err != nil {
+		return LibraryTitle{}, false, err
+	}
+	t = one[0]
 	genres, err := s.libraryGenres(ctx, t.ID)
 	if err != nil {
 		return LibraryTitle{}, false, err
@@ -93,7 +158,7 @@ func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace
 }
 
 // LibraryTitleSearcher finds the Library's titles by name: the library half of title search
-// (#2151 step 15e), what the media server's search answered until the cutover.
+// (#2151 step 15e); the media server's search is not asked.
 type LibraryTitleSearcher interface {
 	// SearchLibraryTitles is up to limit movies and series with a present file whose name holds
 	// term (case-insensitive, LIKE's wildcards taken literally): an exact name first, then one
@@ -119,13 +184,16 @@ func (s *sqlStore) SearchLibraryTitles(ctx context.Context, term string, limit i
 	var out []LibraryTitle
 	for rows.Next() {
 		var t LibraryTitle
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.TMDBID, &t.TVDBID, &t.Rating, &t.SizeBytes); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Rating, &t.SizeBytes); err != nil {
 			return nil, fmt.Errorf("search library titles: %w", err)
 		}
 		out = append(out, t)
 	}
-	if err := rows.Err(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, fmt.Errorf("search library titles: %w", err)
+	}
+	if err := s.withLibraryIDs(ctx, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

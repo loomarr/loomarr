@@ -18,8 +18,8 @@ type PreparedReclaim struct {
 // ReclaimRetiredPrepared removes the media the beta.7 prepared library left on disk (decision
 // 0040: nothing reads it since beta.8). It removes only what that library wrote: a directory named
 // by a publication key (64 lowercase hex) that holds .publication.json, and a .staging-<key>-*
-// workspace. Symlinks, unrecognised files and directories, and capability evidence the state
-// directory move could not take stay, and so does the directory unless this pass emptied it. A
+// workspace. Symlinks and unrecognised files and directories (including the old encoder
+// evidence file) stay, and so does the directory unless this pass emptied it. A
 // missing directory is a no-op, so every boot after the first finds nothing. Entries that fail to
 // remove are reported in the error; the rest are still removed.
 func ReclaimRetiredPrepared(dir string) (PreparedReclaim, error) {

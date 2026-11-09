@@ -1,4 +1,4 @@
-import { Action, Screen, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, Screen, Surface, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The six legacy Web Button variants plus the web `render` composition escape hatch (#970 PR B
@@ -53,6 +53,37 @@ const ActionVariantsWorkshop = () => (
         </Action>
         <Action icon="pageOlder" iconPlacement="end" onPress={() => undefined} variant="ghost">
           Older
+        </Action>
+      </Surface>
+    </Surface>
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Text in a field row</Text>
+      <Surface
+        alignItems="center"
+        backgroundColor="transparent"
+        borderWidth={0}
+        flexDirection="row"
+        gap="control"
+      >
+        <Badge shape="square" tone="override">
+          Channel override
+        </Badge>
+        <Action layout="text" onPress={() => undefined} variant="link">
+          Reset to default
+        </Action>
+      </Surface>
+      <Surface
+        alignItems="center"
+        backgroundColor="transparent"
+        borderWidth={0}
+        flexDirection="row"
+        gap="control"
+      >
+        <Badge shape="square" tone="neutral">
+          Default
+        </Badge>
+        <Action disabled layout="text" onPress={() => undefined} variant="link">
+          Reset to default
         </Action>
       </Surface>
     </Surface>

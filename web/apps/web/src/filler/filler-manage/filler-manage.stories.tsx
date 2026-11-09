@@ -1,8 +1,9 @@
-import type { FillerReadinessDTO, FillerWatchOutputBody, MeBody } from "@loomarr/api";
+import type { FillerWatchOutputBody, MeBody } from "@loomarr/api";
 import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
+import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { defectReport, readiness } from "@/test/fixtures/filler";
+import { defectReport } from "@/test/fixtures/filler";
 import { withRouter } from "@/test/story-utils";
 import { FillerManage } from "./filler-manage";
 
@@ -22,15 +23,19 @@ const admin: MeBody = {
 const watch: FillerWatchOutputBody = {
   clips: 1284,
   health: "healthy",
-  held: 0,
+  preparing: 2,
+  needsYou: 0,
   sourcesOn: 2,
   sourcesReady: 2,
   sourcesTotal: 3,
 };
-const hubReadiness: FillerReadinessDTO = readiness({
-  pipeline: { ...readiness().pipeline, inProgress: 2 },
-  pool: { ...readiness().pool, untagged: 23 },
-});
+const hubTaxonomy: ListTaxonomyOutputBody = {
+  taxa: [],
+  totalClips: 1284,
+  taggedClips: 1261,
+  unclassifiedClips: 23,
+  axisCoverage: [],
+};
 // The Quality row's read. Without it the hub got the settings fallback and threw on `verdicts`.
 const quality: FillerDefectReportDTO = defectReport();
 
@@ -41,8 +46,8 @@ const withManage: Decorator = (Story) => {
       ? admin
       : url.includes("/filler/watch")
         ? watch
-        : url.includes("/filler/readiness")
-          ? hubReadiness
+        : url.includes("/taxonomy")
+          ? hubTaxonomy
           : url.includes("/filler/defects")
             ? quality
             : { settings: [], features: { filler: true } };

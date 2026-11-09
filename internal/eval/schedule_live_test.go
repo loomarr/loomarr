@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -41,7 +41,7 @@ func TestLiveScheduleCertificationRejectsUnknownCaseName(t *testing.T) {
 func TestPreparedLiveScheduleCasesRequireJudgedMaterializedOutcomes(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestPreparedLiveScheduleCasesRequireJudgedMaterializedOutcomes(t *testing.T
 func TestRunnerSendsCanonicalLiveSeriesIntentThroughGenerationAndSchedule(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -325,18 +325,18 @@ func simpsonsHolidayEpisodes() []schedule.ResolvedProgram {
 }
 
 func TestRunnerLiveScheduleMaterializerUsesLibraryAndTMDBTestServers(t *testing.T) {
-	media := testkit.NewMediaServer(t)
-	media.ItemMetadata = map[string]testkit.ItemMetadata{
-		"movie-raiders": {RunTimeMs: 115 * 60 * 1000},
-		"movie-temple":  {RunTimeMs: 118 * 60 * 1000},
-		"movie-crusade": {RunTimeMs: 127 * 60 * 1000},
+	media := newFakeLibrary()
+	media.facts = map[string]store.LibraryItemFacts{
+		"movie-raiders": {RuntimeMs: 115 * 60 * 1000},
+		"movie-temple":  {RuntimeMs: 118 * 60 * 1000},
+		"movie-crusade": {RuntimeMs: 127 * 60 * 1000},
 	}
-	media.SetEpisodeItems(
-		testkit.EpisodeStub{LibraryItemID: "ordinary", Name: "A Regular Tuesday", RunTimeMs: 22 * 60 * 1000, Season: 2, Episode: 1},
-		testkit.EpisodeStub{LibraryItemID: "xmas", Name: "A Springfield Christmas", RunTimeMs: 22 * 60 * 1000,
-			Season: 2, Episode: 2, ProductionYear: 1990, OfficialRating: "TV-PG", CommunityRating: 8.4,
+	media.episodes["show-simpsons"] = []store.LibraryEpisode{
+		{ItemID: "ordinary", Name: "A Regular Tuesday", DurationMs: 22 * 60 * 1000, Season: 2, Episode: 1},
+		{ItemID: "xmas", Name: "A Springfield Christmas", DurationMs: 22 * 60 * 1000,
+			Season: 2, Episode: 2, Year: 1990, Rating: "TV-PG", Score: 8.4,
 			Overview: "Springfield gathers for Christmas.", Tags: []string{"christmas", "holiday"}},
-	)
+	}
 	tmdbServer := testkit.NewTMDB(t)
 	tmdbServer.AddMovie(85, "Raiders of the Lost Ark", 1981, nil, "")
 	tmdbServer.AddMovie(87, "Indiana Jones and the Temple of Doom", 1984, nil, "")
@@ -372,7 +372,7 @@ func TestRunnerLiveScheduleMaterializerUsesLibraryAndTMDBTestServers(t *testing.
 	})
 	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(
 		NewLiveScheduleMaterializer(
-			library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+			media,
 			tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 		),
 	).WithJudge(judge)
@@ -419,7 +419,7 @@ func TestPrepareLiveScheduleCertificationDerivesEpisodesFromVerifiedSnapshot(t *
 		t.Fatal(err)
 	}
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -441,7 +441,7 @@ func TestPrepareLiveScheduleCertificationDerivesEpisodesFromVerifiedSnapshot(t *
 func TestPrepareLiveScheduleCertificationUsesProductionStructuralBounds(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -461,7 +461,7 @@ func TestPrepareLiveScheduleCertificationRejectsDriftBeforeInference(t *testing.
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	snapshot.Curated.Episodes[0].CommunityRating = 10
 	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err == nil || !strings.Contains(err.Error(), "drifted from Library episode evidence") {
@@ -472,7 +472,7 @@ func TestPrepareLiveScheduleCertificationRejectsDriftBeforeInference(t *testing.
 func TestRunnerChecksVerifiedLiveHolidayOutcome(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -522,7 +522,7 @@ func TestRunnerDoesNotRecomputePinnedScheduleOracle(t *testing.T) {
 	snapshot.Curated.RequiredPrograms[0] = "series:tmdb:456:s01e01"
 	snapshot.Curated.ForbiddenPrograms[0] = "series:tmdb:456:s01e02"
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -545,7 +545,7 @@ func TestRunnerDoesNotRecomputePinnedScheduleOracle(t *testing.T) {
 func TestRunnerRejectsUndeclaredLiveScheduleLineupKey(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	prepared, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err != nil {
@@ -620,7 +620,7 @@ func TestPrepareLiveScheduleCertificationRejectsSeriesKeySubstitution(t *testing
 			}
 
 			_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-				library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+				media,
 				tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 			)
 			if err == nil {
@@ -636,7 +636,7 @@ func TestPrepareLiveScheduleCertificationRejectsSeriesLibraryIdentitySubstitutio
 	snapshot.Holiday.LibraryItemID = "unrelated-series"
 
 	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err == nil {
@@ -647,10 +647,10 @@ func TestPrepareLiveScheduleCertificationRejectsSeriesLibraryIdentitySubstitutio
 func TestPrepareLiveScheduleCertificationRejectsMovieLibraryIdentitySubstitution(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	snapshot.Franchise.Movies[0].LibraryItemID = "unrelated-movie"
-	media.ItemMetadata["unrelated-movie"] = testkit.ItemMetadata{RunTimeMs: 115 * 60 * 1000}
+	media.facts["unrelated-movie"] = store.LibraryItemFacts{RuntimeMs: 115 * 60 * 1000}
 
 	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
-		library.New(library.Emby, media.URL, media.AdminToken, "eval-test"),
+		media,
 		tmdb.NewWithBase(tmdbServer.URL, "test-key"),
 	)
 	if err == nil {
@@ -658,16 +658,16 @@ func TestPrepareLiveScheduleCertificationRejectsMovieLibraryIdentitySubstitution
 	}
 }
 
-func liveScheduleEvidenceFixture(t *testing.T) (*testkit.MediaServer, *testkit.TMDB, ScheduleEvidenceSnapshot) {
+func liveScheduleEvidenceFixture(t *testing.T) (*fakeLibrary, *testkit.TMDB, ScheduleEvidenceSnapshot) {
 	t.Helper()
-	media := testkit.NewMediaServer(t)
-	media.SetSearchItems(
-		testkit.SearchStub{LibraryItemID: "show-simpsons", Name: "The Simpsons", Type: "Series", TMDBID: 456},
-		testkit.SearchStub{LibraryItemID: "raiders", Name: "Raiders of the Lost Ark", Type: "Movie", TMDBID: 85},
-		testkit.SearchStub{LibraryItemID: "temple", Name: "Indiana Jones and the Temple of Doom", Type: "Movie", TMDBID: 87},
-		testkit.SearchStub{LibraryItemID: "crusade", Name: "Indiana Jones and the Last Crusade", Type: "Movie", TMDBID: 89},
-	)
-	episodeStubs := make([]testkit.EpisodeStub, 0, 8)
+	media := newFakeLibrary()
+	media.titles = []store.LibraryTitle{
+		{ID: "show-simpsons", Name: "The Simpsons", Kind: "series", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "456"}}},
+		{ID: "raiders", Name: "Raiders of the Lost Ark", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "85"}}},
+		{ID: "temple", Name: "Indiana Jones and the Temple of Doom", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "87"}}},
+		{ID: "crusade", Name: "Indiana Jones and the Last Crusade", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "89"}}},
+	}
+	episodeRows := make([]store.LibraryEpisode, 0, 8)
 	evidence := make([]ScheduleEpisodeEvidence, 0, 8)
 	for i, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
 		title := fmt.Sprintf("Verified Episode %d", i+1)
@@ -679,20 +679,20 @@ func liveScheduleEvidenceFixture(t *testing.T) (*testkit.MediaServer, *testkit.T
 			overview = "The Simpsons celebrate Christmas together."
 		}
 		id := fmt.Sprintf("verified-s01e%02d", i+1)
-		episodeStubs = append(episodeStubs, testkit.EpisodeStub{
-			LibraryItemID: id, Name: title, RunTimeMs: 22 * 60 * 1000,
-			Season: 1, Episode: i + 1, ProductionYear: 1989 + i/4, CommunityRating: rating, Overview: overview,
+		episodeRows = append(episodeRows, store.LibraryEpisode{
+			ItemID: id, Name: title, DurationMs: 22 * 60 * 1000,
+			Season: 1, Episode: i + 1, Year: 1989 + i/4, Score: rating, Overview: overview,
 		})
 		evidence = append(evidence, ScheduleEpisodeEvidence{
 			LibraryItemID: id, Title: title, DurationMs: 22 * 60 * 1000,
 			Season: 1, Episode: i + 1, Year: 1989 + i/4, CommunityRating: rating, Overview: overview,
 		})
 	}
-	media.SetEpisodeItems(episodeStubs...)
-	media.ItemMetadata = map[string]testkit.ItemMetadata{
-		"raiders": {RunTimeMs: 115 * 60 * 1000},
-		"temple":  {RunTimeMs: 118 * 60 * 1000},
-		"crusade": {RunTimeMs: 127 * 60 * 1000},
+	media.episodes["show-simpsons"] = episodeRows
+	media.facts = map[string]store.LibraryItemFacts{
+		"raiders": {RuntimeMs: 115 * 60 * 1000},
+		"temple":  {RuntimeMs: 118 * 60 * 1000},
+		"crusade": {RuntimeMs: 127 * 60 * 1000},
 	}
 	tmdbServer := testkit.NewTMDB(t)
 	for _, movie := range []struct {

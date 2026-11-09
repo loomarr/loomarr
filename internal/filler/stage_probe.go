@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The PROBE stage (§10 V51b): measure the file, and refuse the ones that are not clips.
@@ -19,14 +24,14 @@ import (
 
 // ProbeClipStore is the slice of the store the probe stage writes through.
 type ProbeClipStore interface {
-	UpsertClip(ctx context.Context, c StoreClip) error
+	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
 	// SetClipComposite marks a clip as a CONTAINER of adverts rather than one (§10 V45).
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 }
 
 // ProbeStage measures a clip and applies the hard rejects.
 type ProbeStage struct {
-	probe   Prober
+	probe   tools.Prober
 	store   ProbeClipStore
 	clipDir string
 	// minDurationMs is the floor below which a file is not a usable clip. A closure so a settings
@@ -40,9 +45,9 @@ type ProbeStage struct {
 }
 
 // NewProbeStage builds the stage. A nil prober defaults to the real ffprobe.
-func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
+func NewProbeStage(probe tools.Prober, store ProbeClipStore, clipDir string, minDurationMs func() int64, compositeOver func() time.Duration, now func() time.Time) *ProbeStage {
 	if probe == nil {
-		probe = FFprobe
+		probe = cliplibrary.FFprobe
 	}
 	if now == nil {
 		now = time.Now
@@ -53,15 +58,15 @@ func NewProbeStage(probe Prober, store ProbeClipStore, clipDir string, minDurati
 	}
 }
 
-func (s *ProbeStage) ID() StageID     { return StageProbe }
-func (s *ProbeStage) Cost() StageCost { return CostCheap }
+func (s *ProbeStage) ID() pipelinestate.StageID { return pipelinestate.StageProbe }
+func (s *ProbeStage) Cost() StageCost           { return CostCheap }
 
 // Applies: always. Every clip is measured, including one that already has a duration — the file
 // may have been replaced under a stable path, and re-probing is one cheap exec.
-func (s *ProbeStage) Applies(context.Context, StoreClip) (bool, string) { return true, "" }
+func (s *ProbeStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) { return true, "" }
 
 // Run measures the clip and either updates it or refuses it.
-func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *ProbeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	if c.Path == "" {
 		return StageResult{}, fmt.Errorf("clip %s has no location to probe", c.Hash)
 	}
@@ -75,18 +80,18 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	if err != nil {
 		return StageResult{}, fmt.Errorf("probe %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, StageProbe, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageProbe, 100)
 
-	if v, reason, detail := s.verdict(pr); v == VerdictReject {
-		return StageResult{Verdict: VerdictReject, Reason: reason, Detail: detail}, nil
+	if v, reason, detail := s.verdict(pr); v == pipelinestate.VerdictReject {
+		return StageResult{Verdict: pipelinestate.VerdictReject, Reason: reason, Detail: detail}, nil
 	}
 	// A catalog rebuild loses pipeline state but not sidecar evidence. Re-apply a prior content
 	// quality decision here so a near-total-black clip cannot become airable merely because the
 	// database was recreated; first-time clips have no report yet and continue to transcode.
-	if tags, ok := ReadSidecarTags(file); ok && tags.MediaQuality != nil {
-		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != VerdictContinue {
+	if tags, ok := asset.ReadSidecarTags(file); ok && tags.MediaQuality != nil {
+		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != pipelinestate.VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
-			if v == VerdictReview {
+			if v == pipelinestate.VerdictReview {
 				out.Note, out.Detail = detail, ""
 			}
 			return out, nil
@@ -97,7 +102,7 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	// facts, in its DO UPDATE list by design), so this needs no new writer.
 	updated := c
 	updated.DurationMs = pr.DurationMs
-	if q := QualityFromHeight(pr.Height); q != "" {
+	if q := cliplibrary.QualityFromHeight(pr.Height); q != "" {
 		updated.Quality = q
 	}
 	updated.UpdatedAt = s.now().UTC()
@@ -115,10 +120,10 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 			}
 		}
 		updated.IsComposite = true
-		return StageResult{Clip: updated, Verdict: VerdictContinue,
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue,
 			Note: "this is a recording of several adverts, not one"}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, nil
 }
 
 // looksComposite decides whether a clip is a CONTAINER of adverts (§10 V45).
@@ -130,13 +135,12 @@ func (s *ProbeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 // not a normally airable advert; split determines whether it contains many adverts or one long
 // infomercial.
 //
-// ⚠ **Moving this mark to probe is a real behaviour change, and a deliberate one.** Until V51b
-// `is_composite` was set only by split `Confirm`, so a 16-minute recording was AIRABLE until
-// somebody split it — the exact bug §10 V45 describes. Setting it at measurement time makes the
-// default-off `IncludeComposites` filter exclude it immediately, so the worst case is a long
-// recording sitting out of rotation until its cuts are reviewed, rather than sixteen minutes of
-// unrelated adverts airing as one break.
-func (s *ProbeStage) looksComposite(c StoreClip) bool {
+// ⚠ **`is_composite` is set here, at measurement time, and that is deliberate.** Setting it only
+// when split `Confirm` runs would leave a 16-minute recording AIRABLE until somebody split it —
+// the exact bug §10 V45 describes. At probe time the default-off `IncludeComposites` filter
+// excludes it immediately, so the worst case is a long recording sitting out of rotation until
+// its cuts are reviewed, rather than sixteen minutes of unrelated adverts airing as one break.
+func (s *ProbeStage) looksComposite(c cliplibrary.StoreClip) bool {
 	if c.IsComposite {
 		return true // already marked; nothing to re-measure
 	}
@@ -154,22 +158,22 @@ func (s *ProbeStage) looksComposite(c StoreClip) bool {
 // video-only file plays as dead air mid-break (which reads as the stream dropping), and a file
 // with no video stream is not something a channel can show. Offering a human a button here would
 // be offering a control that cannot work.
-func (s *ProbeStage) verdict(pr Probed) (Verdict, RejectReason, string) {
+func (s *ProbeStage) verdict(pr tools.Probed) (pipelinestate.Verdict, pipelinestate.RejectReason, string) {
 	floor := int64(0)
 	if s.minDurationMs != nil {
 		floor = s.minDurationMs()
 	}
 	switch {
 	case pr.DurationMs <= 0:
-		return VerdictReject, ReasonUnprobeable, "ffprobe reported no usable duration"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonUnprobeable, "ffprobe reported no usable duration"
 	case floor > 0 && pr.DurationMs < floor:
-		return VerdictReject, ReasonTooShort,
+		return pipelinestate.VerdictReject, pipelinestate.ReasonTooShort,
 			fmt.Sprintf("%.1fs; the floor is %.1fs", float64(pr.DurationMs)/1000, float64(floor)/1000)
 	case pr.Silent:
-		return VerdictReject, ReasonNoAudio, "the file carries no audio stream at all"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonNoAudio, "the file carries no audio stream at all"
 	case pr.NoVideo:
-		return VerdictReject, ReasonNoVideo, "the file carries no video stream"
+		return pipelinestate.VerdictReject, pipelinestate.ReasonNoVideo, "the file carries no video stream"
 	default:
-		return VerdictContinue, "", ""
+		return pipelinestate.VerdictContinue, "", ""
 	}
 }

@@ -14,16 +14,20 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -40,14 +44,12 @@ func idGen() func() string {
 // marigoldMediaServer is the media-server mock with an owned film trio: its search
 // answers "marigold" with Marigold Protocol (90000603), Marigold Protocol II
 // (90000605) and Marigold Protocol III (90624860), in the real Emby /Items shape.
-func marigoldMediaServer(t *testing.T) *testkit.MediaServer {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
+func marigoldLibrary() *catalogfixture.ScriptedLibrary {
+	return catalogfixture.NewScriptedLibrary(
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
 	)
-	return ms
 }
 
 func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
@@ -56,8 +58,7 @@ func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.S
 
 // buildServiceWith is buildService over a caller-chosen durable workflow.
 func buildServiceWith(t *testing.T, st suggest.ProposalStore, workflow suggest.DurableWorkflow, llmMock llm.Provider) *suggest.Service {
-	ms := marigoldMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
@@ -125,13 +126,13 @@ func (s *scopeFeedbackSource) Scopes() []string {
 type scopeLookupStore struct {
 	store.Store
 	override bool
-	channel  store.Channel
+	channel  channelstore.Channel
 	err      error
 }
 
-func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error) {
 	if s.err != nil {
-		return store.Channel{}, s.err
+		return channelstore.Channel{}, s.err
 	}
 	if s.override {
 		return s.channel, nil
@@ -166,7 +167,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	if err := st.UpdateJob(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "source-proposal", JobID: id1, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -221,7 +222,7 @@ func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "upper-reference-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Roster A"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -264,7 +265,7 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Grand Oak Hotel"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Grand Oak Hotel"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	newID, err := svc.Submit(ctx, proposals.Intent{Description: "KETTLE KIDS"}, "bob")
@@ -355,17 +356,19 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	}
 }
 
-type submittedNotifier struct{ submitted chan store.Proposal }
+type submittedNotifier struct{ submitted chan proposalstore.Proposal }
 
-func (n submittedNotifier) ProposalSubmitted(_ context.Context, p store.Proposal)  { n.submitted <- p }
-func (submittedNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (submittedNotifier) ProposalDenied(context.Context, store.Proposal)           {}
+func (n submittedNotifier) ProposalSubmitted(_ context.Context, p proposalstore.Proposal) {
+	n.submitted <- p
+}
+func (submittedNotifier) ProposalApproved(context.Context, proposalstore.Proposal, string) {}
+func (submittedNotifier) ProposalDenied(context.Context, proposalstore.Proposal)           {}
 
 // A generated proposal reaching the approval queue tells the approvers a request is waiting,
 // exactly as a built one does.
 func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 	st := newStore(t)
-	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
 	svc := buildService(t, st, testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -392,7 +395,7 @@ func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
 	svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier)
 	intent := proposals.Intent{Description: "90s action"}
 
@@ -405,7 +408,7 @@ func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	if err := st.UpdateJob(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "source-proposal", JobID: source, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -442,9 +445,9 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 	}{
 		{
 			name: "auto-curated recurate that is approved", user: grace, picks: onePick,
-			curator: &recordingCurator{decision: suggest.Decision{Approved: true}},
+			curator: &recordingCurator{decision: proposals.AutoDecision{Approved: true}},
 			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
-				if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+				if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 					ID: "channel-recurate", Number: 72, Name: "Recurate Channel", Status: schedule.StatusLive, IntentRef: "job-origin",
 				}}); err != nil {
 					return err
@@ -465,13 +468,13 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			name: "requester over quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}, picks: onePick,
 			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
 				now := time.Now().UTC()
-				if err := st.CreateJob(ctx, store.Job{
+				if err := st.CreateJob(ctx, proposalstore.Job{
 					ID: "job-spent", Kind: "suggest", Status: "done", CreatedBy: "grace", IntentJSON: `{"description":"earlier"}`,
 					Deadline: now, CreatedAt: now, UpdatedAt: now,
 				}); err != nil {
 					return err
 				}
-				if err := st.CreateProposal(ctx, store.Proposal{
+				if err := st.CreateProposal(ctx, proposalstore.Proposal{
 					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
 					Body: proposals.Proposal{Acquisitions: []proposals.ProposalItem{
 						{MediaType: provision.Movie, TMDBID: 90091001, Name: "A"},
@@ -520,18 +523,18 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			if err := st.UpsertUser(ctx, tt.user); err != nil {
 				t.Fatal(err)
 			}
-			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 4)}
 			done := newDoneEmitter()
 			curator := tt.curator
 			if curator == nil {
 				curator = &recordingCurator{}
 			}
-			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
+			approver := accept.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
 			svc := buildService(t, st, testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(tt.picks),
 			)).WithProposalNotifier(notifier).
-				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 				WithAutoCurate(curator).
 				WithProgressEmitter(done)
 			if err := tt.start(ctx, svc, st); err != nil {
@@ -567,10 +570,10 @@ func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			if err := st.UpsertUser(ctx, tt.user); err != nil {
 				t.Fatal(err)
 			}
-			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
-			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
+			notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 4)}
+			approver := accept.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
 			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
-				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
+				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 			built := proposals.Proposal{
 				ChannelName: "Marigold",
 				Lineup:      []proposals.ProposalItem{{MediaType: "movie", Name: "Marigold Protocol", Year: 1999, TMDBID: 90000603, InLibrary: true}},
@@ -753,8 +756,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
 			flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
-			ms := marigoldMediaServer(t)
-			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
@@ -781,7 +783,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			if err := json.Unmarshal([]byte(job.FailureTraceJSON), &trace); err != nil {
 				t.Fatalf("context failure trace = %q: %v", job.FailureTraceJSON, err)
 			}
-			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure {
+			if job.FailureCode != suggest.FailureCodeGenerationFailed || trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure {
 				t.Fatalf("context failure was not normalized: code=%q trace=%+v", job.FailureCode, trace)
 			}
 		})
@@ -791,7 +793,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "channel-a", Number: 71, Name: "Channel A", Status: schedule.StatusLive, IntentRef: "job-origin-a",
 	}}); err != nil {
 		t.Fatal(err)
@@ -805,11 +807,11 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	flow := workflow.New(st, idGen(), time.Now)
-	ms := marigoldMediaServer(t)
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	suggester := suggest.New(llmMock,
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+		catalog.New(lib, tm), tm, 10).
 		WithFeedback(feedback)
 	svc := suggest.NewService(st, flow, suggester,
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -863,14 +865,14 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 		{name: "lookup error", configure: func(st *scopeLookupStore) { st.err = errors.New("channel lookup unavailable") }},
 		{name: "blank channel id", configure: func(st *scopeLookupStore) {
 			st.override = true
-			st.channel = store.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
+			st.channel = channelstore.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
 		}},
 		{name: "removed channel", configure: func(st *scopeLookupStore) {
-			st.err = fmt.Errorf("%w: job names channel-gone", store.ErrJobChannelGone)
+			st.err = fmt.Errorf("%w: job names channel-gone", channelstore.ErrJobChannelGone)
 		}},
 		{name: "detached channel", configure: func(st *scopeLookupStore) {
 			st.override = true
-			st.channel = store.Channel{Channel: schedule.Channel{
+			st.channel = channelstore.Channel{Channel: schedule.Channel{
 				ID: "channel-a", IntentRef: "job-recurate", Status: schedule.StatusDetached,
 			}}
 		}},
@@ -884,30 +886,30 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 				tt.configure(serviceStore)
 			}
 			now := time.Now().UTC()
-			if err := base.CreateJob(ctx, store.Job{
+			if err := base.CreateJob(ctx, proposalstore.Job{
 				ID: "job-unrelated", Kind: "suggest", Status: "done", CreatedBy: "admin",
 				IntentJSON: `{"description":"unrelated"}`, IntentHash: "unrelated",
 				WorkflowVersion: workflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := base.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+			if _, err := base.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 				ID: "channel-unrelated", Number: 73, Name: "Unrelated Channel",
 				Status: schedule.StatusLive, IntentRef: "job-unrelated",
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			for _, event := range []store.DiscoveryFeedback{
-				{ID: "household-never", ActorID: "admin", Scope: store.FeedbackHousehold,
-					Target: "movie:tmdb:90000603", Action: store.FeedbackNever, CreatedAt: now},
-				{ID: "unrelated-surprise", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "channel-unrelated",
-					Target: "movie:tmdb:90000603", Action: store.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
+			for _, event := range []channeldatastore.DiscoveryFeedback{
+				{ID: "household-never", ActorID: "admin", Scope: channeldatastore.FeedbackHousehold,
+					Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackNever, CreatedAt: now},
+				{ID: "unrelated-surprise", ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: "channel-unrelated",
+					Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
 			} {
 				if err := base.AppendDiscoveryFeedback(ctx, event); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := base.CreateJob(ctx, store.Job{
+			if err := base.CreateJob(ctx, proposalstore.Job{
 				ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "admin",
 				IntentJSON: `{"description":"marigold"}`, IntentHash: "marigold",
 				WorkflowVersion: workflow.WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
@@ -919,11 +921,11 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 				"":                  {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
 				"channel-unrelated": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 			}}
-			ms := marigoldMediaServer(t)
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(base, idGen(), time.Now)
 			terminal := newDoneEmitter()
@@ -949,8 +951,8 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			if llmMock.Calls != 0 {
 				t.Fatalf("ownerless recurate reached provider %d times", llmMock.Calls)
 			}
-			if requests := ms.Requests(); len(requests) != 0 {
-				t.Fatalf("ownerless recurate reached Library: %+v", requests)
+			if searches := lib.Searches(); len(searches) != 0 {
+				t.Fatalf("ownerless recurate reached Library: %+v", searches)
 			}
 			if requests := mt.Requests(); len(requests) != 0 {
 				t.Fatalf("ownerless recurate reached TMDB: %+v", requests)
@@ -990,11 +992,11 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			)
-			ms := marigoldMediaServer(t)
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(st, func() string { return "job-fresh" }, time.Now)
 			terminal := newDoneEmitter()
@@ -1047,8 +1049,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 			slow.Delay = 2 * time.Second
 		}
 	}
-	ms := marigoldMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
@@ -1079,7 +1080,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	if err := json.Unmarshal([]byte(j.FailureTraceJSON), &trace); err != nil {
 		t.Fatalf("timeout failure trace = %q: %v", j.FailureTraceJSON, err)
 	}
-	if trace.Version != suggest.DecisionTraceVersion || trace.Terminal != suggest.TerminalGenerationFailure || len(trace.Candidates) == 0 {
+	if trace.Version != proposals.DecisionTraceVersion || trace.Terminal != proposals.TerminalGenerationFailure || len(trace.Candidates) == 0 {
 		t.Fatalf("timeout failure trace did not preserve bounded candidate facts: %+v", trace)
 	}
 }
@@ -1102,7 +1103,7 @@ func (s *lifecycleErrorStore) CommitSuggestionSuccess(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	p store.Proposal,
+	p proposalstore.Proposal,
 	updatedAt time.Time,
 ) error {
 	select {
@@ -1175,7 +1176,7 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	ctx := context.Background()
 	base := newStore(t)
 	st := newLifecycleErrorStore(base)
-	st.successErr = store.ErrJobNotRunning
+	st.successErr = proposalstore.ErrJobNotRunning
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -1264,7 +1265,7 @@ func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM())
 
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orig", Kind: "suggest", Status: "done",
 		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
 	}); err != nil {
@@ -1332,7 +1333,7 @@ func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 
 type recordingCurator struct {
 	calls    int
-	decision suggest.Decision
+	decision proposals.AutoDecision
 	err      error
 }
 
@@ -1379,7 +1380,7 @@ func waitForDoneEvent(t *testing.T, e *doneEmitter) {
 	}
 }
 
-func (c *recordingCurator) Consider(context.Context, store.Proposal) (suggest.Decision, error) {
+func (c *recordingCurator) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
 	c.calls++
 	return c.decision, c.err
 }
@@ -1402,10 +1403,10 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	curator := &recordingCurator{decision: suggest.Decision{Approved: true}}
+	approver := accept.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: proposals.AutoDecision{Approved: true}}
 	done := newDoneEmitter()
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
@@ -1467,7 +1468,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "channel-recurate", Number: 72, Name: "Recurate Channel",
 		Status: schedule.StatusLive, IntentRef: "job-origin",
 	}}); err != nil {
@@ -1476,7 +1477,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	// Even a re-curation job that somehow carries a requester with a grant stays out of that
 	// grant: the durable kind, not the owner, is the authorization discriminator.
 	now := time.Now().UTC()
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "grace", ChannelID: "channel-recurate",
 		IntentJSON: `{"description":"sci-fi","currentLineup":[{"key":"movie:tmdb:90000603"}]}`,
 		Deadline:   now, CreatedAt: now, UpdatedAt: now,
@@ -1489,10 +1490,10 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	curator := &recordingCurator{decision: suggest.Decision{Reason: "below auto-curate quality bar"}}
+	approver := accept.NewApprover(st, channels, time.Now)
+	curator := &recordingCurator{decision: proposals.AutoDecision{Reason: "below auto-curate quality bar"}}
 	done := newDoneEmitter()
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
@@ -1531,8 +1532,8 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}
-	approver := suggest.NewApprover(st, channels, time.Now)
-	svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+	approver := accept.NewApprover(st, channels, time.Now)
+	svc = svc.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
 
 	jobID, err := svc.Submit(ctx, proposals.Intent{Description: "sci-fi"}, "grace")
@@ -1585,10 +1586,10 @@ func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
+	approver := accept.NewApprover(st, channels, time.Now)
 	done := newDoneEmitter()
 	svc := buildService(t, st, llmMock).
-		WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithProgressEmitter(done)
 	if _, err := svc.Refine(ctx, "channel-1", proposals.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
 		t.Fatal(err)

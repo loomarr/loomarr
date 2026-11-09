@@ -1,11 +1,12 @@
 import type { ClipDTO } from "@loomarr/api";
 import { getListFillerMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { FillerClipList } from "./filler-clip-list";
 
 // The remove buttons are Tooltip triggers, and the add-search hits GET /v1/filler.

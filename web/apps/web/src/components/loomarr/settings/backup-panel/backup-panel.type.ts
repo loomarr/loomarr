@@ -10,6 +10,8 @@ interface BackupPanelProps {
    * a server-validated identifier, and the page owns how a download is started.
    */
   onDownload: (name: string) => void;
+  /** Where the nightly backup task lives. Offered beside a "nights missing" warning. */
+  onOpenTasks?: () => void;
   /** True while "Back up now" is in flight, so the button reads as busy. */
   pending?: boolean;
   /** A failure from the last action, rendered where it happened. */

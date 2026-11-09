@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 )
 
 func transformError(t *testing.T, ctx context.Context, status int) string {
@@ -20,7 +21,7 @@ func transformError(t *testing.T, ctx context.Context, status int) string {
 	req := httptest.NewRequest(http.MethodGet, "/v1/guide", nil).WithContext(ctx)
 	hctx := humatest.NewContext(&huma.Operation{Method: http.MethodGet, Path: "/v1/guide"}, req, httptest.NewRecorder())
 	model := &huma.ErrorModel{Status: status, Title: "Internal Server Error", Errors: []*huma.ErrorDetail{{Message: "context canceled"}}}
-	if _, err := errorTransformer(log)(hctx, "", model); err != nil {
+	if _, err := httpcore.ErrorTransformer(log)(hctx, "", model); err != nil {
 		t.Fatal(err)
 	}
 	return buf.String()

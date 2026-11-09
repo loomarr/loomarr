@@ -66,7 +66,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
                 shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
             <Action
               accessibilityRole="link"
-              render={<Link to="/guide" search={{ manual: "1", ideaId: idea.id }} />}
+              render={<Link to="/requests/new" search={{ manual: 1, ideaId: idea.id }} />}
               variant="ghost"
             >
               Edit first
@@ -201,7 +201,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
       <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
         <Action
           accessibilityRole="link"
-          render={<Link to="/guide" search={{ manual: "1" }} />}
+          render={<Link to="/requests/new" search={{ manual: 1 }} />}
           variant="ghost"
         >
           Don’t see it? Describe your own channel

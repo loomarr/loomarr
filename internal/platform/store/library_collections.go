@@ -45,35 +45,43 @@ type LibraryCollectionStore interface {
 	LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error)
 }
 
-// LibraryCollectionMember is one title of a collection, by its provider ids ("" when it has none).
+// LibraryCollectionMember is one title of a collection, by its external ids (none when it has
+// none).
 type LibraryCollectionMember struct {
 	CollectionID string
 	// Kind is the title's library kind: movie or series.
-	Kind   string
-	TMDBID string
-	TVDBID string
+	Kind string
+	// IDs are every external id the title is known by, by namespace then value.
+	IDs []LibraryID
 }
 
 func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind,
-		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tmdb'), ''),
-		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tvdb'), '')
+	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind, i.id
 		FROM library_collection_members m JOIN library_items i ON i.id = m.inventory_item_id
 		ORDER BY m.collection_id, m.position`)
 	if err != nil {
 		return nil, fmt.Errorf("library collection members: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 	var out []LibraryCollectionMember
+	var items []string
 	for rows.Next() {
 		var m LibraryCollectionMember
-		if err := rows.Scan(&m.CollectionID, &m.Kind, &m.TMDBID, &m.TVDBID); err != nil {
+		var item string
+		if err := rows.Scan(&m.CollectionID, &m.Kind, &item); err != nil {
+			_ = rows.Close()
 			return nil, fmt.Errorf("library collection members: %w", err)
 		}
-		out = append(out, m)
+		out, items = append(out, m), append(items, item)
 	}
-	if err := rows.Err(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	byItem, err := s.libraryIDsOf(ctx, items)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].IDs = byItem[items[i]]
 	}
 	return out, nil
 }

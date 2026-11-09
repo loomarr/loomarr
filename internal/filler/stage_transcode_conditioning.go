@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -18,7 +21,7 @@ type conditioningJob struct {
 	// req.Path is the source snapshot the encode reads; req.ParentPath the parent's snapshot.
 	req     tools.ConditioningRequest
 	before  tools.ConditioningMeasurement
-	lineage *ConditioningLineage
+	lineage *asset.ConditioningLineage
 	// parentFull is the parent asset as resolved, compared to its snapshot before publication.
 	parentFull string
 	// stageDir holds the snapshots and the staged encode; the caller removes it.
@@ -28,7 +31,7 @@ type conditioningJob struct {
 // prepareConditioning validates a conditioned child's lineage and parent, snapshots both, and
 // measures the source before the rewrite. A nil job with a nil error ends the run with the
 // returned result: a review, or the re-emitted outcome of a child that is already conditioned.
-func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, oldFull, sourceFull string, sourceMaster MediaAssetIdentity, mezzanine string, storageWrites *storagegovernor.WriteTracker) (job *conditioningJob, done StageResult, err error) {
+func (s *TranscodeStage) prepareConditioning(ctx context.Context, c cliplibrary.StoreClip, oldFull, sourceFull string, sourceMaster asset.Identity, mezzanine string, storageWrites *storagegovernor.WriteTracker) (job *conditioningJob, done StageResult, err error) {
 	review := func(note string) (*conditioningJob, StageResult, error) {
 		return nil, conditioningReview(c, note), nil
 	}
@@ -36,7 +39,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	if err != nil {
 		return nil, StageResult{}, err
 	}
-	if !hasTags || !validConditioningLineage(tags.ConditioningLineage, c.ParentHash) ||
+	if !hasTags || !asset.ValidConditioningLineage(tags.ConditioningLineage, c.ParentHash) ||
 		(tags.Mezzanine != mezzanine && tags.ConditioningLineage.ChildHash != c.Hash) {
 		return review("conditioning lineage is missing or does not match the child")
 	}
@@ -50,26 +53,26 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	parentFull := filepath.Join(s.clipDir, filepath.FromSlash(parent.Path))
 	parentHash := parent.Hash
 	if tags.ConditioningLineage.ParentAssetRole != "" {
-		var parentSource SplitSourceAsset
-		switch SplitSourceRole(tags.ConditioningLineage.ParentAssetRole) {
-		case SplitSourceEvidence:
-			parentTags, ok := ReadSidecarTags(parentFull)
+		var parentSource split.SourceAsset
+		switch split.SourceRole(tags.ConditioningLineage.ParentAssetRole) {
+		case split.SourceEvidence:
+			parentTags, ok := asset.ReadSidecarTags(parentFull)
 			if !ok || parentTags.MediaAssets == nil || parentTags.MediaAssets.Evidence == nil ||
 				parentTags.MediaAssets.Evidence.Asset.SHA256 != tags.ConditioningLineage.ParentAssetSHA256 {
 				return review("conditioning parent evidence asset is unavailable")
 			}
 			evidence := parentTags.MediaAssets.Evidence
-			parentSource = SplitSourceAsset{
-				Role: SplitSourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,
+			parentSource = split.SourceAsset{
+				Role: split.SourceEvidence, SHA256: evidence.Asset.SHA256, Bytes: evidence.Asset.Bytes,
 				ClipHash: evidence.Asset.ClipHash, Path: evidence.Asset.Path, DurationMs: evidence.DurationMs,
 			}
-		case SplitSourceLegacyPlayback:
-			digest, size, err := FileSHA256(parentFull)
+		case split.SourceLegacyPlayback:
+			digest, size, err := asset.FileSHA256(parentFull)
 			if err != nil || digest != tags.ConditioningLineage.ParentAssetSHA256 {
 				return review("conditioning parent playback asset changed")
 			}
-			parentSource = SplitSourceAsset{
-				Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size,
+			parentSource = split.SourceAsset{
+				Role: split.SourceLegacyPlayback, SHA256: digest, Bytes: size,
 				ClipHash: parent.Hash, Path: parent.Path, DurationMs: parent.DurationMs,
 			}
 		default:
@@ -126,8 +129,8 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	if tags.Mezzanine == mezzanine {
 		if tags.MediaQuality == nil || tags.Conditioning == nil ||
 			tools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
-			validateConditioningPair(*tags.Conditioning, tags.Conditioning.BeforeRewriteHash, tags.Conditioning.AfterRewriteHash) != nil ||
-			!conditioningEvidenceMatchesLineage(*tags.Conditioning, *tags.ConditioningLineage) ||
+			asset.ValidateConditioningPair(*tags.Conditioning, tags.Conditioning.BeforeRewriteHash, tags.Conditioning.AfterRewriteHash) != nil ||
+			!asset.EvidenceMatchesLineage(*tags.Conditioning, *tags.ConditioningLineage) ||
 			!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality) {
 			return review("persisted conditioning evidence is incomplete or invalid")
 		}
@@ -173,7 +176,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 // measureAfter measures the staged rewrite and pairs it with the before-rewrite measurement. A
 // non-empty note is why the child goes to review instead. AfterRewriteHash is left for the caller,
 // which knows it only once the staged bytes are hashed.
-func (j *conditioningJob) measureAfter(ctx context.Context, condition func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error), beforeHash, stageFull string) (*ConditioningEvidence, string) {
+func (j *conditioningJob) measureAfter(ctx context.Context, condition func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error), beforeHash, stageFull string) (*asset.ConditioningEvidence, string) {
 	req := j.req
 	req.Path = stageFull
 	measured, err := condition(ctx, req)
@@ -190,7 +193,7 @@ func (j *conditioningJob) measureAfter(ctx context.Context, condition func(conte
 	if err != nil {
 		return nil, "conditioning parent edges after transcode are unavailable"
 	}
-	return &ConditioningEvidence{
+	return &asset.ConditioningEvidence{
 		BeforeRewriteHash:              beforeHash,
 		BeforeRewrite:                  j.before,
 		AfterRewrite:                   measured,

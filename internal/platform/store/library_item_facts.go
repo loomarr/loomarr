@@ -7,7 +7,7 @@ import (
 )
 
 // LibraryItemFacts is what a guide and a lineup read about a library item (#2151 step 15): the
-// facts the media server's item metadata answered until the cutover.
+// facts a media server's item metadata would give, read from the Library's own rows.
 type LibraryItemFacts struct {
 	Overview string
 	Genres   []string

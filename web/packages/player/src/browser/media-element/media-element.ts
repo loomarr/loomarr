@@ -82,25 +82,39 @@ const afterNextPaint = () =>
 // Hold the outgoing decoded picture inside the same <video> while a source is replaced. This is a
 // poster, not a hidden player or decoder: transport teardown can release immediately, while the
 // viewer keeps the last honest frame until the replacement produces its first one.
-const holdDecodedFrame = (video: HTMLVideoElement) => {
+//
+// Capture and hold are two steps because the frame must be read BEFORE the outgoing transport is
+// torn down (native HLS teardown empties the element: readyState 0, no frame), while the PNG encode
+// is the expensive part and waits for the tuning overlay's paint.
+const captureDecodedFrame = (video: HTMLVideoElement): HTMLCanvasElement | undefined => {
   if (
     video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
     video.videoWidth < 1 ||
     video.videoHeight < 1
   ) {
-    return;
+    return undefined;
   }
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const context = canvas.getContext("2d");
-  if (!context) return;
+  if (!context) return undefined;
   try {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    video.poster = canvas.toDataURL("image/png");
+    return canvas;
   } catch {
     // A cross-origin source without canvas permission cannot be captured. Leave the element's
     // existing poster alone; source replacement still proceeds normally.
+    return undefined;
+  }
+};
+
+const holdCapturedFrame = (video: HTMLVideoElement, frame: HTMLCanvasElement | undefined) => {
+  if (!frame) return;
+  try {
+    video.poster = frame.toDataURL("image/png");
+  } catch {
+    // Same as capture: a tainted canvas leaves the poster alone.
   }
 };
 
@@ -220,12 +234,13 @@ const discardTransferredMedia = (
 export type { DisplayedClockAnchor, TransferredMedia };
 export {
   afterNextPaint,
+  captureDecodedFrame,
   clearHeldFrame,
   clearTransferredBuffers,
   containsMediaTime,
   discardTransferredMedia,
   displayedProgramTime,
-  holdDecodedFrame,
+  holdCapturedFrame,
   releaseTransferredDecoder,
   webKitRequiresFreshMSEHandoff,
 };

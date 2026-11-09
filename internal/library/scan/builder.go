@@ -40,17 +40,26 @@ type seriesSeen struct {
 
 	once       sync.Once
 	resolution resolution
-	// seasons are its season records the pass read, by catalog id.
+	// seasons are its season and episode-order records the pass read, by catalog id.
 	seasonsMu sync.Mutex
 	seasons   map[string]cachedSeason
+
+	// order is the household's answer for which order its files follow, read once a pass.
+	orderOnce sync.Once
+	order     store.LibraryEpisodeOrder
+	answered  bool
+	// ordersWanted is whether the pass has asked for its catalog's other orders yet.
+	ordersWanted bool
 }
 
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
 // store's LibraryProjection); its artwork and its set's record are asked for here.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
-	facts := snapshot.Observation.Facts
-	set := setKey(facts.Relationships)
-	b.artwork(ctx, id, facts.Artwork)
+	var set store.LibraryCatalogKey
+	if listed := readOriginExtension(snapshot.Observation.Extension).Listed; listed != nil {
+		set = listed.Set
+	}
+	b.artwork(ctx, id, snapshot.Observation.Facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
 		if err := b.im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
@@ -59,32 +68,12 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 	}
 }
 
-// setKey is the catalog row of the ready-made set a movie's facts name; zero for none. The key's
-// provider is the namespace the Enricher fetches it by.
-func setKey(rels []inventory.Relationship) store.LibraryCatalogKey {
-	for _, r := range rels {
-		if r.Kind != string(mp.KindCollection) {
-			continue
-		}
-		ns, id, ok := strings.Cut(r.ExternalID, ":")
-		if ok && ns == string(mp.NamespaceTMDBCollection) && id != "" {
-			return store.LibraryCatalogKey{Provider: ns, Kind: string(mp.KindCollection), ExternalID: id}
-		}
-	}
-	return store.LibraryCatalogKey{}
-}
-
 // match is what said which title resolved is: the source of its highest-ranked catalog id (a
 // collection's id alone says nothing), with that source's page for it. Identity is picked in rank
 // order, so the first such id is the deciding one.
 func match(resolved precedence.Resolved, records []mp.Record) store.LibraryMatch {
 	for _, id := range resolved.IDs {
-		switch id.Value.Namespace {
-		case mp.NamespaceTMDB, mp.NamespaceTVDB, mp.NamespaceIMDB:
-		default:
-			continue
-		}
-		if id.Value.Value == "" {
+		if !id.Value.Namespace.Grounds() || id.Value.Value == "" {
 			continue
 		}
 		m := store.LibraryMatch{Basis: string(id.From.Basis), App: string(id.From.Provider)}
@@ -302,8 +291,12 @@ type resolution struct {
 	match    store.LibraryMatch
 	// catalog is the catalog row its details come from, cached or not; zero for none.
 	catalog store.LibraryCatalogKey
+	// set is a movie's ready-made set, as the catalog row it is fetched by; zero for none.
+	set store.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
+	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
+	unnumbered bool
 }
 
 // resolve applies precedence. A movie or series the maintainer linked to a title (Needs you) has
@@ -319,14 +312,15 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
 		out.match = match(out.resolved, in.Records)
 	}
-	out.catalog = catalogKey(in.Kind, pickedIDs(out.resolved.IDs))
-	rec, ok := b.im.catalogRecord(ctx, out.catalog)
-	if !ok {
-		return out
+	out.catalog = b.im.Keys.For(in.Kind, pickedIDs(out.resolved.IDs))
+	if rec, ok := b.im.catalogRecord(ctx, out.catalog); ok {
+		out.record = &rec
+		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
+		out.resolved = b.im.Resolver.Resolve(in)
 	}
-	out.record = &rec
-	in.Records = append(append([]mp.Record(nil), in.Records...), rec)
-	out.resolved = b.im.Resolver.Resolve(in)
+	if in.Kind == mp.KindMovie {
+		out.set = b.im.Keys.For(mp.KindCollection, []mp.ExternalID{out.resolved.Collection.Value.ID})
+	}
 	return out
 }
 

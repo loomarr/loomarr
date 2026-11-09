@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
@@ -96,7 +97,7 @@ func (r *storeRepository) SubmitIntent(
 		return suggest.WorkflowSubmission{}, fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
-	job := store.Job{
+	job := proposalstore.Job{
 		ID: r.newID(), Kind: jobKindSuggest, Status: "queued", IntentJSON: string(blob),
 		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
@@ -132,12 +133,12 @@ func (r *storeRepository) RecordProposal(
 		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
-	job := store.Job{
+	job := proposalstore.Job{
 		ID: r.newID(), Kind: jobKindSuggest, Status: "done", IntentJSON: string(intentBlob),
 		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 	}
-	row := store.Proposal{
+	row := proposalstore.Proposal{
 		ID: r.newID(), JobID: job.ID, Status: "submitted", CreatedBy: createdBy,
 		Body: prop, CreatedAt: now, UpdatedAt: now,
 	}
@@ -160,7 +161,7 @@ func (r *storeRepository) SubmitChannelIntent(
 		return "", fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
-	job := store.Job{
+	job := proposalstore.Job{
 		ID: r.newID(), Kind: kind, Status: "queued", IntentJSON: string(blob),
 		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy, ChannelID: channelID,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,

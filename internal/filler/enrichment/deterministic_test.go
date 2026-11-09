@@ -13,7 +13,7 @@ import (
 // These tests pin the trusted brand dictionary in deterministic.go, whose entries are real brands
 // (HP Sauce, Tootsie Pop), against the sidecars in testdata. A dictionary phrase is the only text
 // that fires a trusted product mapping, so this file keeps the real names on purpose (#1592) and
-// the demolibrary guard lists it in realDataGo. Every other fillerenrichment test uses invented
+// the demolibrary guard lists it in realDataGo. Every other enrichment test uses invented
 // brands.
 
 type sidecarFixture struct {

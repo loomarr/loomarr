@@ -6,17 +6,17 @@ Code that exists for tests and never ships in the server: the shared test double
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — library (15), proposals (7), platform (6), channels (5), people (2), media (1), playout (1), filler (1)
+**Imports from other areas:** any, by design — library (15), platform (9), proposals (7), channels (6), media (2), people (2), playout (1), filler (1)
 
 ## Packages
 
 - **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`eval`** · → `catalog`, `channels/schedule`, `episodeevidence`, `library`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`, `tmdb`
+- **`eval`** · → `catalog`, `channels`, `channels/schedule`, `episodeevidence`, `library`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`platform/store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 1 importer · → `channels/schedule`, `demolibrary`, `filler/records`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `testkit/execfixture`, `testkit/postgresimage`, `tmdb/tmdbstandin`
+- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/records`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `testkit/execfixture`, `testkit/postgresimage`, `tmdb/tmdbstandin`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.
@@ -26,6 +26,8 @@ One area of the [package map](../package-map.md#start-here).
   Owns filesystem-backed executable test doubles without importing application packages.
 - **`testkit/httpfixture`**
   Shared no-network HTTP test seams without importing any application adapter.
+- **`testkit/imagetestkit`** · → `media/images`, `testkit`
+  In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/app/playoutresolve.
 - **`testkit/libraryfixture`** · → `channels/schedule`, `library`, `provision`
   No-network adapters for library-facing tests.
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`

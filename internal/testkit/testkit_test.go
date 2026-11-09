@@ -14,8 +14,6 @@ func TestFixturesLoadable(t *testing.T) {
 		// tests (KeyFromWebhook is still used by channel lineup); the inbound webhook
 		// subsystem it originally fed has been retired.
 		"radarr/import_webhook.json",
-		"emby/lookup_present.json",
-		"emby/lookup_absent.json",
 		"seerr/request_available_201.json",
 	} {
 		b := Fixture(t, rel)

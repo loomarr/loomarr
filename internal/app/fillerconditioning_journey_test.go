@@ -10,7 +10,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -20,14 +25,14 @@ import (
 type conditioningRekeyCrashStore struct {
 	st         records.Store
 	afterRekey bool
-	target     filler.StoreClip
+	target     cliplibrary.StoreClip
 }
 
-func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
+func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
 	return fillerPipelineClipAdapter{st: s.st}.GetClip(ctx, hash)
 }
 
-func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target filler.StoreClip) error {
+func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target cliplibrary.StoreClip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (fillerPipelineClipAdapter{st: s.st}).ReplaceClipIdentity(ctx, oldHash, target); err != nil {
@@ -37,7 +42,7 @@ func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, o
 	return errors.New("injected conditioning transaction failure")
 }
 
-func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target filler.StoreClip) error {
+func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target cliplibrary.StoreClip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (fillerPipelineClipAdapter{st: s.st}).CommitConditioningPublication(ctx, publication, target); err != nil {
@@ -63,7 +68,7 @@ func journeyConditioningMeasurement(lufs float64) tools.ConditioningMeasurement 
 			IntegratedLUFS: lufs, Available: true,
 			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2.1},
 		},
-		Quality: filler.MediaQuality{
+		Quality: tools.MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
@@ -103,33 +108,33 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if err := os.WriteFile(sourceFull, []byte("reviewed child source bytes "+fixtureSuffix), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			sourceHash, err := filler.ClipID(sourceFull)
+			sourceHash, err := asset.ClipID(sourceFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			lineage := &filler.ConditioningLineage{
+			lineage := &asset.ConditioningLineage{
 				ChildHash: sourceHash, ParentHash: parentHash,
 				IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 			}
-			if err := filler.WriteSidecarTags(sourceFull, filler.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
+			if err := asset.WriteSidecarTags(sourceFull, asset.SidecarTags{ConditioningLineage: lineage}, false); err != nil {
 				t.Fatal(err)
 			}
 			now := time.Unix(1_900_634_000, 0).UTC()
-			for _, clip := range []filler.Clip{
+			for _, clip := range []clips.Clip{
 				{Hash: parentHash, Path: filepath.Base(parentFull), Name: "Retained parent", IsComposite: true},
-				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Role: filler.Commercial, ParentHash: parentHash},
+				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Role: clips.Commercial, ParentHash: parentHash},
 			} {
 				if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: sourceHash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-				Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+			if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+				ClipHash: sourceHash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+				Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -143,8 +148,8 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "conditioned target bytes "+fixtureSuffix)
 			crashStore := &conditioningRekeyCrashStore{st: st, afterRekey: tc.afterRekey}
 			newStage := func(clipStore filler.TranscodeClipStore) *filler.TranscodeStage {
-				stage := filler.NewTranscodeStage(clipStore, func(context.Context, string) (filler.Probed, error) {
-					return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+				stage := filler.NewTranscodeStage(clipStore, func(context.Context, string) (tools.Probed, error) {
+					return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 				}, dir, tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, func() time.Time { return now })
 				stage.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 					if filepath.Base(req.Path) == filepath.Base(req.ParentPath) {
@@ -158,15 +163,15 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				return stage
 			}
 			first := newStage(crashStore)
-			out, err := first.Run(ctx, filler.StoreClip{Clip: filler.Clip{
+			out, err := first.Run(ctx, cliplibrary.StoreClip{Clip: clips.Clip{
 				Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child",
-				Role: filler.Commercial, ParentHash: parentHash,
+				Role: clips.Commercial, ParentHash: parentHash,
 			}})
 			if err == nil || crashStore.target.Hash == "" {
 				t.Fatalf("crash result = %+v, target=%+v, err=%v; want retryable infrastructure error", out, crashStore.target, err)
 			}
 			targetFull := filepath.Join(dir, filepath.FromSlash(crashStore.target.Path))
-			tags, ok := filler.ReadSidecarTags(targetFull)
+			tags, ok := asset.ReadSidecarTags(targetFull)
 			if !ok || tags.ConditioningPublication == nil {
 				t.Fatalf("crash lost pending publication evidence: %+v, ok=%v", tags, ok)
 			}
@@ -174,19 +179,19 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				if source, err := st.GetClip(ctx, sourceHash); err != nil || source.Hash != sourceHash {
 					t.Fatalf("transaction failure lost source evidence: %+v, %v", source, err)
 				}
-				if pipeline, found, err := st.GetClipPipeline(ctx, sourceHash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+				if pipeline, found, err := st.GetClipPipeline(ctx, sourceHash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 					t.Fatalf("transaction failure lost source reference: %+v, found=%v, err=%v", pipeline, found, err)
 				}
 			}
 
 			if !tc.afterRekey {
-				layout, err := filler.NewLayout(dir, "")
+				layout, err := cliplibrary.NewLayout(dir, "")
 				if err != nil {
 					t.Fatal(err)
 				}
-				source := filler.DirSource{Layout: layout,
-					Probe: func(context.Context, string) (filler.Probed, error) {
-						return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+				source := cliplibrary.DirSource{Layout: layout,
+					Probe: func(context.Context, string) (tools.Probed, error) {
+						return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 					},
 					Artwork: func(context.Context, string, string, string, float64) error { return nil },
 				}
@@ -206,14 +211,14 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				t.Fatal(err)
 			}
 			restarted := newStage(fillerPipelineClipAdapter{st})
-			result, err := restarted.Run(ctx, filler.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
-			if err != nil || result.Verdict != filler.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
+			result, err := restarted.Run(ctx, cliplibrary.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
+			if err != nil || result.Verdict != pipelinestate.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
 				t.Fatalf("restart result = %+v, %v; want committed target %s", result, err, crashStore.target.Hash)
 			}
 			if _, err := st.GetClip(ctx, sourceHash); !errors.Is(err, store.ErrNotFound) {
 				t.Fatalf("source catalog identity survived recovery: %v", err)
 			}
-			committedTags, ok := filler.ReadSidecarTags(targetFull)
+			committedTags, ok := asset.ReadSidecarTags(targetFull)
 			if !ok || committedTags.ConditioningPublication != nil {
 				t.Fatalf("restart retained pending publication: %+v, ok=%v", committedTags.ConditioningPublication, ok)
 			}
@@ -232,20 +237,20 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	if err := os.WriteFile(parentFull, []byte("compilation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
-		Hash: compHash, Path: compPath, Name: "Compilation", Role: filler.Commercial,
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clips.Clip{
+		Hash: compHash, Path: compPath, Name: "Compilation", Role: clips.Commercial,
 		Source: "test-folder",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "mezzanine")
 	parentProbeCalls := 0
-	probe := func(_ context.Context, path string) (filler.Probed, error) {
+	probe := func(_ context.Context, path string) (tools.Probed, error) {
 		if filepath.Clean(path) == filepath.Clean(parentFull) {
 			parentProbeCalls++
-			return filler.Probed{DurationMs: 61_000, Height: 480}, nil
+			return tools.Probed{DurationMs: 61_000, Height: 480}, nil
 		}
-		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	parentTranscodeCalls := 0
 	parentProbe := filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
@@ -255,9 +260,9 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		func() float64 { return -23 }, time.Now)
 	parentPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{parentProbe, parentTranscode},
 		filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionRunning,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionRunning,
 		NextRun:     time.Now().UTC(), EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -274,7 +279,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("composite source changed before split: %q, %v", parentBytes, err)
 	}
 
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []filler.Chapter{
+	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 10_000, EndMs: 40_000, Title: "Reviewed advert"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
 		func() string { return "conditioning-proposal" }, time.Now, nil)
@@ -285,9 +290,9 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -303,8 +308,8 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	transcode.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measured = append(measured, req)
 		if len(measured) == 1 {
-			parentID, parentErr := filler.ClipID(req.ParentPath)
-			beforeSourceHash, _ = filler.ClipID(req.Path)
+			parentID, parentErr := asset.ClipID(req.ParentPath)
+			beforeSourceHash, _ = asset.ClipID(req.Path)
 			measuredParentBound = parentErr == nil && parentID == compHash
 			measurement := journeyConditioningMeasurement(-28.4)
 			measurement.Cuts[0].Intended = req.IntendedCuts[0]
@@ -323,7 +328,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	app := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,
 	}
-	segments := append([]filler.SplitSegment(nil), proposal.Segments...)
+	segments := append([]split.Segment(nil), proposal.Segments...)
 	segments[0].Era = 1994
 	segments[0].Tags = []string{"toys"}
 	if err := app.ConfirmSplit(ctx, proposal.ID, segments); err != nil {
@@ -333,12 +338,12 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatal(err)
 	}
 
-	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	listed, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var child clipstore.Clip
-	for _, clip := range clips {
+	for _, clip := range listed {
 		if clip.ParentHash == compHash {
 			child = clip
 		}
@@ -347,8 +352,8 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("conditioned child = %+v", child)
 	}
 	row, found, err := st.GetClipPipeline(ctx, child.Hash)
-	if err != nil || !found || row.Disposition != filler.DispositionReady || child.Held ||
-		child.Placement != filler.PlacementBreakBody {
+	if err != nil || !found || row.Disposition != pipelinestate.DispositionReady || child.Held ||
+		child.Placement != clips.PlacementBreakBody {
 		t.Fatalf("child readiness = row:%+v found:%v held:%v placement:%q err:%v, want Ready break body",
 			row, found, child.Held, child.Placement, err)
 	}
@@ -356,7 +361,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		measured[0].IntendedCuts[0] != (tools.Interval{StartMs: 10_000, EndMs: 40_000}) {
 		t.Fatalf("conditioning requests = %+v", measured)
 	}
-	tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
+	tags, ok := asset.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != beforeSourceHash ||
 		tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS != -28.4 ||
 		tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS != -23.1 ||

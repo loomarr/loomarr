@@ -2,6 +2,8 @@ export type { AboutDetail, AboutPageProps } from "./src/about-page";
 export { AboutPage, TMDB_NOTICE } from "./src/about-page";
 export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
 export { AiReconnectBanner } from "./src/ai-reconnect-banner";
+export type { CardActionProps, CardStatusProps, ChannelChipProps } from "./src/card-parts";
+export { CardAction, CardMeta, CardStatus, ChannelChip } from "./src/card-parts";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
 export type {
@@ -79,6 +81,7 @@ export type {
   LibraryCollectionPoster,
   LibraryCollectionSortable,
   LibraryCollectionsProps,
+  LibraryExternalId,
   LibraryFilter,
   LibraryFolder,
   LibraryHealth,
@@ -91,6 +94,7 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
   LibraryScan,
@@ -136,6 +140,8 @@ export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
 export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
 export type { PanelRowProps } from "./src/panel-row";
 export { PanelRow } from "./src/panel-row";
+export type { PictureCardProps, PictureRatio } from "./src/picture-card";
+export { PictureCard } from "./src/picture-card";
 export type {
   ProgrammeCardData,
   ProgrammeCardLayout,
@@ -175,10 +181,21 @@ export {
   ReviewSheet,
   reviewReducer,
 } from "./src/requests";
+export type { RowCardProps } from "./src/row-card";
+export { RowCard } from "./src/row-card";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
 export type { SearchFieldProps } from "./src/search-field";
 export { SearchField } from "./src/search-field";
+export type {
+  SettingsOverviewAdvanced,
+  SettingsOverviewCard,
+  SettingsOverviewLink,
+  SettingsOverviewPage,
+  SettingsOverviewProblem,
+  SettingsOverviewProps,
+} from "./src/settings-overview";
+export { SettingsOverview } from "./src/settings-overview";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
 export type {
@@ -200,6 +217,8 @@ export {
   surfPreviousChannel,
   watchingScheduleFromGuide,
 } from "./src/surf-rail";
+export type { WallTileProps } from "./src/wall-tile";
+export { WallTile } from "./src/wall-tile";
 export type {
   ChannelNumberEntry,
   ClipChromeProps,

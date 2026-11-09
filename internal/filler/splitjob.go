@@ -12,7 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -57,18 +62,18 @@ var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publicat
 // SplitStore is the slice of the store the splitter needs (mirrors sync.go's
 // pattern — declared here so filler doesn't import store; app bridges them).
 type SplitStore interface {
-	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
+	GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error)
+	ListClips(ctx context.Context) ([]cliplibrary.StoreClip, error) // the dedup candidate set
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
-	UpsertClip(ctx context.Context, c StoreClip) error
+	UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error
 	// RecordFillerEraObservation carries a segment's guessed era onto its child as an uncited
 	// Context suggestion (#2323).
 	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	// UpsertClipPipeline durably enrolls a reviewed child before its media name is published.
-	UpsertClipPipeline(ctx context.Context, row ClipPipeline) error
+	UpsertClipPipeline(ctx context.Context, row pipelinestate.ClipPipeline) error
 	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
 	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
 	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
@@ -125,7 +130,7 @@ type SplitPartialCompletion struct {
 // coarse split, which is the honest degradation.
 type Splitter struct {
 	store    SplitStore
-	tools    MediaTools
+	tools    tools.MediaTools
 	provider llm.Provider
 	dropDir  string // FILLER_DIR — clip paths are relative to it (§10)
 	// minClipDuration is `filler.min_duration`, read live so it hot-applies. Composed with
@@ -143,21 +148,21 @@ type Splitter struct {
 // owns when and from which exact span the bytes were extracted; the adapter owns image storage,
 // responsive renditions, and proposal-reference lifetime.
 type SplitArtworkWriter interface {
-	IngestSplitArtwork(ctx context.Context, proposalID string, segment SplitSegment, jpeg []byte) (string, error)
+	IngestSplitArtwork(ctx context.Context, proposalID string, segment split.Segment, jpeg []byte) (string, error)
 }
 
-// SegmentLanguagePolicy applies the intake languages (IntakeLanguages) to each detected span before
+// SegmentLanguagePolicy applies the intake languages (language.IntakeSet) to each detected span before
 // the split becomes reviewable. Budget is the existing per-pass whisper allowance, not another user
 // knob.
 type SegmentLanguagePolicy struct {
-	Detector LanguageDetector
+	Detector language.Detector
 	Want     func(context.Context) (string, error)
 	Budget   func() int
 }
 
 // NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
 // nil, which leaves MinSegmentMs as the only floor.
-func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
+func NewSplitter(store SplitStore, tools tools.MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
 	if now == nil {
 		now = time.Now
 	}
@@ -271,7 +276,7 @@ func (sp *Splitter) startSegmentLanguage(ctx context.Context, p *SplitProposal) 
 		// Not "no language": that would present every segment as reviewable under no policy.
 		return false, fmt.Errorf("read the channels' commercial languages: %w", err)
 	}
-	want := LanguageSet(raw)
+	want := language.NormalizeSet(raw)
 	if want == "" {
 		return false, nil
 	}
@@ -312,7 +317,7 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 		for i := p.Language.Next; i < endIndex; i++ {
 			segment := &p.Segments[i]
 			segment.LanguageChecked = true
-			start, end := LanguageSpan(segment.EndMs - segment.StartMs)
+			start, end := language.Span(segment.EndMs - segment.StartMs)
 			detected, err := policy.Detector.DetectLanguage(ctx, file, segment.StartMs+start, min(segment.EndMs, segment.StartMs+end))
 			if err != nil {
 				if ctx.Err() != nil {
@@ -322,8 +327,8 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 				segment.LanguageNote = "Language could not be checked"
 				continue
 			}
-			segment.Language = NormalizeLanguage(detected)
-			if segment.Language == LangUndetermined {
+			segment.Language = language.Normalize(detected)
+			if segment.Language == language.Undetermined {
 				segment.LanguageReason = SplitLanguageInconclusive
 			}
 		}
@@ -333,9 +338,9 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 		return false, nil
 	}
 	want := p.Language.Want
-	kept := make([]SplitSegment, 0, len(p.Segments))
+	kept := make([]split.Segment, 0, len(p.Segments))
 	for _, segment := range p.Segments {
-		if LanguageRejects(segment.Language, want) {
+		if language.Rejects(segment.Language, want) {
 			p.LanguageExclusions = append(p.LanguageExclusions, SplitLanguageExclusion{
 				StartMs:          segment.StartMs,
 				EndMs:            segment.EndMs,
@@ -365,7 +370,7 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 // The store update refuses to insert, so a proposal confirmed or rejected while this pass was
 // grounding surfaces as ErrNotFound rather than being resurrected — the caller treats that as
 // "resolved under us", which it is.
-func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []SplitSegment) (SplitProposal, error) {
+func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []split.Segment) (SplitProposal, error) {
 	current, err := sp.store.GetSplitProposal(ctx, proposalID)
 	if err != nil {
 		return SplitProposal{}, err
@@ -391,13 +396,13 @@ func (sp *Splitter) Reground(ctx context.Context, proposalID string, grounded []
 // the write (there is no PATCH route), so this is belt-and-braces — but it is the invariant that
 // keeps the merge correct if one is ever added, and index-matching would silently stamp the wrong
 // segment the day it is.
-func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
+func mergeGrounding(onto, from []split.Segment) []split.Segment {
 	type span struct{ start, end int64 }
-	stamps := make(map[span]SplitSegment, len(from))
+	stamps := make(map[span]split.Segment, len(from))
 	for _, s := range from {
 		stamps[span{s.StartMs, s.EndMs}] = s
 	}
-	out := append([]SplitSegment(nil), onto...)
+	out := append([]split.Segment(nil), onto...)
 	for i := range out {
 		g, ok := stamps[span{out[i].StartMs, out[i].EndMs}]
 		if !ok {
@@ -414,7 +419,7 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 			out[i].Era = g.Era
 		}
 		if g.RoleEvidence != nil {
-			roleEvidence := cloneStructureRoleEvidence(*g.RoleEvidence)
+			roleEvidence := split.CloneRoleEvidence(*g.RoleEvidence)
 			out[i].RoleEvidence = &roleEvidence
 		}
 		if out[i].NameOrigin == SplitNameFallback && g.NameOrigin == SplitNameModelProposed {
@@ -449,10 +454,9 @@ const boundaryScanChunkMs int64 = 10 * 60 * 1000
 
 // Propose detects cuts in one compilation clip and persists the resulting
 // proposal (§10). The catalog is untouched.
-// ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`. The
-// parameter was named `clipPath` until V43, a leftover from the pre-V38c identity, and that
-// naming is the exact class that shipped the V41 tagger bug (a path handed to a hash-keyed
-// call, failing silently). The API passes `clipID`; so does the scheduled runner.
+// ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`, and a path
+// handed to a hash-keyed call fails silently (the class that shipped the V41 tagger bug). The API
+// passes `clipID`; so does the scheduled runner.
 func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposal, error) {
 	var p *SplitProposal
 	pending, err := sp.store.ListSplitProposals(ctx)
@@ -500,8 +504,8 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	if clip.DurationMs <= 0 {
 		return p, false, fmt.Errorf("clip %s has no probed duration — sync the catalog first", clipHash)
 	}
-	sourceWasUnbound := p != nil && p.Source.empty()
-	var boundSource SplitSourceAsset
+	sourceWasUnbound := p != nil && p.Source == (split.SourceAsset{})
+	var boundSource split.SourceAsset
 	if p != nil {
 		boundSource = p.Source
 	}
@@ -513,7 +517,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	floor := sp.floor()
 
 	if p == nil {
-		p = &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Source: source, Detection: &SplitDetectionProgress{}}
+		p = &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Source: source, Detection: &split.DetectionProgress{}}
 		chapters, chapterErr := sp.tools.Chapters(ctx, file)
 		if chapterErr != nil && sp.log != nil {
 			sp.log.Warn("chapter triage failed, falling back to coarse split", "file", file, "err", chapterErr)
@@ -521,9 +525,9 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
 			p.Detection.ScannedThroughMs = durationMs
 			p.Detection.Chapters = true
-			p.Detection.ChapterEdges = chapterEdges(chapters)
+			p.Detection.ChapterEdges = split.ChapterEdges(chapters)
 			p.Detection.CoarseSegments = segs
-			p.Detection.Discarded = append([]Interval(nil), dropped.Spans...)
+			p.Detection.Discarded = append([]tools.Interval(nil), dropped.Spans...)
 			p.Dropped = dropped
 			if err := sp.saveProposal(ctx, *p); err != nil {
 				return p, false, err
@@ -570,7 +574,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 				}
 				p.Detection.ScannedThroughMs = durationMs
 				p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, nil, floor)
-				p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
+				p.Detection.Discarded = append([]tools.Interval(nil), p.Dropped.Spans...)
 			} else {
 				p.Detection.Black = append(p.Detection.Black, black...)
 				p.Detection.Silence = append(p.Detection.Silence, silence...)
@@ -580,7 +584,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		if p.Detection.ScannedThroughMs >= durationMs && len(p.Detection.CoarseSegments) == 0 {
 			gaps := sourcedGaps(p.Detection.Black, p.Detection.Silence)
 			p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, gaps, floor)
-			p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
+			p.Detection.Discarded = append([]tools.Interval(nil), p.Dropped.Spans...)
 			if len(p.Detection.CoarseSegments) == 0 {
 				return p, false, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
 			}
@@ -592,12 +596,12 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	}
 
 	// Coarse segments crossed the durable JSON checkpoint before this pass. Their private source
-	// bitmasks are intentionally not part of SplitSegment's API shape, so derive them again from
+	// bitmasks are intentionally not part of split.Segment's API shape, so derive them again from
 	// the detection facts that ARE persisted before the confidence ladder reads them. Without this
 	// restore every resumed boundary scored 0 and even black+silence agreement could never clear
 	// the default auto-split threshold.
 	restoreCoarseBoundarySources(p.Detection, durationMs)
-	segs := append([]SplitSegment(nil), p.Detection.CoarseSegments...)
+	segs := append([]split.Segment(nil), p.Detection.CoarseSegments...)
 
 	// 2. Names for the unnamed (chapters bring their own).
 	base := strings.TrimSuffix(clip.Name, filepath.Ext(clip.Name))
@@ -613,29 +617,20 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	// land on Unsplittable, never on a guessed cut.
 	segs = sp.rescue(ctx, file, base, segs, floor)
 
-	// 4. RETIRED (§10 V51g): classify no longer runs here.
+	// 4. Split does not classify (§10 V51g).
 	//
-	// ⚠ **It was one LLM turn per segment, inside a bounded pass.** Measured on a 16m47s reel:
-	// 51 segments × 7.4s ≈ 377s — so the rung could never finish, threw its work away, and
-	// started over on the next tick.
+	// ⚠ **Classifying here would be one LLM turn per segment inside a bounded pass** — 51 segments
+	// × 7.4s ≈ 377s on a 16m47s reel, so the rung could never finish. It would also be worse
+	// duplicate work: `split.Segment.Transcript` is EMPTY unless `rescue` ran (and rescue only
+	// transcribes segments over ~120s), so `Classify` would see nothing but a generated name,
+	// `"… part 7"`, while every spawned segment runs `transcribe` → `tag` anyway with a real
+	// transcript.
 	//
-	// ⚠ The "budget of 120" this note used to cite was the CRON INTERVAL, not the ceiling. The
-	// real ceiling was River's inherited `JobTimeoutDefault` of **60s** until V54 gave jobs their
-	// own `Timeout` (§10, §18.1); the margin here was 6×, not 3×. Everything else in `Propose` totals ~40s
-	// (detect 4s, dedup 33s, cut 3s); this one step was the entire overrun.
-	//
-	// ⚠ And it was strictly WORSE duplicate work. It called the same `Classify` the `tag` rung
-	// calls, but with `SplitSegment.Transcript` — EMPTY unless `rescue` ran, and rescue only
-	// transcribes segments over ~120s (none on that reel). So it classified 51 adverts from
-	// nothing but a generated name, `"… part 7"`, identical across segments bar the number. Then
-	// every spawned segment ran `transcribe` → `tag` and called the same function again, this time
-	// with a real transcript. The pipeline paid twice and kept the second answer.
-	//
-	// **Split does not classify.** V69's bounded display-name proposal is the narrow descriptive
-	// exception: it reuses exact-span vision/transcript evidence and carries no admission authority.
-	// Each segment is spawned as its own clip and runs the whole ladder for itself — one clip at a
-	// time, budget-bounded, resumable, and individually visible in Incoming. Classification still
-	// happens where the scheduler can hold it.
+	// V69's bounded display-name proposal is the narrow descriptive exception: it reuses exact-span
+	// vision/transcript evidence and carries no admission authority. Each segment is spawned as its
+	// own clip and runs the whole ladder for itself — one clip at a time, budget-bounded,
+	// resumable, and individually visible in Incoming. Classification happens where the scheduler
+	// can hold it.
 	//
 	// ⚠ The cost: the split-review screen shows cuts without tags. That is the right trade — that
 	// screen asks "are these the right cuts?", which an operator answers from the filmstrip and the
@@ -652,14 +647,14 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	// has flagged duplicates, so every fact the ladder reads is final. Scoring earlier would
 	// stamp numbers the rest of Propose then invalidates (§10 V34).
 	scoreBoundaries(segs)
-	structure, err := assessCurrentSplitStructure(p.Source, *p.Detection, segs, sp.now().UTC())
+	structure, err := split.AssessDetection(p.Source, *p.Detection, segs, sp.now().UTC())
 	if err != nil {
 		return p, false, fmt.Errorf("assess source structure: %w", err)
 	}
 	// ⚠ The proposal carries the compilation's HASH, not its path. Confirm looks the clip back up
-	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
-	// that lookup never matched and no split could ever be committed. The file location Confirm
-	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
+	// with `GetClip`, which is hash-keyed — storing `clip.Path` here would make that lookup never
+	// match, so no split could ever be committed. The file location Confirm needs is derived from
+	// the hash, so there is one identity and nothing to disagree with it.
 	p.Segments = segs
 	p.Structure = &structure
 	p.Detection = nil
@@ -685,8 +680,8 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 // Black/silence intervals are the authoritative detector facts; chapter segments are the only
 // coarse segments with names before the resume pass, and a nameless whole-reel fallback has only
 // the two reel edges. Deriving instead of serialising the bitmask keeps implementation evidence
-// out of the operator-facing SplitSegment schema while making restarts lossless.
-func restoreCoarseBoundarySources(progress *SplitDetectionProgress, durationMs int64) {
+// out of the operator-facing split.Segment schema while making restarts lossless.
+func restoreCoarseBoundarySources(progress *split.DetectionProgress, durationMs int64) {
 	if progress == nil || len(progress.CoarseSegments) == 0 {
 		return
 	}
@@ -702,37 +697,37 @@ func restoreCoarseBoundarySources(progress *SplitDetectionProgress, durationMs i
 		}
 		for i := range progress.CoarseSegments {
 			if chapterAuthored {
-				progress.CoarseSegments[i].startSrc = srcChapter
-				progress.CoarseSegments[i].endSrc = srcChapter
+				progress.CoarseSegments[i].StartSrc = split.SrcChapter
+				progress.CoarseSegments[i].EndSrc = split.SrcChapter
 				continue
 			}
 			if progress.CoarseSegments[i].StartMs == 0 {
-				progress.CoarseSegments[i].startSrc = srcReelEdge
+				progress.CoarseSegments[i].StartSrc = split.SrcReelEdge
 			}
 			if progress.CoarseSegments[i].EndMs == durationMs {
-				progress.CoarseSegments[i].endSrc = srcReelEdge
+				progress.CoarseSegments[i].EndSrc = split.SrcReelEdge
 			}
 		}
 		return
 	}
 
-	sources := map[int64]boundarySource{0: srcReelEdge, durationMs: srcReelEdge}
+	sources := map[int64]split.BoundarySource{0: split.SrcReelEdge, durationMs: split.SrcReelEdge}
 	for _, cut := range cuts {
 		sources[cut.Ms] |= cut.Src
 	}
 	for i := range progress.CoarseSegments {
-		progress.CoarseSegments[i].startSrc = sources[progress.CoarseSegments[i].StartMs]
-		progress.CoarseSegments[i].endSrc = sources[progress.CoarseSegments[i].EndMs]
+		progress.CoarseSegments[i].StartSrc = sources[progress.CoarseSegments[i].StartMs]
+		progress.CoarseSegments[i].EndSrc = sources[progress.CoarseSegments[i].EndMs]
 	}
 }
 
-func sourcedGaps(blacks, silences []Interval) []detectedGap {
+func sourcedGaps(blacks, silences []tools.Interval) []detectedGap {
 	gaps := make([]detectedGap, 0, len(blacks)+len(silences))
 	for _, b := range blacks {
-		gaps = append(gaps, detectedGap{Interval: b, Src: srcBlack})
+		gaps = append(gaps, detectedGap{Interval: b, Src: split.SrcBlack})
 	}
 	for _, s := range silences {
-		gaps = append(gaps, detectedGap{Interval: s, Src: srcSilence})
+		gaps = append(gaps, detectedGap{Interval: s, Src: split.SrcSilence})
 	}
 	return gaps
 }
@@ -773,10 +768,10 @@ func (sp *Splitter) resolveEmpty(ctx context.Context, proposalID string) error {
 
 // rescue replaces over-long segments with their transcript-derived sub-segments
 // where the rescue succeeds, and marks them Unsplittable where it cannot run.
-func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitSegment, floor segmentFloor) []SplitSegment {
-	var out []SplitSegment
+func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []split.Segment, floor segmentFloor) []split.Segment {
+	var out []split.Segment
 	for _, seg := range segs {
-		if !seg.overlong() {
+		if !overlong(seg) {
 			out = append(out, seg)
 			continue
 		}
@@ -814,7 +809,7 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 			// saying "this is one advert" is the fact that defeats "over-long means a missed
 			// boundary" — and removing a cap is the only legal move a corroboration has in a
 			// ceiling ladder. The segment's own two boundaries keep whatever found them.
-			seg.rescueConfirmedWhole = true
+			seg.RescueConfirmedWhole = true
 			if seg.NameOrigin == SplitNameFallback {
 				seg.Name, seg.NameOrigin, seg.NameEvidence = proposedSegmentName(
 					spans[0].Product, seg.Transcript, base, len(out)+1,
@@ -826,7 +821,7 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 		for _, s := range spans {
 			transcriptText := TranscriptText(sliceTranscript(transcript, s.StartMs, s.EndMs))
 			name, nameOrigin, nameEvidence := proposedSegmentName(s.Product, transcriptText, base, len(out)+1)
-			sub := SplitSegment{
+			sub := split.Segment{
 				StartMs:      seg.StartMs + s.StartMs,
 				EndMs:        seg.StartMs + s.EndMs,
 				Name:         name,
@@ -837,8 +832,8 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 				// parent's own boundary: the rescue redrew this span, so the parent's evidence no
 				// longer describes it. Measured at ±2–3s, which is why its ceiling is the lowest
 				// of the detected sources.
-				startSrc: srcTranscript,
-				endSrc:   srcTranscript,
+				StartSrc: split.SrcTranscript,
+				EndSrc:   split.SrcTranscript,
 			}
 			out = append(out, sub)
 		}
@@ -858,10 +853,10 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 // parameter was named `clipPath` and tested against `c.Path`, while the one call site passes the
 // compilation's HASH — so the guard never fired and every segment was compared against the very
 // file it was cut from. Any segment resembling its parent came back flagged `DupOf` the
-// compilation: noise in the review, counted by `segmentsNeedingAttention`, and enough to make
-// `AutoConfirmable` reject a perfectly good reel. It read as correct because the splitter's test
+// compilation: noise in the review, and enough to make `AutoConfirmable` reject a perfectly good
+// reel. It read as correct because the splitter's test
 // store keyed clips by path, so the fixture made `hash` and `path` the same string (§10 V51a).
-func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []SplitSegment) {
+func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []split.Segment) {
 	catalog, err := sp.store.ListClips(ctx)
 	if err != nil || len(catalog) == 0 {
 		return
@@ -906,7 +901,7 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 
 // catalogFingerprint makes whole-catalog dedup incremental. Content hash plus algorithm version
 // is the cache key, so a hit is exact; failures always degrade to recomputation or no verdict.
-func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c cliplibrary.StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
 	if len(cached.Video) > 0 {
 		return cached, true
 	}
@@ -937,7 +932,7 @@ func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached 
 // Confirm cuts `segments` out of the compilation and files them, deleting the proposal.
 //
 // The MANUAL path: an operator has finished with this reel and their list is the whole answer.
-func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []SplitSegment) ([]string, error) {
+func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []split.Segment) ([]string, error) {
 	return sp.confirm(ctx, proposalID, segments, nil, storagegovernor.ConfirmedManual)
 }
 
@@ -946,7 +941,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 // The AUTOMATIC path: the gate confirmed the cuts it was confident about and kept the rest for a
 // human. ⚠ `hold` is what SURVIVES, stated by the caller rather than diffed from the store — see
 // the reasoning at the write below.
-func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
+func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments, hold []split.Segment) ([]string, error) {
 	return sp.confirm(ctx, proposalID, segments, hold, storagegovernor.Automatic)
 }
 
@@ -955,7 +950,7 @@ func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments
 // media visible, so an expired predecessor is fenced before it can publish.
 const splitProposalClaimLease = 30 * time.Minute
 
-func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []SplitSegment, storageMode storagegovernor.Mode) ([]string, error) {
+func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []split.Segment, storageMode storagegovernor.Mode) ([]string, error) {
 	if sp.newID == nil {
 		return nil, errors.New("split confirm: claim token generator is required")
 	}
@@ -1035,7 +1030,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	ext := filepath.Ext(source.Path)
 	parentPlayable := filepath.Join(sp.dropDir, filepath.FromSlash(clip.Path))
-	parentTags, _ := ReadSidecarTags(parentPlayable)
+	parentTags, _ := asset.ReadSidecarTags(parentPlayable)
 
 	// Segments are cut inside a hidden directory on the filler filesystem. Same-filesystem staging
 	// makes final publication atomic, while ScanDir's dot-directory rule keeps partial bytes out of
@@ -1085,24 +1080,24 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			}
 			return nil, err
 		}
-		id, err := ClipID(tmp)
+		id, err := asset.ClipID(tmp)
 		if err != nil {
 			return nil, fmt.Errorf("split confirm: hash segment %d: %w", i, err)
 		}
-		dst, err := ClipPath(sp.dropDir, id, ext)
+		dst, err := cliplibrary.ClipPath(sp.dropDir, id, ext)
 		if err != nil {
 			return nil, err
 		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return nil, fmt.Errorf("split confirm: segment %d: %w", i, err)
 		}
-		childTags := SidecarTags{
+		childTags := asset.SidecarTags{
 			SourceID:              parentTags.SourceID,
 			AcquisitionID:         parentTags.AcquisitionID,
 			OriginalName:          seg.Name + ext,
 			Kind:                  string(childKind),
 			SplitPublicationToken: claimToken,
-			ConditioningLineage: &ConditioningLineage{
+			ConditioningLineage: &asset.ConditioningLineage{
 				ChildHash:               id,
 				ParentHash:              clip.Hash,
 				ParentAssetRole:         string(source.Role),
@@ -1122,7 +1117,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				childTags.DisplayName = seg.Name
 			}
 		}
-		if err := WriteSidecarTags(tmp, childTags, false); err != nil {
+		if err := asset.WriteSidecarTags(tmp, childTags, false); err != nil {
 			return nil, fmt.Errorf("split confirm: stage segment provenance: %w", err)
 		}
 		// ⚠ An existing destination is a byte-identical cut, not a collision: the path IS the
@@ -1134,21 +1129,21 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := asset.ExactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}
-			existingTags, ok := ReadSidecarTags(dst)
+			existingTags, ok := asset.ReadSidecarTags(dst)
 			if !ok || !reflect.DeepEqual(existingTags.ConditioningLineage, childTags.ConditioningLineage) {
 				return nil, fmt.Errorf("split confirm: existing segment %d is not bound to this reviewed cut", i)
 			}
-			if err := WriteSidecarTags(dst, childTags, false); err != nil {
+			if err := asset.WriteSidecarTags(dst, childTags, false); err != nil {
 				return nil, fmt.Errorf("split confirm: fence existing segment %d: %w", i, err)
 			}
-			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
+			publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: cliplibrary.ClipRelPath(id, ext), staged: tmp, final: dst, existing: true})
 			continue
 		}
-		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
+		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: cliplibrary.ClipRelPath(id, ext), staged: tmp, final: dst})
 	}
 	if err := finishStorage(); err != nil {
 		return nil, err
@@ -1174,12 +1169,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			return nil, err
 		}
 		spawned = append(spawned, c.hash)
-		nc := StoreClip{UpdatedAt: now}
-		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
-		// so every segment used to insert with `hash=''` and each one overwrote the last — a
-		// 41-segment reel became ONE catalog row. Invisible to the splitter's own tests because
-		// their store keys its map on `Path`; the store conformance suite is where this class is
-		// pinned, and V51a adds the case.
+		nc := cliplibrary.StoreClip{UpdatedAt: now}
+		// ⚠ **The identity must be set.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`, so a
+		// segment inserted with `hash=''` overwrites the last one — a 41-segment reel would become
+		// ONE catalog row. Invisible to the splitter's own tests because their store keys its map
+		// on `Path`; the store conformance suite pins this class.
 		nc.Hash = c.hash
 		nc.Path = c.path
 		nc.Name, nc.NameSource = c.segment.Name, segmentNameSource(c.segment.NameOrigin)
@@ -1239,11 +1233,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				return nil, err
 			}
 		}
-		if err := sp.store.UpsertClipPipeline(ctx, ClipPipeline{
-			ClipHash: c.hash, Stage: StageProbe, Status: StatusQueued,
-			Disposition: DispositionReview, EnrolledAt: now, UpdatedAt: now,
+		if err := sp.store.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 			PreparationAttempt: 1, PreparationStartedAt: now,
-			PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+			PreparationStartReason: pipelinestate.PreparationStartedByEnrollment, PreparationProgress: 0,
 			StageQueuedAt: now,
 		}); err != nil {
 			return nil, err
@@ -1301,9 +1295,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, err
 	}
 	// Renumber so the review's "#N" runs 1..n rather than showing gaps where the confirmed cuts
-	// used to be. Names are untouched: a reel confirmed over two sittings must not rename its
+	// were. Names are untouched: a reel confirmed over two sittings must not rename its
 	// remaining clips underneath the operator.
-	remaining := append([]SplitSegment(nil), hold...)
+	remaining := append([]split.Segment(nil), hold...)
 	for i := range remaining {
 		remaining[i].Index = i
 	}
@@ -1325,13 +1319,13 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	return spawned, nil
 }
 
-func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+func bindSplitLanguageEvidence(submitted, persisted []split.Segment) []split.Segment {
 	type span struct{ start, end int64 }
-	bySpan := make(map[span]SplitSegment, len(persisted))
+	bySpan := make(map[span]split.Segment, len(persisted))
 	for _, segment := range persisted {
 		bySpan[span{segment.StartMs, segment.EndMs}] = segment
 	}
-	out := append([]SplitSegment(nil), submitted...)
+	out := append([]split.Segment(nil), submitted...)
 	for i := range out {
 		out[i].Language = ""
 		out[i].LanguageChecked = false
@@ -1349,13 +1343,13 @@ func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegme
 	return out
 }
 
-func bindSplitNameEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+func bindSplitNameEvidence(submitted, persisted []split.Segment) []split.Segment {
 	type span struct{ start, end int64 }
-	bySpan := make(map[span]SplitSegment, len(persisted))
+	bySpan := make(map[span]split.Segment, len(persisted))
 	for _, segment := range persisted {
 		bySpan[span{segment.StartMs, segment.EndMs}] = segment
 	}
-	out := append([]SplitSegment(nil), submitted...)
+	out := append([]split.Segment(nil), submitted...)
 	for i := range out {
 		original, exactSpan := bySpan[span{out[i].StartMs, out[i].EndMs}]
 		if exactSpan && out[i].Name == original.Name {
@@ -1369,13 +1363,13 @@ func bindSplitNameEvidence(submitted, persisted []SplitSegment) []SplitSegment {
 	return out
 }
 
-func bindSplitArtworkEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+func bindSplitArtworkEvidence(submitted, persisted []split.Segment) []split.Segment {
 	type span struct{ start, end int64 }
-	bySpan := make(map[span]SplitSegment, len(persisted))
+	bySpan := make(map[span]split.Segment, len(persisted))
 	for _, segment := range persisted {
 		bySpan[span{segment.StartMs, segment.EndMs}] = segment
 	}
-	out := append([]SplitSegment(nil), submitted...)
+	out := append([]split.Segment(nil), submitted...)
 	for i := range out {
 		out[i].ArtworkImageHash = ""
 		out[i].ArtworkChecked = false
@@ -1389,7 +1383,7 @@ func bindSplitArtworkEvidence(submitted, persisted []SplitSegment) []SplitSegmen
 	return out
 }
 
-func splitArtworkPrepared(segments []SplitSegment) bool {
+func splitArtworkPrepared(segments []split.Segment) bool {
 	for _, segment := range segments {
 		if !segment.ArtworkChecked {
 			return false
@@ -1421,11 +1415,11 @@ func appendUniqueStrings(existing []string, values ...string) []string {
 // inside the clip, start<end, ordered and non-overlapping.
 //
 // ⚠ The floor here is the COMPOSED one, so the manual path refuses what the scan boundary would
-// refuse. It used to be bare `MinSegmentMs` (3s), which let a hand-drawn 8s cut be written,
-// spawned, and then rejected `too_short` by the probe rung — a silent downstream loss the operator
-// never connected to their edit. Refusing it upfront is arguable; losing it quietly is not.
-func validateConfirmedSegments(segs []SplitSegment, durationMs int64, floor segmentFloor) error {
-	sorted := append([]SplitSegment(nil), segs...)
+// refuse. A bare `MinSegmentMs` (3s) would let a hand-drawn 8s cut be written, spawned, and then
+// rejected `too_short` by the probe rung — a silent downstream loss the operator would never
+// connect to their edit. Refusing it upfront is arguable; losing it quietly is not.
+func validateConfirmedSegments(segs []split.Segment, durationMs int64, floor segmentFloor) error {
+	sorted := append([]split.Segment(nil), segs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartMs < sorted[j].StartMs })
 	for i, s := range sorted {
 		if s.StartMs < 0 || s.EndMs > durationMs || !floor.admits(s.StartMs, s.EndMs) {
@@ -1448,8 +1442,8 @@ func validateConfirmedSegments(segs []SplitSegment, durationMs int64, floor segm
 
 // sliceTranscript keeps the utterances overlapping [startMs,endMs) — the text a
 // rescued sub-segment is classified from.
-func sliceTranscript(transcript []TranscriptSegment, startMs, endMs int64) []TranscriptSegment {
-	var out []TranscriptSegment
+func sliceTranscript(transcript []tools.TranscriptSegment, startMs, endMs int64) []tools.TranscriptSegment {
+	var out []tools.TranscriptSegment
 	for _, t := range transcript {
 		if t.EndMs > startMs && t.StartMs < endMs {
 			out = append(out, t)

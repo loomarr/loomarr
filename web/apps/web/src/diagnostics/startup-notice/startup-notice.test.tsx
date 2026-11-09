@@ -85,17 +85,40 @@ describe("HealthNotice", () => {
     expect(localStorage.getItem(key)).toBe("1");
   });
 
-  // #2734: View health opened Logs, the Diagnostics default view, instead of Current Health.
-  it("opens Current Health from the notice's View health action", async () => {
-    server.use(getGetCurrentHealthMockHandler(report("degraded")));
+  // #2750: "1 check need attention", a 40-character commit, and (#2734) "View health" landing on
+  // Logs, the Diagnostics default view, instead of Current Health.
+  it("counts checks in plain words, shortens a commit version, and opens Health", async () => {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    server.use(getGetCurrentHealthMockHandler({ ...report("degraded"), version: sha }));
     renderNotice();
     await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
-    const options = mocks.warning.mock.calls[0]?.[1] as unknown as { action: { onClick: () => void } };
+    const options = mocks.warning.mock.calls[0]?.[1] as unknown as {
+      description: string;
+      action: { onClick: () => void };
+    };
+    expect(options.description).toBe("0123456 · 1 check needs attention");
     act(() => options.action.onClick());
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: "/settings/system/diagnostics",
       search: { view: "health" },
     });
+  });
+
+  it("keeps a release tag as it is and counts several checks", async () => {
+    const degraded = report("degraded");
+    const tunarr = {
+      key: "tunarr",
+      label: "Tunarr",
+      required: false,
+      mode: "continuous" as const,
+      status: "warning" as const,
+      detail: "Configured but unavailable",
+    };
+    server.use(getGetCurrentHealthMockHandler({ ...degraded, checks: [...degraded.checks, tunarr] }));
+    renderNotice();
+    await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
+    const options = mocks.warning.mock.calls[0]?.[1] as unknown as { description: string };
+    expect(options.description).toBe("v1.2.3 · 2 checks need attention");
   });
 
   it("lets a degraded notice close by itself on a phone, where it covered the page (#1785)", async () => {

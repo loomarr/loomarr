@@ -37,7 +37,7 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 	meaning, dateErr := validatedToolDateMeaning(intent, arguments)
 	if dateErr != nil {
 		if accepted == nil && isDateMeaningConflict(dateErr) {
-			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}, true
+			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalConstraintsConflict}, true
 		}
 		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), proposals.DecisionTrace{}, false
 	}
@@ -193,7 +193,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 	}
 	if !discoveryMode {
 		query := stringArg(arguments["query"])
@@ -205,7 +205,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 		}
 	}
 	if mtArg != "" {
@@ -291,7 +291,7 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	for _, title := range titles {
 		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: proposals.TerminalRetrievalFailure}, true
 		}
 		candidate, found := exactCandidateForPick(results, pick{MediaType: string(mediaType), Name: title.name, Year: title.year})
 		if !found {
@@ -664,9 +664,9 @@ func mergeDecisionTrace(dst, src *proposals.DecisionTrace) {
 	}
 	surfacedTotal := dst.SurfacedTotal + src.SurfacedTotal
 	recordedTotal := dst.RecordedTotal + src.RecordedTotal
-	dst.Truncated = dst.Truncated || src.Truncated || surfacedTotal > DecisionTraceMaxTotal || recordedTotal > DecisionTraceMaxTotal
-	dst.SurfacedTotal = min(surfacedTotal, DecisionTraceMaxTotal)
-	dst.RecordedTotal = min(recordedTotal, DecisionTraceMaxTotal)
+	dst.Truncated = dst.Truncated || src.Truncated || surfacedTotal > proposals.DecisionTraceMaxTotal || recordedTotal > proposals.DecisionTraceMaxTotal
+	dst.SurfacedTotal = min(surfacedTotal, proposals.DecisionTraceMaxTotal)
+	dst.RecordedTotal = min(recordedTotal, proposals.DecisionTraceMaxTotal)
 	dst.WindowsCompleted += src.WindowsCompleted
 	dst.SourceQueriesDispatched += src.SourceQueriesDispatched
 	if src.Terminal != "" {
@@ -679,7 +679,7 @@ func mergeDecisionTrace(dst, src *proposals.DecisionTrace) {
 			dst.Candidates[i] = c
 			continue
 		}
-		if len(dst.Candidates) >= DecisionTraceMaxCandidates {
+		if len(dst.Candidates) >= proposals.DecisionTraceMaxCandidates {
 			dst.Truncated = true
 			continue
 		}

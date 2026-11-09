@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/diagnosticsstore"
 )
 
 // #1398: DiagnosticRetainedBytes used to SUM(size_bytes) over a 2.7M-row table on every
@@ -52,7 +53,7 @@ func seedProcessRun(t *testing.T, st Store, id string, size int64, status diagno
 func TestDiagnosticRetainedBytesIsNotAFullScan(t *testing.T) {
 	t.Parallel()
 	st := openRetentionStore(t)
-	rows, err := PoolOf(st).QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+diagnosticRetainedBytesQuery)
+	rows, err := PoolOf(st).QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+diagnosticsstore.RetainedBytesQuery)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +290,7 @@ func TestQueryDiagnosticEventsCorrelationFiltersUseTheirIndexes(t *testing.T) {
 		"process_run_id":      {ProcessRunID: "pr-1"},
 	} {
 		filter.From, filter.To, filter.Limit = 0, time.Now().Add(time.Hour).UnixMilli(), 50
-		sqlText, args := diagnosticEventQuery(filter)
+		sqlText, args := diagnosticsstore.EventQuery(filter)
 		plan := explainPlan(t, st, sqlText, args...)
 		if !strings.Contains(plan, "USING INDEX idx_diagnostic_events_") || strings.Contains(plan, "idx_diagnostic_events_time") {
 			t.Errorf("%s filter does not use its correlation index:\n%s", name, plan)

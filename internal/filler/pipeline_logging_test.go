@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // failingClips makes every clip read fail with *err, so a pass reports a failed clip without
@@ -19,8 +20,8 @@ type failingClips struct {
 	err *error
 }
 
-func (f failingClips) GetClip(context.Context, string) (filler.StoreClip, bool, error) {
-	return filler.StoreClip{}, false, *f.err
+func (f failingClips) GetClip(context.Context, string) (cliplibrary.StoreClip, bool, error) {
+	return cliplibrary.StoreClip{}, false, *f.err
 }
 
 func logPipe(st *pipeMemStore, failure *error, buf *bytes.Buffer) *filler.Pipeline {

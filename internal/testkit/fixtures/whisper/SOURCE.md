@@ -10,8 +10,8 @@ Captured 2026-08-03 from `loomarr:v40-test`, built from this repo's Dockerfile.
 | --- | --- |
 | Binary | `whisper-cli`, whisper.cpp `v1.9.1` |
 | Model | `ggml-tiny.bin` (multilingual), rev `5359861c…`, sha256 `be07e048…` |
-| Arguments | `-m <model> -f <span>.wav -l auto -oj -of <out> -np` — the exact set `WhisperLanguage.DetectLanguage` builds |
-| Audio | 16kHz mono wav, the 1s–11s span `LanguageSpan(29814)` asks for |
+| Arguments | `-m <model> -f <span>.wav -l auto -oj -of <out> -np` — the exact set `language.Whisper.DetectLanguage` builds |
+| Audio | 16kHz mono wav, the 1s–11s span `language.Span(29814)` asked for when it was captured |
 
 ## The two clips
 

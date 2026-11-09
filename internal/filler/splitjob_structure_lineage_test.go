@@ -5,7 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
@@ -21,7 +24,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	}
 	hash := bindCompilationIdentity(t, store, oldHash, full)
 	stageParentForSplitReview(store, hash)
-	splitter := newSplitter(store, &fakeTools{chapters: []filler.Chapter{
+	splitter := newSplitter(store, &fakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000},
 	}}, nil, drop)
 	proposal, err := splitter.Propose(t.Context(), hash)
@@ -29,7 +32,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := structureDecisionArtifact(t, proposal.Source, 30_000, false)
-	assessment, err := filler.ProjectConfirmedStructureDecision(proposal.Source, proposal.Structure, artifact)
+	assessment, err := split.ProjectConfirmedDecision(proposal.Source, proposal.Structure, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +47,8 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	if len(spawned) != 2 {
 		t.Fatalf("spawned=%v", spawned)
 	}
-	wantKinds := []filler.Role{filler.Commercial, filler.Interstitial}
-	wantRoles := []filler.StructureSegmentRole{filler.SegmentRoleCommercial, filler.SegmentRolePromo}
+	wantKinds := []clips.Role{clips.Commercial, clips.Interstitial}
+	wantRoles := []split.Role{split.RoleCommercial, split.RolePromo}
 	for index, childHash := range spawned {
 		child, found, err := store.GetClip(t.Context(), childHash)
 		if err != nil || !found {
@@ -54,7 +57,7 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 		if child.Role != wantKinds[index] {
 			t.Fatalf("child %s kind=%q want=%q", childHash, child.Role, wantKinds[index])
 		}
-		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
+		tags, ok := asset.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 		lineage := tags.ConditioningLineage
 		if !ok || lineage == nil || lineage.StructureDecisionSHA256 != artifact.SHA256 ||
 			lineage.StructureRole != wantRoles[index] || tags.Kind != string(wantKinds[index]) {

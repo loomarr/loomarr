@@ -21,12 +21,16 @@ func (f *fakeFilmCatalog) Capabilities() mp.Capabilities {
 	return mp.Capabilities{Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
 }
 
-func (f *fakeFilmCatalog) Filmography(_ context.Context, person string) ([]mp.FilmCredit, error) {
-	f.asked = append(f.asked, person)
+// Filmography answers by the person's TMDB id; asked notes each id asked for.
+func (f *fakeFilmCatalog) Filmography(_ context.Context, person mp.ExternalID) ([]mp.FilmCredit, error) {
+	if person.Namespace != mp.NamespaceTMDB {
+		return nil, mp.ErrUnsupported
+	}
+	f.asked = append(f.asked, person.Value)
 	if f.err != nil {
 		return nil, f.err
 	}
-	return f.credits[person], nil
+	return f.credits[person.Value], nil
 }
 
 // A director's filmography is fetched once and kept until the refresh; a catalog that fails holds
@@ -36,8 +40,10 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 	st := openStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
 	film := store.LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Credits: []store.LibraryCredit{
-		{Name: "The Director", Role: "director", TMDB: "90004003"},
+		{Name: "The Director", Role: "director", ID: store.LibraryID{Namespace: "tmdb", Value: "90004003"}},
 		{Name: "Pen Name", Role: "writer"},
+		// A person another catalog knows has no filmography in this one.
+		{Name: "Other Director", Role: "director", ID: store.LibraryID{Namespace: "imdb", Value: "nm90004005"}},
 	}}
 	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{film}, at); err != nil {
 		t.Fatal(err)
@@ -66,7 +72,7 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 
 	catalog.asked, catalog.err = nil, nil
 	catalog.credits = map[string][]mp.FilmCredit{"90004003": {
-		{Kind: mp.KindMovie, TMDB: "90000602", Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
+		{Kind: mp.KindMovie, ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000602"}, Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
 	}}
 	for range 2 {
 		if err := f.Tick(ctx); err != nil {
@@ -77,7 +83,7 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 		t.Fatalf("asked %v over two ticks, want the director once, then kept until the refresh", catalog.asked)
 	}
 	due, err := st.DueLibraryFilmographies(ctx, store.LibraryFilmographyDue{
-		Now: f.now(), StaleBefore: f.now().Add(time.Minute), Limit: 10})
+		Namespace: "tmdb", Now: f.now(), StaleBefore: f.now().Add(time.Minute), Limit: 10})
 	if err != nil || len(due) != 1 || due[0].ID != "tmdb:90004003" {
 		t.Fatalf("due a month on = %+v, %v; want the director, whose filmography was saved", due, err)
 	}

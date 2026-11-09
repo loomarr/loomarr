@@ -671,14 +671,9 @@ func declared() []Setting {
 			Detail:  "Coloured styles use each channel's colour (by default, colours from the channel's decade). A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
 		},
 		{
-			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
-			// used to give ("the filler sidecar bundles its own ffmpeg in a different image").
-			// There is one image now (§16), so that rationale died with the sidecar and the
-			// two-tag split.
-			//
-			// The live reason: these two callers fail differently. Playout's ffmpeg is a
-			// runtime dependency of a channel that is ON AIR, while ingest's is a build
-			// dependency of a download nobody is watching — so an operator pointing ingest at
+			// ⚠ Separate from ingest.ffmpeg_path because these two callers fail differently.
+			// Playout's ffmpeg is a runtime dependency of a channel that is ON AIR, while
+			// ingest's is a build dependency of a download nobody is watching — so an operator pointing ingest at
 			// a newer yt-dlp-compatible ffmpeg must not be able to break playout by doing it.
 			Key: "playout.ffmpeg_path", Label: "FFmpeg path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, Default: "ffmpeg", Advanced: true,
@@ -1081,7 +1076,7 @@ func declared() []Setting {
 			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
 			// could not be classified". The model name is useless without the host that serves it.
 			//
-			// Empty ⇒ inherit the main provider exactly as before, so no existing install changes.
+			// Empty ⇒ inherit the main provider.
 			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires
 			// every enum option to carry a value and a label, and an explicit word reads better in
 			// the picker than a blank row. The resolver treats "" the same way, so an env var set
@@ -1141,15 +1136,12 @@ func declared() []Setting {
 		// system whose claim is that it maintains itself. Cut acceptance still creates held
 		// children; it does not grant any child permission to air.
 		{
-			// (`filler.split.every` was retired here in V51b. Splitting is no longer a sweep with
-			// its own cadence — it is a rung every long recording reaches as it is ingested, so
-			// "how often do we go looking" stopped being a question with an answer. Detection is
-			// still bounded, by `filler.pipeline.max_splits` per pass.)
+			// Splitting has no sweep cadence of its own: it is a rung every long recording reaches
+			// as it is ingested, and detection is bounded by `filler.pipeline.max_splits` per pass.
 			//
-			// ⚠ **ON by default as of V51b, reversing the note this comment used to carry.** It
-			// said: off, because cutting is destructive in a way tagging is not — a mis-cut clip
-			// plays HALF AN ADVERT and the source is consumed either way. That reasoning was
-			// sound and the risk has not changed; what changed is the evidence. The gate is
+			// ⚠ **ON by default (V51b).** Cutting is destructive in a way tagging is not — a
+			// mis-cut clip plays HALF AN ADVERT and the source is consumed either way — and that
+			// risk has not changed; what makes ON safe is the evidence. The gate is
 			// strict — after known duplicates and short fragments are removed, the remaining reel
 			// qualifies as a whole or none of it does; an ungrounded era disqualifies at every
 			// threshold, and any segment the detector admits it could not resolve sends the
@@ -1383,8 +1375,8 @@ func declared() []Setting {
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a
 		// well-meaning "prefer HD" would quietly starve the era-accurate 4:3 commercials the
-		// feature exists to play. That warning still holds — which is why an install that sets
-		// nothing behaves exactly as it did before this key existed, pinned by a test.
+		// feature exists to play. That warning holds — which is why an install that sets
+		// nothing selects no quality floor at all, pinned by a test.
 		//
 		// Advanced: an operator who does not know what 240p looks like in a break should never
 		// meet this, and one who does will go looking.
@@ -1477,9 +1469,8 @@ func declared() []Setting {
 			Detail: "Every channel's commercial language unless the channel sets its own. New clips are kept when their speech is in a language some channel uses and rejected when it is confidently in none of them; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
 		},
 		// --- Filler ingest (§10, §15) ---
-		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
-		// labelled "loomarr:filler image variant only" — that variant no longer exists, so
-		// these paths are overrides for an unusual layout, not an opt-in.
+		// ⚠ The vendored binaries ship in the SINGLE image (§16), so these paths are overrides
+		// for an unusual layout, not an opt-in.
 		// The two tool paths are what the `ingest` feature gate probes. They are
 		// settings rather than hardcoded so an operator can point at a NEWER yt-dlp
 		// than the image ships — yt-dlp releases fixes far faster than we cut images,

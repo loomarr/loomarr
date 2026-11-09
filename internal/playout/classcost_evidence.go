@@ -3,10 +3,6 @@ package playout
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,40 +86,4 @@ func StoreClassCosts(root, fingerprint string, m MeasuredCosts) error {
 		}
 	}
 	return writeEvidence(root, classCostEvidenceName, e)
-}
-
-// MigrateCapabilityEvidence moves the encoder evidence from its old home in the prepared library
-// to playout.state_dir, once: a file already in the state directory wins and the old one is left.
-// It reports whether a file moved.
-func MigrateCapabilityEvidence(fromDir, toDir string) (bool, error) {
-	fromDir, toDir = strings.TrimSpace(fromDir), strings.TrimSpace(toDir)
-	if fromDir == "" || toDir == "" || filepath.Clean(fromDir) == filepath.Clean(toDir) {
-		return false, nil
-	}
-	from := filepath.Join(fromDir, capabilityEvidenceName)
-	to := filepath.Join(toDir, capabilityEvidenceName)
-	if _, err := os.Stat(to); err == nil {
-		return false, nil
-	}
-	src, err := os.Open(from)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	defer func() { _ = src.Close() }()
-	body, err := io.ReadAll(io.LimitReader(src, 1<<20))
-	if err != nil {
-		return false, err
-	}
-	var e capabilityEvidence
-	if err := json.Unmarshal(body, &e); err != nil {
-		return false, fmt.Errorf("playout: old capability evidence is unreadable: %w", err)
-	}
-	// writeEvidence, not rename: the prepared library and the state directory may be on different
-	// volumes, and the copy must be atomic in its new home before the old one goes.
-	if err := writeEvidence(toDir, capabilityEvidenceName, e); err != nil {
-		return false, err
-	}
-	return true, os.Remove(from)
 }

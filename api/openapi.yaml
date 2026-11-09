@@ -1135,6 +1135,12 @@ components:
           description: When the channel was created (Unix ms); absent for an older channel no approval dates
           format: int64
           type: integer
+        decade:
+          description: The decade the channel's era sits in (1980 for the 1980s); absent when the channel has no single-decade era
+          examples:
+            - 1980
+          format: int64
+          type: integer
         group:
           examples:
             - Kids
@@ -1551,6 +1557,30 @@ components:
       required:
         - channelId
         - viewers
+      type: object
+    ChooseLibraryEpisodeOrderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ChooseLibraryEpisodeOrderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        choice:
+          description: files keeps the name and number in each file
+          enum:
+            - catalog
+            - order
+            - files
+          type: string
+        orderId:
+          description: The order a choice names; only with choice order
+          maxLength: 64
+          type: string
+      required:
+        - choice
       type: object
     ClassBudget:
       additionalProperties: false
@@ -3810,6 +3840,23 @@ components:
         - aggregates
         - runSnapshots
       type: object
+    ExternalIDDTO:
+      additionalProperties: false
+      properties:
+        namespace:
+          description: The catalog the id is from, such as tmdb
+          maxLength: 40
+          minLength: 1
+          type: string
+        value:
+          description: The id in that catalog
+          maxLength: 40
+          minLength: 1
+          type: string
+      required:
+        - namespace
+        - value
+      type: object
     FavouriteChannelDTO:
       additionalProperties: false
       properties:
@@ -5032,13 +5079,17 @@ components:
             - attention
             - unconfigured
           type: string
-        held:
-          description: Downloaded clips awaiting review in Incoming; NOT included in clips
-          format: int64
-          type: integer
         lastScanAt:
           description: RFC3339; absent if nothing has ever been fetched
           type: string
+        needsYou:
+          description: Choices Incoming lists as needing help
+          format: int64
+          type: integer
+        preparing:
+          description: Clips Incoming lists as getting ready; NOT included in clips
+          format: int64
+          type: integer
         sourcesOn:
           format: int64
           type: integer
@@ -5054,7 +5105,8 @@ components:
         - sourcesReady
         - sourcesTotal
         - clips
-        - held
+        - preparing
+        - needsYou
       type: object
     GenreFilter:
       additionalProperties: false
@@ -5189,6 +5241,9 @@ components:
           type: array
         channelId:
           type: string
+        decade:
+          format: int64
+          type: integer
         logo:
           type: string
         name:
@@ -5197,6 +5252,9 @@ components:
           format: int64
           type: integer
         pendingCount:
+          format: int64
+          type: integer
+        programCount:
           format: int64
           type: integer
         status:
@@ -6603,6 +6661,8 @@ components:
         episodesMatches:
           description: "Series only: every season and episode on disk fits its seasons"
           type: boolean
+        externalId:
+          $ref: "#/components/schemas/ExternalIDDTO"
         kind:
           enum:
             - movie
@@ -6620,8 +6680,6 @@ components:
         poster:
           $ref: "#/components/schemas/ImageDTO"
           description: Absent when it has none, or while it is still being fetched
-        tmdbId:
-          type: string
         year:
           description: Absent when unknown
           format: int64
@@ -6630,7 +6688,7 @@ components:
           type: boolean
       required:
         - kind
-        - tmdbId
+        - externalId
         - name
         - nameMatches
         - yearMatches
@@ -6686,6 +6744,9 @@ components:
           description: The last episode a multi-episode file holds
           format: int64
           type: integer
+        fromFile:
+          description: Its name and number are its file's, until the show's episode order is said
+          type: boolean
         id:
           type: string
         name:
@@ -6700,6 +6761,7 @@ components:
         - name
         - number
         - ready
+        - fromFile
       type: object
     LibraryFolderNameDTO:
       additionalProperties: false
@@ -6974,6 +7036,95 @@ components:
         - size
         - ready
       type: object
+    LibraryOrderChoiceDTO:
+      additionalProperties: false
+      properties:
+        choice:
+          description: catalog is TMDB's own seasons; order is one of its other orders
+          enum:
+            - catalog
+            - order
+          type: string
+        episodes:
+          description: How many episodes it has in all
+          format: int64
+          type: integer
+        fits:
+          description: Every season on disk ends where its season does
+          type: boolean
+        kind:
+          description: What kind of order it is; only with choice order
+          enum:
+            - aired
+            - absolute
+            - dvd
+            - digital
+            - story
+            - production
+            - tv
+          type: string
+        name:
+          description: TMDB's name for it; only with choice order
+          type: string
+        orderId:
+          description: The order to send back; only with choice order
+          type: string
+        seasons:
+          description: Its layout; empty while an order's layout is fetched
+          items:
+            $ref: "#/components/schemas/LibrarySeasonSizeDTO"
+          type: array
+      required:
+        - choice
+        - seasons
+        - episodes
+        - fits
+      type: object
+    LibraryOrderFileDTO:
+      additionalProperties: false
+      properties:
+        episode:
+          description: As the file numbers it
+          format: int64
+          type: integer
+        path:
+          description: The file on this machine
+          type: string
+        season:
+          description: As the file numbers it
+          format: int64
+          type: integer
+      required:
+        - path
+        - season
+        - episode
+      type: object
+    LibraryOrderNeedDTO:
+      additionalProperties: false
+      properties:
+        choices:
+          description: TMDB's own seasons, then its other orders; empty while the show's details are fetched
+          items:
+            $ref: "#/components/schemas/LibraryOrderChoiceDTO"
+          type: array
+        disk:
+          description: "How far each season runs on disk: its highest episode, by season"
+          items:
+            $ref: "#/components/schemas/LibrarySeasonSizeDTO"
+          type: array
+        files:
+          description: The files of the episodes that wait, in path order
+          items:
+            $ref: "#/components/schemas/LibraryOrderFileDTO"
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+      required:
+        - item
+        - disk
+        - files
+        - choices
+      type: object
     LibraryPathMappingDTO:
       additionalProperties: false
       properties:
@@ -7128,6 +7279,8 @@ components:
     LibrarySearchHitDTO:
       additionalProperties: false
       properties:
+        externalId:
+          $ref: "#/components/schemas/ExternalIDDTO"
         kind:
           enum:
             - movie
@@ -7137,14 +7290,12 @@ components:
           type: string
         overview:
           type: string
-        tmdbId:
-          type: string
         year:
           format: int64
           type: integer
       required:
         - kind
-        - tmdbId
+        - externalId
         - name
       type: object
     LibrarySeasonDTO:
@@ -7160,6 +7311,20 @@ components:
           type: integer
       required:
         - number
+        - episodes
+      type: object
+    LibrarySeasonSizeDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          format: int64
+          type: integer
+        season:
+          description: 0 is specials
+          format: int64
+          type: integer
+      required:
+        - season
         - episodes
       type: object
     LibrarySourceDTO:
@@ -7330,14 +7495,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        tmdbId:
-          description: The TMDB title it is
-          maxLength: 20
-          minLength: 1
-          pattern: ^[0-9]+$
-          type: string
+        externalId:
+          $ref: "#/components/schemas/ExternalIDDTO"
+          description: The title it is, as a search result or candidate names it
       required:
-        - tmdbId
+        - externalId
       type: object
     ListActivityOutputBody:
       additionalProperties: false
@@ -7526,6 +7688,11 @@ components:
           items:
             $ref: "#/components/schemas/LibraryNeedDTO"
           type: array
+        orders:
+          description: Shows whose episode order to say, by name
+          items:
+            $ref: "#/components/schemas/LibraryOrderNeedDTO"
+          type: array
         problems:
           description: Titles that need a look, by name
           items:
@@ -7533,6 +7700,7 @@ components:
           type: array
       required:
         - needs
+        - orders
         - problems
       type: object
     ListOutputBody:
@@ -11144,7 +11312,11 @@ components:
           description: RFC3339; empty for env/system writes.
           type: string
         updatedBy:
+          description: Display name of the person who last changed it. Empty when that person is unknown; never a raw user id (#2736).
           type: string
+        updatedByYou:
+          description: The signed-in caller made the last change, so the UI can say 'you'.
+          type: boolean
         value:
           description: Resolved value (non-secret). Empty for secrets.
           type: string
@@ -11680,6 +11852,9 @@ components:
           examples:
             - livetv
           type: string
+        notSetUp:
+          description: True when not OK only because none of this service's connection settings are set yet
+          type: boolean
         ok:
           type: boolean
         target:
@@ -16560,13 +16735,13 @@ paths:
       description: "The override picker's per-channel note (§10 V35). For every channel: which rung of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the same per-channel selection as the pod preview — a note that disagrees with what airs is a confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every channel is listed, including paused ones — pinning to a paused channel is a decision that takes effect when it resumes."
       operationId: clip-channel-fit
       parameters:
-        - description: The clip's path (its identity, §10)
+        - description: The clip's content hash (its identity, §10)
           explode: false
           in: query
           name: clip
           required: true
           schema:
-            description: The clip's path (its identity, §10)
+            description: The clip's content hash (its identity, §10)
             type: string
       responses:
         "200":
@@ -17568,12 +17743,18 @@ paths:
             examples:
               - member
             type: string
-        - description: What this image decorates, e.g. channel
+        - description: What kind of thing this image decorates; ownerId names which one, and it must exist
           explode: false
           in: query
           name: ownerKind
           schema:
-            description: What this image decorates, e.g. channel
+            description: What kind of thing this image decorates; ownerId names which one, and it must exist
+            enum:
+              - clip
+              - filler_split_proposal
+              - channel
+              - library_item
+              - library_candidate
             type: string
         - description: The id of the thing it decorates
           explode: false
@@ -18208,6 +18389,35 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Check a title's files again
+      tags:
+        - library
+  /v1/library/items/{id}/episode-order:
+    post:
+      description: TMDB's own seasons, one of its other orders, or the names and numbers in the files. Its episodes are read again with it.
+      operationId: chooseLibraryEpisodeOrder
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChooseLibraryEpisodeOrderInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Say which order a show's episodes are in
       tags:
         - library
   /v1/library/items/{id}/ignore:

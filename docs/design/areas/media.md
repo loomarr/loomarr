@@ -13,23 +13,23 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`media/bgexec`** · 5 importers · → `media/proctree`
+- **`media/bgexec`** · 6 importers · → `media/proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
-- **`media/creative`** · 6 importers
+- **`media/creative`** · 7 importers
   Decides whether two filler clips are the same advert (#2033).
-- **`media/defects`** · 7 importers
+- **`media/defects`** · 8 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
-- **`media/encode`** · 8 importers · → `platform/config`
+- **`media/encode`** · 10 importers · → `platform/config`
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, each family's encoder flags and rate control, and the parser for ffmpeg's `-progress` stream.
 - **`media/header`** · 3 importers · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
-- **`media/images`** · 2 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store`
+- **`media/images`** · 7 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
   One pipeline every image in Loomarr travels (§22).
 - **`media/images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
-- **`media/measure`** · 3 importers · → `inventory`, `media/bgexec`, `media/header`, `media/tools`
+- **`media/measure`** · 4 importers · → `inventory`, `media/bgexec`, `media/header`, `media/tools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 - **`media/proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
-- **`media/tools`** · 6 importers · → `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics`
+- **`media/tools`** · 12 importers · → `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.

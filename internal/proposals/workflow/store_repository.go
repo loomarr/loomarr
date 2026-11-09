@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
@@ -76,7 +77,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 			if err := json.Unmarshal([]byte(snapshot.Job.FailureTraceJSON), &record.FailureTrace); err != nil {
 				return Record{}, fmt.Errorf("decode Proposal Job %s failure trace: %w", jobID, err)
 			}
-			if err := suggest.ValidateDecisionTrace(record.FailureTrace); err != nil {
+			if err := proposals.ValidateDecisionTrace(record.FailureTrace); err != nil {
 				return Record{}, fmt.Errorf("validate Proposal Job %s failure trace: %w", jobID, err)
 			}
 		}
@@ -122,12 +123,12 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 		return suggest.WorkflowProposal{}, err
 	}
 	now := r.now()
-	row := store.Proposal{
+	row := proposalstore.Proposal{
 		ID: r.newID(), JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
 		Body: completion.Proposal, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := r.store.CommitSuggestionSuccess(ctx, job.ID, completion.Work.Attempt, row, now); err != nil {
-		if errors.Is(err, store.ErrJobNotRunning) {
+		if errors.Is(err, proposalstore.ErrJobNotRunning) {
 			return suggest.WorkflowProposal{}, ErrStaleAttempt
 		}
 		return suggest.WorkflowProposal{}, err
@@ -142,7 +143,7 @@ func (r *storeRepository) FailAttempt(ctx context.Context, failure AttemptFailur
 	if err := r.store.CommitSuggestionFailure(
 		ctx, failure.Work.JobID, failure.Work.Attempt, failure.Diagnostic, string(failure.Code), failure.TraceJSON, r.now(),
 	); err != nil {
-		if errors.Is(err, store.ErrJobNotRunning) {
+		if errors.Is(err, proposalstore.ErrJobNotRunning) {
 			return ErrStaleAttempt
 		}
 		return err

@@ -143,12 +143,12 @@ func intentMatchesAnyCue(intent Intent, cues ...string) bool {
 	return false
 }
 
-// stampEpisodeSelection turns explicit intent into a code-owned per-series
+// EpisodeSelectionForIntent turns explicit intent into a code-owned per-series
 // editorial policy. The model never chooses episode identities. A named holiday
 // is more specific than a general highlights cue; explicit narrative ordering
 // disables highlights but can still order a holiday-filtered pool sequentially.
-// EpisodeSelectionForIntent is the server-owned series policy preview used by
-// proposal review and the approval gate. Clients may display it but never choose it.
+// It is the server-owned series policy preview used by proposal review and the
+// approval gate. Clients may display it but never choose it.
 func EpisodeSelectionForIntent(request proposals.Intent, v holidayvocab.Vocabulary) schedule.EpisodeSelection {
 	intent := Intent{Intent: request}
 	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
@@ -164,7 +164,9 @@ func EpisodeSelectionForIntent(request proposals.Intent, v holidayvocab.Vocabula
 	return selection
 }
 
-func stampEpisodeSelection(items []proposals.ProposalItem, intent proposals.Intent, holidays holidayvocab.Vocabulary) bool {
+// StampEpisodeSelection sets every item's episode selection from the intent: the policy for a
+// series, none for anything else. It reports whether any item changed.
+func StampEpisodeSelection(items []proposals.ProposalItem, intent proposals.Intent, holidays holidayvocab.Vocabulary) bool {
 	selection := EpisodeSelectionForIntent(intent, holidays)
 	changed := false
 	for i := range items {
@@ -207,6 +209,9 @@ func intentSignalsKids(intent Intent) bool {
 		if strings.Contains(hay, cue) {
 			return true
 		}
+	}
+	if youngChildAgePattern.MatchString(hay) {
+		return true
 	}
 	// Explicit low rating tokens the user might type ("rated G", "keep it TV-Y7").
 	for _, r := range []string{"tv-y", "tv-g", "rated g", "rated pg"} {
@@ -398,10 +403,15 @@ func holidayLabel(v holidayvocab.Vocabulary, id string) string {
 // deliberate guardrail the user asked for); a generic "action"/"drama" does NOT.
 var kidsIntentCues = []string{
 	"kid", "kids", "child", "children", "family-friendly", "family friendly",
-	"for the family", "for families", "cartoon", "all ages", "all-ages", "wholesome",
+	"for the family", "for families", "all ages", "all-ages", "wholesome",
 	"preschool", "toddler", "bluey", "saturday morning", "teen", "teenager", "tween",
-	"g-rated", "pg-rated", "clean ", "safe for",
+	"g-rated", "pg-rated", "clean ", "safe for", "little one",
 }
+
+// "cartoon" is deliberately not a cue: it names a format, and "90s cartoons" is
+// as often nostalgia for adults as a request for children (#2739). A named young age
+// ("cartoons for my 5-year-old") keeps that request a kids request without the format word.
+var youngChildAgePattern = regexp.MustCompile(`\b(?:[1-9]|1[0-2])[- ]?(?:year|yr)s?[- ]?olds?\b`)
 
 func intentDeterministicSafetyCeiling(intent Intent) rating.Rating {
 	hay := normalizedIntentText(intent)

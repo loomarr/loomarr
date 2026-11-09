@@ -32,9 +32,9 @@ func TestSuggest_DateSourceOrderInitialDenialMatrix(t *testing.T) {
 			name, response, code, terminal string
 			calls                          int
 		}{
-			{name: "ambiguity", response: ambiguity, code: suggest.FailureCodeNoGroundedTitles, terminal: suggest.TerminalDateSemanticsUnclear, calls: 1},
-			{name: "conflict", response: conflict, code: suggest.FailureCodeNoGroundedTitles, terminal: suggest.TerminalConstraintsConflict, calls: 1},
-			{name: "malformed", response: `{"picks":[]}`, code: suggest.FailureProvider, terminal: suggest.TerminalMalformedExhausted, calls: 3},
+			{name: "ambiguity", response: ambiguity, code: suggest.FailureCodeNoGroundedTitles, terminal: proposals.TerminalDateSemanticsUnclear, calls: 1},
+			{name: "conflict", response: conflict, code: suggest.FailureCodeNoGroundedTitles, terminal: proposals.TerminalConstraintsConflict, calls: 1},
+			{name: "malformed", response: `{"picks":[]}`, code: suggest.FailureProvider, terminal: proposals.TerminalMalformedExhausted, calls: 3},
 		} {
 			t.Run(source.name+"/"+failureCase.name, func(t *testing.T) {
 				corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
@@ -181,7 +181,7 @@ func TestSuggest_DateSourceOrderInitialAmbiguityDoesNotResolveReference(t *testi
 	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":0,"end":5}],"axes":[]}}`))
 	_, err := buildSuggester(t, model).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: "dated https://lineups.example/friday"})
 	var failure *suggest.Failure
-	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+	if !errors.As(err, &failure) || failure.Trace.Terminal != proposals.TerminalDateSemanticsUnclear {
 		t.Fatalf("failure = %#v", err)
 	}
 	if got := len(references.Calls()); got != 0 {

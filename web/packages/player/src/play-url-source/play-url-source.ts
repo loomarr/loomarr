@@ -5,7 +5,7 @@ import type { PlayerChannel, PlayerSourcePort } from "../player-source";
 import {
   GENERIC_START_FAILURE,
   parseStartFailureReason,
-  SERVER_UNREACHABLE,
+  ServerUnreachable,
   StartFailure,
 } from "../start-failure";
 import { variantUris, warmSource } from "../warm-source";
@@ -61,7 +61,7 @@ const reach = async <T>(signal: AbortSignal, send: () => Promise<T>): Promise<T>
     return await send();
   } catch (error) {
     if (signal.aborted) throw error;
-    throw new Error(SERVER_UNREACHABLE);
+    throw new ServerUnreachable();
   }
 };
 

@@ -4,13 +4,11 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, DateField, Field } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis } from "../taxonomy-axes";
 import type { ClipDetailsEditorProps } from "./clip-details-editor.type";
 
@@ -256,15 +254,12 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               value={station}
             />
           )}
-          <div>
-            <Label htmlFor="tag-air-date">Air date (optional)</Label>
-            <Input
-              id="tag-air-date"
-              type="date"
-              value={airDate}
-              onChange={(event) => setAirDate(event.target.value)}
-            />
-          </div>
+          <DateField
+            id="tag-air-date"
+            label="Air date (optional)"
+            onValueChange={setAirDate}
+            value={airDate}
+          />
           <p className="text-muted-foreground text-xs sm:col-span-2">
             Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
             are not sure.

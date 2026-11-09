@@ -61,15 +61,6 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 // still wanted, requested or downloading is in flight and stays at any age.
 func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error) {
 	named := map[provision.Key]bool{}
-	channels, err := s.ListChannels(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("purge unused titles: %w", err)
-	}
-	for _, ch := range channels {
-		for _, entry := range ch.Lineup {
-			named[entry.Key] = true
-		}
-	}
 	open, err := s.ListProposalsByStatus(ctx, openProposalStatus)
 	if err != nil {
 		return 0, fmt.Errorf("purge unused titles: %w", err)
@@ -83,7 +74,8 @@ func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int
 			}
 		}
 	}
-	candidates, err := s.distinctStrings(ctx, s.db, `SELECT key FROM titles WHERE state IN (?, ?) AND updated_at < ?`,
+	candidates, err := s.distinctStrings(ctx, s.db, `SELECT key FROM titles WHERE state IN (?, ?) AND updated_at < ?
+		AND NOT EXISTS (SELECT 1 FROM channel_lineup l WHERE l.title_key = titles.key)`,
 		string(provision.Available), string(provision.Unavailable), epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge unused titles: %w", err)

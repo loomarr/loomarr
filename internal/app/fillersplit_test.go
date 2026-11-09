@@ -10,21 +10,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// splitFakeTools implements filler.MediaTools with chapter-only behaviour — the
+// splitFakeTools implements tools.MediaTools with chapter-only behaviour — the
 // app-adapter tests exercise the WIRING (job id, SSE frames, store round-trip),
 // not detection, which internal/filler's own suite covers.
 type splitFakeTools struct {
-	chapters []filler.Chapter
+	chapters []tools.Chapter
 }
 
 type blockingSplitTools struct {
@@ -34,7 +41,7 @@ type blockingSplitTools struct {
 	release   chan struct{}
 }
 
-func (b blockingSplitTools) Chapters(ctx context.Context, _ string) ([]filler.Chapter, error) {
+func (b blockingSplitTools) Chapters(ctx context.Context, _ string) ([]tools.Chapter, error) {
 	close(b.started)
 	select {
 	case <-ctx.Done():
@@ -70,13 +77,13 @@ func (f *gatedSplitTools) Cut(ctx context.Context, _ string, start, end int64, o
 	return os.WriteFile(out, []byte(fmt.Sprintf("cut %d-%d", start, end)), 0o644)
 }
 
-func (f splitFakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
+func (f splitFakeTools) Chapters(context.Context, string) ([]tools.Chapter, error) {
 	return f.chapters, nil
 }
-func (f splitFakeTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
+func (f splitFakeTools) Boundaries(context.Context, string, int64, int64) ([]tools.Interval, []tools.Interval, error) {
 	return nil, nil, nil
 }
-func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
+func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]tools.TranscriptSegment, error) {
 	return nil, fmt.Errorf("no whisper in tests")
 }
 func (f splitFakeTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
@@ -117,9 +124,9 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	// A compilation to split.
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: compHash,
-		Path: compPath, Name: "1987.mp4", Role: filler.Commercial, DurationMs: 61_000,
+		Path: compPath, Name: "1987.mp4", Role: clips.Commercial, DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +143,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 		if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		tools := splitFakeTools{chapters: []filler.Chapter{
+		tools := splitFakeTools{chapters: []tools.Chapter{
 			{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 			{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		}}
@@ -150,7 +157,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 
 func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clips.Clip{
 		Hash: compHash, Path: compPath, Name: "1987.mp4", DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
@@ -235,9 +242,9 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -250,7 +257,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("parent pipeline = (_, %v, %v), want row", found, err)
 	}
-	if parent.Disposition != filler.DispositionComplete {
+	if parent.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("parent disposition = %q, want complete after the proposal was confirmed", parent.Disposition)
 	}
 	parentClip, err := st.GetClip(ctx, compHash)
@@ -267,8 +274,8 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
 		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
 	}
-	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{
-		Dispositions: []filler.Disposition{filler.DispositionRunning, filler.DispositionReview},
+	conveyor, err := st.ListClipPipelines(ctx, pipelinestate.PipelineFilter{
+		Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning, pipelinestate.DispositionReview},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -290,9 +297,9 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -307,7 +314,7 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 		t.Fatalf("outer post-commit parent filing calls = %d, want zero", failing.calls)
 	}
 	parent, found, err := st.GetClipPipeline(ctx, compHash)
-	if err != nil || !found || parent.Disposition != filler.DispositionComplete {
+	if err != nil || !found || parent.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("parent pipeline = %+v, found=%v, err=%v; want complete by the inner commit", parent, found, err)
 	}
 }
@@ -317,10 +324,10 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 	t.Parallel()
 	a, _ := newSplitAdapter(t, events.NewBus(), false)
-	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, api.ErrSplitUnavailable) {
+	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, fillerapi.ErrSplitUnavailable) {
 		t.Errorf("Split without a splitter = %v, want ErrSplitUnavailable", err)
 	}
-	if err := a.ConfirmSplit(context.Background(), "sp_1", nil); !errors.Is(err, api.ErrSplitUnavailable) {
+	if err := a.ConfirmSplit(context.Background(), "sp_1", nil); !errors.Is(err, fillerapi.ErrSplitUnavailable) {
 		t.Errorf("ConfirmSplit without a splitter = %v, want ErrSplitUnavailable", err)
 	}
 }
@@ -354,7 +361,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	}
 
 	var statuses []string
-	var terminal *api.FillerSplitEvent
+	var terminal *opsapi.FillerSplitEvent
 	deadline := time.After(5 * time.Second)
 	for terminal == nil {
 		select {
@@ -365,7 +372,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 			// ⚠ A TYPED payload. huma names an SSE frame after its payload's Go type, so a
 			// frame published as anything but api.FillerSplitEvent goes out unnamed and the
 			// review UI's listener never fires — see internal/api/events.go.
-			p, ok := ev.Payload.(api.FillerSplitEvent)
+			p, ok := ev.Payload.(opsapi.FillerSplitEvent)
 			if !ok {
 				t.Fatalf("frame payload = %T, want api.FillerSplitEvent", ev.Payload)
 			}
@@ -438,15 +445,15 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clips.Clip{
 		Hash: compHash, Path: compPath, Name: "1987.mp4",
-		Role: filler.Commercial, DurationMs: 61_000, Source: "archive",
+		Role: clips.Commercial, DurationMs: 61_000, Source: "archive",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 
 	n := 0
-	sp := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []filler.Chapter{
+	sp := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
@@ -464,9 +471,9 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 		t.Fatal(err)
 	}
 
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: time.Now().UTC(),
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: time.Now().UTC(),
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -498,7 +505,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			"empty-hash upsert bug (%+v)", len(segments), segments)
 	}
 	seen := map[string]bool{}
-	intendedByName := make(map[string]filler.SplitSegment, len(prop.Segments))
+	intendedByName := make(map[string]split.Segment, len(prop.Segments))
 	for _, intended := range prop.Segments {
 		intendedByName[intended.Name] = intended
 	}
@@ -518,13 +525,13 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			t.Errorf("segment %q became airable before conditioning", s.Name)
 		}
 		// Filed where its identity says it lives, and the bytes are actually there.
-		if want := filler.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
+		if want := cliplibrary.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
 			t.Errorf("segment %q path = %q, want the sharded %q", s.Name, s.Path, want)
 		}
 		if _, err := os.Stat(filepath.Join(drop, s.Path)); err != nil {
 			t.Errorf("segment %q has a catalog row but no file: %v", s.Name, err)
 		}
-		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, s.Path))
+		tags, ok := asset.ReadSidecarTags(filepath.Join(drop, s.Path))
 		if !ok {
 			t.Fatalf("segment %q has no durable sidecar", s.Name)
 		}
@@ -539,7 +546,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			t.Errorf("segment %q lineage = %+v, want child %q parent %q interval [%d,%d)",
 				s.Name, tags.ConditioningLineage, s.Hash, compHash, intended.StartMs, intended.EndMs)
 		}
-		if row, found, err := st.GetClipPipeline(ctx, s.Hash); err != nil || !found || row.Stage != filler.StageProbe {
+		if row, found, err := st.GetClipPipeline(ctx, s.Hash); err != nil || !found || row.Stage != pipelinestate.StageProbe {
 			t.Errorf("segment %q pipeline = (%+v, %v, %v), want enrolled at probe",
 				s.Name, row, found, err)
 		}
@@ -566,22 +573,22 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_902_000_000, 0).UTC()
-	parent := clipstore.Clip{Clip: filler.Clip{
-		Hash: compHash, Path: compPath, Name: "reel", Role: filler.Commercial,
+	parent := clipstore.Clip{Clip: clips.Clip{
+		Hash: compHash, Path: compPath, Name: "reel", Role: clips.Commercial,
 		DurationMs: 30_000, Held: true,
 	}, UpdatedAt: now}
 	if err := st.UpsertClip(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	proposal := filler.SplitProposal{
 		ID: "proposal-concurrent", ClipHash: compHash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
 	}
 	if err := st.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -631,9 +638,9 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 func parkReel(t *testing.T, st records.Store) func() bool {
 	t.Helper()
 	ctx := context.Background()
-	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: compHash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, Attempts: 3,
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, Attempts: 3,
 		NextRun:    time.Now().UTC().Add(24 * time.Hour), // parked rows are not due
 		EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
@@ -663,7 +670,7 @@ func awaitSplitTerminal(t *testing.T, ch <-chan events.Event, jobID string) stri
 			if ev.Type != "filler_split" {
 				continue
 			}
-			p, ok := ev.Payload.(api.FillerSplitEvent)
+			p, ok := ev.Payload.(opsapi.FillerSplitEvent)
 			if !ok || p.JobID != jobID {
 				continue
 			}
@@ -704,7 +711,7 @@ func TestSplit_ReDetectReturnsTheParkedReelToTheBelt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Stage != filler.StageSplit {
+	if row.Stage != pipelinestate.StageSplit {
 		t.Errorf("stage = %q, want the reel left at the split rung", row.Stage)
 	}
 	if row.Attempts != 0 {

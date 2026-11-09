@@ -176,38 +176,52 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
-  it("opens on a task-based home and finds the exact owner of a setting", async () => {
+  it("opens on seven cards and finds the exact owner of a setting", async () => {
     stubSettings();
     renderAt("/settings");
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Set up Loomarr" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
+    for (const card of [
+      "Connections",
+      "AI",
+      "Channels",
+      "Filler",
+      "People and access",
+      "Notifications",
+      "Server",
+    ]) {
+      expect(screen.getByRole("heading", { name: card })).toBeInTheDocument();
+    }
+    // The empty baseline has no notification destination, so that is the one thing to look at.
+    expect(await screen.findByText("1 thing needs a look.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Notifications" })).toHaveAttribute(
+      "href",
+      "/settings/notifications",
+    );
 
     const finder = screen.getByRole("searchbox", { name: "Find a setting" });
-    await userEvent.type(finder, "FILLER_STORAGE_LIBRARY_BUDGET_GB");
+    // Paste, not type: 32 keystrokes each re-filter the whole home, which ran past 5s on CI runners.
+    await userEvent.click(finder);
+    await userEvent.paste("FILLER_STORAGE_LIBRARY_BUDGET_GB");
     const match = await screen.findByRole("link", { name: /Filler storage allowance/ });
     expect(match).toHaveAttribute("href", "/filler/settings/storage");
 
     await userEvent.type(finder, "{ArrowDown}");
     expect(match).toHaveFocus();
-  });
+    // The whole Settings home renders: ~1s locally, past 5s on a loaded CI shard (#3059).
+  }, 15_000);
 
   it("keeps task browsing available when a search has no matches", async () => {
     stubSettings();
     renderAt("/settings");
 
-    await userEvent.type(
-      await screen.findByRole("searchbox", { name: "Find a setting" }),
-      "not a real setting",
-    );
+    // Paste, not type, for the same reason as above: each keystroke re-filters the whole home.
+    await userEvent.click(await screen.findByRole("searchbox", { name: "Find a setting" }));
+    await userEvent.paste("not a real setting");
     expect(await screen.findByText("No settings found")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Connections/ })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
-  });
+    expect(screen.getByRole("link", { name: "Connections" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Server" })).toBeInTheDocument();
+  }, 15_000);
 
   it("uses a grouped server landing instead of a second tab matrix", async () => {
     stubSettings();
@@ -401,7 +415,8 @@ describe("Settings", () => {
     stubSettings();
     const { container } = renderAt("/settings/advanced");
     await screen.findByText("job.workers");
-    expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
+    // Read-only, not disabled: the pinned value stays at full strength (#2759).
+    expect(container.querySelector("#setting-job\\.workers")).toHaveAttribute("readonly");
   });
 });
 
@@ -424,10 +439,10 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 
     // Leave through the task home and come back — navigation is not a commit boundary.
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
+    await userEvent.click(await screen.findByRole("link", { name: /^Advanced settings/ }));
     await screen.findByText("job.workers");
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
+    await userEvent.click(await screen.findByRole("link", { name: "Connections" }));
 
     expect(await screen.findByLabelText("Library URL")).toHaveValue("http://emby:9999");
     expect(screen.getByText(/1 unsaved/i)).toBeInTheDocument();
@@ -444,13 +459,13 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     await userEvent.type(url, "http://emby:9999");
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
+    await userEvent.click(await screen.findByRole("link", { name: /^Advanced settings/ }));
     await screen.findByText("job.workers");
     // `job.workers` is env-pinned in the fixture, so edit the OTHER connection key instead —
     // asserting against a disabled field would prove nothing about the buffer.
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
-    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
+    await userEvent.click(await screen.findByRole("link", { name: "Connections" }));
     const tunarr = await screen.findByLabelText("Tunarr URL");
     await userEvent.clear(tunarr);
     await userEvent.type(tunarr, "http://tunarr:9999");
@@ -740,7 +755,7 @@ describe("Settings honesty", () => {
     renderAt("/settings/ai");
 
     expect(await screen.findByText("Your channel draft is saved")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
+    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/requests/new");
   });
 
   it("keeps vision model choice separate from one user-facing speech connection", async () => {
@@ -830,9 +845,10 @@ describe("Settings honesty", () => {
 
     expect(screen.queryByRole("region", { name: "Transcription" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Speech recognition" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("combobox", { name: "Speech recognition" }));
-    // The listbox mounts after the popup opens; on a loaded runner that is after the click resolves.
-    await userEvent.click(await screen.findByRole("option", { name: "Connected speech service" }));
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Speech recognition" }),
+      "Connected speech service",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Show advanced (3)" }));
     expect(screen.getByLabelText("Speech service address")).toBeInTheDocument();
     expect(screen.getByLabelText("Speech model")).toBeInTheDocument();

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -145,7 +146,7 @@ func buildHandler(
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
-	capturePlayoutResolver func(*playoutResolver),
+	capturePlayoutResolver func(*playoutresolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
 	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {
@@ -161,7 +162,7 @@ func buildHandler(
 	refreshSecretRedactor, readGeneratedSecret := foundation.refreshSecretRedactor, foundation.readGeneratedSecret
 	eventBus, emitter := foundation.eventBus, foundation.emitter
 	jobReg, activityRec := foundation.jobs, foundation.activity
-	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
+	// Channel watermarks (#1512): the channel packager asks for a programme's bug. The image
 	// service a custom upload is read from is bound once the suggestions build makes it.
 	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
 	// breaks date holidays alike.

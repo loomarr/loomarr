@@ -15,8 +15,10 @@ describe("rememberedOrigination", () => {
     expect(rememberedOrigination()).toEqual({ job: "job-1" });
   });
 
-  it("reopens the describe form for a draft that has no Job yet", () => {
+  // The request route is the describe form: it reads a draft that has no Job itself, so there is
+  // nowhere to send the viewer.
+  it("has nothing to return to for a draft that has no Job yet", () => {
     writeSuggestionDraft({ description: "cartoons" });
-    expect(rememberedOrigination()).toEqual({ new: "1" });
+    expect(rememberedOrigination()).toBeUndefined();
   });
 });

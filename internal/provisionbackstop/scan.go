@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -17,8 +18,8 @@ import (
 // don't wait on a webhook). Where the reconciler's giveUp does a per-title Lookup only for
 // deadline-due records, the scan lists what the media server recently added in ONE call and
 // confirms every in-flight title now present. Same LibraryConfirmed → available transition,
-// but continuous and not deadline-gated, so availability lands promptly without the inbound
-// webhook (which is retired once this is proven).
+// but continuous and not deadline-gated, so availability lands promptly without waiting on an
+// inbound webhook.
 type LibraryScan struct {
 	store   store.TitleStore
 	scanner library.LibraryScanner
@@ -155,7 +156,7 @@ func (s *LibraryScan) persist(ctx context.Context, rec provision.Record, emitted
 		// glance into a log, and the operator's question is "did it arrive?", not "what state
 		// is it in now?".
 		if ev.State == provision.Available {
-			s.activity.Info(ctx, store.ActivityKindTitle, string(ev.Key),
+			s.activity.Info(ctx, activitystore.ActivityKindTitle, string(ev.Key),
 				titleLabel(rec)+" landed — ready to schedule")
 		}
 	}

@@ -17,11 +17,10 @@ import (
 // GRAPH-INIT with "Filter not found" — the encode exits before a single frame, so the failure
 // lands on every program that needs it, forever, with a message that never mentions the build.
 //
-// This package already learned that once, for `drawtext`: it is a compile-time option
-// (libfreetype, plus libharfbuzz on ffmpeg 8), Homebrew's bottle ships without it, and because
-// macOS HAS a font file the font check passed and every card died anyway (see CardFontFor). The
-// answer there was to ask the binary. This file is that answer, generalized — so the next optional
-// filter does not repeat the lesson.
+// `drawtext` is the example: it is a compile-time option (libfreetype, plus libharfbuzz on
+// ffmpeg 8), Homebrew's bottle ships without it, and because macOS HAS a font file a font check
+// alone passes and every card using it dies anyway. The answer is to ask the binary;
+// this file does that for every optional filter.
 //
 // Both probes here follow the same three rules:
 //
@@ -39,7 +38,7 @@ const filterProbeTimeout = 10 * time.Second
 
 // hasFilter reports whether an ffmpeg build carries a named filter.
 //
-// Not memoised itself: callers wrap it (CardFontFor, TonemapperFor) because each caches a
+// Not memoised itself: callers wrap it (TonemapperFor, GPUFiltersFor) because each caches a
 // DECISION, not the raw answer, and those decisions combine more than one probe.
 func hasFilter(ffmpegPath, name string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), filterProbeTimeout)
@@ -73,7 +72,7 @@ func parseHasFilter(raw []byte, name string) bool {
 }
 
 // TonemapperFor reports whether this ffmpeg build can tone-map HDR to SDR, memoised for the
-// process. Bound to an ffmpeg path the same way CardFontFor is, and for the same reason.
+// process. Bound to an ffmpeg path, so a different binary gets its own answer.
 //
 // BOTH filters are required and neither is universal:
 //
@@ -82,13 +81,11 @@ func parseHasFilter(raw []byte, name string) bool {
 //   - `tonemap` performs the actual dynamic-range compression, and it operates on LINEAR light —
 //     which is why it cannot be used without zscale to get there and back.
 //
-// ⚠ **Do not go looking for a CUDA tone-map filter; there isn't one.** ErsatzTV's NVIDIA answer is
-// decode-via-Vulkan into libplacebo and back out through `hwupload_cuda`, which is a whole
-// hardware-frames pipeline. Loomarr needs none of it, and the reason is a decision already made
-// elsewhere in this package for unrelated motives: capability.go REFUSES `-hwaccel_output_format`,
-// so decoded frames are always in system memory by the time filters run. A CPU tone-map is
-// therefore available on every encoder family, including nvenc, at no plumbing cost. The
-// constraint that looked like a limitation is what makes this cheap.
+// ⚠ **Do not go looking for a CUDA tone-map filter; there isn't one.** An NVIDIA HDR graph
+// (pipeline.go) downloads the decoded frame to system memory, tone-maps it with tonemap_opencl,
+// libplacebo or the CPU chain below (the last in the order), and uploads it again with
+// `hwupload_cuda`. A CPU tone-map is therefore available on every encoder family, including
+// nvenc, at no plumbing cost.
 func TonemapperFor(ffmpegPath string) func() bool {
 	var (
 		once sync.Once
@@ -132,17 +129,13 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 //  2. `tonemap=tonemap=hable:desat=0` — the actual range compression (curve: ToneCurve). `hable` is the filmic curve:
 //     it rolls highlights off gradually instead of clipping them, which matters most on exactly
 //     the content that ships as HDR (specular highlights, skies, practical lights). `desat=0`
-//     because ffmpeg's default desaturation visibly washes skin tones out, and a flat picture is
-//     the complaint this change exists to fix.
+//     because ffmpeg's default desaturation visibly washes skin tones out.
 //  3. `zscale=p=bt709:t=bt709:m=bt709:r=tv` — re-encode into the SDR space the Profile actually
 //     targets. Without this the data would be linear-light, which nothing downstream expects.
 //
-// Step 3 is also what FIXES THE LABELS, which was the more damaging half of the defect.
-//
-// Truncation (8-bit SDR pixels from an HDR source, never tone-mapped) was the visible half.
-// Mislabelling was the half no client could recover from: ffmpeg carries the source's colour
-// metadata to the output when nothing changes it, so an HDR source through the old
-// `…,fps=25,format=yuv420p` chain produced
+// Step 3 is also what FIXES THE LABELS. Without a tone-map (8-bit SDR pixels from an HDR source)
+// the picture is truncated, and worse, ffmpeg carries the source's colour metadata to the output
+// when nothing changes it:
 //
 //	yuv420p,bt2020nc,smpte2084,bt2020
 //
@@ -152,11 +145,8 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 // ⚠ **No `-colorspace`/`-color_trc`/`-color_primaries`/`-color_range` output flags are needed, and
 // adding them would be cargo.** Measured 2026-08-09 against a real HDR10 source: this chain alone
 // yields `yuv420p,tv,bt709,bt709,bt709`, byte-identical to the same run with all four flags set.
-// zscale rewrites the frames' colour properties and ffmpeg propagates them to the stream. An
-// earlier draft of this change DID emit the four flags; a sabotage check found the live test
-// passed with them removed, because they had never been doing anything. They are left out
-// deliberately — a flag that asserts what the pixels already prove is the "captured now so a later
-// feature can use it" pattern that produced this bug in the first place.
+// zscale rewrites the frames' colour properties and ffmpeg propagates them to the stream. A flag
+// that asserts what the pixels already prove does nothing.
 //
 // The corollary matters too: on a build with no zscale, the output keeps the SOURCE's HDR tags,
 // and that is CORRECT. The pixels really are still (truncated) BT.2020/PQ data, so tagging them

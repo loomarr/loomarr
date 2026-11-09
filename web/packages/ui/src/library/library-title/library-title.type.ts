@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LibraryNeedSearch } from "../library-needs/library-needs.type";
+import type { LibraryExternalId, LibraryNeedSearch } from "../library-needs/library-needs.type";
 import type { LibraryKind } from "../library-shelf/library-shelf.type";
 
 /** One of a movie's files, with what its header says once read. */
@@ -34,6 +34,8 @@ interface LibraryTitleEpisode {
   /** The last episode a multi-episode file holds. */
   end?: number;
   ready: boolean;
+  /** Named and numbered by its file until the show's episode order is said (#2151 decision 53). */
+  fromFile?: boolean;
 }
 
 interface LibraryTitleSeason {
@@ -87,11 +89,13 @@ interface LibraryTitleProps {
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */
   onSearch: LibraryNeedSearch;
   /** Says which title it is; rejects when the answer couldn't be saved. */
-  onLink: (tmdbId: string) => Promise<void>;
+  onLink: (externalId: LibraryExternalId) => Promise<void>;
   /** Forget my answer: the title goes back to needing the household. */
   onForget: () => Promise<void>;
   /** Remove extra copy: moves the file at path to the trash; rejects when it couldn't. */
   onRemoveExtra: (path: string) => Promise<void>;
+  /** Choose: opens Needs you, where the show's episode order is said; absent hides the hint. */
+  onChooseOrder?: () => void;
 }
 
 export type {

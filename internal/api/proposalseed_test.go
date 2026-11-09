@@ -5,22 +5,23 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 // proposalSeeder is the slice of a store a seeded proposal needs.
 type proposalSeeder interface {
-	CreateProposal(context.Context, store.Proposal) error
-	CreateJob(context.Context, store.Job) error
-	GetJob(context.Context, string) (store.Job, error)
+	CreateProposal(context.Context, proposalstore.Proposal) error
+	CreateJob(context.Context, proposalstore.Job) error
+	GetJob(context.Context, string) (proposalstore.Job, error)
 }
 
 // createProposalWithJob stores a proposal together with the job that produced it. A proposal
 // always has its job: approval refuses to create a channel from one whose job is gone, so a
 // fixture without the job would not be a state the product can reach.
-func createProposalWithJob(st proposalSeeder, ctx context.Context, p store.Proposal) error {
+func createProposalWithJob(st proposalSeeder, ctx context.Context, p proposalstore.Proposal) error {
 	if p.JobID != "" {
 		if _, err := st.GetJob(ctx, p.JobID); errors.Is(err, store.ErrNotFound) {
-			if err := st.CreateJob(ctx, store.Job{
+			if err := st.CreateJob(ctx, proposalstore.Job{
 				ID: p.JobID, Kind: "suggest", Status: "done", CreatedBy: p.CreatedBy,
 				CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 			}); err != nil {

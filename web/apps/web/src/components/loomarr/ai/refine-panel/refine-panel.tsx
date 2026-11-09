@@ -1,7 +1,7 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Field, Surface } from "@loomarr/design-system";
-import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
+import { Action, Field, LoadingStrip, Surface } from "@loomarr/design-system";
+import { Sparkles, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
@@ -171,7 +171,7 @@ const RefinePanel = ({
             />
           ) : (
             <p className="text-muted-foreground flex items-center gap-2 text-sm">
-              <Loader2 className="text-suggest-300 size-4 animate-spin" aria-hidden />
+              <LoadingStrip decorative width={32} />
               Starting…
             </p>
           )}

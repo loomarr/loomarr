@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -42,8 +44,8 @@ func iconPosterURL(hash string) string {
 // fetched instead, which is also the steady state on a real instance after the first minute.
 func newIconAdapter(t *testing.T, st store.Store, client *tmdb.Client, warm ...string) (iconAdapter, map[string]string) {
 	t.Helper()
-	ims := newMemImageStore()
-	svc := newTestImageService(t, t.TempDir(), iconTestBase, ims)
+	ims := imagetestkit.NewMemStore()
+	svc := imagetestkit.NewService(t, t.TempDir(), iconTestBase, ims)
 
 	const hexDigits = "abcdef0123456789"
 	hashes := make(map[string]string, len(warm))
@@ -102,7 +104,7 @@ func tmdbPosterStub(t *testing.T, posters map[string]string, fail map[string]boo
 
 func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []schedule.LineupEntry) {
 	t.Helper()
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: id, Name: "Test", Number: 1, Status: "live"},
 		Lineup:  entries,
 	}); err != nil {
@@ -137,7 +139,7 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("suggestions = %d, want 3: %+v", len(got), got)
 	}
-	byTitle := map[string]api.IconSuggestion{}
+	byTitle := map[string]channelsapi.IconSuggestion{}
 	for _, s := range got {
 		byTitle[s.Title] = s
 	}
@@ -288,4 +290,4 @@ func TestIconAdapter_SkipsMalformedKeys(t *testing.T) {
 }
 
 // Type-check: iconAdapter satisfies api.IconService.
-var _ api.IconService = iconAdapter{}
+var _ channelsapi.IconService = iconAdapter{}

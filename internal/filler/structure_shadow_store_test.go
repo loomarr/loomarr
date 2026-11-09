@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -97,10 +100,10 @@ func TestPipeline_SplitReviewResumeRequeuesPendingDespiteObservedEmptyGroups(t *
 
 	st := newPipeMemStore()
 	for _, hash := range []string{observed.ClipHash, pending.ClipHash} {
-		st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: hash + ".mp4"}})
-		st.rows[hash] = filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone, Disposition: filler.DispositionReview,
-			Stages: []filler.StageRecord{{Stage: filler.StageSplit, Status: filler.StatusDone}},
+		st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: hash + ".mp4"}})
+		st.rows[hash] = pipelinestate.ClipPipeline{
+			ClipHash: hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReview,
+			Stages: []pipelinestate.StageRecord{{Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone}},
 		}
 	}
 	stage := filler.NewSplitStage(nil, reviewQueue{[]filler.SplitProposal{observed, pending}}).
@@ -109,10 +112,10 @@ func TestPipeline_SplitReviewResumeRequeuesPendingDespiteObservedEmptyGroups(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := st.rows[pending.ClipHash]; result.Requeued != 1 || got.Disposition != filler.DispositionRunning || got.Status != filler.StatusQueued {
+	if got := st.rows[pending.ClipHash]; result.Requeued != 1 || got.Disposition != pipelinestate.DispositionRunning || got.Status != pipelinestate.StatusQueued {
 		t.Fatalf("pending proposal not requeued: result=%+v row=%+v", result, got)
 	}
-	if got := st.rows[observed.ClipHash]; got.Disposition != filler.DispositionReview {
+	if got := st.rows[observed.ClipHash]; got.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("observed proposal was requeued: %+v", got)
 	}
 }

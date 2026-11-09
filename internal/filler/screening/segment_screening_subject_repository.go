@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -16,11 +17,11 @@ const (
 	segmentScreeningSubjectKind     = "screening-subjects"
 )
 
-func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningSubject(ctx context.Context, subject filler.SegmentScreeningSubject) error {
+func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningSubject(ctx context.Context, subject asset.SegmentScreeningSubject) error {
 	if r == nil || r.files == nil {
 		return fmt.Errorf("segment screening evidence repository is unavailable")
 	}
-	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
+	if err := asset.ValidateSegmentScreeningSubject(subject); err != nil {
 		return err
 	}
 	raw, err := json.Marshal(subject)
@@ -33,29 +34,29 @@ func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningSubject(ctx 
 	return nil
 }
 
-func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningSubject(ctx context.Context, subjectSHA256 string) (filler.SegmentScreeningSubject, error) {
-	if r == nil || r.files == nil || !filler.IsContentHash(subjectSHA256) {
-		return filler.SegmentScreeningSubject{}, fmt.Errorf("segment screening subject identity is invalid")
+func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningSubject(ctx context.Context, subjectSHA256 string) (asset.SegmentScreeningSubject, error) {
+	if r == nil || r.files == nil || !split.IsContentHash(subjectSHA256) {
+		return asset.SegmentScreeningSubject{}, fmt.Errorf("segment screening subject identity is invalid")
 	}
 	raw, err := r.files.ReadBlob(ctx, segmentScreeningSubjectKind, subjectSHA256, segmentScreeningSubjectMaxBytes)
 	if err != nil {
-		return filler.SegmentScreeningSubject{}, fmt.Errorf("read segment screening subject: %w", err)
+		return asset.SegmentScreeningSubject{}, fmt.Errorf("read segment screening subject: %w", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	var subject filler.SegmentScreeningSubject
+	var subject asset.SegmentScreeningSubject
 	if err := decoder.Decode(&subject); err != nil {
-		return filler.SegmentScreeningSubject{}, fmt.Errorf("decode segment screening subject: %w", err)
+		return asset.SegmentScreeningSubject{}, fmt.Errorf("decode segment screening subject: %w", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return filler.SegmentScreeningSubject{}, fmt.Errorf("decode segment screening subject: trailing JSON")
+		return asset.SegmentScreeningSubject{}, fmt.Errorf("decode segment screening subject: trailing JSON")
 	}
 	if subject.SHA256 != subjectSHA256 {
-		return filler.SegmentScreeningSubject{}, fmt.Errorf("segment screening subject path does not match its identity")
+		return asset.SegmentScreeningSubject{}, fmt.Errorf("segment screening subject path does not match its identity")
 	}
-	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
-		return filler.SegmentScreeningSubject{}, err
+	if err := asset.ValidateSegmentScreeningSubject(subject); err != nil {
+		return asset.SegmentScreeningSubject{}, err
 	}
 	return subject, nil
 }

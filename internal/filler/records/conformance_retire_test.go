@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -17,8 +17,8 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_800_000_000, 0).UTC()
-	bad := sampleClip("retire-bad", "Soap", filler.Commercial, 1988, filler.General, "")
-	passing := sampleClip("retire-ok", "Cola", filler.Commercial, 1988, filler.General, "")
+	bad := sampleClip("retire-bad", "Soap", clips.Commercial, 1988, clips.General, "")
+	passing := sampleClip("retire-ok", "Cola", clips.Commercial, 1988, clips.General, "")
 	for _, c := range []Clip{bad, passing} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -69,7 +69,7 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A better copy arrives and identity folds the entry into it: no longer wanted.
-	better := sampleClip("retire-better", "Soap", filler.Commercial, 1988, filler.General, "")
+	better := sampleClip("retire-better", "Soap", clips.Commercial, 1988, clips.General, "")
 	if err := s.UpsertClip(ctx, better); err != nil {
 		t.Fatal(err)
 	}

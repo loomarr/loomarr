@@ -61,10 +61,10 @@ func (w *Workflow) Complete(ctx context.Context, work Work, prop proposals.Propo
 	if err := validateProposalIdentities(prop); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if prop.Trace.Version != suggest.DecisionTraceVersion {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, suggest.DecisionTraceVersion)
+	if prop.Trace.Version != proposals.DecisionTraceVersion {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, proposals.DecisionTraceVersion)
 	}
-	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(prop.Trace); err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
 	completed, err := w.repository.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})

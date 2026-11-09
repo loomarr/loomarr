@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -42,7 +43,7 @@ func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult
 	}
 	out := make([]library.SearchResult, 0, len(titles))
 	for _, t := range titles {
-		r := librarySearchResult(t)
+		r := catalog.LibrarySearchResult(t)
 		r.Year, r.Genres = facts[t.ID].Year, facts[t.ID].Genres
 		out = append(out, r)
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -67,7 +68,7 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		return 0, fmt.Errorf("complete split confirmation %s: %w", completion.ProposalID, filler.ErrSplitParentNotHeld)
 	}
 
-	settled, err := s.advancePipelineTx(ctx, tx, completion.ParentHash, filler.DispositionReview, filler.DispositionComplete, completion.At)
+	settled, err := s.advancePipelineTx(ctx, tx, completion.ParentHash, pipelinestate.DispositionReview, pipelinestate.DispositionComplete, completion.At)
 	if err != nil {
 		return 0, fmt.Errorf("complete split confirmation %s settle parent pipeline: %w", completion.ProposalID, err)
 	}
@@ -75,7 +76,7 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		return 0, fmt.Errorf("complete split confirmation %s: parent pipeline is not awaiting review", completion.ProposalID)
 	}
 	for _, hash := range completion.ActivateHashes {
-		activated, err := s.advancePipelineTx(ctx, tx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
+		activated, err := s.advancePipelineTx(ctx, tx, hash, pipelinestate.DispositionReview, pipelinestate.DispositionRunning, completion.At)
 		if err != nil {
 			return 0, fmt.Errorf("complete split confirmation %s activate child %s: %w", completion.ProposalID, hash, err)
 		}

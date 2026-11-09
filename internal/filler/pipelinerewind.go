@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // Rewind (§10 V51b) — the sanctioned way to make a clip re-run part of the pipeline, INCLUDING the
@@ -18,18 +22,9 @@ import (
 // to rewind a stage that then immediately skips itself, which looks exactly like the button doing
 // nothing.
 //
-// ⚠ **NOTHING CALLS THIS YET, and this comment used to claim otherwise.** It described
-// `/reprocess`, `/retag` and `/resplit` as "operator-facing routes ... thin wrappers over this".
-// None of the three exists — not in the router, not in `api/openapi.yaml`, not anywhere in the
-// tree — and `Rewind` has no callers and no tests. The claim cost real time: with 17 compilations
-// stuck at `split`/`review` and `ListPipelineWork` claiming `running` only, this paragraph named
-// the exact escape hatch that would free them, and it was fiction. **Wiring the routes is real
-// work, not a formality** (each needs its `from` stage, the `force` rule for transcode, and an
-// authorization decision), so the honest state is recorded here rather than implied by a comment.
-//
-// ⚠ `Requeue` below is NOT that work. It is the one narrow transition that IS wired — un-park a
-// reel after an operator re-detect — and it deliberately invalidates nothing, because the caller
-// has just replaced the proposal itself.
+// ⚠ `Requeue` below is a different, narrower transition: it un-parks a reel after an operator
+// re-detect, and it deliberately invalidates nothing, because the caller has just replaced the
+// proposal itself.
 
 // RewindStore is the slice of the store `Rewind` invalidates through.
 //
@@ -82,12 +77,12 @@ func (p *Pipeline) WithRewind(store RewindStore, clipDir string) *Pipeline {
 // tombstones superseded children, preserving their files and metadata for restore; exact reused
 // hashes and channel-pinned clips survive. Touching them here would replace a complete reel with
 // an unfinished one and destroy the recovery boundary.
-func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force bool) error {
-	idx := StageIndex(from)
+func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.StageID, force bool) error {
+	idx := pipelinestate.StageIndex(from)
 	if idx < 0 {
 		return fmt.Errorf("%w: %q", ErrUnknownStage, from)
 	}
-	if from == StageTranscode && !force {
+	if from == pipelinestate.StageTranscode && !force {
 		return ErrTranscodeNeedsForce
 	}
 	if p.rewind == nil {
@@ -121,8 +116,8 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	// transcode rebuilds it from the source master, so the re-run starts there. The cost is the
 	// one the operator asked for: re-checking with evidence the clip no longer keeps. Checked after
 	// the hold, because the defect floor releases evidence only from an unheld clip.
-	if (from == StageSplit || from == StageScreen) && p.evidenceReleased(clip) {
-		from, idx = StageTranscode, StageIndex(StageTranscode)
+	if (from == pipelinestate.StageSplit || from == pipelinestate.StageScreen) && p.evidenceReleased(clip) {
+		from, idx = pipelinestate.StageTranscode, pipelinestate.StageIndex(pipelinestate.StageTranscode)
 	}
 
 	if err := p.invalidate(ctx, clip, idx); err != nil {
@@ -135,7 +130,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	}
 	now := p.now().UTC()
 	if !found {
-		row = ClipPipeline{ClipHash: hash, EnrolledAt: now}
+		row = pipelinestate.ClipPipeline{ClipHash: hash, EnrolledAt: now}
 	}
 	row = resetPipelineRow(row, from, now)
 	row.PreparationAttempt++
@@ -143,7 +138,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 		row.PreparationAttempt = 1
 	}
 	row.PreparationStartedAt = now
-	row.PreparationStartReason = PreparationStartedByRestart
+	row.PreparationStartReason = pipelinestate.PreparationStartedByRestart
 	row.PreparationProgress = 0
 	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
 		return err
@@ -154,12 +149,12 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 
 // evidenceReleased reports whether the clip keeps a source master but no evidence copy: admitted,
 // with its evidence dropped.
-func (p *Pipeline) evidenceReleased(clip StoreClip) bool {
-	full, err := ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
+func (p *Pipeline) evidenceReleased(clip cliplibrary.StoreClip) bool {
+	full, err := cliplibrary.ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
 	if err != nil {
 		return false
 	}
-	tags, ok := ReadSidecarTags(full)
+	tags, ok := asset.ReadSidecarTags(full)
 	return ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.Path != "" && tags.MediaAssets.Evidence == nil
 }
 
@@ -177,7 +172,7 @@ func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
 	}
 	now := p.now().UTC()
 	lifecycle := row.Lifecycle(now)
-	if lifecycle.Recovery != RecoveryRetry || lifecycle.RetryStage == "" {
+	if lifecycle.Recovery != pipelinestate.RecoveryRetry || lifecycle.RetryStage == "" {
 		return fmt.Errorf("%w: clip %s", ErrPipelineNotRetryable, hash)
 	}
 	if p.rewind == nil {
@@ -190,11 +185,11 @@ func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
 	if !found {
 		return fmt.Errorf("clip %s is not in the catalog", hash)
 	}
-	if err := p.invalidate(ctx, clip, StageIndex(lifecycle.RetryStage)); err != nil {
+	if err := p.invalidate(ctx, clip, pipelinestate.StageIndex(lifecycle.RetryStage)); err != nil {
 		return err
 	}
 	failed := row
-	restore := failed.Disposition == DispositionRejected
+	restore := failed.Disposition == pipelinestate.DispositionRejected
 	row = resetPipelineRow(row, lifecycle.RetryStage, now)
 	if err := p.store.RetryClipPipeline(ctx, failed, row, restore); err != nil {
 		return err
@@ -203,22 +198,22 @@ func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
 	return nil
 }
 
-func resetPipelineRow(row ClipPipeline, from StageID, now time.Time) ClipPipeline {
-	idx := StageIndex(from)
+func resetPipelineRow(row pipelinestate.ClipPipeline, from pipelinestate.StageID, now time.Time) pipelinestate.ClipPipeline {
+	idx := pipelinestate.StageIndex(from)
 	// Keep the rungs BELOW the rewind point; drop the rest. The ladder is a picture of where the
 	// clip is, so leaving a `done` vision rung above a queued transcribe one would show history
 	// that is about to be overwritten.
 	kept := row.Stages[:0:0]
 	for _, rec := range row.Stages {
-		if i := StageIndex(rec.Stage); i >= 0 && i < idx {
+		if i := pipelinestate.StageIndex(rec.Stage); i >= 0 && i < idx {
 			kept = append(kept, rec)
 		}
 	}
 	row.Stages = kept
-	row.Stage, row.Status, row.Attempts, row.Progress = from, StatusQueued, 0, 0
+	row.Stage, row.Status, row.Attempts, row.Progress = from, pipelinestate.StatusQueued, 0, 0
 	row.StageQueuedAt, row.StageStartedAt = now, time.Time{}
 	row.ForceRun = true
-	row.Disposition = DispositionRunning
+	row.Disposition = pipelinestate.DispositionRunning
 	// ⚠ The reject is cleared as well. A rewound clip is no longer refused — leaving the reason
 	// behind would show a clip that is visibly running AND visibly rejected, and the Incoming tab
 	// filters on exactly this field.
@@ -249,14 +244,14 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !found || row.Stage != StageSplit || row.Disposition != DispositionReview {
+	if !found || row.Stage != pipelinestate.StageSplit || row.Disposition != pipelinestate.DispositionReview {
 		return false, nil
 	}
 	// The four columns migration 00050 set. Attempts are given back for its reason too: the
 	// retries these rows spent were spent losing to a gate that could not be won, and carrying
 	// them would exhaust the budget on the way to succeeding.
 	now := p.now().UTC()
-	row.Disposition, row.Status, row.Attempts = DispositionRunning, StatusQueued, 0
+	row.Disposition, row.Status, row.Attempts = pipelinestate.DispositionRunning, pipelinestate.StatusQueued, 0
 	row.StageQueuedAt, row.StageStartedAt = now, time.Time{}
 	row.NextRun = time.Time{} // zero is "due now" — ListPipelineWork's `next_run <= ?`
 	row.UpdatedAt = now
@@ -277,22 +272,22 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 }
 
 // invalidate clears the derived data owned by every rung at or after `idx`.
-func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) error {
+func (p *Pipeline) invalidate(ctx context.Context, clip cliplibrary.StoreClip, idx int) error {
 	now := p.now().UTC()
-	at := func(id StageID) bool { return StageIndex(id) >= idx }
+	at := func(id pipelinestate.StageID) bool { return pipelinestate.StageIndex(id) >= idx }
 
-	if at(StageTranscode) {
+	if at(pipelinestate.StageTranscode) {
 		// The `mezzanine` marker is the gate that would otherwise make the rung skip itself
 		// immediately.
 		full := filepath.Join(p.clipDir, filepath.FromSlash(clip.Path))
-		if tags, ok := ReadSidecarTags(full); ok {
+		if tags, ok := asset.ReadSidecarTags(full); ok {
 			tags.Mezzanine = ""
-			if err := WriteSidecarTags(full, tags, false); err != nil {
+			if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 				return fmt.Errorf("rewind %s: clearing the encode marker: %w", clip.Path, err)
 			}
 		}
 	}
-	if at(StageSplit) {
+	if at(pipelinestate.StageSplit) {
 		// Else `Propose` replaces a proposal the operator may be mid-edit on.
 		props, err := p.rewind.ListSplitProposals(ctx)
 		if err != nil {
@@ -306,17 +301,17 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 			}
 		}
 	}
-	if at(StageLanguage) {
+	if at(pipelinestate.StageLanguage) {
 		if err := p.rewind.SetClipLanguage(ctx, clip.Path, "", now); err != nil {
 			return err
 		}
 	}
-	if at(StageTranscribe) {
+	if at(pipelinestate.StageTranscribe) {
 		if err := p.rewind.SetClipTranscript(ctx, clip.Path, "", now); err != nil {
 			return err
 		}
 	}
-	if at(StageVision) {
+	if at(pipelinestate.StageVision) {
 		if err := p.rewind.ClearClipVisibleText(ctx, clip.Path, now); err != nil {
 			return err
 		}

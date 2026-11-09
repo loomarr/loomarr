@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { PlayerTuneReport, TuneDirection } from "@loomarr/player";
+import type { PlayerFailureCause, PlayerTuneReport, TuneDirection } from "@loomarr/player";
 import { useBrowserPlayer } from "@loomarr/player/browser";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
@@ -154,12 +154,14 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
 
   let status: WatchPlayerStatus = "loading";
   let error: string | undefined;
+  let failureCause: PlayerFailureCause | undefined;
   if (parked) {
     status = "error";
     error = CANT_PLAY;
   } else if (snapshot.status === "failed") {
     status = "error";
     error = snapshot.error;
+    failureCause = snapshot.failureCause;
   } else if (snapshot.status === "playing" || snapshot.status === "paused") {
     status = "playing";
   }
@@ -170,6 +172,7 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     channel,
     currentTitle,
     error,
+    failureCause,
     ladder: player.ladder,
     liveTransport,
     playbackSessionId: player.playbackSessionId,

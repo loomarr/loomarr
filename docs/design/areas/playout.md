@@ -8,19 +8,21 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 7 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
-- **media** · 4 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
-- **channels** · 4 imports — the `channels/schedule` programming a backend plays
+- **platform** · 8 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
+- **media** · 5 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
+- **channels** · 5 imports — the `channels/schedule` programming a backend plays
 - **library** · 2 imports — the media server's Live TV API that channels are published to, and `provision` keys naming what a slot plays
 
 ## Packages
 
-- **`playout`** · 5 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/config`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `provision`
+- **`playout`** · 12 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `provision`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`playout/bench`** · → `media/encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
+- **`playout/channelbug`** · 1 importer · → `channels/schedule`, `media/encode`, `platform/diagnostics`, `platform/store/channelstore`, `playout`, `playout/watermark`
+  Turns a channel's watermark policy into the bug its programmes air with: it picks the look, colour and holiday version, renders through playout/watermark, caches the files, and runs the per-encoder GPU overlay self-check that gates the bug.
 - **`playout/landiscovery`** · → `platform/httpx`
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`playout/livetvpublish`** · 1 importer · → `library`, `playout/tunarr`
@@ -32,4 +34,4 @@ One area of the [package map](../package-map.md#start-here).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 - **`playout/watermark`** · 1 importer
-  Renders a channel's bug (#1512 phase 1d): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
+  Renders a channel's bug (#1512): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).

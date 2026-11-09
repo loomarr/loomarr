@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	peopleapi "github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -20,7 +21,7 @@ import (
 type devAccessHarnessConfig struct {
 	DevLogin bool
 	Pprof    bool
-	Demo     api.DemoAccount
+	Demo     peopleapi.DemoAccount
 	Seed     func(records.Store)
 }
 
@@ -226,11 +227,11 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 func TestSetupStateReportsDemoMode(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		account api.DemoAccount
+		account peopleapi.DemoAccount
 		want    string
 	}{
-		{"off", api.DemoAccount{}, `{"enabled":false,"username":"","password":""}`},
-		{"on", api.DemoAccount{Username: "guest", Password: "loomarr-guest"}, `{"enabled":true,"username":"guest","password":"loomarr-guest"}`},
+		{"off", peopleapi.DemoAccount{}, `{"enabled":false,"username":"","password":""}`},
+		{"on", peopleapi.DemoAccount{Username: "guest", Password: "loomarr-guest"}, `{"enabled":true,"username":"guest","password":"loomarr-guest"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newDevAccessHarness(t, devAccessHarnessConfig{Demo: tc.account, Seed: func(st records.Store) {
