@@ -1,5 +1,5 @@
-// Package proposals serves the channel-request routes: /v1/proposals* (submit, list, approve,
-// deny, outlook) and the First-channel Journey reads under /v1/proposal-jobs*.
+// Package proposals serves the channel-request routes under /v1/proposals (submit, list, approve,
+// deny, outlook) and the First-channel Journey reads under /v1/proposal-jobs.
 package proposals
 
 import (
