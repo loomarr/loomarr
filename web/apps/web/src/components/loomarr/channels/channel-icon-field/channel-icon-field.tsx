@@ -2,9 +2,11 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { ImageOff, Loader2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
@@ -41,9 +43,24 @@ const ChannelIconField = ({
   const pickerId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [urlDraft, setUrlDraft] = useState("");
-  const [savingUrl, setSavingUrl] = useState(false);
   const [urlError, setUrlError] = useState<string>();
+  // The pasted address stays in the box when the save fails, so it can be corrected.
+  const urlForm = useAppForm({
+    defaultValues: { url: "" },
+    onSubmit: async ({ value, formApi }) => {
+      const next = value.url.trim();
+      if (!next) return;
+      setUrlError(undefined);
+      try {
+        await onSetLogo(next);
+        formApi.reset();
+      } catch (e) {
+        setUrlError(toProblem(e).title ?? "Couldn't set that icon.");
+      }
+    },
+  });
+  const urlDraft = useStore(urlForm.store, (state) => state.values.url);
+  const savingUrl = useStore(urlForm.store, (state) => state.isSubmitting);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
@@ -61,21 +78,6 @@ const ChannelIconField = ({
   // A 501 means TMDB isn't configured on this install — that's a normal, expected shape
   // (not every deployment grounds against TMDB), so it renders as guidance, not an error.
   const tmdbUnconfigured = suggestions.error instanceof ApiError && suggestions.error.status === 501;
-
-  const setUrl = async () => {
-    const next = urlDraft.trim();
-    if (!next) return;
-    setSavingUrl(true);
-    setUrlError(undefined);
-    try {
-      await onSetLogo(next);
-      setUrlDraft("");
-    } catch (e) {
-      setUrlError(toProblem(e).title ?? "Couldn't set that icon.");
-    } finally {
-      setSavingUrl(false);
-    }
-  };
 
   const pickSuggestion = async (url: string) => {
     setUrlError(undefined);
@@ -289,22 +291,29 @@ const ChannelIconField = ({
                   maxWidth={384}
                   minWidth={0}
                 >
-                  <Field
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    disabled={savingUrl}
-                    id={urlInputId}
-                    keyboardType="url"
-                    onChangeText={(text) => {
-                      setUrlDraft(text);
-                      setUrlError(undefined);
-                    }}
-                    onSubmitEditing={() => void setUrl()}
-                    placeholder="https://example.com/icon.png"
-                    value={urlDraft}
-                  />
+                  <urlForm.Field name="url">
+                    {(field) => (
+                      <Field
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        disabled={savingUrl}
+                        id={urlInputId}
+                        keyboardType="url"
+                        onChangeText={(text) => {
+                          field.handleChange(text);
+                          setUrlError(undefined);
+                        }}
+                        onSubmitEditing={() => void urlForm.handleSubmit()}
+                        placeholder="https://example.com/icon.png"
+                        value={field.state.value}
+                      />
+                    )}
+                  </urlForm.Field>
                 </Surface>
-                <Action disabled={savingUrl || urlDraft.trim() === ""} onPress={() => void setUrl()}>
+                <Action
+                  disabled={savingUrl || urlDraft.trim() === ""}
+                  onPress={() => void urlForm.handleSubmit()}
+                >
                   {savingUrl ? "Setting…" : "Set"}
                 </Action>
               </div>
