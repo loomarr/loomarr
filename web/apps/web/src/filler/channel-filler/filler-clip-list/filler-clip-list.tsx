@@ -133,6 +133,7 @@ const FillerClipList = ({
                     icon="close"
                     layout="icon"
                     onPress={() => remove(id)}
+                    style={{ flexShrink: 0 }}
                     variant="ghost"
                   >
                     {gone

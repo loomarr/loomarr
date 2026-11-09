@@ -5,8 +5,7 @@
       "tailwindClasses": 152
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "tailwindClasses": 20,
-      "legacyUi": 1
+      "tailwindClasses": 16
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
       "tailwindClasses": 9
@@ -331,8 +330,7 @@
       "legacyUi": 1
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
-      "tailwindClasses": 37,
-      "legacyUi": 1
+      "tailwindClasses": 37
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
       "tailwindClasses": 187,
@@ -355,8 +353,7 @@
       "legacyUi": 2
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
-      "tailwindClasses": 48,
-      "legacyUi": 1
+      "tailwindClasses": 42
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
       "tailwindClasses": 108,
