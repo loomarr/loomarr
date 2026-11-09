@@ -152,6 +152,31 @@ describe("LibrarySettings", () => {
     paused.cleanup();
   });
 
+  it("shows the first five titles ready so far while the import runs, and none while paused", () => {
+    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
+    const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
+      (name, i) => ({ id: `9000095${i}`, name }),
+    );
+    const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar });
+    expect(adding.host.textContent).toContain("Ready so far");
+    expect(adding.host.textContent).toContain("Alpha");
+    expect(adding.host.textContent).not.toContain("Zulu");
+    adding.cleanup();
+
+    const none = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar: [] });
+    expect(none.host.textContent).not.toContain("Ready so far");
+    none.cleanup();
+
+    const paused = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...reading, paused: true },
+      readySoFar,
+    });
+    expect(paused.host.textContent).not.toContain("Ready so far");
+    paused.cleanup();
+  });
+
   it("holds a removal until the maintainer answers", () => {
     const { host, props, button, cleanup } = render({
       health: "ok",

@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { readyTitleOf } from "@/library/ready-title";
 import { useLibraryFolders } from "@/library/use-library-folders";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ChecklistStep } from "../checklist-step";
@@ -50,6 +51,7 @@ const LibraryStep = ({ backend }: LibraryStepProps) => {
         onCheckAgain={folders.onCheckAgain}
         onUseFolder={folders.onUseFolder}
         pathMap={body.pathMap}
+        readySoFar={folders.readySoFar.map(readyTitleOf)}
         scan={current.scan}
       />
       <Text textRole="label" tone="secondary">
