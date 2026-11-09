@@ -1,3 +1,7 @@
+import {
+  getDownloadDiagnosticSupportBundleUrl,
+  previewDiagnosticSupportBundle,
+} from "@loomarr/api/endpoints/diagnostics";
 import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
 import {
@@ -14,7 +18,7 @@ import {
   Toggle,
 } from "@loomarr/design-system";
 import { Settings2, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Range = "1h" | "6h" | "24h";
 const RANGE_MS: Record<Range, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 };
@@ -68,28 +72,21 @@ const SupportBundle = ({
   const [busy, setBusy] = useState<"preview" | "download">();
   const [error, setError] = useState<string>();
 
-  const selection = useMemo<BundleSelection>(() => {
+  // The window ends when the request is made, so a dialog left open still reports recent evidence.
+  const selectionNow = useCallback((): BundleSelection => {
     const to = Date.now();
     return { from: to - RANGE_MS[range], to, events, processes, processOutput, ...fields };
   }, [events, fields, processOutput, processes, range]);
 
-  const selectionKey = JSON.stringify(selection);
   useEffect(() => {
     if (!open || (!events && !processes && !processOutput)) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setBusy("preview");
       setError(undefined);
-      void fetch("/v1/diagnostics/support-bundle/preview", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: selectionKey,
-        signal: controller.signal,
-      })
-        .then(async (response) => {
-          if (!response.ok) throw new Error(await problemDetail(response));
-          setPreview((await response.json()) as BundlePreview);
+      void previewDiagnosticSupportBundle(selectionNow(), { signal: controller.signal })
+        .then((response) => {
+          if (response.status === 200) setPreview(response.data);
         })
         .catch((reason: unknown) => {
           if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -104,7 +101,7 @@ const SupportBundle = ({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [events, open, processOutput, processes, selectionKey]);
+  }, [events, open, processOutput, processes, selectionNow]);
 
   const invalidate = () => {
     setPreview(undefined);
@@ -115,11 +112,12 @@ const SupportBundle = ({
     setBusy("download");
     setError(undefined);
     try {
-      const response = await fetch("/v1/diagnostics/support-bundle", {
+      // A ZIP body cannot go through the shared JSON mutator, so the download reads the response itself.
+      const response = await fetch(getDownloadDiagnosticSupportBundleUrl(), {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selection),
+        body: JSON.stringify(selectionNow()),
       });
       if (!response.ok) throw new Error(await problemDetail(response));
       const blob = await response.blob();
