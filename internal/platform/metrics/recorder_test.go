@@ -56,6 +56,10 @@ func (*changingStoreCounts) CountActiveSessions(context.Context, time.Time) (int
 	return 0, nil
 }
 
+func (*changingStoreCounts) LatestTableRows(context.Context) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (c *changingStoreCounts) failTitlesAndSetJobs(jobs map[string]int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

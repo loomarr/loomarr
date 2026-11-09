@@ -15,6 +15,31 @@ type TableRowStore interface {
 	// earlier count that day, then forgets days before `before`. It reports how many tables it
 	// counted.
 	RecordTableRows(ctx context.Context, at, before time.Time) (int, error)
+	// LatestTableRows is the newest day's count for each table, keyed by table name; empty before
+	// the first count. Metrics export it, so a scrape reads a stored count and never counts rows.
+	LatestTableRows(ctx context.Context) (map[string]int64, error)
+}
+
+func (s *sqlStore) LatestTableRows(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT table_name, row_count FROM database_table_rows
+		WHERE recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)`)
+	if err != nil {
+		return nil, fmt.Errorf("latest table rows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	counts := map[string]int64{}
+	for rows.Next() {
+		var table string
+		var n int64
+		if err := rows.Scan(&table, &n); err != nil {
+			return nil, fmt.Errorf("latest table rows: %w", err)
+		}
+		counts[table] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("latest table rows: %w", err)
+	}
+	return counts, nil
 }
 
 // tablesNotCounted are the tables whose counts say nothing about retention: the migration
