@@ -41,6 +41,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 	mux.HandleFunc("/tv/90000701/season/1", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_tv_90000701_season_1.json")
 	})
+	mux.HandleFunc("/tv/episode_group/90000799a", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_episode_group_90000799a.json")
+	})
 	mux.HandleFunc("/collection/90000611", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_collection_90000611.json")
 	})
@@ -327,6 +330,46 @@ func TestFetchSeason(t *testing.T) {
 	}
 	for _, bad := range []string{"90000701", "x/1", "90000701/-1"} {
 		if _, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
+			t.Errorf("%q = %v, want unsupported", bad, err)
+		}
+	}
+}
+
+// An episode order lists its episodes as it numbers them, whatever order TMDB sends them in, and
+// sizes each season by its places, an episode with no id included; a path-like id is refused.
+func TestFetchEpisodeOrder(t *testing.T) {
+	f := newFakeTMDB(t)
+	p := f.provider(nil)
+	rec, err := p.Fetch(context.Background(), ref(mp.KindEpisodeOrder, mp.NamespaceTMDB, "90000799a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req := f.last(t); req.URL.Query().Get("language") == "" {
+		t.Errorf("request = %s, want it read in the household language", req.URL)
+	}
+	type numbered struct {
+		season, episode int
+		title           string
+	}
+	var got []numbered
+	for _, e := range rec.Children {
+		got = append(got, numbered{e.Numbering.Season, e.Numbering.Episode, e.Descriptive.Title})
+	}
+	want := []numbered{{0, 1, "Behind the Light"}, {1, 1, "First Light"}, {1, 2, "Low Water"}, {2, 1, "High Water"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("episodes = %+v, want %+v", got, want)
+	}
+	wantSeasons := []mp.SeasonSize{{Number: 0, Episodes: 1}, {Number: 1, Episodes: 2}, {Number: 2, Episodes: 2}}
+	if rec.Kind != mp.KindEpisodeOrder || !reflect.DeepEqual(rec.Descriptive.Seasons, wantSeasons) {
+		t.Errorf("order = %s with seasons %+v, want %+v", rec.Kind, rec.Descriptive.Seasons, wantSeasons)
+	}
+	series := []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}}
+	if !reflect.DeepEqual(rec.Parent, series) || !reflect.DeepEqual(rec.Children[2].Parent, series) ||
+		!reflect.DeepEqual(rec.Children[2].IDs, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000792"}}) {
+		t.Errorf("parent %+v, low water %+v: want the series and the episode's own id", rec.Parent, rec.Children[2])
+	}
+	for _, bad := range []string{"", "90000799a/x", "x?y"} {
+		if _, err := p.Fetch(context.Background(), ref(mp.KindEpisodeOrder, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
 			t.Errorf("%q = %v, want unsupported", bad, err)
 		}
 	}
