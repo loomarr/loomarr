@@ -9,22 +9,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/platform/llm/picker"
 	"github.com/loomarr/loomarr/internal/platform/store"
-)
-
-// Sentinels the SystemLLMService returns; the handlers map them to HTTP status.
-var (
-	// ErrModelNotPulled: Select was asked for a local model the host hasn't downloaded.
-	ErrModelNotPulled = errors.New("model not pulled")
-	// ErrNotLocal: pull was called while the provider isn't local Ollama.
-	ErrNotLocal = errors.New("provider is not local ollama")
-	// ErrKeyInvalid: a hosted select/test key failed live validation.
-	ErrKeyInvalid = errors.New("api key invalid or provider unreachable")
-	// ErrUnknownProvider: a select/test named a provider not in the curated catalog.
-	ErrUnknownProvider = errors.New("unknown provider")
-	// ErrInvalidHostedModel: a curated hosted provider received a model id in the
-	// wrong provider-specific shape (for example an Ollama name:tag for OpenRouter).
-	ErrInvalidHostedModel = errors.New("hosted model must use a provider/model slug")
 )
 
 // SystemLLMService backs /v1/system/llm* (§8.1 model selection). Implemented in the
@@ -259,13 +245,13 @@ func (s *Handlers) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput
 	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL}
 	switch err := s.systemLLM.Select(ctx, req); {
 	case err == nil:
-	case errors.Is(err, ErrModelNotPulled):
+	case errors.Is(err, picker.ErrModelNotPulled):
 		return nil, httpcore.Conflict("Model not ready", "Download this model before selecting it.")
-	case errors.Is(err, ErrUnknownProvider):
+	case errors.Is(err, picker.ErrUnknownProvider):
 		return nil, httpcore.Unprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
-	case errors.Is(err, ErrInvalidHostedModel):
+	case errors.Is(err, picker.ErrInvalidHostedModel):
 		return nil, httpcore.Unprocessable("Invalid hosted model", "Choose a synchronous OpenRouter provider/model slug, such as openai/gpt-4o-mini. Ollama tags and :batch variants cannot serve Loomarr's chat-completions requests.")
-	case errors.Is(err, ErrKeyInvalid):
+	case errors.Is(err, picker.ErrKeyInvalid):
 		return nil, httpcore.Unauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:
 		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't select the model", "Loomarr couldn't activate that model. Check the AI provider connection and try again.", err)
@@ -311,7 +297,7 @@ func (s *Handlers) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*
 	switch err := s.systemLLM.Test(ctx, in.Body.Provider, in.Body.BaseURL, in.Body.APIKey); {
 	case err == nil:
 		out.Body.OK = true
-	case errors.Is(err, ErrUnknownProvider):
+	case errors.Is(err, picker.ErrUnknownProvider):
 		return nil, httpcore.Unprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	default:
 		// A bad key / unreachable provider is a normal, reportable outcome (not a
@@ -340,7 +326,7 @@ func (s *Handlers) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*
 		return nil, httpcore.Unprocessable("Model required", "Enter the model to download.")
 	}
 	jobID, err := s.systemLLM.Pull(ctx, in.Body.Model)
-	if errors.Is(err, ErrNotLocal) {
+	if errors.Is(err, picker.ErrNotLocal) {
 		return nil, httpcore.Conflict("Download not supported", "Downloading models only applies to a local Ollama provider.")
 	}
 	if err != nil {
