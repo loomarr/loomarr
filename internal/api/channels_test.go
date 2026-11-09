@@ -914,7 +914,7 @@ func TestRefineChannel_RequiresAdmin(t *testing.T) {
 
 func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	srv, st, _ := newServerWithSchedulerAndSuggest(t)
-	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
+	// A hand-made channel (not FromRequest) can't be refined — there's no request to re-run.
 	ch := channelstore.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
@@ -940,7 +940,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 			{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 		},
 	}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-purged", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
@@ -981,7 +981,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 func TestRefineChannel_UnavailableOriginalRequest422(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ch := channelstore.Channel{}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-purged", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
@@ -2064,7 +2064,7 @@ func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
 	ch := channelstore.Channel{IntentJSON: `{"description":"90s action"}`}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-origin", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-origin", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)

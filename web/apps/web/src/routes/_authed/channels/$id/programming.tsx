@@ -17,7 +17,7 @@ const ProgrammingScreen = () => {
         policy={ch.policy}
         onPolicyChange={savePolicy}
         strategy={ch.strategy}
-        intentRef={ch.intentRef}
+        fromRequest={ch.fromRequest}
         onRefined={invalidate}
       />
     </AdminOnly>

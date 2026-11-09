@@ -36,8 +36,8 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // that swept the self-contained blocks into the draft "for consistency" would restore the
 // ceremony §12's first version removed.
 const renderProgramming = (policy: ChannelPolicy = {}) => {
-  // intent-backed, so auto-curate has an intent to re-run and offers its opt-in.
-  const stored = { revision: 1, policy, intentRef: "intent-1" };
+  // Made from a request, so auto-curate has an intent to re-run and offers its opt-in.
+  const stored = { revision: 1, policy, fromRequest: true };
   const patches: UpdateChannelInputBody[] = [];
   const changePreviews: ChannelPolicy[] = [];
   server.use(

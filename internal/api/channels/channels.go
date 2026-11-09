@@ -395,8 +395,8 @@ func (s *Handlers) refineChannel(ctx context.Context, in *refineChannelInput) (*
 		return nil, err
 	}
 	// Refine only makes sense for an LLM-created channel: it is seeded from the request the
-	// channel owns. A hand-made channel (no IntentRef) has no request to refine.
-	if ch.IntentRef == "" {
+	// channel owns. A hand-made channel has no request to refine.
+	if !ch.FromRequest {
 		return nil, httpcore.Unprocessable("Can't refine this channel",
 			"This channel was made by hand, not from an AI suggestion, so there's nothing to refine.")
 	}
