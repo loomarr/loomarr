@@ -278,7 +278,7 @@
       "tailwindClasses": 34
     },
     "src/components/loomarr/shell/search-command/search-command.tsx": {
-      "tailwindClasses": 67
+      "tailwindClasses": 69
     },
     "src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "tailwindClasses": 46
@@ -496,7 +496,7 @@
       "clsx": 1
     },
     "src/palette/command-palette/command-palette.tsx": {
-      "tailwindClasses": 12,
+      "tailwindClasses": 13,
       "baseUi": 1
     },
     "src/people/users-page/users-page.tsx": {

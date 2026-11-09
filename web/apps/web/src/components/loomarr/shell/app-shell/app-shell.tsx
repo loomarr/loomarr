@@ -36,9 +36,15 @@ const PhoneBottomBar = lazy(() =>
   import("../phone-bottom-bar").then((module) => ({ default: module.PhoneBottomBar })),
 );
 
+// The phone's top row with Search (#2751), lazy for the same reason: its DS Action renders only
+// below `md`.
+const PhoneHeader = lazy(() => import("../phone-header").then((module) => ({ default: module.PhoneHeader })));
+
 // The ios `TabBar`'s own measured height (web always renders that idiom) — holding this row open
 // while the chunk loads keeps the Guide's docked strip (#1795) from jumping up and back down.
 const PHONE_BOTTOM_BAR_HEIGHT = 49;
+// The phone header's height: one 48px touch target plus its 1px bottom rule.
+const PHONE_HEADER_HEIGHT = 49;
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
 // + user menu; content renders in `children`. Admin-only sections are gated by
@@ -308,6 +314,15 @@ const AppShell = ({
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
+            top right on every page (#2751). It opens the same search the rail's button does. */}
+        {phoneWidth && (
+          <Suspense
+            fallback={<div data-testid="phone-header-placeholder" style={{ height: PHONE_HEADER_HEIGHT }} />}
+          >
+            <PhoneHeader onOpenSearch={onOpenCommand} />
+          </Suspense>
+        )}
         {banner}
         <main
           id={MAIN_ID}

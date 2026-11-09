@@ -1,9 +1,9 @@
 import { getGetDocMockHandler, getListDocsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -159,6 +159,34 @@ describe("Command palette", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /search/i }));
     expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
+  });
+
+  // #2751: below `md` the rail (and its Search button) is gone; the phone header's Search icon,
+  // top right, opens the same search full screen, and Close shuts it without a key or a backdrop.
+  it("opens full-screen from the phone header's Search icon", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: false,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      stubHelp();
+      renderAt("/help");
+
+      // Exactly "Search": the rail's own button (CSS-hidden here, still in jsdom's tree) is named
+      // "Search…" plus its shortcut.
+      await userEvent.click(await screen.findByRole("button", { name: "Search" }));
+      const dialog = await screen.findByRole("dialog", { name: /search loomarr/i });
+      expect(dialog).toHaveClass("inset-0");
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Close search" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: /search loomarr/i })).not.toBeInTheDocument(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("opens and closes on the keyboard shortcut", async () => {

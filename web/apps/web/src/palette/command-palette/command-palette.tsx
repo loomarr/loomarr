@@ -3,6 +3,7 @@ import type { SearchResult } from "@loomarr/core/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 import { usePaletteResults } from "../use-palette-results";
 import type { CommandPaletteProps } from "./command-palette.type";
 
@@ -36,6 +37,7 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const { results, loading } = usePaletteResults(query);
+  const phoneWidth = usePhoneWidth();
 
   const setOpen = (next: boolean) => onOpenChange(next);
 
@@ -74,9 +76,14 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
             time. The primitive now dismisses on an outside press AND on Escape, for every input
             method, so a bespoke control would be a second way to do what the dialog already does. */}
         <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
+        {/* Below `md` it is full-screen search (#2751): opened from the phone header's Search
+            icon, it covers the page, the results take the height, and a Close button stands in for
+            the backdrop and the Escape key a phone doesn't have. */}
         <DialogPrimitive.Popup
           aria-label="Search Loomarr"
-          className="fixed top-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 focus:outline-none"
+          className={`fixed z-50 focus:outline-none ${
+            phoneWidth ? "inset-0" : "top-24 left-1/2 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2"
+          }`}
         >
           <SearchCommand
             query={query}
@@ -84,6 +91,8 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
             results={results}
             loading={loading}
             onSelect={go}
+            fill={phoneWidth}
+            onClose={phoneWidth ? () => setOpen(false) : undefined}
           />
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
