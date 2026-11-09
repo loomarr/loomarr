@@ -1,8 +1,8 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
 import type {
   ComponentProps,
-  CSSProperties,
   ComponentRef,
+  CSSProperties,
   ForwardRefExoticComponent,
   ReactElement,
   ReactNode,
