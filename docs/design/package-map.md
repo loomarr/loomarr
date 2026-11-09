@@ -74,6 +74,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Depends on |
 | --- | --- |
 | `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
+| `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `provision` |
 | `channels/schedule` | `library/inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
 | `channels/viewing` | `platform/store`, `platform/store/channelstore` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |

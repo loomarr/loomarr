@@ -1,4 +1,4 @@
-package app
+package operator
 
 import (
 	"context"
@@ -74,9 +74,9 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 	}
 
 	recorder := &taxonomyWakeRecorder{}
-	editor := taxonomyEditor{
+	editor := TaxonomyEditor{
 		store: st,
-		wake:  &fillerChannelWake{st: st, channels: recorder, log: slog.New(slog.DiscardHandler)},
+		wake:  NewChannelWake(st, recorder, slog.New(slog.DiscardHandler)),
 		now:   func() time.Time { return now },
 	}
 	beer, ok := taxonomy.New(mustTaxa(t, st)).Get("beer")
@@ -162,9 +162,9 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 		t.Fatal("seed taxonomy has no beer")
 	}
 	beer.Parent = "food"
-	editor := taxonomyEditor{
+	editor := TaxonomyEditor{
 		store: st,
-		wake:  &fillerChannelWake{st: st, channels: engine, log: slog.New(slog.DiscardHandler)},
+		wake:  NewChannelWake(st, engine, slog.New(slog.DiscardHandler)),
 		now:   func() time.Time { return now.Add(time.Minute) },
 	}
 	if _, err := editor.Apply(t.Context(), clipstore.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
@@ -181,9 +181,9 @@ func TestTaxonomyEditor_ResolverOnlyEditDoesNotReconcileChannels(t *testing.T) {
 	}
 	beer.Synonyms = append(beer.Synonyms, "pint")
 	recorder := &taxonomyWakeRecorder{}
-	editor := taxonomyEditor{
+	editor := TaxonomyEditor{
 		store: st,
-		wake:  &fillerChannelWake{st: st, channels: recorder, log: slog.New(slog.DiscardHandler)},
+		wake:  NewChannelWake(st, recorder, slog.New(slog.DiscardHandler)),
 	}
 	if _, err := editor.Apply(t.Context(), clipstore.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
 		t.Fatal(err)
