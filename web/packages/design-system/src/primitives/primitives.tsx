@@ -206,13 +206,8 @@ const dataRoles = new Set<TextRole>([
   "code",
   "cardChannelNumber",
   "cardTime",
-  "cardInitials",
-  "captionMono",
-  "guideMeta",
-  "guideLabel",
+  "mono",
   "guideNumber",
-  "guideIdent",
-  "guideNow",
 ]);
 const mutedRoles = new Set<TextRole>([
   "label",
@@ -221,9 +216,7 @@ const mutedRoles = new Set<TextRole>([
   "time",
   "cardMeta",
   "cardTime",
-  "captionMono",
-  "guideMeta",
-  "guideLabel",
+  "mono",
 ]);
 // No role defaults to amber: amber means focus or the primary action (#1909), so a number is
 // foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
@@ -278,9 +271,7 @@ const roleTracking = (textRole: TextRole, size: number) =>
         ? size * -0.02
         : textRole === "section"
           ? 2
-          : textRole === "guideLabel"
-            ? size * 0.04
-            : 0;
+          : 0;
 
 // Tamagui's web Text hands `accessibilityLiveRegion` to the DOM verbatim, where React rejects it and
 // no screen reader hears it; the web spelling is `aria-live` (RN's "none" is the web's "off").

@@ -58,7 +58,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           }),
         }}
       >
-        <Text density={density} shout textRole="guideIdent" tone={blockTone} tracking={0.2}>
+        <Text density={density} shout strong textRole="label" tone={blockTone} tracking={0.2}>
           CH
         </Text>
         <Text
@@ -83,7 +83,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           ...panelGlass(),
         }}
       >
-        <Text density={density} numberOfLines={1} shout textRole="guideMeta" tone="secondary" tracking={0.14}>
+        <Text density={density} numberOfLines={1} shout textRole="mono" tone="secondary" tracking={0.14}>
           {identity}
         </Text>
         {band.programmeLine ? (

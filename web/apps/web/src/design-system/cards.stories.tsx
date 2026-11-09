@@ -204,13 +204,21 @@ const People: Story = {
     <ListGroup aria-label="People">
       <RowCard
         action={<CardAction>Manage</CardAction>}
-        lead={<Text textRole="cardInitials">A</Text>}
+        lead={
+          <Text textRole="label" tone="primary">
+            A
+          </Text>
+        }
         meta={[<CardStatus key="s" label="You" tone="ok" />, "Admin", "Media-server account · seen today"]}
         title="Ada Marlowe"
       />
       <RowCard
         action={<CardAction attention>New invite</CardAction>}
-        lead={<Text textRole="cardInitials">J</Text>}
+        lead={
+          <Text textRole="label" tone="primary">
+            J
+          </Text>
+        }
         meta={[<CardStatus key="s" label="Invitation expired" tone="warn" />, "Member", "Invited 9 days ago"]}
         title="Juniper Oake"
       />

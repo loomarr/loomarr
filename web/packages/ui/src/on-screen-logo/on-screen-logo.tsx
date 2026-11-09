@@ -287,7 +287,7 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
               justifyContent="center"
               width={18}
             >
-              <Text textRole="guideMeta" tone="muted">
+              <Text textRole="mono" tone="muted">
                 ?
               </Text>
             </Surface>

@@ -59,7 +59,7 @@ const ListRow = ({ action, progress, sub, title, tone, toneLabel = "" }: ListRow
       <Surface backgroundColor="transparent" borderWidth={0} flexShrink={0} gap={4} width={160}>
         <ProgressTrack label={progress.label} percent={progress.value} tone="tune" width="100%" />
         {progress.eta && (
-          <Text textAlign="right" textRole="captionMono">
+          <Text textAlign="right" textRole="mono">
             {progress.eta}
           </Text>
         )}

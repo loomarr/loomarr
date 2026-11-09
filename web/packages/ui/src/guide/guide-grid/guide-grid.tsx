@@ -221,7 +221,7 @@ const Block = ({
                     paddingHorizontal={3}
                   >
                     {entry.name && px * share > CLIP_LABEL_MIN ? (
-                      <Text numberOfLines={1} textAlign="left" textRole="guideClip">
+                      <Text numberOfLines={1} textAlign="left" textRole="mono">
                         {entry.name}
                       </Text>
                     ) : null}
@@ -234,7 +234,7 @@ const Block = ({
             // flush left.
             <>
               {hasSeries ? (
-                <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
+                <Text numberOfLines={1} textAlign="left" textRole="label" textTransform="uppercase">
                   {a.series}
                   {/* A trailing space, collapsed on screen: axe (4.14, WCAG 2.5.3) joins sibling text
                       with nothing between, so "series" + "title" reads as one word against this
@@ -250,7 +250,7 @@ const Block = ({
                 {hasSeries ? a.title : guideAiringLabel(a)}{" "}
               </Text>
               {!hasSeries && px >= META_MIN ? (
-                <Text numberOfLines={1} textAlign="left" textRole="guideMeta">
+                <Text numberOfLines={1} textAlign="left" textRole="mono">
                   {when}
                 </Text>
               ) : null}
@@ -432,7 +432,7 @@ const Row = memo(
                 <Text
                   marginTop={2}
                   numberOfLines={1}
-                  textRole="guideLabel"
+                  textRole="label"
                   textTransform="uppercase"
                   tone={chip.tone}
                 >
@@ -548,7 +548,7 @@ const GuideGrid = ({
             key={t}
           >
             {i % stride === 0 ? (
-              <Text numberOfLines={1} textRole="guideMeta">
+              <Text numberOfLines={1} textRole="mono">
                 {formatGuideTime(t, layout.timezone)}
               </Text>
             ) : null}
@@ -569,7 +569,7 @@ const GuideGrid = ({
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text textRole="guideNow" tone="inverse">
+              <Text textRole="mono" tone="inverse">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </View>

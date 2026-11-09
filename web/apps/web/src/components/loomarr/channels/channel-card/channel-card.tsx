@@ -36,7 +36,7 @@ const ChannelCard = ({
           <div>
             <p className="leading-tight font-medium">{name}</p>
             {managed && (
-              <Text as="p" shout textRole="captionMono">
+              <Text as="p" shout textRole="mono">
                 Managed by Loomarr
               </Text>
             )}

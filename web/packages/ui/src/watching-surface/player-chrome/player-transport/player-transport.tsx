@@ -76,12 +76,12 @@ const Tooltip = ({
     }}
   >
     {/* One line: the tooltip hangs off a 36 px button, which would otherwise wrap it word by word. */}
-    <Text density={density} numberOfLines={1} textRole="guideLabel" tone="primary">
+    <Text density={density} numberOfLines={1} textRole="label" tone="primary">
       {label}
     </Text>
     {keyHint ? (
       <View style={{ backgroundColor: playerChrome.glassTop, borderRadius: 3, paddingHorizontal: 4 }}>
-        <Text density={density} textRole="guideMeta" tone="secondary">
+        <Text density={density} textRole="mono" tone="secondary">
           {keyHint}
         </Text>
       </View>
@@ -233,13 +233,13 @@ const LiveState = ({
   live.mode === "live" ? (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 6, height: 36, paddingHorizontal: 12 }}>
       <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 7, width: 7 }} />
-      <Text density={density} shout strong textRole="guideIdent" tone="live">
+      <Text density={density} shout strong textRole="label" tone="live">
         Live
       </Text>
     </View>
   ) : (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10, paddingLeft: 12 }}>
-      <Text accessibilityLiveRegion="polite" density={density} shout textRole="guideMeta" tone="secondary">
+      <Text accessibilityLiveRegion="polite" density={density} shout textRole="mono" tone="secondary">
         {`${live.mode === "paused" ? "Paused · " : ""}${formatClipDuration(live.lagSeconds * 1000)} behind`}
       </Text>
       <Pressable
@@ -257,7 +257,7 @@ const LiveState = ({
         }}
       >
         <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 7, width: 7 }} />
-        <Text density={density} shout strong textRole="guideIdent" tone="live">
+        <Text density={density} shout strong textRole="label" tone="live">
           Go live
         </Text>
       </Pressable>
@@ -285,7 +285,7 @@ const StartOver = ({ density, onPress }: { density: Density; onPress: () => void
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons.startOver} size="compact" />
-      <Text density={density} textRole="guideLabel" tone="primary">
+      <Text density={density} textRole="label" tone="primary">
         Start over
       </Text>
     </Pressable>
@@ -471,7 +471,7 @@ const ClipTransport = ({
       <VolumeSlider density={density} muted={muted} onVolume={onVolume} volume={volume} />
     </Capsule>
     {durationMs !== undefined ? (
-      <Text density={density} textRole="captionMono" tone="secondary">
+      <Text density={density} textRole="mono" tone="secondary">
         {formatMmSs(elapsedMs)} / {formatMmSs(durationMs)}
       </Text>
     ) : null}

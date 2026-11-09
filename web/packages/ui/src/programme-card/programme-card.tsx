@@ -102,7 +102,7 @@ const ViewerLine = ({ density, viewer }: { density: Density; viewer: ProgrammeCa
       justifyContent="center"
       width={22}
     >
-      <Text density={density} textRole="cardInitials">
+      <Text density={density} textRole="label" tone="primary">
         {viewer.initials}
       </Text>
     </Surface>

@@ -426,7 +426,7 @@ const GuidePage = () => {
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
             <div className="flex items-center gap-1.75 sm:ml-auto">
-              <Text as="span" shout textRole="captionMono" tracking={0.06}>
+              <Text as="span" shout textRole="mono" tracking={0.06}>
                 Span
               </Text>
               <div className="flex gap-1">
@@ -474,7 +474,7 @@ const GuidePage = () => {
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
               <div className="flex items-center gap-1.75">
-                <Text as="span" shout textRole="captionMono" tracking={0.06}>
+                <Text as="span" shout textRole="mono" tracking={0.06}>
                   Start at
                 </Text>
                 <div>

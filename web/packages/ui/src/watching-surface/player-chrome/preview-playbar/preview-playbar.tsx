@@ -229,7 +229,7 @@ const PreviewPlaybar = ({
                               density={density}
                               numberOfLines={1}
                               style={{ textAlign: "left" }}
-                              textRole="guideMeta"
+                              textRole="mono"
                               tone="secondary"
                             >
                               {formatTime(segment.startMs)}
@@ -315,19 +315,14 @@ const PreviewPlaybar = ({
       >
         {width > 0 ? (
           <>
-            <Text
-              density={density}
-              style={{ left: 6, position: "absolute" }}
-              textRole="guideMeta"
-              tone="muted"
-            >
+            <Text density={density} style={{ left: 6, position: "absolute" }} textRole="mono" tone="muted">
               −15m
             </Text>
             <Text
               density={density}
               strong
               style={{ left: liveX + 6, position: "absolute", transform: [{ translateX: "-50%" }] }}
-              textRole="guideMeta"
+              textRole="mono"
               tone="live"
             >
               LIVE
@@ -340,7 +335,7 @@ const PreviewPlaybar = ({
                   density={density}
                   key={m}
                   style={{ left: xAt(at) + 6, position: "absolute", transform: [{ translateX: "-50%" }] }}
-                  textRole="guideMeta"
+                  textRole="mono"
                   tone="muted"
                 >
                   {formatTime(at)}

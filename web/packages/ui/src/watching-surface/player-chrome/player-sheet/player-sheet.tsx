@@ -47,7 +47,7 @@ const PlayerSheet = ({ channelLabel, children, density, icon, onClose, title }: 
           {title}
         </Text>
       </View>
-      <Text density={density} numberOfLines={1} textRole="guideMeta" tone="muted">
+      <Text density={density} numberOfLines={1} textRole="mono" tone="muted">
         {channelLabel}
       </Text>
       <ToolButton density={density} icon="close" label={`Close ${title}`} onPress={onClose} pointer={false} />

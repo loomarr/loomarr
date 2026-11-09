@@ -69,7 +69,7 @@ const PlayerInfo = ({ density, formatTime, info }: PlayerInfoProps) => (
           paddingTop: 16,
         }}
       >
-        <Text density={density} shout textRole="guideMeta" tone="info" tracking={0.16}>
+        <Text density={density} shout textRole="mono" tone="info" tracking={0.16}>
           Up next
         </Text>
         <Text density={density} strong style={{ marginTop: 4 }} textRole="label" tone="primary">

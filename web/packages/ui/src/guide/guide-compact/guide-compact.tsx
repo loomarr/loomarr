@@ -181,7 +181,7 @@ const GuideCompact = ({
                 density={density}
                 key={t}
                 style={{ left: `${((t - layout.fromMs) / span) * 100}%`, position: "absolute", top: 3 }}
-                textRole="guideMeta"
+                textRole="mono"
               >
                 {formatGuideTime(t, layout.timezone).replace(":00", "")}
               </Text>
@@ -198,7 +198,7 @@ const GuideCompact = ({
               top={0}
               style={{ transform: [{ translateX: "-50%" }] }}
             >
-              <Text density={density} textRole="guideIdent" tone="inverse">
+              <Text density={density} strong textRole="mono" tone="inverse">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </Surface>
@@ -294,7 +294,7 @@ const GuideCompact = ({
                                 density={density}
                                 numberOfLines={1}
                                 textAlign="left"
-                                textRole={Platform.OS === "web" ? "guideLabel" : "guideCell"}
+                                textRole={Platform.OS === "web" ? "label" : "guideCell"}
                                 tone={selected || airing.isOnNow ? "primary" : "secondary"}
                               >
                                 {label}
@@ -359,7 +359,7 @@ const GuideCompact = ({
                   {programmeLine(selectedAiring)}
                 </Text>
                 {/* Two lines: a range across noon or midnight ("11:30 PM–12:15 AM") would cut off the rating. */}
-                <Text density={density} numberOfLines={2} textRole="guideMeta">
+                <Text density={density} numberOfLines={2} textRole="mono">
                   {sheetTimeLine(selectedAiring, nowMs, layout.timezone)}
                 </Text>
               </View>

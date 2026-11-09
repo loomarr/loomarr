@@ -23,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 
 const badges = (
   <>
-    <Text textRole="captionMono">1.7× rt</Text>
+    <Text textRole="mono">1.7× rt</Text>
     <Badge shape="square" tone="lock">
       Hardware
     </Badge>

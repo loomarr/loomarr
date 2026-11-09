@@ -286,7 +286,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       {entries.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.75">
           {/* Wider than `shout`'s own 0.025em: the same toolbar label voice as the guide's "Start". */}
-          <Text as="span" shout textRole="captionMono" tracking={0.06}>
+          <Text as="span" shout textRole="mono" tracking={0.06}>
             Show
           </Text>
           {(
