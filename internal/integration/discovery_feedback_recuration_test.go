@@ -66,16 +66,12 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	// The channels own their request, as approval leaves them: there is no job behind them, so
-	// the weekly run seeds from the channel alone.
-	for i, id := range []string{"job-channel-a", "job-channel-b"} {
-		channelID := "channel-a"
-		if i == 1 {
-			channelID = "channel-b"
-		}
+	// The channels own their request, as approval leaves them (FromRequest): there is no job
+	// behind them, so the weekly run seeds from the channel alone.
+	for i, channelID := range []string{"channel-a", "channel-b"} {
 		if _, err := h.store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 			ID: channelID, Number: 80 + i, Name: channelID, Status: schedule.StatusBuilding,
-			IntentRef: id, Strategy: schedule.Sequential,
+			FromRequest: true, Strategy: schedule.Sequential,
 		}, IntentJSON: `{"description":"action"}`,
 			Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}}}); err != nil {
 			t.Fatal(err)
