@@ -63,7 +63,7 @@ aesthetic whose correctness is enforced by the Playwright visual suite.
 **Aesthetic direction:** a modern, dark broadcast console — calm surfaces, precise data, mono-set channel numbers — with retro-TV warmth used as *seasoning, not sauce*. Loomarr's product soul is era-matched: Saturday-morning cartoons with period cereal ads. The UI should feel like the master control room that makes that possible: professional first, nostalgic in the margins.
 
 **Rules that keep it tasteful:**
-- CRT/scanline/static flourishes appear **only** on idle surfaces — onboarding, empty states, the login screen. Never on data, tables, or forms.
+- CRT/scanline/static flourishes appear **only** at entry moments: the login screen, the setup wizard, and the player's tune-in loader (#2789). Never on resting pages (the Guide's empty state included), data, tables, or forms.
 - All flourishes are disabled under `prefers-reduced-motion` **and** in visual-test mode (determinism, §5).
 - Nostalgia lives mostly in **microcopy** ("Dead air — create your first channel", "You're on the air") and in the `onair`/channel-number idiom, not in texture overlays.
 
