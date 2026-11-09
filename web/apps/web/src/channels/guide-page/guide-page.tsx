@@ -14,7 +14,7 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, SegmentedControl, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -25,7 +25,6 @@ import {
 } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -33,8 +32,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { ChannelRowMenu } from "../channel-row-menu";
@@ -86,6 +83,12 @@ const hourLabel = (h: number) => {
   const twelve = h % 12 === 0 ? 12 : h % 12;
   return `${twelve} ${suffix}`;
 };
+
+// "auto" follows now; the rest pin the window's start to that hour of the chosen day.
+const START_HOUR_OPTIONS = [
+  { label: "Now", value: "auto" },
+  ...START_HOURS.map((h) => ({ label: hourLabel(h), value: String(h) })),
+];
 
 // A phone's two views of the guide (#2766): a Now/Next list, or the full grid.
 const PHONE_VIEWS = [
@@ -356,18 +359,14 @@ const GuidePage = () => {
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
-              <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
-                <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {dayChoices.map((d) => (
-                    <SelectItem key={d} value={String(d)} className="font-mono text-xs">
-                      {dayLabel(d, anchorMs)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div>
+                <CompactSelect
+                  label="Day"
+                  onValueChange={(v) => setDayOffset(Number(v))}
+                  options={dayChoices.map((d) => ({ label: dayLabel(d, anchorMs), value: String(d) }))}
+                  value={String(dayOffset)}
+                />
+              </div>
 
               {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
                   future one is a plan. The chip says which, and doubles as the way back. */}
@@ -388,36 +387,28 @@ const GuidePage = () => {
             {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
                 window without changing the day. */}
             <div className="flex items-center gap-1">
-              <Button
+              <Action
+                icon="earlier"
+                layout="icon"
+                onPress={() => setHourShift((h) => h - 1)}
                 variant="outline"
-                size="icon"
-                className="size-6.5"
-                aria-label="Back an hour"
-                onClick={() => setHourShift((h) => h - 1)}
               >
-                ‹
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn("text-2xs h-6.5 font-mono", atNow ? "text-static-400" : "text-foreground")}
-                onClick={() => {
+                Back an hour
+              </Action>
+              {/* Already at now, the anchor is the quiet choice; away from it, the way back. */}
+              <Action
+                onPress={() => {
                   setHourShift(0);
                   setDayOffset(0);
                   setStartHour(null);
                 }}
+                variant={atNow ? "ghost" : "outline"}
               >
                 NOW
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-6.5"
-                aria-label="Forward an hour"
-                onClick={() => setHourShift((h) => h + 1)}
-              >
-                ›
-              </Button>
+              </Action>
+              <Action icon="later" layout="icon" onPress={() => setHourShift((h) => h + 1)} variant="outline">
+                Forward an hour
+              </Action>
             </div>
 
             {/* Span stays in the primary row: it changes the question the guide answers, and
@@ -451,25 +442,16 @@ const GuidePage = () => {
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn(
-                "h-6.5",
-                viewOptionsOpen && "border-foreground bg-static-800 text-foreground font-semibold",
-              )}
-              aria-label={hasCustomView ? "View options, custom" : "View options"}
-              aria-expanded={viewOptionsOpen}
+            <Action
+              accessibilityLabel={hasCustomView ? "View options, custom" : "View options"}
               aria-controls="guide-view-options"
-              onClick={() => setViewOptionsOpen((open) => !open)}
+              aria-expanded={viewOptionsOpen}
+              icon="filter"
+              onPress={() => setViewOptionsOpen((open) => !open)}
+              variant="outline"
             >
-              {hasCustomView ? (
-                <span className="bg-foreground size-2 rounded-full" aria-hidden />
-              ) : (
-                <SlidersHorizontal className="size-3.5" aria-hidden />
-              )}
-              View
-            </Button>
+              {hasCustomView ? "View · custom" : "View"}
+            </Action>
           </div>
 
           {viewOptionsOpen && (
@@ -483,24 +465,14 @@ const GuidePage = () => {
                 <Text as="span" shout textRole="captionMono" tracking={0.06}>
                   Start at
                 </Text>
-                <Select
-                  value={startHour === null ? "auto" : String(startHour)}
-                  onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
-                >
-                  <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Start hour">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto" className="font-mono text-xs">
-                      Now
-                    </SelectItem>
-                    {START_HOURS.map((h) => (
-                      <SelectItem key={h} value={String(h)} className="font-mono text-xs">
-                        {hourLabel(h)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div>
+                  <CompactSelect
+                    label="Start hour"
+                    onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
+                    options={START_HOUR_OPTIONS}
+                    value={startHour === null ? "auto" : String(startHour)}
+                  />
+                </div>
               </div>
             </div>
           )}
