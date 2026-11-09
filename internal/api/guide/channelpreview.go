@@ -18,10 +18,9 @@ import (
 
 // Channel PREVIEW surfaces — "what would this channel actually play?" (§10, §12).
 //
-// Split out of channels.go, which had accreted 15 handlers and 25 DTOs. These are not channel
-// CRUD: they answer a different question, and their helpers (podToPoolDTO, cycleSlotsToDTO,
-// fillerSelectionToDomain) are shared with programming.go and guide.go — so they were never
-// channel-lifecycle code, they had just been living in the channel-lifecycle file.
+// These are not channel CRUD: they answer a different question, and their helpers
+// (podToPoolDTO, cycleSlotsToDTO, fillerSelectionToDomain) are shared with programming.go and
+// guide.go.
 //
 // Two previews, one assembler. The pod endpoints and the cycle endpoint both run the SAME
 // assembler and the SAME seed the reconciler uses (§10's one-assembler rule), so a preview
@@ -447,7 +446,7 @@ func podToPreviewOutput(pod pod.Pod) *previewPodsOutput {
 }
 
 // viewerPoolDTO is podToPoolDTO for a member-readable route (the Guide, a channel's Breaks): a
-// catalogue name that came from the filename is sent as "" (#1988, filler.ViewerName) and the
+// catalogue name that came from the filename is sent as "" (#1988, cliplibrary.ViewerName) and the
 // file's location not at all (#1980). Clients address clips by hash. The admin draft sandbox
 // keeps the filename an operator searches by.
 func viewerPoolDTO(pod pod.Pod) PodPoolDTO {
@@ -550,17 +549,12 @@ func (s *Handlers) previewDraftChannelPods(ctx context.Context, in *previewDraft
 
 // fillerSelectionToDomain translates a DRAFT FillerSelection into the domain Selection.
 //
-// ⚠ **It delegates to `channels.SelectionFrom` rather than mirroring it (V51f).** The rule had
-// THREE implementations — `SelectionForChannel`, this one, and `podPreviewAdapter.PreviewDraft` —
-// and this was the one that omitted era inheritance. Nothing looked broken only because the
-// adapter downstream re-applied it, so two copies cancelled out. That accident stops working the
-// moment "explicitly any era" is reachable: a fallback keyed on `Era == 0` cannot tell an unset
-// era from a chosen one. `scopeEra` comes from the channel the handler already loads.
-//
-// ⚠ Through `channels.SelectionForPolicy`, so the draft carries the policy's break length and
-// commercial spacing exactly as the saved channel does. It used to stop at the filler selection,
-// which assembled draft previews with the install's break length and spacing while the channel
-// aired its own.
+// ⚠ **It delegates to `channels.SelectionForPolicy` rather than mirroring the rule (V51f).** A
+// second implementation of the selection derivation can drop era inheritance unnoticed, because a
+// fallback keyed on `Era == 0` cannot tell an unset era from a chosen one. Going through the one
+// derivation also carries the policy's break length and commercial spacing exactly as the saved
+// channel has them, so a draft preview never assembles with the install's defaults while the
+// channel airs its own.
 func fillerSelectionToDomain(f schedule.FillerSelection, policy schedule.ChannelPolicy, lineup []schedule.LineupEntry) pod.Selection {
 	policy.Filler = &f
 	return channels.SelectionForPolicy(policy, lineup)

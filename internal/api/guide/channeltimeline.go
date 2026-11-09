@@ -34,7 +34,7 @@ import (
 const timelineWindow = 3 * time.Hour
 
 // TimelineThumbResolver resolves a same-origin preview image path for one programme block (§9.1 V47). An
-// interface so the api package need not import tmdb — the same abstraction IconService uses. nil ⇒
+// interface so this package need not import tmdb — the same abstraction IconService uses. nil ⇒
 // the timeline still works, just with no images (the strip renders a fallback), because TMDB is
 // optional and a missing image must never fail the strip.
 type TimelineThumbResolver interface {
@@ -125,9 +125,9 @@ type timelineOutput struct {
 	}
 }
 
-// channelTimeline is registered inside registerChannels (channels.go), alongside channel-upcoming —
+// channelTimeline is registered inside registerChannelViews (channelviews.go), alongside channel-upcoming —
 // it is a channel read surface, and grouping it there keeps the register-list parity simple (no new
-// register* function to track in api.go/export.go).
+// register* function to track).
 func (s *Handlers) channelTimeline(ctx context.Context, in *upcomingInput) (*timelineOutput, error) {
 	out := &timelineOutput{}
 	out.Body.Airings = []GuideAiring{}
