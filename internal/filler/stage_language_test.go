@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The language rung (§10 V40's gate, V51b's stage). Its whole risk is that it REFUSES clips, so
@@ -53,8 +53,8 @@ func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (s
 	return d.lang, d.err
 }
 
-func langClip(path, language string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: clips.Clip{
+func langClip(path, language string) clipstore.Clip {
+	return clipstore.Clip{Clip: clips.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,
 		DurationMs: 30_000, Language: language,
 	}}
@@ -232,7 +232,7 @@ func TestLanguageStage_DoesNotApplyToAnAlreadyHeardClip(t *testing.T) {
 	stage := newLangStage(newFakeLangStore(), det, "en")
 	for _, tc := range []struct {
 		name string
-		clip cliplibrary.StoreClip
+		clip clipstore.Clip
 		want bool
 	}{
 		{"never heard", langClip("fresh.mp4", ""), true},

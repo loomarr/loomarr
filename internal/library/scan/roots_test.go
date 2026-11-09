@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -48,7 +49,7 @@ func newRoots(t *testing.T, disk fakeDisk, pathMap string, sources ...Source) *R
 	}
 }
 
-func rootFor(all store.LibraryRoots, authority, folder string) string {
+func rootFor(all librarystore.LibraryRoots, authority, folder string) string {
 	for _, p := range all.Paths {
 		if p.Authority == authority && p.AuthorityPath == folder {
 			return p.RootPath

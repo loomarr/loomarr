@@ -11,10 +11,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/capability"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/routine"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
+	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -161,7 +165,7 @@ func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, art
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *operator.ChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -176,7 +180,7 @@ func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		func() time.Duration { return settings.FillerMinDuration.Get(set) }, newID, time.Now, log).
 		WithStorageGovernor(governor)
 	if imageService != nil {
-		splitter.WithSplitArtwork(fillerSplitArtworkAdapter{images: imageService})
+		splitter.WithSplitArtwork(storeadapter.NewSplitArtwork(imageService))
 	}
 	return splitter
 }
@@ -253,7 +257,7 @@ func intakeLanguages(st interface {
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
 func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
-	splitter *filler.Splitter, wake *fillerChannelWake,
+	splitter *filler.Splitter, wake *operator.ChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
 	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
@@ -388,19 +392,19 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		minClipDuration := func() time.Duration { return settings.FillerMinDuration.Get(set) }
 		// The two long-reel files apply live (#1659): each path edit builds the whole runtime
 		// afresh, and the split stage reads it once per split.
-		structureRuntime := &liveStructureRuntime{
-			paths: func() (string, string) {
+		structureRuntime := routine.NewLiveStructureRuntime(
+			func() (string, string) {
 				return settings.FillerStructureWindowAuthorityPath.Get(set), settings.FillerStructureWindowDeploymentPath.Get(set)
 			},
-			build: func(authorityPath, deploymentPath string) filler.StructureRuntime {
+			func(authorityPath, deploymentPath string) filler.StructureRuntime {
 				materialization := &filler.StructureMaterializationPolicy{}
 				rt := filler.StructureRuntime{Materialization: materialization}
 				policyVersion := "production-shadow-no-certified-slices-v1"
-				windowAuthority, authorityErr := loadWindowStructureAuthority(authorityPath)
+				windowAuthority, authorityErr := window.LoadAuthority(authorityPath)
 				if authorityErr != nil {
 					log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
 				}
-				windowDeployment, deploymentErr := loadWindowStructureDeployment(deploymentPath, windowAuthority)
+				windowDeployment, deploymentErr := openrouter.LoadDeployment(deploymentPath, windowAuthority)
 				if deploymentErr != nil {
 					log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
 				}
@@ -409,7 +413,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 				if runtimeErr != nil {
 					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
 				} else if windowRuntime != nil {
-					// ⚠ Only on success: a failed build returns a typed nil that compares non-nil.
+
 					rt.Decisioner = windowRuntime
 					materialization.WindowAuthority = windowAuthority
 					policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
@@ -417,20 +421,16 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 						"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
 						"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
 				}
-				// The observer records compatibility beside the complete-plan answer for measurement
-				// only. Missing or malformed authority leaves application proposals held; it never
-				// restores compatibility as application authority.
+
 				structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
 				if shadowErr != nil {
 					log.Error("could not construct filler structure split shadow", "err", shadowErr)
 				}
-				// Attach even when construction returned a nil typed pointer. Its observer methods
-				// fail closed, preserving the rule that an internal wiring fault cannot silently
-				// restore unattended compatibility publication.
+
 				rt.Shadow = structureShadow
 				return rt
-			},
-		}
+			})
+
 		// Build once at boot so a bad file is reported at startup.
 		structureRuntime.Current()
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id

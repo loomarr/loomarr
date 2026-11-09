@@ -8,9 +8,9 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/events"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -173,7 +173,7 @@ const (
 // the events the row is made of. The percentage between them is decoration, and dropping some of
 // it costs a slightly jumpy bar. Getting this backwards would silently hide the rejection frame
 // behind a rate limit.
-func (e *eventEmitter) FillerClipStage(p pipelinestate.ClipPipeline, c cliplibrary.StoreClip) {
+func (e *eventEmitter) FillerClipStage(p pipelinestate.ClipPipeline, c clipstore.Clip) {
 	if p.Status == pipelinestate.StatusRunning && p.Disposition == pipelinestate.DispositionRunning {
 		if !e.shouldPublishClipFrame(p.ClipHash, p.Progress) {
 			return

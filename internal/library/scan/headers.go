@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // headerBatch is how many read results are saved per write.
@@ -164,7 +164,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 // parse is recorded as failed and not tried again until its bytes change. A file the share could
 // not give back (gone, an I/O error, a timeout) stays pending and ends the stage: the share, not
 // the file, is the problem, and the next pass tries again.
-func (im *Importer) readOne(ctx context.Context, job pending) (store.LibraryFile, error) {
+func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.LibraryFile, error) {
 	row := job.row
 	if im.stale(job) {
 		return row, nil // checked again before the write, which a later import may still beat
@@ -178,7 +178,7 @@ func (im *Importer) readOne(ctx context.Context, job pending) (store.LibraryFile
 			return row, fmt.Errorf("%w: %w", errShareFault, err)
 		}
 		im.log().Debug("library scan: header not read", "err", err)
-		row.Header = store.LibraryHeaderFailed
+		row.Header = librarystore.LibraryHeaderFailed
 		return row, nil
 	}
 	im.run.Lock()
@@ -200,7 +200,7 @@ func (im *Importer) readOne(ctx context.Context, job pending) (store.LibraryFile
 	} else {
 		row.ItemID = itemID
 	}
-	row.Header = store.LibraryHeaderRead
+	row.Header = librarystore.LibraryHeaderRead
 	return row, nil
 }
 
@@ -208,7 +208,7 @@ func (im *Importer) readOne(ctx context.Context, job pending) (store.LibraryFile
 func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 	im.run.Lock()
 	defer im.run.Unlock()
-	rows := make([]store.LibraryFile, 0, len(read))
+	rows := make([]librarystore.LibraryFile, 0, len(read))
 	for _, job := range read {
 		if !im.stale(job) {
 			rows = append(rows, job.row)
@@ -223,7 +223,7 @@ func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 // touch notes the files an import wrote. It is kept for every import, not only while a stage runs:
 // a pass's reads are queued before it reaches the stage, and an import between the two still
 // makes them stale.
-func (im *Importer) touch(rows []store.LibraryFile, gen int64) {
+func (im *Importer) touch(rows []librarystore.LibraryFile, gen int64) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	if im.touched == nil {

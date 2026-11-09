@@ -34,7 +34,7 @@ const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; meas
     <div className="border-border size-10 shrink-0 rounded-md border" style={{ backgroundColor: hex }} />
     <div className="min-w-0">
       <div className="truncate text-sm font-medium">{name}</div>
-      <div className="text-2xs text-static-400 font-mono uppercase">{hex}</div>
+      <div className="text-2xs text-static-400 font-mono">{hex}</div>
     </div>
     {measure && (
       <div className="ml-auto text-right">
@@ -60,7 +60,7 @@ const isTextStep = (step: number) => step <= 15;
 // see failing.
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
   <div className="flex flex-col gap-1">
-    <div className="text-2xs text-static-400 font-mono tracking-wide uppercase">{`${accent} tints`}</div>
+    <div className="text-2xs text-static-400">{`${accent} tints`}</div>
     <div className="flex flex-wrap gap-2">
       {tintSteps.map((step) => {
         const composited = compositeTint(hex, step, tintSurface);
@@ -82,7 +82,7 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
-                <span className="text-2xs font-mono uppercase" style={{ color: textHex }}>
+                <span className="text-2xs font-mono" style={{ color: textHex }}>
                   Badge
                 </span>
               ) : (

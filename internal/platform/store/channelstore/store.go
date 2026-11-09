@@ -15,17 +15,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
-
-// ErrJobChannelGone reports a refine or re-curation job whose channel was removed
-// before the job's proposal could be approved. It is not ErrNotFound: that answer
-// means "no channel yet" and makes approval create one.
-var ErrJobChannelGone = errors.New("store: the job's channel no longer exists")
 
 // ErrChannelConflict reports that a channel write lost a uniqueness race (normally
 // number or non-empty intent binding). Approval transactions have rolled back
@@ -125,6 +121,11 @@ type Channel struct {
 // after, so a save records the same "no requester" rather than failing.
 const requesterValue = `(SELECT id FROM users WHERE id = ?)`
 
+// intentJobValue writes the job a channel came from, or NULL once that job is purged:
+// intent_ref is a foreign key cleared when its job goes (SET NULL, #2793), and a channel read
+// before the purge may be saved after.
+const intentJobValue = `(SELECT id FROM proposal_jobs WHERE id = ?)`
+
 // ChannelRequesters maps each channel made from a member's request to that person's name, read
 // from the channel's own `requested_by`. One query for every channel; a hand-made channel, or
 // one whose requester no longer exists, has no entry (#1663).
@@ -179,9 +180,9 @@ func (s *Store) GetChannelByIntentRef(ctx context.Context, intentRef string) (Ch
 // (`intent_ref`). It answers "which channel does approving this proposal change?" for the binder,
 // the auto-curate grant and the job's journey.
 //
-// ErrNotFound means no channel is bound to the job yet — a first approval creates one. A job that
-// names a channel which has since been removed returns ErrJobChannelGone instead, so a caller
-// cannot mistake it for a first approval and create a second channel.
+// ErrNotFound means no channel is bound to the job yet — a first approval creates one. A job
+// cannot outlive the channel it names (proposal_jobs.channel_id is ON DELETE CASCADE, #2793), so a
+// refine of a removed channel has no job left, which approval refuses.
 func (s *Store) GetChannelForJob(ctx context.Context, jobID string) (Channel, error) {
 	return ChannelForJobIn(ctx, s, s.h, jobID)
 }
@@ -192,16 +193,13 @@ func (s *Store) GetChannelForJob(ctx context.Context, jobID string) (Channel, er
 func ChannelForJobIn(ctx context.Context, s *Store, q DB, jobID string) (Channel, error) {
 	ph := s.h.Rebind
 	var channelID string
-	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).Scan(&channelID)
+	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).
+		Scan((*storedb.OptionalID)(&channelID))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
 	}
 	if channelID != "" {
-		ch, err := ScanChannel(q.QueryRowContext(ctx, ph(Select(s)+` WHERE id = ?`), channelID))
-		if errors.Is(err, storedb.ErrNotFound) {
-			return Channel{}, fmt.Errorf("%w: job %s names channel %s", ErrJobChannelGone, jobID, channelID)
-		}
-		return ch, err
+		return ScanChannel(q.QueryRowContext(ctx, ph(Select(s)+` WHERE id = ?`), channelID))
 	}
 	return ScanChannel(q.QueryRowContext(ctx, ph(Select(s)+` WHERE intent_ref = ?`), jobID))
 }
@@ -288,7 +286,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
+	args := []any{storedb.OptionalID(ch.IntentRef), ch.FromRequest, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
@@ -306,10 +304,10 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		}
 		query :=
 			`INSERT INTO channels
-			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
+			   (id, intent_ref, from_request, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -331,7 +329,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	expected := ch.Revision
 	query :=
 		`UPDATE channels SET
-		   intent_ref=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
+		   intent_ref=` + intentJobValue + `, from_request=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
@@ -501,12 +499,25 @@ func (s *Store) ClaimDueChannels(ctx context.Context, now time.Time, lease time.
 
 // Columns is the column list ScanChannel reads, in its order; lineup is the expression that
 // rebuilds the lineup (SQLiteLineup, PostgresLineup). Every channel read, the claims' RETURNING
-// included, goes through it, so none can miss the lineup. The Postgres claim spells the rest with
-// its `c.` alias (postgres.go) and must stay in step.
-func Columns(lineup string) string {
-	return `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
-		tunarr_id, status, shuffle_seed, ` + lineup + `, desired_json, policy_json, broadcast_codec,
-		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
+// included, goes through it, so none can miss a column.
+func Columns(lineup string) string { return ColumnsAs("", lineup) }
+
+// ColumnsAs is Columns with each column qualified by alias (such as "c"), for a statement that
+// joins channels to another table with an id of its own: the Postgres claim (postgres.go).
+func ColumnsAs(alias, lineup string) string {
+	head := []string{"id", "intent_ref", "from_request", "intent_json", "requested_by", "name", "number",
+		"grp", "logo", "strategy", "tunarr_id", "status", "shuffle_seed"}
+	tail := []string{"desired_json", "policy_json", "broadcast_codec", "playout_anchor", "reconcile_deadline",
+		"updated_at", "revision", "created_at"}
+	qualify := func(cols []string) string {
+		if alias != "" {
+			for i, c := range cols {
+				cols[i] = alias + "." + c
+			}
+		}
+		return strings.Join(cols, ", ")
+	}
+	return qualify(head) + ", " + lineup + ", " + qualify(tail)
 }
 
 // SQLiteLineup and PostgresLineup rebuild a channel's lineup, in order, as the JSON list
@@ -601,7 +612,7 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, (*storedb.OptionalID)(&ch.IntentRef), &ch.FromRequest, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

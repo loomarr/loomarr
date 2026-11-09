@@ -9,6 +9,8 @@ const AUTO_SENTINEL = "auto";
 // audioOptions builds the Audio choices from the REAL audio tracks of what's airing (§9.1, V46) —
 // never a hardcoded list. Always leads with "Auto", then one entry per distinct track language the
 // airing media carries. Labels come from Intl (languageLabel), not a hand-written language table.
+// A track is named by its language and never by its raw title: an encoder's handler name ("root",
+// "SoundHandler") is not viewer copy (#2776).
 const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
   const seen = new Set<string>();
   const opts: { value: string; label: string }[] = [{ value: AUTO_SENTINEL, label: "Auto (default)" }];
@@ -16,7 +18,7 @@ const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] =>
     const lang = t.language ?? "";
     if (!lang || seen.has(lang)) continue;
     seen.add(lang);
-    opts.push({ value: lang, label: t.title ? `${languageLabel(lang)} · ${t.title}` : languageLabel(lang) });
+    opts.push({ value: lang, label: languageLabel(lang) });
   }
   return opts;
 };

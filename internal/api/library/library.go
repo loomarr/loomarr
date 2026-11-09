@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Settings → Library (#2151 decisions 6 and 29): the folders Loomarr reads media from, the path
@@ -20,34 +21,34 @@ import (
 // LibraryRootService discovers, checks and records scan roots, and runs the scanner over them
 // (scan.Library).
 type LibraryRootService interface {
-	List(ctx context.Context) (store.LibraryRoots, error)
-	Discover(ctx context.Context) (store.LibraryRoots, []scan.SourceResult, error)
+	List(ctx context.Context) (librarystore.LibraryRoots, error)
+	Discover(ctx context.Context) (librarystore.LibraryRoots, []scan.SourceResult, error)
 	Add(ctx context.Context, path string) error
 	SetInUse(ctx context.Context, path string, inUse bool) error
 	SetMapping(ctx context.Context, authority, authorityPath, local string) error
 
 	Enabled() bool
 	Progress() scan.Progress
-	Counts(ctx context.Context) (store.LibraryFileCounts, error)
+	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
 	Rescan() error
 	ConfirmRemovals(ctx context.Context, root string) error
 
-	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
+	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
 	Item(ctx context.Context, id string) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
 	RemoveExtraCopy(ctx context.Context, id, path string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
-	Problems(ctx context.Context) ([]store.LibraryItemSummary, error)
+	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
-	Link(ctx context.Context, itemID string, id store.LibraryID) error
+	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 	// Episode orders (#2151 decision 53).
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
-	ChooseOrder(ctx context.Context, seriesID string, choice store.LibraryOrderChoice, orderID string) error
+	ChooseOrder(ctx context.Context, seriesID string, choice librarystore.LibraryOrderChoice, orderID string) error
 	// Collections (#2151 step 12, decision 28).
 	Collections(ctx context.Context) ([]scan.Collection, error)
 	Collection(ctx context.Context, id string) (scan.Collection, error)
@@ -155,7 +156,7 @@ type libraryRootsOutput struct {
 	Body libraryRootsBody
 }
 
-func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libraryRootsOutput {
+func libraryRootsView(all librarystore.LibraryRoots, results []scan.SourceResult) *libraryRootsOutput {
 	out := &libraryRootsOutput{Body: libraryRootsBody{
 		Roots: make([]libraryRootDTO, 0, len(all.Roots)), PathMap: make([]libraryPathMappingDTO, 0, len(all.Paths)),
 	}}
@@ -358,7 +359,7 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 }
 
 // heldView groups held counts by folder, in folder order.
-func heldView(counts []store.LibraryHeldCount) []libraryHeldDTO {
+func heldView(counts []librarystore.LibraryHeldCount) []libraryHeldDTO {
 	out := []libraryHeldDTO{}
 	for _, c := range counts {
 		if len(out) == 0 || out[len(out)-1].Path != c.Root {

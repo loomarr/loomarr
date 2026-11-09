@@ -33,7 +33,7 @@ func seedChannelWithLineup(t *testing.T, st store.Store, id, jobID string, lineu
 	t.Helper()
 	ch := channelstore.Channel{}
 	ch.ID = id
-	ch.IntentRef = jobID
+	ch.IntentRef, ch.FromRequest = jobID, jobID != ""
 	ch.IntentJSON = ownIntent(t, st, jobID)
 	ch.Name = "Ch " + id
 	ch.Number = 41

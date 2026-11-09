@@ -102,7 +102,7 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 				{Name: "Pen Name", Role: "writer"},
 				{Name: "", Role: "actor"},
 			}
-			it.IDs = []LibraryID{{"tmdb", "90000701"}, {"tvdb", "90000702"}}
+			it.IDs = []LibraryID{{Namespace: "tmdb", Value: "90000701"}, {Namespace: "tvdb", Value: "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
 			if it.Name == "Rated" {

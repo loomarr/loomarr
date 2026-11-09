@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // ItemMetadata answers a guide's and a lineup's item metadata from the Library's own tables
 // (#2151 step 16). An id that is no library item is absent: the media server is never asked.
 type ItemMetadata struct {
-	Facts store.LibraryItemFactsReader
+	Facts librarystore.LibraryItemFactsReader
 }
 
 // ItemMetadataByID keeps library.Client's contract: missing ids are absent, and a partial answer

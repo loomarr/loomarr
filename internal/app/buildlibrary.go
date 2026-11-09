@@ -27,24 +27,23 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
 type libraryStore interface {
-	store.LibraryRootStore
-	store.LibraryFileStore
-	store.LibraryItemStore
+	librarystore.LibraryRootStore
+	librarystore.LibraryFileStore
+	librarystore.LibraryItemStore
 	store.LibraryProjection
-	store.LibraryCatalogStore
-	store.LibraryNeedsStore
-	store.LibraryEpisodeOrderStore
-	store.LibraryCollectionStore
-	store.LibraryPeopleStore
-	store.LibraryIDMapStore
-	store.LibraryReferenceStore
-	store.LibraryItemFactsReader
-	store.LibraryTitleReader
+	librarystore.LibraryCatalogStore
+	librarystore.LibraryNeedsStore
+	librarystore.LibraryEpisodeOrderStore
+	librarystore.LibraryCollectionStore
+	librarystore.LibraryPeopleStore
+	librarystore.LibraryItemFactsReader
+	librarystore.LibraryTitleReader
 	store.SettingStore
 	inventory.Repository
 	artRefs
@@ -185,14 +184,6 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
-	if deps.lib != nil {
-		mapper := &scan.IDMapper{Store: st, ServerFiles: serverFiles(deps.lib), Enabled: im.Enabled, Log: deps.log,
-			References: &scan.ReferenceRewriter{
-				Store: st, Collections: serverCollections(deps.lib), Members: serverCollectionMembers(deps.lib),
-				Flavor: func() string { return string(deps.lib.Snapshot().Connection().Flavor) }, Log: deps.log,
-			}}
-		deps.owner.goRunAfterBuild(mapper.Run)
-	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
@@ -220,50 +211,6 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		deps.owner.goRunAfterBuild(matcher.Run)
 	}
 	return libraryServices{roots: lib, hooks: hooks}
-}
-
-// serverFiles lists the media server's catalog for the cutover's id map, or says none is connected.
-func serverFiles(lib *library.Client) func(context.Context) ([]library.ServerFile, error) {
-	return func(ctx context.Context) ([]library.ServerFile, error) {
-		if _, err := lib.Snapshot().Connection().Validate(); err != nil {
-			return nil, scan.ErrNoServerCatalog
-		}
-		return lib.ServerFiles(ctx)
-	}
-}
-
-// serverCollections lists the media server's collections for the cutover's import.
-func serverCollections(lib *library.Client) func(context.Context) ([]scan.ServerCollection, error) {
-	return func(ctx context.Context) ([]scan.ServerCollection, error) {
-		lib := lib.Snapshot()
-		if _, err := lib.Connection().Validate(); err != nil {
-			return nil, scan.ErrNoServerCatalog
-		}
-		colls, err := lib.Collections(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]scan.ServerCollection, 0, len(colls))
-		for _, c := range colls {
-			out = append(out, scan.ServerCollection{ID: c.ID, Name: c.Name, FromTMDB: c.TMDBID != ""})
-		}
-		return out, nil
-	}
-}
-
-// serverCollectionMembers lists one media-server collection's titles by their media-server ids.
-func serverCollectionMembers(lib *library.Client) func(context.Context, string) ([]string, error) {
-	return func(ctx context.Context, id string) ([]string, error) {
-		members, err := lib.Snapshot().CollectionMembers(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]string, 0, len(members))
-		for _, m := range members {
-			out = append(out, m.LibraryItemID)
-		}
-		return out, nil
-	}
 }
 
 // tmdbSearcher is TMDB's title search, as Needs you searches it.

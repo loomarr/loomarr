@@ -75,6 +75,9 @@ const HomePage = () => {
               layout={layout}
               needs={needs}
               nowMs={nowMs}
+              {...(isAdmin && viewingBody?.scope === "household"
+                ? { viewers: viewingBody.viewers ?? [] }
+                : {})}
             />
           )}
           {hasLife && layout && viewingBody && (

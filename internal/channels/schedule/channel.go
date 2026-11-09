@@ -92,13 +92,16 @@ func (s ChannelStatus) Reconcilable() bool {
 // Tunarr projection (Tunarr ignores client-supplied ids), so internal channels and
 // channels not yet projected to Tunarr leave it empty.
 type Channel struct {
-	ID        string   // Loomarr id (uuid-like, assigned on create)
-	IntentRef string   // proposal/intent this channel came from (§8); "" for a hand-made channel
-	Name      string   // display name
-	Number    int      // channel number (guide position)
-	Group     string   // channel grouping in the guide
-	Logo      string   // optional channel icon URL
-	Strategy  Strategy // ordering strategy
+	ID        string // Loomarr id (uuid-like, assigned on create)
+	IntentRef string // the suggestion job this channel came from (§8), while that job is kept; "" otherwise
+	// FromRequest: made from a member's request, not by hand. It outlives IntentRef, whose job
+	// is purged once settled, and is what refine and auto-curate ask.
+	FromRequest bool
+	Name        string   // display name
+	Number      int      // channel number (guide position)
+	Group       string   // channel grouping in the guide
+	Logo        string   // optional channel icon URL
+	Strategy    Strategy // ordering strategy
 	// BreaksPerHour is the commercial-break density (§10): how many ad breaks per
 	// hour of program runtime the scheduler interleaves between programs (0 = none).
 	// Sourced from FILLER_BREAKS_PER_HOUR at channel build; empty breaks fill with

@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -24,8 +24,8 @@ type libraryLister interface {
 // libraryIdeaTitles lists what channel ideas draw from: the Library's movies and series with a
 // file to play, with their year and genres (#2151 step 16). The media server is never asked.
 type libraryIdeaTitles struct {
-	titles store.LibraryTitleReader
-	facts  store.LibraryItemFactsReader
+	titles librarystore.LibraryTitleReader
+	facts  librarystore.LibraryItemFactsReader
 }
 
 func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult, error) {

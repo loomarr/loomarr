@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -100,7 +100,7 @@ func TestPipeline_SplitReviewResumeRequeuesPendingDespiteObservedEmptyGroups(t *
 
 	st := newPipeMemStore()
 	for _, hash := range []string{observed.ClipHash, pending.ClipHash} {
-		st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: hash + ".mp4"}})
+		st.put(clipstore.Clip{Clip: clips.Clip{Hash: hash, Path: hash + ".mp4"}})
 		st.rows[hash] = pipelinestate.ClipPipeline{
 			ClipHash: hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReview,
 			Stages: []pipelinestate.StageRecord{{Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone}},

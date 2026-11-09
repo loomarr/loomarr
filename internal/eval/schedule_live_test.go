@@ -14,7 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -326,12 +326,12 @@ func simpsonsHolidayEpisodes() []schedule.ResolvedProgram {
 
 func TestRunnerLiveScheduleMaterializerUsesLibraryAndTMDBTestServers(t *testing.T) {
 	media := newFakeLibrary()
-	media.facts = map[string]store.LibraryItemFacts{
+	media.facts = map[string]librarystore.LibraryItemFacts{
 		"movie-raiders": {RuntimeMs: 115 * 60 * 1000},
 		"movie-temple":  {RuntimeMs: 118 * 60 * 1000},
 		"movie-crusade": {RuntimeMs: 127 * 60 * 1000},
 	}
-	media.episodes["show-simpsons"] = []store.LibraryEpisode{
+	media.episodes["show-simpsons"] = []librarystore.LibraryEpisode{
 		{ItemID: "ordinary", Name: "A Regular Tuesday", DurationMs: 22 * 60 * 1000, Season: 2, Episode: 1},
 		{ItemID: "xmas", Name: "A Springfield Christmas", DurationMs: 22 * 60 * 1000,
 			Season: 2, Episode: 2, Year: 1990, Rating: "TV-PG", Score: 8.4,
@@ -647,7 +647,7 @@ func TestPrepareLiveScheduleCertificationRejectsSeriesLibraryIdentitySubstitutio
 func TestPrepareLiveScheduleCertificationRejectsMovieLibraryIdentitySubstitution(t *testing.T) {
 	media, tmdbServer, snapshot := liveScheduleEvidenceFixture(t)
 	snapshot.Franchise.Movies[0].LibraryItemID = "unrelated-movie"
-	media.facts["unrelated-movie"] = store.LibraryItemFacts{RuntimeMs: 115 * 60 * 1000}
+	media.facts["unrelated-movie"] = librarystore.LibraryItemFacts{RuntimeMs: 115 * 60 * 1000}
 
 	_, err := PrepareLiveScheduleCertification(context.Background(), snapshot,
 		media,
@@ -661,13 +661,13 @@ func TestPrepareLiveScheduleCertificationRejectsMovieLibraryIdentitySubstitution
 func liveScheduleEvidenceFixture(t *testing.T) (*fakeLibrary, *testkit.TMDB, ScheduleEvidenceSnapshot) {
 	t.Helper()
 	media := newFakeLibrary()
-	media.titles = []store.LibraryTitle{
-		{ID: "show-simpsons", Name: "The Simpsons", Kind: "series", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "456"}}},
-		{ID: "raiders", Name: "Raiders of the Lost Ark", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "85"}}},
-		{ID: "temple", Name: "Indiana Jones and the Temple of Doom", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "87"}}},
-		{ID: "crusade", Name: "Indiana Jones and the Last Crusade", Kind: "movie", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "89"}}},
+	media.titles = []librarystore.LibraryTitle{
+		{ID: "show-simpsons", Name: "The Simpsons", Kind: "series", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "456"}}},
+		{ID: "raiders", Name: "Raiders of the Lost Ark", Kind: "movie", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "85"}}},
+		{ID: "temple", Name: "Indiana Jones and the Temple of Doom", Kind: "movie", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "87"}}},
+		{ID: "crusade", Name: "Indiana Jones and the Last Crusade", Kind: "movie", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "89"}}},
 	}
-	episodeRows := make([]store.LibraryEpisode, 0, 8)
+	episodeRows := make([]librarystore.LibraryEpisode, 0, 8)
 	evidence := make([]ScheduleEpisodeEvidence, 0, 8)
 	for i, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
 		title := fmt.Sprintf("Verified Episode %d", i+1)
@@ -679,7 +679,7 @@ func liveScheduleEvidenceFixture(t *testing.T) (*fakeLibrary, *testkit.TMDB, Sch
 			overview = "The Simpsons celebrate Christmas together."
 		}
 		id := fmt.Sprintf("verified-s01e%02d", i+1)
-		episodeRows = append(episodeRows, store.LibraryEpisode{
+		episodeRows = append(episodeRows, librarystore.LibraryEpisode{
 			ItemID: id, Name: title, DurationMs: 22 * 60 * 1000,
 			Season: 1, Episode: i + 1, Year: 1989 + i/4, Score: rating, Overview: overview,
 		})
@@ -689,7 +689,7 @@ func liveScheduleEvidenceFixture(t *testing.T) (*fakeLibrary, *testkit.TMDB, Sch
 		})
 	}
 	media.episodes["show-simpsons"] = episodeRows
-	media.facts = map[string]store.LibraryItemFacts{
+	media.facts = map[string]librarystore.LibraryItemFacts{
 		"raiders": {RuntimeMs: 115 * 60 * 1000},
 		"temple":  {RuntimeMs: 118 * 60 * 1000},
 		"crusade": {RuntimeMs: 127 * 60 * 1000},
