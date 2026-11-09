@@ -87,22 +87,31 @@ type LibrarySource struct {
 }
 
 // LibraryCredit is one person credited on a title. Role is what they did (actor, director, writer,
-// creator); Character an actor's part. A person with a TMDB id is one library_people row wherever
-// they are credited; one without is kept by name, unlinked (decision 49).
+// creator); Character an actor's part. A person with a catalog id is one library_people row
+// wherever they are credited; one without is kept by name, unlinked (decision 49).
 type LibraryCredit struct {
 	Name, Role, Character string
-	TMDB                  string
+	// ID is the person's id in a catalog of people; zero when unlinked.
+	ID LibraryID
 	// Photo is an http(s) URL of their headshot.
 	Photo string
 }
 
-// PersonID is the library_people row the credit names: "tmdb:<id>" when linked, else
-// "name:<name>".
+// PersonID is the library_people row the credit names: "<namespace>:<id>" when linked, such as
+// "tmdb:<id>", else "name:<name>".
 func (c LibraryCredit) PersonID() string {
-	if c.TMDB != "" {
-		return "tmdb:" + c.TMDB
+	if id := c.Linked(); id != (LibraryID{}) {
+		return id.Namespace + ":" + id.Value
 	}
 	return "name:" + c.Name
+}
+
+// Linked is the person's catalog id when it names both a catalog and an id; zero otherwise.
+func (c LibraryCredit) Linked() LibraryID {
+	if c.ID.Namespace == "" || c.ID.Value == "" {
+		return LibraryID{}
+	}
+	return c.ID
 }
 
 // LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.

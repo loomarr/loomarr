@@ -672,16 +672,17 @@ Everyone credited on a title in the library. A person with a TMDB id is one row 
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `id` | The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name. | `TEXT` · key |
+| `id` | The person: <namespace>:<id> for a person a catalog knows (tmdb:<id> for TMDB), name:<name> for one kept by name. | `TEXT` · key |
 | `name` | Their name. | `TEXT` |
-| `tmdb_id` | Their TMDB person id; empty when unlinked. | `TEXT` |
+| `external_id` | Their id in that catalog; empty when unlinked. | `TEXT` |
 | `photo` | The web address of their headshot; empty when no source had one. | `TEXT` |
 | `filmography_at_ms` | When their filmography was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `filmography_retry_at_ms` | After a failed filmography fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
+| `namespace` | The catalog that knows them, such as tmdb; empty when unlinked. | `TEXT` |
 
 ### library_filmography
 
-The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+The movies and series of the people who directed or created a title, are among a title's ten top-billed actors, or are credited on three or more titles, as the catalog that knows them lists them, newest first. Fetched when a person first qualifies and monthly after; deleted with the person. A title the library owns is found by its namespace and id in library_ids, with library_items.kind matching kind.
 
 **Kept:** Replaced whenever the person's filmography is fetched again; goes with its person (deleted once no title credits them).
 
@@ -690,11 +691,12 @@ The movies and series of the people who directed or created a title, are among a
 | `person_id` | The person (a library_people id). | `TEXT` · key · → `library_people.id` |
 | `position` | Where the title comes in their filmography, newest first, from 0. | `INTEGER` · key |
 | `kind` | movie or series. | `TEXT` |
-| `tmdb_id` | The title's TMDB id. | `TEXT` |
-| `title` | The title's name, in the household's language when TMDB has it. | `TEXT` |
+| `external_id` | The title's id in that catalog. | `TEXT` |
+| `title` | The title's name, in the household's language when the catalog has it. | `TEXT` |
 | `year` | The year it came out; 0 when unknown. | `INTEGER` |
 | `role` | What they did on it, one of actor, creator, director or writer. | `TEXT` |
 | `character_name` | An actor's part; empty for crew or when unknown. | `TEXT` |
+| `namespace` | The catalog the title's id is from, such as tmdb. | `TEXT` |
 
 ### library_id_map
 

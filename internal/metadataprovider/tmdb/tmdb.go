@@ -268,7 +268,7 @@ func people(credits wireCredits, creators []wireCrew) []mp.Person {
 		seen[key] = true
 		p := mp.Person{Name: name, Role: role, Character: strings.TrimSpace(character), Photo: tmdbclient.ImageURL(profile)}
 		if id > 0 {
-			p.TMDB = strconv.Itoa(id)
+			p.ID = mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(id)}
 		}
 		out = append(out, p)
 	}
@@ -422,10 +422,13 @@ var selfParts = map[string]bool{"self": true, "himself": true, "herself": true, 
 // Filmography is a person's movies and series by their TMDB person id (#2151 decision 50): every
 // part they played, other than appearing as themselves, and every title they created, directed
 // or wrote, newest first, at most maxFilmography.
-func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCredit, error) {
-	id, err := strconv.Atoi(strings.TrimSpace(person))
+func (p *Provider) Filmography(ctx context.Context, person mp.ExternalID) ([]mp.FilmCredit, error) {
+	if person.Namespace != mp.NamespaceTMDB {
+		return nil, fmt.Errorf("tmdb: person by %s: %w", person.Namespace, mp.ErrUnsupported)
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(person.Value))
 	if err != nil || id <= 0 {
-		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person, mp.ErrUnsupported)
+		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person.Value, mp.ErrUnsupported)
 	}
 	loc, err := p.resolveLocale()
 	if err != nil {
@@ -450,7 +453,7 @@ func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCre
 			return
 		}
 		seen[key] = true
-		out = append(out, mp.FilmCredit{Kind: kind, TMDB: strconv.Itoa(c.ID), Title: title,
+		out = append(out, mp.FilmCredit{Kind: kind, ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(c.ID)}, Title: title,
 			Year: yearOf(firstNonEmpty(c.ReleaseDate, c.FirstAirDate)), Role: role, Character: character})
 	}
 	for _, c := range credits.Cast {

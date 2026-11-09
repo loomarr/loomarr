@@ -90,7 +90,7 @@ func TestParse_Movie(t *testing.T) {
 			// The cast in billing order, the actor with none last; then the crew.
 			People: []mp.Person{
 				{Name: "Invented Actor", Role: mp.PersonActor, Character: "The Clockmaker"},
-				{Name: "Invented Costar", Role: mp.PersonActor, Character: "The Gardener", TMDB: "90000802",
+				{Name: "Invented Costar", Role: mp.PersonActor, Character: "The Gardener", ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000802"},
 					Photo: "https://artwork.example/person/90000802.jpg"},
 				{Name: "Invented Extra", Role: mp.PersonActor, Character: "Passer-by"},
 				{Name: "Invented Director", Role: mp.PersonDirector},
