@@ -1,4 +1,6 @@
 import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
+import { CHANNEL_IDENT_WASH_PERCENT } from "@loomarr/design-system";
+import { onTintVar } from "@loomarr/design-system/web-theme";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentProps } from "./channel-ident.type";
 
@@ -15,7 +17,6 @@ import type { ChannelIdentProps } from "./channel-ident.type";
 // The letters and the hue come from `@loomarr/core/guide` (#1659, N8), so the shared guide grid
 // and native draw the same mark. Colour is keyed on the channel NUMBER, so renaming a channel
 // does not change how the rail looks.
-const colorFor = (num: number) => `var(--color-${channelIdentHue(num)})`;
 
 const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdentProps) => {
   if (logo) {
@@ -32,25 +33,25 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
     );
   }
 
-  const color = colorFor(number);
+  const hue = channelIdentHue(number);
+  const color = `var(--color-${hue})`;
   return (
     <div
       aria-hidden="true"
       style={{
         width: size,
         height: size,
-        // color-mix keeps the tint tied to the same variable as the text, so a palette change
-        // moves both together rather than leaving a mismatched pair.
-        // ⚠ 6% is the most tint the hue's own letters keep AA (4.5:1) over: the pink (suggest)
-        // monogram fell to 4.24 at 14%, and to 4.49 even at 8%. The old hatch was a background
-        // image, which axe cannot measure, so it never checked this.
-        backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
+        // The 14% wash of the hue (#3011). The letters take the hue's on-tint stop (its `-300`
+        // where the full hue fails AA on its own wash), which is what lets the wash be this strong:
+        // the full pink and red fell below 4.5:1 here (#2953). The design system's contrast test
+        // proves every hue on the canvas and a raised card.
+        backgroundColor: `color-mix(in srgb, ${color} ${CHANNEL_IDENT_WASH_PERCENT}%, transparent)`,
         borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
       }}
       className={cn("flex shrink-0 items-center justify-center rounded-[5px] border", className)}
     >
       <span
-        style={{ color, fontSize: Math.round(size * 0.37) }}
+        style={{ color: onTintVar(hue), fontSize: Math.round(size * 0.37) }}
         className="font-mono font-semibold tracking-[0.02em]"
       >
         {monogramOf(name)}

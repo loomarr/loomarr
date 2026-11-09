@@ -71,7 +71,11 @@ const layout = {
 // Tamagui draws a token colour as a hashed atomic class; read the declarations it carries.
 const amberBorder = /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/;
 const amberText = /(?<![-\w])color:var\(--actionPrimary\)/;
+// Harbor Lights' monogram ident is lettered in its hue's text stop, and that hue is the brand amber
+// (#3011): identity, not focus, so the decorative tile is not counted.
+const inIdent = (node: Element) => node.closest('[aria-hidden="true"]')?.textContent === "HL";
 const isAmber = (node: Element) => {
+  if (inIdent(node)) return false;
   const styles = declarationsOfElement(node);
   return amberBorder.test(styles) || amberText.test(styles);
 };

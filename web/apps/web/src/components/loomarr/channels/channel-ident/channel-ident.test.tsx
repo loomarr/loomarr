@@ -38,6 +38,16 @@ describe("ChannelIdent", () => {
     expect(mark.style.backgroundImage).toBe("");
   });
 
+  // #3011: the 14% wash, with the letters in the hue's on-tint stop rather than the full hue.
+  it("washes the tile at 14% and letters it in the hue's on-tint stop", () => {
+    render(<ChannelIdent name="Night Owl" number={1} />);
+    const letters = screen.getByText("NO");
+    expect(letters.style.color).toBe("var(--color-suggest-300)");
+    expect((letters.parentElement as HTMLElement).style.backgroundColor).toContain(
+      "var(--color-suggest) 14%",
+    );
+  });
+
   it("renders the logo instead when one exists", () => {
     render(<ChannelIdent name="Space Relay Classics" number={2} logo="/icon.png" />);
     expect(screen.getByRole("img", { name: /Space Relay Classics logo/ })).toBeInTheDocument();

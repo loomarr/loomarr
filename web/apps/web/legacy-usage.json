@@ -50,7 +50,7 @@
       "tailwindClasses": 79
     },
     "src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 9
     },
     "src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
       "tailwindClasses": 36
