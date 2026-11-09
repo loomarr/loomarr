@@ -20,6 +20,8 @@ export type {
 } from "./player-chrome.type";
 export type { PlayerCoverProps } from "./player-cover";
 export { PlayerCover } from "./player-cover";
+export type { PlayerDetailRow, PlayerDetailsProps } from "./player-details";
+export { PlayerDetails, PlayerDetailsPanel } from "./player-details";
 export type { PlayerInfoProps } from "./player-info";
 export { PlayerInfo } from "./player-info";
 export type { PlayerMoreProps } from "./player-more";

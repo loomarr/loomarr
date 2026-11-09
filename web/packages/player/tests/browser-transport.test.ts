@@ -254,7 +254,12 @@ describe("browser transport", () => {
       const active = await loaded(0, "ch-1");
       active.levels = [
         { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
-        { attrs: { CODECS: "avc1.64001f,mp4a.40.2" }, height: 720, videoRange: "SDR" },
+        {
+          attrs: { CODECS: "avc1.64001f,mp4a.40.2", "FRAME-RATE": "29.97" },
+          bitrate: 2_800_000,
+          height: 720,
+          videoRange: "SDR",
+        },
       ];
 
       handler(active, "manifestParsed")();
@@ -262,6 +267,14 @@ describe("browser transport", () => {
       expect(active.loadLevel).toBe(1);
       expect(onLadder).toHaveBeenLastCalledWith({
         height: 720,
+        // The level on air as its master declared it, for Playback details.
+        onAir: {
+          bitrate: 2_800_000,
+          codecs: "avc1.64001f,mp4a.40.2",
+          frameRate: 29.97,
+          height: 720,
+          videoRange: "SDR",
+        },
         rungs: [
           { height: 1080, index: 0 },
           { height: 720, index: 1 },

@@ -93,7 +93,19 @@ const createHlsController = (HlsController: typeof Hls): Hls => new HlsControlle
 const canPlayMime = (mime: string) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime);
 
 const levelsOf = (hls: Hls): LiveLevel[] =>
-  hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange }));
+  hls.levels.map((l) => ({
+    bitrate: l.bitrate,
+    codecs: l.attrs.CODECS,
+    frameRate: Number.parseFloat(l.attrs["FRAME-RATE"] ?? "") || undefined,
+    height: l.height,
+    videoRange: l.videoRange,
+  }));
+
+// The level on air as the ladder carries it: its height for Settings, the whole level for Playback details.
+const onAirOf = (levels: readonly LiveLevel[], index: number) => {
+  const level = levels[index];
+  return level ? { height: level.height, onAir: level } : {};
+};
 
 /**
  * The reason a channel's playlist request was refused, when the server decided it (a 5xx problem
@@ -496,8 +508,7 @@ const createBrowserTransport = ({
         const level = selectQualityLevel(levels, canPlayMime, quality);
         hls.startLevel = level;
         hls.loadLevel = level;
-        if (current())
-          onLadder?.({ height: levels[level]?.height, rungs: playableRungs(levels, canPlayMime) });
+        if (current()) onLadder?.({ ...onAirOf(levels, level), rungs: playableRungs(levels, canPlayMime) });
         joinTransferredLiveSync();
         playReplacement();
         manifestArrived();
@@ -506,7 +517,7 @@ const createBrowserTransport = ({
       const onLevelSwitched = (_: unknown, data: { level: number }) => {
         if (!current()) return;
         const levels = levelsOf(hls);
-        onLadder?.({ height: levels[data.level]?.height, rungs: playableRungs(levels, canPlayMime) });
+        onLadder?.({ ...onAirOf(levels, data.level), rungs: playableRungs(levels, canPlayMime) });
       };
       const onFragmentBuffered = () => {
         armFirstFrameWatch();

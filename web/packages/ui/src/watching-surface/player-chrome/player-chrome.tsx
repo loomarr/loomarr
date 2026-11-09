@@ -29,6 +29,7 @@ const ChromeBody = memo(
     live,
     onGoLive,
     readout,
+    panel,
     sheet,
     top,
     visible,
@@ -126,6 +127,7 @@ const ChromeBody = memo(
             top={controls ? topRowAt + KEY + (touch ? 16 : 24) : topRowAt}
           />
         ) : null}
+        {panel}
         {sheet ? (
           <>
             <View

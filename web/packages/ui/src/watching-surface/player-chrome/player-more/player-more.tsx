@@ -29,6 +29,10 @@ interface PlayerMoreProps {
   last?: { number: string; onPress: () => void };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
+  /** Playback details: the technical panel (§9.5). */
+  playbackDetails?: { onPress: () => void };
+  /** Picture in picture, where the browser offers it. */
+  pictureInPicture?: { onPress: () => void };
   /** The schedule's blocks and window; omitted while it hasn't loaded. */
   schedule?: {
     onSeek?: (wallClockMs: number) => void;
@@ -100,6 +104,8 @@ const PlayerMore = ({
   info,
   last,
   picture,
+  pictureInPicture,
+  playbackDetails,
   schedule,
   startOver,
 }: PlayerMoreProps) => (
@@ -155,6 +161,17 @@ const PlayerMore = ({
           icon="settings"
           label="Picture"
           onPress={picture.onPress}
+        />
+      ) : null}
+      {playbackDetails ? (
+        <MoreRow density={density} icon="info" label="Playback details" onPress={playbackDetails.onPress} />
+      ) : null}
+      {pictureInPicture ? (
+        <MoreRow
+          density={density}
+          icon="external"
+          label="Picture in picture"
+          onPress={pictureInPicture.onPress}
         />
       ) : null}
       {channels ? (

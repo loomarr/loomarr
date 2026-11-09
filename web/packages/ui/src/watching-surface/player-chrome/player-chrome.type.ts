@@ -122,6 +122,8 @@ interface PlayerChromeProps {
   onGoLive: () => void;
   keys: PlayerKeysProps;
   top: PlayerTopRowProps;
+  /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
+  panel?: ReactNode;
   /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
   readout?: { digits: string; missed?: boolean };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
