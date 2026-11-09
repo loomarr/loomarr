@@ -49,11 +49,6 @@ type Invalidations interface {
 	NotifyChannel() string
 }
 
-// FeedbackChannelScope is the discovery_feedback scope of a channel's own choices; deleting a
-// channel deletes them in the same transaction. It must equal the store's FeedbackChannel, which a
-// store test pins.
-const FeedbackChannelScope = "channel"
-
 // Store is the channel persistence over one storedb.Handle.
 type Store struct {
 	h        storedb.Handle
@@ -124,14 +119,19 @@ type Channel struct {
 	CreatedAt time.Time
 }
 
+// requesterValue writes a channel's requester: the member, or NULL when no member has that id.
+// requested_by is a foreign key whose person going leaves the channel with no requester (SET
+// NULL, #2793); a request outlives its author, and a channel read before they went may be saved
+// after, so a save records the same "no requester" rather than failing.
+const requesterValue = `(SELECT id FROM users WHERE id = ?)`
+
 // ChannelRequesters maps each channel made from a member's request to that person's name, read
 // from the channel's own `requested_by`. One query for every channel; a hand-made channel, or
 // one whose requester no longer exists, has no entry (#1663).
 func (s *Store) ChannelRequesters(ctx context.Context) (map[string]string, error) {
 	rows, err := s.h.QueryContext(ctx,
 		`SELECT c.id, u.name FROM channels c
-		 JOIN users u ON u.id = c.requested_by
-		 WHERE c.requested_by <> ''`)
+		 JOIN users u ON u.id = c.requested_by`)
 	if err != nil {
 		return nil, fmt.Errorf("channel requesters: %w", err)
 	}
@@ -288,7 +288,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
+	args := []any{ch.IntentRef, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
@@ -309,7 +309,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -331,7 +331,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	expected := ch.Revision
 	query :=
 		`UPDATE channels SET
-		   intent_ref=?, intent_json=?, requested_by=?, name=?, number=?, grp=?, logo=?, strategy=?,
+		   intent_ref=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
@@ -472,11 +472,7 @@ func (s *Store) DeleteChannel(ctx context.Context, id string, expectedRevision i
 			return channelRevisionMiss(ctx, tx, s.h.Rebind, id, expectedRevision)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM discovery_feedback WHERE scope = ? AND scope_id = ?`),
-		FeedbackChannelScope, id); err != nil {
-		return fmt.Errorf("delete channel %s feedback: %w", id, err)
-	}
+	// The channel's feedback went with the row (discovery_feedback.scope_id cascades, #2793).
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete channel %s: commit: %w", id, err)
 	}
@@ -605,7 +601,7 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, &ch.IntentRef, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

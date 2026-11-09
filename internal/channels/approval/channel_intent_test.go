@@ -74,6 +74,9 @@ func TestPlan_JobNamingAChannelPatchesItWithoutMovingTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.UpsertUser(ctx, store.User{ID: "u-member", Name: "Member", Role: store.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
 	saved.RequestedBy = "u-member"
 	saved.IntentJSON = `{"description":"90s action"}`
 	if _, err := st.SaveChannel(ctx, saved); err != nil {
