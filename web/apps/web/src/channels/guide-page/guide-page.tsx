@@ -32,7 +32,6 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
@@ -515,30 +514,18 @@ const GuidePage = () => {
         // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
         // channel" while the header said "Add a channel" and the panel that opened was
         // titled "Add a channel" — three names for one handler. One action, one name.
-        // ⚠ The MOTION lives here, behind everything, not on the test card itself.
+        // ⚠ No static behind it (#2789): TvStatic is for entry moments only (login, the wizard
+        // and the player's tune-in), so a resting page stays still.
         //
         // A scanline sweeping over the bars was tried first and removed: to register on a
         // small element it had to be scaled up and brightened, at which point it dominated a
         // surface whose whole job is to stay calm and point at one button. Tuning it was the
         // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        //
-        // Ambient snow is the honest read: a real test card is not still because nothing is
-        // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
-        // and its doc names empty states specifically), it is `motion-safe:` gated, and the
-        // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
-        // The bars stay crisp and STILL on top, so the anchor never moves.
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
-          {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
-              carries `opacity-[0.11]` internally — so an `opacity-60` wrapper (which this had)
-              multiplied out to roughly 6.6% over a near-black background, i.e. nothing you
-              could see. The login and wizard shells both use it plain, and this matches them. */}
-          <TvStatic className="z-0" />
+        <div className="flex flex-1 items-center justify-center p-10">
           <EmptyState
-            className="relative z-10"
             // The state family's own static colour bars lead the panel (#2783): a test card is
-            // what a set showed when nothing was broadcasting. STILL, deliberately — the motion
-            // is the ambient snow behind it, so the card reads as standing by.
+            // what a set showed when nothing was broadcasting. Still, like the page around it.
             title="Dead air"
             description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
             action={{

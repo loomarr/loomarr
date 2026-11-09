@@ -16,7 +16,7 @@
       "tailwindClasses": 40
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 120,
+      "tailwindClasses": 115,
       "legacyUi": 2
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
