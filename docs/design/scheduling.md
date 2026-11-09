@@ -384,6 +384,6 @@ Formerly `design.md` §19.
   still backfills through the periodic sweep. One leader per channel under concurrency.
 - **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
   category variety, density, no-repeat-in-window, the holiday season and half
-  (`internal/filler/season_test.go`) and the commercial language and location
+  (`internal/filler/pod/season_test.go`) and the commercial language and location
   (`language_boundary_test.go`, `geography_test.go`); the fallback ladder degrades to a bumper card;
   filler never appears as a lineup programme; only real catalog clips are placed.
