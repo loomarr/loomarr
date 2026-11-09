@@ -68,11 +68,19 @@ func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	return len(needs) + orders + problems.Total, err
 }
 
+// ErrNotCatalogID is a link to an id the catalog does not fetch for the title's kind: the title
+// would be answered with no details to show.
+var ErrNotCatalogID = errors.New("scan: the catalog does not fetch that id")
+
 // Link answers a title: it is the catalog title id. Its files are written again with the link.
 func (l *Library) Link(ctx context.Context, itemID string, id store.LibraryID) error {
 	id.Namespace, id.Value = strings.TrimSpace(id.Namespace), strings.TrimSpace(id.Value)
-	if id.Namespace == "" || id.Value == "" {
-		return errors.New("a catalog and an id are required")
+	kind, _, err := l.origin(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if l.Keys.For(mp.Kind(kind), []mp.ExternalID{externalID(id)}).String() == "" {
+		return ErrNotCatalogID
 	}
 	return l.answer(ctx, itemID, store.LibraryAnswer{ID: id})
 }

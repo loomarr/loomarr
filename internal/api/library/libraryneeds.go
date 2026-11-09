@@ -293,6 +293,9 @@ func libraryAnswerErr(err error) error {
 	case errors.Is(err, scan.ErrNotAnswerable):
 		return httpcore.Problem(http.StatusConflict, "Loomarr didn't find this title itself",
 			"Only titles Loomarr found in your media folders can be answered here.")
+	case errors.Is(err, scan.ErrNotCatalogID):
+		return httpcore.Problem(http.StatusBadRequest, "Not a title Loomarr can look up",
+			"Pick a title from the search results or the suggestions.")
 	case errors.Is(err, store.ErrBadEpisodeOrder):
 		return httpcore.Problem(http.StatusBadRequest, "Pick one order", "Name an order only when you choose one of TMDB's other orders.")
 	case errors.Is(err, scan.ErrUnknownOrder):
