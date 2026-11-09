@@ -123,14 +123,11 @@ type Importer struct {
 	// pass only after arrRetry.
 	indexedAt time.Time
 
-	// headers is held by the one header stage that runs at a time.
-	headers sync.Mutex
-
 	mu       sync.Mutex
 	progress Progress
-	// reading is true while a header stage runs; handoff are the files later passes queued for it.
-	// touched is the import that last wrote each file while the stage ran: a read queued by an
-	// older one is dropped. Guarded by mu.
+	// reading is true while a header stage takes files; handoff are the files later passes queued
+	// for it. touched is the import that last wrote each file, one entry a path: a read queued by
+	// an older one is dropped. Guarded by mu.
 	reading bool
 	handoff []pending
 	touched map[string]int64
@@ -549,6 +546,9 @@ func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) e
 func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex, scope []string) (RootResult, []pending, error) {
 	im.gen++
 	gen := im.gen
+	var save []store.LibraryFile
+	// On every return, an error included: a file applied before the error was still written.
+	defer func() { im.touch(save, gen) }()
 	result := RootResult{Root: root, State: RootScanned}
 	if im.Disk != nil && !im.Disk.Readable(ctx, root) {
 		result.State = RootUnreadable
@@ -597,7 +597,6 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 
 	now := im.now()
 	b := newBuilder(im, root, idx)
-	var save []store.LibraryFile
 	var queue []pending
 	var episodes []episodeRow
 	found := map[string]bool{}
@@ -751,7 +750,6 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
 		return result, nil, err
 	}
-	im.touch(save, gen)
 	// Origins are marked unseen only after a complete walk, with no removal held and every arr
 	// answering: a file that waited for an arr was not written, and its series not seen.
 	if walk.Complete && result.State != RootHeld && idx.complete {

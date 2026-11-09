@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -843,6 +844,50 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 	}
 	if n := h.reads.Load(); n != 2 {
 		t.Errorf("header reads = %d, want 2", n)
+	}
+}
+
+// A pass that arrives while a stage is still starting (ordering its files) hands its files over
+// too, rather than waiting out the stage it would otherwise queue behind.
+func TestAPassDuringAStageStartIsNotHeldUp(t *testing.T) {
+	h := newHarness(t)
+	var live atomic.Bool
+	live.Store(true)
+	h.im.Busy = live.Load
+	ordering, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	h.im.Wanted = func(context.Context) []inventory.ExternalID {
+		once.Do(func() {
+			close(ordering)
+			<-release
+		})
+		return nil
+	}
+	h.file("Zulu (2005)/Zulu.mkv", 10)
+	ctx := context.Background()
+	full := make(chan error, 1)
+	go func() { full <- h.im.Run(ctx) }()
+	<-ordering
+
+	added := h.file("Alpha (2006)/Alpha.mkv", 10)
+	folders := make(chan error, 1)
+	go func() { folders <- h.im.RunFolders(ctx, h.root, []string{filepath.Dir(added)}) }()
+	select {
+	case err := <-folders:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("a folder pass waited for a starting stage")
+	}
+	close(release)
+	live.Store(false)
+	if err := <-full; err != nil {
+		t.Fatal(err)
+	}
+	if r := h.fileRow(added); r.Header != store.LibraryHeaderRead {
+		t.Errorf("handed-over file's header = %q, want read", r.Header)
 	}
 }
 

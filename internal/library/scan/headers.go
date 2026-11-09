@@ -22,37 +22,41 @@ const headerBatch = 50
 // time. Reads wait while live playout runs, since each is a disk seek a viewer's stream would
 // otherwise queue behind (decision 11); the kill switch stops them between files.
 //
-// One stage runs at a time, and it waits for playback without the pass lock, so no pass waits for
-// a viewer: a pass that finds a stage running hands its files to it and returns. Each read's write
-// takes the pass lock and is dropped when a later import wrote the file after the read was queued.
+// One stage takes files at a time, and it waits for playback without the pass lock, so no other
+// pass waits for a viewer: a pass that finds a stage taking files hands its files to it and
+// returns, and one that finds none becomes the stage. Each read's write takes the pass lock and is
+// dropped when a later import wrote the file after the read was queued.
 func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	if len(queue) == 0 || im.Header == nil {
 		return nil
 	}
-	if !im.headers.TryLock() {
-		im.mu.Lock()
-		if im.reading {
-			im.handoff = append(im.handoff, queue...)
-			im.progress.HeadersAll += len(queue)
-			im.mu.Unlock()
-			return nil
-		}
+	im.mu.Lock()
+	if im.reading {
+		im.handoff = append(im.handoff, queue...)
+		im.progress.HeadersAll += len(queue)
 		im.mu.Unlock()
-		im.headers.Lock() // the running stage takes no more files: wait for it to end
+		return nil
 	}
-	defer im.headers.Unlock()
-	im.prioritize(ctx, queue)
-	im.setProgress(func(p *Progress) {
-		p.Stage, p.HeadersAll, p.HeadersDone = StageReading, len(queue), 0
-		im.reading, im.touched = true, map[string]int64{}
-	})
+	im.reading = true
+	im.progress.Stage, im.progress.HeadersAll, im.progress.HeadersDone = StageReading, len(queue), 0
+	im.mu.Unlock()
+	// released is set when this stage stops taking files, after which the next pass may become a
+	// stage while this one's last reads finish.
+	released := false
 	defer im.setProgress(func(p *Progress) {
-		im.reading, im.handoff, im.touched = false, nil, nil
-		p.Waiting = false
-		if p.Stage == StageReading {
-			p.Stage = StageIdle
+		if !released {
+			// Ended early (a share fault, the kill switch, an error): the files handed to it stay
+			// pending, and the next walk over them queues them again.
+			im.reading, im.handoff = false, nil
+		}
+		if !im.reading {
+			p.Waiting = false
+			if p.Stage == StageReading {
+				p.Stage = StageIdle
+			}
 		}
 	})
+	im.prioritize(ctx, queue)
 
 	// staged is every file this stage has queued. A file handed over again is read again only when
 	// the import that handed it wrote it, which makes the stage's earlier read of it stale.
@@ -66,7 +70,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 			more := im.handoff
 			im.handoff = nil
 			if len(more) == 0 {
-				im.reading = false
+				im.reading, released = false, true
 				im.mu.Unlock()
 				return pending{}, false
 			}
@@ -216,12 +220,14 @@ func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 	return im.Store.SaveLibraryFiles(ctx, rows)
 }
 
-// touch notes the files an import wrote while a header stage runs.
+// touch notes the files an import wrote. It is kept for every import, not only while a stage runs:
+// a pass's reads are queued before it reaches the stage, and an import between the two still
+// makes them stale.
 func (im *Importer) touch(rows []store.LibraryFile, gen int64) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	if im.touched == nil {
-		return
+		im.touched = map[string]int64{}
 	}
 	for _, r := range rows {
 		im.touched[r.Path] = gen
