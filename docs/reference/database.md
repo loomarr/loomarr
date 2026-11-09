@@ -42,6 +42,25 @@ clients show them beside the data.
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
 (each table's retention says when).
 
+## Which tables are growing
+
+Every night, after its clean-up, the housekeeping task records how many rows each table holds in
+`database_table_rows`, and keeps 400 days of counts. A table that keeps growing month after month
+is one nothing trims. This lists the ten that grew most over the last 30 days, on SQLite or
+Postgres:
+
+```sql
+SELECT latest.table_name, latest.row_count AS rows_now,
+       latest.row_count - COALESCE(earlier.row_count, 0) AS grew_by
+FROM database_table_rows latest
+LEFT JOIN database_table_rows earlier
+  ON earlier.table_name = latest.table_name
+ AND earlier.recorded_at = latest.recorded_at - 30 * 86400
+WHERE latest.recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)
+ORDER BY grew_by DESC
+LIMIT 10;
+```
+
 ## Reading the values
 
 - **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
@@ -59,12 +78,12 @@ Every layer is pruned: the nightly housekeeping deletes reports, files and libra
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
-- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports)
+- [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
 
 ## People and sign-in
@@ -602,6 +621,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+| `unnumbered` | 1 for an episode its show's catalog could not number, because the catalog numbers the show in more than one order or its seasons end elsewhere than the disk's, and nobody has said which order the show's files follow. It keeps its file's name and number, and its show is in Needs you. 0 otherwise. | `BOOLEAN` |
 
 **Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
 
@@ -901,6 +921,19 @@ The answer for a movie or show nothing else identifies, either the catalog title
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 | `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one catalog result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
 | `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored. | `TEXT` |
+
+### library_episode_orders
+
+Which order a show's episode files follow, as a person answered in Needs you, for a show whose catalog numbers it in more than one order or whose seasons end elsewhere than the disk's. Kept against the show's catalog row rather than in the catalog cache, which retention clears, so it outlives the records.
+
+**Kept:** Kept until someone answers again for the show; one row per show.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `series_catalog` | The show's catalog row, as provider:series:id (library_items.catalog). | `TEXT` · key |
+| `choice` | One of catalog (the catalog's own seasons, as first aired), order (one of the catalog's other orders, in order_id) or files (the name and number in each file). | `TEXT` |
+| `order_id` | The catalog's id for the order picked; empty unless choice is order. | `TEXT` |
+| `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 
 ### library_collections
 
@@ -2066,6 +2099,18 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `stack` | The stack trace, or empty. | `TEXT` |
 | `breadcrumbs_json` | A JSON list of up to 50 things the app did just before the crash, each with a time, a category (navigation, http, lifecycle or log) and a short message. | `TEXT` |
 | `native_payload` | For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise. | `TEXT` |
+
+### database_table_rows
+
+How many rows each table held, counted once a day by the nightly housekeeping task after its clean-up. A table whose count only ever rises is one that nothing trims; "Which tables are growing" near the top of this page shows how to compare the latest count with a month ago.
+
+**Kept:** The nightly housekeeping task forgets counts older than 400 days.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `recorded_at` | The day counted, as the Unix time in seconds of that day's midnight (UTC). | `INTEGER` · key |
+| `table_name` | The table counted. Every table except goose_db_version and this one. | `TEXT` · key |
+| `row_count` | How many rows the table held after that night's clean-up. | `INTEGER` |
 
 ## Tables other libraries own
 

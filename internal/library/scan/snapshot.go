@@ -78,7 +78,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	22: a title lists its people with their role, character, TMDB id and photo (decision 49).
 //	23: a movie's set is listed as the catalog row the catalog provider fetches it by.
 //	24: a person is linked by any catalog's id (namespace and value), not a TMDB id.
-const writeVersion = 24
+//	25: an episode its show's catalog can't number is marked, and one whose show has an answer is
+//	    numbered by the order picked (decision 53).
+const writeVersion = 25
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -159,6 +161,9 @@ type listedExtension struct {
 	Match store.LibraryMatch      `json:"match,omitzero"`
 	// Series is an episode's series by its scan origin.
 	Series store.LibraryOrigin `json:"series,omitzero"`
+	// Unnumbered is an episode its show's catalog could not number, whose show nobody has
+	// answered for (decision 53).
+	Unnumbered bool `json:"unnumbered,omitempty"`
 }
 
 // originExtensionOf is res's provenance, how the title is listed (series is an episode's series
@@ -180,7 +185,7 @@ func originExtensionOf(kind mp.Kind, res resolution, series inventory.OriginKey,
 	case mp.KindSeries:
 		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
 	case mp.KindEpisode:
-		ext.Listed = &listedExtension{Catalog: res.catalog, Series: libraryOrigin(series)}
+		ext.Listed = &listedExtension{Catalog: res.catalog, Series: libraryOrigin(series), Unnumbered: res.unnumbered}
 	}
 	raw, _ := json.Marshal(ext)
 	return raw
@@ -226,7 +231,8 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		OriginalTitle: facts.OriginalTitle, Overview: facts.Overview, PremiereDate: facts.PremiereDate,
 		Rating: facts.OfficialRating, Score: facts.CommunityScore, RuntimeMs: facts.RuntimeMillis,
 		Season: facts.SeasonNumber, Episode: facts.EpisodeNumber, EpisodeEnd: facts.EpisodeEnd,
-		Series: listed.Series, Tags: facts.Tags, Tagline: facts.Tagline, Trailer: facts.Trailer,
+		Series: listed.Series, Unnumbered: listed.Unnumbered,
+		Tags: facts.Tags, Tagline: facts.Tagline, Trailer: facts.Trailer,
 		From: store.LibraryFrom{
 			Name: string(ext.From.Name), Year: string(ext.From.Year), Overview: string(ext.From.Description),
 			Premiere: string(ext.From.Premiere), Rating: string(ext.From.Rating), Score: string(ext.From.Score),
