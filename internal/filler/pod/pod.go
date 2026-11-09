@@ -250,7 +250,7 @@ var FallbackCard = Entry{
 }
 
 // Assemble builds a pod for a window from the catalog (§10). It is PURE and
-// SEEDED-DETERMINISTIC: same clips + same window.Seed → identical pod, so a break
+// SEEDED-DETERMINISTIC: same clips + same Window.Seed → identical pod, so a break
 // reproduces exactly across reconciles and in tests (§19). It respects era/
 // audience matching, category variety (no three of one category in a row), pod
 // density (PodMax + the gap), and no-repeat within the window; when matches run

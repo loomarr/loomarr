@@ -72,12 +72,11 @@ func randomWindow(rng *rand.Rand, windowSeed int64) pod.Window {
 	}
 }
 
-// randomEraRange picks one of the THREE shapes an operator can express since V51f — any era, a
-// single year, or a span — rather than the single year the field used to be limited to.
+// randomEraRange picks one of the THREE shapes an operator can express — any era, a single year,
+// or a span.
 //
-// ⚠ It replaces `EraStrict` (retired-ok) as this generator's era-varying dimension. That flag was reachable
-// only from tests, so randomising it explored a branch no install could ever be in; randomising
-// the range explores the branch every install is in.
+// ⚠ Randomising the range explores the branch every install is in, which is why it is this
+// generator's era-varying dimension.
 func randomEraRange(rng *rand.Rand) pod.EraRange {
 	switch rng.Intn(3) {
 	case 0:

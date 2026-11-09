@@ -88,9 +88,7 @@ type CoverageReport struct {
 	Criteria []CriterionCoverage
 	// Rungs, tightest first, in ladder order.
 	//
-	// ⚠ Since V51f every rung is always present: `EraStrict` (retired-ok) was the only thing that could skip
-	// one, and it was unreachable — set in tests and nowhere else. The absent-not-zero rule it
-	// justified is gone with it, so a rung at 0 now means what a reader would assume it means:
+	// ⚠ Every rung is always present, so a rung at 0 means what a reader would assume it means:
 	// nothing in the catalog reaches that rung.
 	Rungs []RungCoverage
 	// Level is the rung a fresh break is filled down to — what Assemble reports as

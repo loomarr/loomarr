@@ -74,11 +74,8 @@ func TestCoverageRungsAreInLadderOrder(t *testing.T) {
 	}
 }
 
-// ⚠ **Every rung is now always reported, and the test that asserted the opposite is gone with the
-// field it tested.** `TestCoverageOmitsTheWidenedRungUnderEraStrict` (retired-ok) proved that `EraStrict`
-// removed the widened rung — true, but unreachable: no key, no env var, no policy field, set in
-// tests and nowhere else. The absent-not-zero rule existed only to serve it. With the flag deleted
-// a rung at 0 means what a reader assumes: nothing in the catalog reaches it.
+// ⚠ **Every rung is always reported, even at 0.** A rung at 0 means what a reader assumes: nothing
+// in the catalog reaches it.
 func TestCoverageAlwaysReportsEveryRung(t *testing.T) {
 	// A 2015 window has no exact-era and no widened clip in this catalog, so two rungs are
 	// genuinely empty — precisely the case the old rule would have hidden.

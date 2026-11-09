@@ -12,8 +12,8 @@ import "fmt"
 // through channel settings for a rule they cannot see.
 //
 // ⚠ **Every answer comes from the SAME predicates assembly uses** — `filterRoles`,
-// `durationEligible`, `qualityEligible`, `filterCategories`, `filterAudience`, `filterEra`,
-// `filterDecade` — applied to a one-clip slice rather than re-implemented. That is the whole
+// `durationEligible`, `qualityEligible`, `filterCategories`, `filterAudience`,
+// `filterEraWindows` — applied to a one-clip slice rather than re-implemented. That is the whole
 // design constraint: `channelpreview.go` records the v2 mock's own meter recomputing its
 // buckets inline "with five mutually inconsistent era/audience predicates", and a fit note
 // that disagrees with what actually airs is a confident wrong answer about why a channel

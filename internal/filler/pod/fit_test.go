@@ -28,10 +28,9 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("wrong-aud", 1992, LateNight),
 		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
 	}
-	// ⚠ The varied dimension used to be `EraStrict` (a field no operator could set). It is now the
-	// era RANGE, which is the thing that actually varies in the wild — and a single year, a span
-	// and "any" put these clips in genuinely different rungs, so this stays a real cross-check
-	// rather than the same assertion run twice.
+	// ⚠ The varied dimension is the era RANGE, which is the thing that actually varies in the wild —
+	// and a single year, a span and "any" put these clips in genuinely different rungs, so this is
+	// a real cross-check rather than the same assertion run twice.
 	for _, era := range []EraRange{Year(1992), {From: 1990, To: 1999}, {From: 1975, To: 1992}, {}} {
 		policy := Policy{}
 		w := Window{Era: era, Audience: Kids, GapMs: 120_000, PodMax: 4}
@@ -240,11 +239,8 @@ func TestFitFor_GeneralAudienceDoesNotFitAKidsChannel(t *testing.T) {
 	}
 }
 
-// ⚠ **This replaces `TestFitFor_StrictEraSkipsTheWidenedRung`, and the replacement is the point.**
-// That test asserted the behaviour of `Policy.EraStrict` (retired-ok) — a field set in tests and NOWHERE else,
-// so it proved a branch no operator could reach. Narrowing the RANGE is how a channel gets
-// strictness now, and unlike the flag it moves a clip between rungs in a way the operator can see
-// and undo. Same intent, reachable mechanism.
+// ⚠ Narrowing the RANGE is how a channel gets strictness, and it moves a clip between rungs in a
+// way the operator can see and undo; this pins that.
 func TestFitFor_NarrowingTheRangeMovesAClipDownTheLadder(t *testing.T) {
 	c := commercial("1995", 1995, Kids)
 

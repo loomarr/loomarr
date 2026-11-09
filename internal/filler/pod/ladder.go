@@ -25,11 +25,9 @@ type pool struct {
 //  2. widened  — break-body Placement, a decade either side of that range, matching Audience
 //  3. audience — break-body Placement, any era, matching Audience
 //
-// ⚠ **All three rungs are always built (V51f).** `policy.EraStrict` used to drop rung 2, and it
-// was set in tests and nowhere else — no settings key, no policy field, no way for an operator to
-// reach it — while `coverage.go`, `fit.go` and `coverage-meter.tsx` all carried special copy for
-// the branch. A real range subsumes it anyway: a channel that wants strictness sets a narrow
-// range, which is a control an operator can actually see and change.
+// ⚠ **All three rungs are always built (V51f).** A channel that wants strictness sets a narrow
+// era range, which is a control an operator can actually see and change; there is no separate
+// strict flag to special-case in `coverage.go`, `fit.go` or the coverage meter.
 //
 // Each rung is filtered to eligible durations (density, §10). Clips already used
 // in the window are excluded at fill time (no-repeat), not here.
@@ -358,12 +356,12 @@ func (r EraRange) Contains(year int) bool {
 
 // Widened is the ladder's second rung: a decade either side of the range.
 //
-// ⚠ **This deliberately replaces the old decade-BUCKET rule, and the difference matters for
-// ranges.** `filterDecade` snapped a single year to its containing decade (1994 → 1990–1999),
-// which cannot generalise: a range that already spans 1990–1999 snaps to itself, so the widened
-// rung would be identical to `exact` and the ladder would silently lose a rung exactly when the
-// operator asked for a decade. Growing by ten years at each end is strictly wider than `exact`
-// for EVERY range, which is the property a fallback rung has to have to be one.
+// ⚠ **It grows the range by ten years at each end rather than snapping to the containing decade,
+// and the difference matters for ranges.** Decade-bucket snapping (1994 → 1990–1999) cannot
+// generalise: a range that already spans 1990–1999 snaps to itself, so the widened rung would be
+// identical to `exact` and the ladder would silently lose a rung exactly when the operator asked
+// for a decade. Growing by ten years at each end is strictly wider than `exact` for EVERY range,
+// which is the property a fallback rung has to have to be one.
 func (r EraRange) Widened() EraRange {
 	if r.Any() {
 		return r
