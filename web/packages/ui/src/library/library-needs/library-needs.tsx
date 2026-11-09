@@ -233,7 +233,7 @@ const LibraryNeedsStrip = ({ needs, problems, onLink, onOpenNeeds, onOpenTitle }
           onDone={() => done(need.id)}
           onOpenNeeds={onOpenNeeds}
           onYes={() => {
-            if (need.best) answer(need.id, "added", onLink(need.id, need.best.tmdbId));
+            if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
           }}
         />
       ),
@@ -421,10 +421,10 @@ const LibraryNeedsCards = ({
           need={need}
           onDone={() => done(need.id)}
           onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
-          onPick={(c) => answer(need.id, "added", onLink(need.id, c.tmdbId))}
+          onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
           onSearch={onSearch}
           onYes={() => {
-            if (need.best) answer(need.id, "added", onLink(need.id, need.best.tmdbId));
+            if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
           }}
           phase={phases[need.id]}
           primary={i === 0}

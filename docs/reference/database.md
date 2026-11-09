@@ -864,7 +864,7 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 
 ### library_candidates
 
-The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
+The catalog search results for a movie or show Loomarr can't identify, offered in Needs you. A title's rows are replaced each time it is searched.
 
 **Kept:** Replaced each time the title is searched again; a title's last results are kept.
 
@@ -873,18 +873,19 @@ The TMDB search results for a movie or show Loomarr can't identify, offered in N
 | `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The result's TMDB id. | `TEXT` |
+| `external_id` | The result's id in that catalog. | `TEXT` |
 | `name` | The result's name. | `TEXT` |
 | `year` | The result's year, or 0 when unknown. | `INTEGER` |
 | `overview` | The result's description, or empty. | `TEXT` |
-| `poster` | The result's poster URL at TMDB, or empty. | `TEXT` |
+| `poster` | The result's poster URL at its catalog, or empty. | `TEXT` |
 | `name_match` | 1 when the result's name agrees with what is on disk. | `BOOLEAN` |
 | `year_match` | 1 when the result's year agrees with what is on disk. | `BOOLEAN` |
 | `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `BOOLEAN` |
+| `namespace` | The catalog that found the result, such as tmdb. | `TEXT` |
 
 ### library_answers
 
-The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
+The answer for a movie or show nothing else identifies, either the catalog title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
 
 **Kept:** Kept until someone takes the answer back, even after the title leaves the library.
 
@@ -893,10 +894,11 @@ The answer for a movie or show nothing else identifies, either the TMDB title it
 | `origin_authority` | The scanned folder of the title's scan origin, as in library_items. | `TEXT` · key |
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `tmdb_id` | The TMDB title it is linked to; empty when ignored. | `TEXT` |
+| `external_id` | The title's id in that catalog; empty when ignored. | `TEXT` |
 | `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
-| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one TMDB result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one catalog result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
+| `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored. | `TEXT` |
 
 ### library_collections
 

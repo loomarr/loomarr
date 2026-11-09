@@ -398,7 +398,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
-  details, and keeps three in `library_candidates`, best first: the name counts most, then the
+  details, and keeps three in `library_candidates`, best first, each by its catalog's own id
+  (`namespace`, `external_id`); an answer keeps the id it was given the same way, so another
+  catalog's search needs no schema change. The name counts most, then the
   year (a year apart at most), then the length (movies only: within five minutes or 8% of the
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
   when its name or year changes, or once a movie's length is known. With no TMDB key nothing is

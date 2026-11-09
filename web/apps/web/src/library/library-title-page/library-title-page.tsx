@@ -69,7 +69,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       }}
       onCheckFiles={() => act(libraryApi.checkLibraryItemFiles(id))}
       onForget={() => act(libraryApi.unanswerLibraryItem(id))}
-      onLink={(tmdbId) => act(libraryApi.linkLibraryItem(id, { tmdbId }))}
+      onLink={(externalId) => act(libraryApi.linkLibraryItem(id, { externalId }))}
       onOpenApp={page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined}
       onRemoveExtra={(path) => act(libraryApi.removeLibraryExtraCopy(id, { path }))}
       onSearch={searchLibraryTitles}

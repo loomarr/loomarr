@@ -21,7 +21,7 @@ type AnswerStore interface {
 	LibraryAnswerFor(ctx context.Context, origin store.LibraryOrigin) (store.LibraryAnswer, bool, error)
 }
 
-// linkRecord is the answer for a movie or series nothing else grounded, as a record: the TMDB
+// linkRecord is the answer for a movie or series nothing else grounded, as a record: the catalog
 // title the maintainer said it is, or the one a search agreed on. None, an ignore, or an answer
 // that cannot be read says nothing.
 func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin inventory.OriginKey) (mp.Record, bool) {
@@ -33,7 +33,7 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 		im.log().Warn("library scan: answer not read", "err", err)
 		return mp.Record{}, false
 	}
-	if !ok || answer.TMDBID == "" || answer.Kind != string(kind) {
+	if !ok || answer.ID.Value == "" || answer.Kind != string(kind) {
 		return mp.Record{}, false
 	}
 	basis := mp.BasisLink
@@ -42,8 +42,17 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 	}
 	return mp.Record{
 		Source: mp.Source{Basis: basis}, Kind: kind,
-		IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: answer.TMDBID}},
+		IDs: []mp.ExternalID{externalID(answer.ID)},
 	}, true
+}
+
+// libraryID is id as the store keeps it; externalID, the store's id back.
+func libraryID(id mp.ExternalID) store.LibraryID {
+	return store.LibraryID{Namespace: string(id.Namespace), Value: id.Value}
+}
+
+func externalID(id store.LibraryID) mp.ExternalID {
+	return mp.ExternalID{Namespace: mp.Namespace(id.Namespace), Value: id.Value}
 }
 
 // CatalogKeys is what the catalog provider fetches, in the order it declares it
