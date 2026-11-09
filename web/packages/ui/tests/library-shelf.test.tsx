@@ -67,6 +67,7 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
     titles: TITLES,
     loading: false,
     onOpenTitle: vi.fn(),
+    onEndReached: vi.fn(),
     ...overrides,
   };
   const host = doc.createElement("div");
@@ -247,6 +248,30 @@ describe("LibraryShelf", () => {
     expect(twirls(getting)).toBe(1);
     expect(twirls(ready)).toBe(0);
     cleanup();
+  });
+
+  // A household's library is thousands of titles: only the rows near the screen are mounted, and
+  // the next page is asked for once the last rows are.
+  it("mounts only a window of a large library's rows, and asks for more only near the end", () => {
+    const many: LibraryShelfTitle[] = Array.from({ length: 2000 }, (_, i) => ({
+      id: String(90100000 + i),
+      kind: "movie",
+      name: `Title ${i}`,
+      ready: true,
+    }));
+    const big = render({ titles: many });
+    const mounted = big.host.querySelectorAll('[role="listitem"]').length;
+    expect(mounted).toBeGreaterThan(0);
+    expect(mounted).toBeLessThan(120);
+    expect(big.host.textContent).toContain("Title 0");
+    expect(big.host.textContent).not.toContain("Title 1999");
+    expect(big.props.onEndReached).not.toHaveBeenCalled();
+    big.cleanup();
+
+    const short = render({ titles: many.slice(0, 30) });
+    expect(short.host.querySelectorAll('[role="listitem"]').length).toBe(30);
+    expect(short.props.onEndReached).toHaveBeenCalled();
+    short.cleanup();
   });
 
   it("puts a held removal first, with Check again", () => {
