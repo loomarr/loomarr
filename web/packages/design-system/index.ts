@@ -100,6 +100,7 @@ export type {
   ArtworkState,
   BadgeShape,
   BadgeTone,
+  ChannelIdentColorHue,
   ProgressTone,
   ScreenProps,
   StatusTone,
@@ -111,6 +112,9 @@ export type {
 export {
   ArtworkFrame,
   Badge,
+  CHANNEL_IDENT_WASH_PERCENT,
+  channelIdentColors,
+  channelIdentHues,
   FocusSurface,
   ProgressTrack,
   Screen,
