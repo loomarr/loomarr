@@ -46,7 +46,7 @@ cd "$ROOT"
 # touch anything concurrent. The heavy packages (app, store, api, images, integration, channels,
 # auth, …) are deliberately absent: they are exactly where -race has caught real bugs here.
 RACE_OFF=(
-	internal/catalog
+	internal/library/titlesearch
 	internal/platform/config
 	internal/filler/taxonomy
 	internal/provision

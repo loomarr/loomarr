@@ -1,6 +1,7 @@
 import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
+import { ChannelIdentity } from "../../identity";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { lengthPhrase, TechnicalDetails } from "../technical-details";
@@ -195,10 +196,10 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
     <Stack gap="control">
       <Line>
         <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
-          Update details
+          {busy === "update" ? "Updating…" : "Update details"}
         </Action>
         <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
-          {checked ? "Checked just now" : "Check files again"}
+          {busy === "check" ? "Checking…" : checked ? "Checked just now" : "Check files again"}
         </Action>
         <Action onPress={() => setWrong(!wrong)} variant="ghost">
           Wrong title?
@@ -392,6 +393,24 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
             </Action>
           </Line>
         </Surface>
+      ) : null}
+
+      {title.channels.length > 0 ? (
+        <Stack aria-label="On these channels" gap="control" role="region">
+          <Heading>On these channels</Heading>
+          <Line columnGap="section" rowGap="control">
+            {title.channels.map((c) => (
+              <ChannelIdentity
+                channel={{
+                  channelLogoState: "missing",
+                  channelName: c.name,
+                  channelNumber: String(c.number),
+                }}
+                key={c.id}
+              />
+            ))}
+          </Line>
+        </Stack>
       ) : null}
 
       {title.seasons.length > 0 ? (

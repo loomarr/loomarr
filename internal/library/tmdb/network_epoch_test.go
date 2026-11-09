@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -27,7 +27,7 @@ func TestDiscover_NetworkEditorialEpochFindsOlderPoolIncludingEarlierPremieres(t
 		mock.SetSeriesNetwork(title.id, 90000049)
 	}
 	client := tmdb.NewWithBase(mock.URL, "key")
-	got, err := client.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac", EditorialEpochEnd: 1999}, 20)
+	got, err := client.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac", EditorialEpochEnd: 1999}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestDiscover_NetworkEditorialEpochFindsOlderPoolIncludingEarlierPremieres(t
 func TestDiscover_UnmatchedNetworkBrandOffersSourceNameWithoutResolvingAlias(t *testing.T) {
 	mock := testkit.NewTMDB(t)
 	mock.AddNetwork(90000049, "Almanac", "US")
-	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac Channel"}, 20)
+	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac Channel"}, 20)
 	if err == nil || !strings.Contains(err.Error(), `source catalog names to try: ["Almanac"]`) {
 		t.Fatalf("source-backed name hint missing: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestDiscover_UnmatchedNetworkBrandOffersSourceNameWithoutResolvingAlias(t *
 }
 
 func TestDiscover_NetworkEditorialEpochRejectsUnsupportedContextBeforeHTTP(t *testing.T) {
-	for _, query := range []catalog.DiscoveryQuery{
+	for _, query := range []titlesearch.DiscoveryQuery{
 		{MediaType: provision.Movie, Network: "Almanac", EditorialEpochEnd: 1999},
 		{MediaType: provision.Series, EditorialEpochEnd: 1999},
 		{MediaType: provision.Series, Network: "Almanac", EditorialEpochEnd: 2100},

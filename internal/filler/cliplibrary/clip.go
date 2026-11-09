@@ -1,14 +1,12 @@
 // Package cliplibrary is the on-disk clip library: the clip folder's layout, the one intake route
 // every clip takes into it, the folder and library scans that find clips, the names derived for
 // them, and the thumbnail and preview artwork rendered from them. It also holds the clip shapes
-// those scans produce and the catalog round-trips (RawClip, StoreClip). The filler root's Syncer
-// reconciles the catalog against it.
+// those scans produce (RawClip). The filler root's Syncer reconciles the catalog against it.
 package cliplibrary
 
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -119,10 +117,3 @@ var _ ScanningSource = DirSource{}
 // to run and changes nothing, which reads as a broken sync rather than a disabled source; the
 // caller turns this into an answer that names the switch to flip.
 var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched off")
-
-// StoreClip is the persistence view the sync round-trips (mirrors store.Clip;
-// declared here so filler doesn't import store — the adapter in main bridges them).
-type StoreClip struct {
-	clips.Clip
-	UpdatedAt time.Time
-}

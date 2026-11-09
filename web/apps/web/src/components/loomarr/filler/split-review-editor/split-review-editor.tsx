@@ -11,9 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Icon,
+  icons,
   Tooltip,
 } from "@loomarr/design-system";
-import { ChevronRight, Pencil } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -424,7 +425,7 @@ const SegmentSummaryRow = ({
               ) : null}
             </span>
           </span>
-          <ChevronRight aria-hidden className="text-muted-foreground size-4 shrink-0" />
+          <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
         </button>
       </Card>
     </li>
@@ -575,7 +576,7 @@ const SegmentInspector = ({
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
         <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
-          <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
+          <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
           <Field

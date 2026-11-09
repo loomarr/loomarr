@@ -1,6 +1,6 @@
 import { parseDocHref } from "@loomarr/core/anchor";
+import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Circle, CircleCheck, CircleX, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { ChecklistItemProps, CheckStatus } from "./checklist-item.type";
@@ -9,10 +9,10 @@ import type { ChecklistItemProps, CheckStatus } from "./checklist-item.type";
 // "locks in" green (§2.4); a fail never blames — plain cause + the exact fix + a
 // deep link into the embedded docs (§13). Backed by GET /v1/setup/status.
 const ICON: Record<CheckStatus, { node: ReactNode; label: string }> = {
-  pending: { node: <Circle className="text-static-500 size-4" aria-hidden />, label: "Pending" },
-  running: { node: <Loader2 className="text-tune size-4 animate-spin" aria-hidden />, label: "Checking" },
-  pass: { node: <CircleCheck className="text-lock size-4" aria-hidden />, label: "Passed" },
-  fail: { node: <CircleX className="text-onair-300 size-4" aria-hidden />, label: "Failed" },
+  pending: { node: <Icon decorative glyph={icons.pending} size="compact" tone="muted" />, label: "Pending" },
+  running: { node: <ActivityIndicator decorative size="compact" tone="info" />, label: "Checking" },
+  pass: { node: <Icon decorative glyph={icons.passed} size="compact" tone="success" />, label: "Passed" },
+  fail: { node: <Icon decorative glyph={icons.failed} size="compact" tone="danger" />, label: "Failed" },
 };
 
 const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItemProps) => (
@@ -41,7 +41,7 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
         search={parseDocHref(docHref)}
         className="text-tune inline-flex shrink-0 items-center gap-0.5 text-xs hover:underline"
       >
-        Fix <ArrowUpRight className="size-3" aria-hidden />
+        Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
       </Link>
     )}
   </div>

@@ -28,16 +28,17 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -68,7 +69,7 @@ func (a clipCatalog) AllClips(ctx context.Context) ([]clips.Clip, error) {
 // libraryDurationResolver reads an item's runtime from the Library's facts (mirrors the app's
 // itemMetadata), so a program slot gets its real runtime — which is what makes the
 // commercial-break interleave fire.
-func libraryDurationResolver(facts store.LibraryItemFactsReader) channels.DurationResolver {
+func libraryDurationResolver(facts librarystore.LibraryItemFactsReader) channels.DurationResolver {
 	return func(ctx context.Context, itemID string) (int64, error) {
 		got, err := facts.LibraryItemFacts(ctx, []string{itemID})
 		return got[itemID].RuntimeMs, err
@@ -103,12 +104,12 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	// only pick ids the catalog surfaced.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(catalog.LibrarySearch{Titles: st, Facts: st}, tm)
+	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tm)
 	suggester := suggest.New(llmMock, cat, tm, 10)
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, workflow.New(st, ids, clock), suggester,
+	svc := suggest.NewService(st, workflow.New(st, ids, clock, suggest.IntentHash), suggester,
 		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration
@@ -250,7 +251,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// FOUR real ids it saw + a policy that a kids-cartoon intent implies (TV-Y7
 	// ceiling). The model proposes the adult toon too — the ENFORCER must be what
 	// drops it, not the model's discretion.
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"query": "cartoon",
 			"dateMeaning": map[string]any{

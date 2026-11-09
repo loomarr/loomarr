@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -15,12 +15,12 @@ import (
 
 func TestSuggest_BlockEditorialEpochDoesNotRequireEpisodeDates(t *testing.T) {
 	const description = "QFUN as it felt in the 1990s, without restricting episode dates."
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
 	references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 		URL: "https://example.test/development/block-epoch", Title: "Synthetic reference",
 		Excerpt: "One synthetic constituent", TitleAnchors: []string{"Marigold Protocol"},
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
@@ -37,8 +37,8 @@ func TestSuggest_BlockEpochDoesNotEraseSeparateDateRequirements(t *testing.T) {
 		"release":   {Description: "QFUN as it felt in the 1990s, plus movies released in the 2000s."},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-			model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())))
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+			model := testkit.NewLLM(t, testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())))
 			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), intent)
 			if err == nil || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 || len(corpus.Searches()) != 0 {
 				t.Fatalf("separate date requirement was erased: proposal=%+v err=%v", proposal, err)
@@ -53,9 +53,9 @@ func TestSuggest_NegatedLibraryOnlyDoesNotDropOutsideCandidates(t *testing.T) {
 		"QFUN; I don't want only shows already in my library.",
 	} {
 		t.Run(description, func(t *testing.T) {
-			owned := catalog.Candidate{MediaType: "series", TMDBID: 90000001, Name: "Owned Sitcom", InLibrary: true, Genres: []string{"Comedy"}}
-			missing := catalog.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Missing Sitcom", Genres: []string{"Comedy"}}
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{owned, missing}}
+			owned := titlesearch.Candidate{MediaType: "series", TMDBID: 90000001, Name: "Owned Sitcom", InLibrary: true, Genres: []string{"Comedy"}}
+			missing := titlesearch.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Missing Sitcom", Genres: []string{"Comedy"}}
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{owned, missing}}
 			references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 				URL: "https://example.test/development/library-contrast", Title: "Synthetic reference",
 				Excerpt: "Two synthetic sitcoms", TitleAnchors: []string{owned.Name, missing.Name},
@@ -64,11 +64,11 @@ func TestSuggest_NegatedLibraryOnlyDoesNotDropOutsideCandidates(t *testing.T) {
 			mock.AddSeries(90000002, missing.Name, 1996, []int{35}, "Synthetic sitcom")
 			validator := tmdb.NewWithBase(mock.URL, "fixture")
 			final := `{"picks":[{"mediaType":"series","key":"series:tmdb:90000001"},{"mediaType":"series","key":"series:tmdb:90000002"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)
-			proposal, err := suggest.New(model, catalog.New(nil, corpus), validator, 10).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: description})
+			proposal, err := suggest.New(model, titlesearch.New(nil, corpus), validator, 10).WithReferences(references).Suggest(context.Background(), proposals.Intent{Description: description})
 			if err != nil || len(proposal.Lineup) != 1 || len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].TMDBID != missing.TMDBID {
 				t.Fatalf("negated qualifier dropped a valid acquisition: proposal=%+v err=%v", proposal, err)
 			}
@@ -84,20 +84,20 @@ func TestSuggest_LibraryOnlyDropsSourceCompletedAcquisitions(t *testing.T) {
 		"QFUN; do not add anything new to my library.",
 	} {
 		t.Run(description, func(t *testing.T) {
-			owned := catalog.Candidate{MediaType: "series", TMDBID: 90000001, Name: "Owned Sitcom", InLibrary: true, Genres: []string{"Comedy"}}
-			missing := catalog.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Missing Sitcom", Genres: []string{"Comedy"}}
-			corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, title string, _ int) ([]catalog.Candidate, error) {
+			owned := titlesearch.Candidate{MediaType: "series", TMDBID: 90000001, Name: "Owned Sitcom", InLibrary: true, Genres: []string{"Comedy"}}
+			missing := titlesearch.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Missing Sitcom", Genres: []string{"Comedy"}}
+			corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, title string, _ int) ([]titlesearch.Candidate, error) {
 				if title == owned.Name {
-					return []catalog.Candidate{owned}, nil
+					return []titlesearch.Candidate{owned}, nil
 				}
-				return []catalog.Candidate{missing}, nil
+				return []titlesearch.Candidate{missing}, nil
 			}}
 			references := &testkit.ReferenceResolver{DiscoveryEvidence: webreference.Evidence{
 				URL: "https://example.test/development/library-only", Title: "Synthetic reference",
 				Excerpt: "Two synthetic sitcoms", TitleAnchors: []string{owned.Name, missing.Name},
 			}}
 			final := `{"picks":[{"mediaType":"series","key":"series:tmdb:90000001"},{"mediaType":"series","key":"series:tmdb:90000002"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)

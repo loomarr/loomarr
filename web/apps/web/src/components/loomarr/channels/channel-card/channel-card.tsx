@@ -55,7 +55,7 @@ const ChannelCard = ({
       {chip && (
         <span
           className={cn(
-            "text-2xs inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-mono font-medium tracking-wide uppercase",
+            "text-2xs inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-mono font-medium",
             chip.chip,
           )}
         >

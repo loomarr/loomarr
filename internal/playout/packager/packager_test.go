@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -347,6 +349,86 @@ func TestAirItemReportsTheFramesItDelivered(t *testing.T) {
 	}
 }
 
+func box(typ string, payload ...[]byte) []byte {
+	n := 8
+	for _, p := range payload {
+		n += len(p)
+	}
+	b := binary.BigEndian.AppendUint32(make([]byte, 0, n), uint32(n))
+	b = append(b, typ...)
+	for _, p := range payload {
+		b = append(b, p...)
+	}
+	return b
+}
+
+// readStreamGoroutines counts live goroutines running readStream's reader.
+func readStreamGoroutines() int {
+	var buf bytes.Buffer
+	_ = pprof.Lookup("goroutine").WriteTo(&buf, 2)
+	n := 0
+	for _, g := range strings.Split(buf.String(), "\n\n") {
+		if strings.Contains(g, "packager.readStream.func") {
+			n++
+		}
+	}
+	return n
+}
+
+// An item whose first fragment the packager cannot stamp (a bad fragment ends the item) while its
+// encoder keeps producing must not leave the stream's reader parked on a full fragment channel: the
+// item's end releases it.
+func TestBadFragmentEndsTheItemWithoutLeakingItsReader(t *testing.T) {
+	// A moof whose trun is shorter than its fields: patchFragment rejects it.
+	badFragment := append(box("moof", box("traf", box("trun", []byte{0, 0, 0, 0}))), box("mdat", []byte("payload"))...)
+	var asked atomic.Int32
+	itemOver := make(chan struct{}) // the packager cancelled the item's context: it is done with it
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		if asked.Add(1) > 1 { // the one bad item; after it the channel only slates
+			<-ctx.Done()
+			return Item{}, ctx.Err()
+		}
+		return Item{Label: "bad", Duration: time.Second,
+			Open: func(ictx context.Context, _ Slot) (io.ReadCloser, error) {
+				pr, pw := io.Pipe()
+				go func() {
+					defer func() { _ = pw.Close() }()
+					if _, err := pw.Write(encodeInit(t, testSPS)); err != nil {
+						return
+					}
+					for range 8 { // more fragments than the reader's channel and the consumer hold
+						if _, err := pw.Write(badFragment); err != nil {
+							return
+						}
+					}
+				}()
+				go func() { <-ictx.Done(); pr.CloseWithError(ictx.Err()); close(itemOver) }()
+				return pr, nil
+			}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = p.Run(ctx) }()
+	defer func() { stop(); <-done }()
+
+	select {
+	case <-itemOver:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the bad fragment never ended the item")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for readStreamGoroutines() > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := readStreamGoroutines(); n > 0 {
+		t.Fatalf("%d stream reader goroutine(s) still parked after the bad fragment ended the item", n)
+	}
+}
+
 type track struct {
 	base    uint64
 	samples []*fmp4.Sample
@@ -664,7 +746,7 @@ func TestDVRWindowPrunesSegments(t *testing.T) {
 
 func TestPatchFragmentRestampsInPlace(t *testing.T) {
 	r := synth{label: "x", frames: testFPS}.encode(t, context.Background(), Slot{})
-	stream := readStream(r)
+	stream := readStream(nil, r)
 	frag := <-stream.frags
 	c, err := patchFragment(frag, 42, map[uint32]uint64{videoTrack: 9000, audioTrack: 4800})
 	if err != nil {
@@ -710,7 +792,7 @@ func TestRewriteKeepsFFmpegIDRSync(t *testing.T) {
 	if _, err := NewSlate(raw); err != nil {
 		t.Fatalf("slate from real ffmpeg output: %v", err)
 	}
-	stream := readStream(bytes.NewReader(raw))
+	stream := readStream(nil, bytes.NewReader(raw))
 	frag := <-stream.frags
 	out, c, err := rewriteFragment(frag, 7, map[uint32]uint64{videoTrack: 0, audioTrack: 0}, true, 3000,
 		map[uint32]int64{videoTrack: 1 << 20, audioTrack: 1 << 20})

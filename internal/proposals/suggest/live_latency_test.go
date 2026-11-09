@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -61,9 +61,9 @@ func liveCorpus() *catalogfixture.Corpus {
 		{"Rush Hour", 1998}, {"The Fugitive", 1993}, {"Léon: The Professional", 1994}, {"Blade", 1998},
 		{"The Matrix", 1999}, {"Mission: Impossible", 1996}, {"Air Force One", 1997},
 	}
-	cands := make([]catalog.Candidate, 0, len(titles))
+	cands := make([]titlesearch.Candidate, 0, len(titles))
 	for i, t := range titles {
-		cands = append(cands, catalog.Candidate{
+		cands = append(cands, titlesearch.Candidate{
 			MediaType: "movie", TMDBID: 1000 + i, Name: t.name, Year: t.year, InLibrary: i%3 != 0,
 			Genres:   []string{"Action", "Thriller"},
 			Overview: "A hardened protagonist is forced into a race against time when a well-organised group of criminals takes control, and must rely on wit, improvisation and a handful of unlikely allies to survive the night.",
@@ -97,7 +97,7 @@ func TestLive_SuggestLatency(t *testing.T) {
 	}
 	for i := 0; i < runs; i++ {
 		rec := &recordingProvider{Provider: llm.NewOpenAI(url, os.Getenv("LOOMARR_LIVE_LLM_MODEL"), os.Getenv("LOOMARR_LIVE_LLM_KEY"))}
-		s := suggest.New(rec, catalog.New(nil, liveCorpus()), referenceExistsValidator{}, 10)
+		s := suggest.New(rec, titlesearch.New(nil, liveCorpus()), referenceExistsValidator{}, 10)
 		desc := descriptions[i%len(descriptions)]
 		start := time.Now()
 		prop, err := s.Suggest(context.Background(), proposals.Intent{Description: desc})

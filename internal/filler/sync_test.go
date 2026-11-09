@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
@@ -51,12 +52,12 @@ func (f *fakeSource) ScanLocalClips(_ context.Context) (cliplibrary.LocalScan, e
 // the path — so the re-key left `Sync` reading the wrong field and nothing went red. A double
 // that models identity differently from the real thing tests the double.
 type memStore struct {
-	clips map[string]cliplibrary.StoreClip
+	clips map[string]clipstore.Clip
 }
 
-func newMemStore() *memStore { return &memStore{clips: map[string]cliplibrary.StoreClip{}} }
+func newMemStore() *memStore { return &memStore{clips: map[string]clipstore.Clip{}} }
 
-func (m *memStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error {
+func (m *memStore) UpsertClip(_ context.Context, c clipstore.Clip) error {
 	m.clips[c.ID()] = c
 	return nil
 }
@@ -77,7 +78,7 @@ func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifa
 	}
 	return nil
 }
-func (m *memStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (m *memStore) GetClip(_ context.Context, id string) (clipstore.Clip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
@@ -615,7 +616,7 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newMemStore()
-			st.clips["clip"] = cliplibrary.StoreClip{Clip: clips.Clip{
+			st.clips["clip"] = clipstore.Clip{Clip: clips.Clip{
 				Hash: "clip", Path: "clip", Name: "Old name", Role: tc.kind,
 				DurationMs: 30_000, Held: tc.held,
 			}}
@@ -1289,7 +1290,7 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 		t.Fatalf("Added = %d, want 1 — the arrival was not catalogued by the pass that filed it", res.Added)
 	}
 
-	var got cliplibrary.StoreClip
+	var got clipstore.Clip
 	for _, c := range st.clips {
 		got = c
 	}
@@ -1350,7 +1351,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		ID: actual, Path: oldRel, Name: stale, Role: clips.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
-	st.clips[actual] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[actual] = clipstore.Clip{Clip: clips.Clip{
 		Hash: actual, Path: oldRel, Name: stale, Role: clips.Commercial,
 		Brand: "Sparkra-Cola", Era: 1992, Audience: clips.Family,
 	}}
@@ -1486,11 +1487,11 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 			Role: clips.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
-	st.clips[untitled] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: untitled, Path: untitledRel,
+	st.clips[untitled] = clipstore.Clip{Clip: clips.Clip{Hash: untitled, Path: untitledRel,
 		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[named] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: named, Path: namedRel,
+	st.clips[named] = clipstore.Clip{Clip: clips.Clip{Hash: named, Path: namedRel,
 		Name: "Summer Sale Spot", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
-	st.clips[segment] = cliplibrary.StoreClip{Clip: clips.Clip{Hash: segment, Path: segmentRel,
+	st.clips[segment] = clipstore.Clip{Clip: clips.Clip{Hash: segment, Path: segmentRel,
 		Name: "Untitled commercial", Role: clips.Commercial, DurationMs: 30_000, Transcript: transcript}}
 
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {

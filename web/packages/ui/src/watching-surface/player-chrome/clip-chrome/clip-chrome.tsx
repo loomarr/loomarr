@@ -1,7 +1,7 @@
 import { playerChrome, Text, ThemeScope } from "@loomarr/design-system";
 import { View } from "react-native";
 
-import { gradientOr, webOnly } from "../glass";
+import { gradientOr, webOnly } from "../flat";
 import type { ClipChromeProps } from "../player-chrome.type";
 import { ClipTransport } from "../player-transport";
 
@@ -25,10 +25,7 @@ const ClipChrome = ({ leading, shown, title, ...transport }: ClipChromeProps) =>
           position: "absolute",
           right: 0,
           top: 0,
-          ...gradientOr(
-            `linear-gradient(180deg, ${playerChrome.scrimMid}, transparent)`,
-            playerChrome.scrimMid,
-          ),
+          backgroundColor: playerChrome.scrimMid,
           ...webOnly({ transition: "opacity 200ms ease" }),
         }}
         testID="clip-chrome-top"

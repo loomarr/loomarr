@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -973,7 +974,7 @@ func (s *Handlers) ingestFiller(ctx context.Context, in *ingestFillerInput) (*in
 		return nil, httpcore.Conflict("That provider is paused",
 			"Resume it under Filler → Sources before downloading from it.")
 	}
-	if errors.Is(err, ErrIngestUnavailable) {
+	if errors.Is(err, operator.ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can assert that a binary RUNS. The single image
 		// always ships the tooling (§16), so unavailable means a degraded install, and the message
 		// says what an operator can actually check — never a remedy that is a dead end (§7).
@@ -1260,7 +1261,7 @@ func (s *Handlers) splitFiller(ctx context.Context, in *splitFillerInput) (*spli
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 	}
-	if errors.Is(err, ErrSplitUnavailable) {
+	if errors.Is(err, operator.ErrSplitUnavailable) {
 		return nil, httpcore.Conflict("Splitting isn't set up",
 			"Splitting needs the filler drop-folder (filler.dir). Set it in Settings → Filler.")
 	}

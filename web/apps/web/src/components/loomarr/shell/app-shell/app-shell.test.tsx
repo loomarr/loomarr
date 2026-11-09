@@ -1,7 +1,7 @@
-import { LoomarrProvider } from "@loomarr/design-system";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
 
@@ -59,7 +59,8 @@ describe("AppShell", () => {
 
   // One focus style across the app: the amber ring the design system's controls draw. A rail
   // control with no focus classes falls back to the browser's white rectangular outline (#2780).
-  it("draws the amber focus ring on every rail control", async () => {
+  // The rail's Sign out is a design-system Action, which draws its own amber focus border.
+  it("draws the amber focus ring on every plain rail control", async () => {
     render(
       <RouterHarness
         content={
@@ -75,7 +76,6 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: "Guide" }),
       screen.getByRole("link", { name: /About/ }),
       screen.getByRole("link", { name: /Your account/ }),
-      screen.getByRole("button", { name: "Sign out" }),
     ];
     for (const control of rail) {
       expect(control).toHaveClass(
@@ -232,11 +232,7 @@ describe("AppShell", () => {
         removeEventListener: vi.fn(),
       }));
       try {
-        render(
-          <LoomarrProvider theme="dark">
-            <RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />
-          </LoomarrProvider>,
-        );
+        render(<RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />);
 
         expect(await screen.findByTestId("phone-bottom-bar-placeholder")).toHaveStyle({ height: "49px" });
 
@@ -258,15 +254,13 @@ describe("AppShell", () => {
       const onOpenCommand = vi.fn();
       try {
         render(
-          <LoomarrProvider theme="dark">
-            <RouterHarness
-              content={
-                <AppShell isAdmin onOpenCommand={onOpenCommand}>
-                  content
-                </AppShell>
-              }
-            />
-          </LoomarrProvider>,
+          <RouterHarness
+            content={
+              <AppShell isAdmin onOpenCommand={onOpenCommand}>
+                content
+              </AppShell>
+            }
+          />,
         );
         const header = await screen.findByRole("banner");
         await userEvent.click(await within(header).findByRole("button", { name: "Search" }));

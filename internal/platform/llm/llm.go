@@ -53,6 +53,13 @@ type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
+	// ArgumentsError is set when the provider could not decode the model's arguments into an
+	// object (malformed JSON). Arguments is then empty, and the dispatcher must answer the model
+	// with this error instead of running the call as if it had sent no arguments.
+	//
+	// The tag keeps a call's serialized shape (and the frozen diagnostic hashes over it) unchanged
+	// when it decoded fine.
+	ArgumentsError string `json:",omitempty"`
 	// wireEnvelope preserves a provider transport shape without exposing it to tool dispatch.
 	wireEnvelope bool
 }
@@ -209,6 +216,11 @@ type Warmer interface {
 // warmed nothing; returning a plain error makes an expected, correct state read as a
 // failure. This is a third outcome, so it gets its own name.
 var ErrNothingToWarm = errors.New("llm: no model configured to warm")
+
+// DefaultOllamaBase is where a local Ollama lives when nothing says otherwise. Shared by the
+// probes and pulls and by the filler vision endpoint (§10 V54a) so they cannot drift onto
+// different ports.
+const DefaultOllamaBase = "http://localhost:11434"
 
 // NewProvider builds the configured provider (§8). url is the base (Ollama
 // baseURL, or the OpenAI-compatible base ending in /v1); key is used only by the

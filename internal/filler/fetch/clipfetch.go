@@ -143,16 +143,11 @@ type Ingestor struct {
 	now         func() time.Time
 }
 
-// New builds an Ingestor from the providers' (real or fake) downloaders + the drop dir.
-func New(downloaders Downloaders, dropDir string, log *slog.Logger) *Ingestor {
-	return &Ingestor{downloaders: downloaders, dropDir: dropDir, log: log, now: time.Now}
-}
-
-// WithArtifactWriter enables durable staged publication. Production always supplies it; the
-// writer-free form remains useful for the narrow dispatcher tests that use filesystem-free fakes.
-func (i *Ingestor) WithArtifactWriter(writer ArtifactWriter) *Ingestor {
-	i.writer = writer
-	return i
+// New builds an Ingestor from the providers' (real or fake) downloaders, the drop dir and the
+// writer that records each acquisition's artifacts. Every download stages into a hidden directory
+// first and is published only after its manifest is durable, so the writer is required.
+func New(downloaders Downloaders, dropDir string, writer ArtifactWriter, log *slog.Logger) *Ingestor {
+	return &Ingestor{downloaders: downloaders, dropDir: dropDir, log: log, writer: writer, now: time.Now}
 }
 
 // WithStorageGovernor requires provider metadata and an atomic reservation
@@ -364,27 +359,24 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 				continue
 			}
 		}
-		outputDir := i.dropDir
-		if i.writer != nil {
-			outputDir = filepath.Join(i.dropDir, ".loomarr-acquisitions", src.AcquisitionID, fmt.Sprintf("%03d", sourceIndex))
-			if err := os.MkdirAll(outputDir, 0o750); err != nil {
-				i.logf("prepare quarantine for %s: %v", src.URL, err)
-				res.Failed++
-				continue
-			}
-			src.PublicationDir = i.dropDir
-			src.archiveAttempt = true
+		outputDir := filepath.Join(i.dropDir, ".loomarr-acquisitions", src.AcquisitionID, fmt.Sprintf("%03d", sourceIndex))
+		if err := os.MkdirAll(outputDir, 0o750); err != nil {
+			i.logf("prepare quarantine for %s: %v", src.URL, err)
+			res.Failed++
+			continue
 		}
+		src.PublicationDir = i.dropDir
+		src.archiveAttempt = true
 		download, err := dl.Download(ctx, src, outputDir)
 		var capacityErr *CapacityError
-		if i.writer != nil && (errors.Is(err, ErrWriteCeilingExceeded) || errors.As(err, &capacityErr)) {
+		if errors.Is(err, ErrWriteCeilingExceeded) || errors.As(err, &capacityErr) {
 			if cleanupErr := os.RemoveAll(outputDir); cleanupErr != nil {
 				err = errors.Join(err, fmt.Errorf("clean unsafe acquisition staging: %w", cleanupErr))
 			}
 			download = DownloadResult{}
 		}
 		manifests := i.manifests(src, outputDir, download.Outputs)
-		if len(manifests) > 0 && i.writer != nil {
+		if len(manifests) > 0 {
 			if persistErr := i.writer.UpsertAcquisitionArtifacts(ctx, manifests); persistErr != nil {
 				i.logf("record acquisition outputs for %s: %v", src.URL, persistErr)
 				res.Failed++

@@ -250,7 +250,7 @@ var migratedGo = []string{
 	"internal/proposals/suggest/tools_internal_test.go",
 	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
 	// (slice 9).
-	"internal/catalog/", "internal/integration/", "internal/library/",
+	"internal/integration/", "internal/library/",
 	"internal/proposals/suggest/date_meaning_test.go",
 	"internal/proposals/suggest/intent_policy_test.go",
 	"internal/proposals/suggest/scopenarrows_test.go",
@@ -289,7 +289,7 @@ var migratedGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in filler/enrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/filler/capability/deterministic_test.go":      "pins the production brand dictionary in filler/enrichment's deterministic.go end to end, whose phrases are real brands",
 	"internal/eval/corpus_live_test.go":                     "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
 	"internal/eval/mood_review_test.go":                     "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
 	"internal/eval/query_expansion_test.go":                 "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",

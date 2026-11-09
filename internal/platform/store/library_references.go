@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// LibraryReferences are the distinct item and collection ids stored records name (#2151 step 15):
-// what the cutover rewrites from the media server's ids to the Library's.
+// LibraryReferences are the distinct item and collection ids stored records name (#2151 step 15).
 type LibraryReferences struct {
 	// Items are movie, series and episode ids: titles, airings, channels' slots, and open
 	// proposals' picks.
@@ -28,18 +25,14 @@ type LibraryReferences struct {
 	Keys map[string]provision.Key
 }
 
-// LibraryReferenceStore lists and rewrites the item and collection ids stored records name.
+// LibraryReferenceStore lists the item and collection ids stored records name.
 type LibraryReferenceStore interface {
 	// LibraryReferences lists every distinct id stored records name, sorted.
 	LibraryReferences(ctx context.Context) (LibraryReferences, error)
-	// RewriteLibraryReferences points every stored reference named in items or collections at the
-	// id it maps to, in one transaction, and drops the media server's episode and path caches. An
-	// id in neither map is left as it is. It returns how many records changed.
-	RewriteLibraryReferences(ctx context.Context, items, collections map[string]string) (int, error)
 }
 
 // visitChannelReferences calls item for each item id a channel names and collection for each
-// collection id, with a pointer the callback may rewrite through.
+// collection id.
 func visitChannelReferences(ch *Channel, item, collection func(*string)) {
 	for i := range ch.Desired {
 		item(&ch.Desired[i].LibraryItemID)
@@ -63,7 +56,7 @@ func visitChannelReferences(ch *Channel, item, collection func(*string)) {
 }
 
 // visitProposalReferences does the same for a proposal's picks and policy. Its trace is evidence
-// of the run that made it and is never rewritten.
+// of the run that made it and is not read.
 func visitProposalReferences(p *proposals.Proposal, item, collection func(*string)) {
 	for _, list := range [][]proposals.ProposalItem{p.Lineup, p.Acquisitions, p.Alternates} {
 		for i := range list {
@@ -86,8 +79,8 @@ func visitProposalReferences(p *proposals.Proposal, item, collection func(*strin
 	}
 }
 
-// openProposalStatus is the status of a proposal still waiting on a decision: the only ones the
-// cutover rewrites. A decided proposal is history.
+// openProposalStatus is the status of a proposal still waiting on a decision: the only ones whose
+// references count. A decided proposal is history.
 const openProposalStatus = "submitted"
 
 func (s *sqlStore) LibraryReferences(ctx context.Context) (LibraryReferences, error) {
@@ -179,122 +172,4 @@ func (s *sqlStore) distinctStrings(ctx context.Context, q queryer, query string,
 		out = append(out, v)
 	}
 	return out, rows.Err()
-}
-
-func (s *sqlStore) RewriteLibraryReferences(ctx context.Context, items, collections map[string]string) (int, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("rewrite library references: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	changed, err := s.rewriteLibraryReferences(ctx, tx, items, collections)
-	if err != nil {
-		return 0, fmt.Errorf("rewrite library references: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("rewrite library references: %w", err)
-	}
-	return changed, nil
-}
-
-func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, items, collections map[string]string) (int, error) {
-	changed := 0
-	titleIDs, err := s.distinctStrings(ctx, tx, `SELECT DISTINCT library_id FROM titles WHERE library_id <> ''`)
-	if err != nil {
-		return 0, err
-	}
-	for _, old := range titleIDs {
-		next, ok := items[old]
-		if !ok || next == old {
-			continue
-		}
-		res, err := tx.ExecContext(ctx, s.ph(`UPDATE titles SET library_id = ? WHERE library_id = ?`), next, old)
-		if err != nil {
-			return 0, fmt.Errorf("titles: %w", err)
-		}
-		n, _ := res.RowsAffected()
-		changed += int(n)
-	}
-	airingIDs, err := s.distinctStrings(ctx, tx, `SELECT DISTINCT library_item_id FROM airings WHERE library_item_id <> ''`)
-	if err != nil {
-		return 0, err
-	}
-	for _, old := range airingIDs {
-		next, ok := items[old]
-		if !ok || next == old {
-			continue
-		}
-		// Two ids that name one item keep one row per airing: the key includes the item id.
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO airings (channel_id, library_item_id, aired_at, recorded_at, key)
-			SELECT channel_id, ?, aired_at, recorded_at, key FROM airings WHERE library_item_id = ?
-			ON CONFLICT DO NOTHING`), next, old); err != nil {
-			return 0, fmt.Errorf("airings: %w", err)
-		}
-		res, err := tx.ExecContext(ctx, s.ph(`DELETE FROM airings WHERE library_item_id = ?`), old)
-		if err != nil {
-			return 0, fmt.Errorf("airings: %w", err)
-		}
-		n, _ := res.RowsAffected()
-		changed += int(n)
-	}
-
-	var dirty bool
-	remap := func(m map[string]string) func(*string) {
-		return func(id *string) {
-			if next, ok := m[*id]; ok && next != *id {
-				*id, dirty = next, true
-			}
-		}
-	}
-	rows, err := tx.QueryContext(ctx, s.ph(channelstore.Select(s.channelCluster)+` ORDER BY number`))
-	if err != nil {
-		return 0, fmt.Errorf("channels: %w", err)
-	}
-	channels, err := channelstore.ScanChannels(rows)
-	if err == nil {
-		err = rows.Err() // ScanChannels checks it too; naming it here keeps the invariant visible to rowserrcheck
-	}
-	_ = rows.Close()
-	if err != nil {
-		return 0, fmt.Errorf("channels: %w", err)
-	}
-	for i := range channels {
-		dirty = false
-		visitChannelReferences(&channels[i], remap(items), remap(collections))
-		if !dirty {
-			continue
-		}
-		if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, channels[i]); err != nil {
-			return 0, fmt.Errorf("channels: %w", err)
-		}
-		changed++
-	}
-	prows, err := tx.QueryContext(ctx, s.ph(proposalstore.ProposalSelect+` WHERE status = ?`), openProposalStatus)
-	if err != nil {
-		return 0, fmt.Errorf("proposals: %w", err)
-	}
-	open, err := proposalstore.ScanProposals(prows)
-	if err == nil {
-		err = prows.Err() // ScanProposals checks it too; naming it here keeps the invariant visible to rowserrcheck
-	}
-	_ = prows.Close()
-	if err != nil {
-		return 0, fmt.Errorf("proposals: %w", err)
-	}
-	for i := range open {
-		dirty = false
-		visitProposalReferences(&open[i].Body, remap(items), remap(collections))
-		if !dirty {
-			continue
-		}
-		body, err := proposalstore.EncodeProposalBody(open[i])
-		if err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE proposals SET proposal_json = ? WHERE id = ?`), body, open[i].ID); err != nil {
-			return 0, fmt.Errorf("proposals: %w", err)
-		}
-		changed++
-	}
-	return changed, nil
 }

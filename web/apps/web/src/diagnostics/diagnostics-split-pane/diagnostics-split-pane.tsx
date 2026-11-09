@@ -1,5 +1,4 @@
-import { Action, Tooltip } from "@loomarr/design-system";
-import { GripVertical } from "lucide-react";
+import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -141,10 +140,9 @@ const DiagnosticsSplitPane = ({
                 drag.current = undefined;
               }}
             />
-            <GripVertical
-              aria-hidden
-              className="text-muted-foreground group-hover:text-signal pointer-events-none relative size-4"
-            />
+            <span className="text-muted-foreground group-hover:text-signal pointer-events-none relative flex">
+              <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
+            </span>
           </div>
         </div>
       )}

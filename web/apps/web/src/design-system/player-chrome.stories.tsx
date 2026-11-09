@@ -2,11 +2,15 @@ import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
 import {
+  PlayerAudio,
   PlayerChrome,
+  type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
-  PlayerSettings,
+  PlayerMore,
+  PlayerOptions,
   PlayerSheet,
+  pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -138,43 +142,51 @@ const channel = { era: { from: 1990, to: 1999 }, name: "Coast 90s", number: "7",
 const live = { lagSeconds: 0, mode: "live" as const };
 const liveData = playbarFromTimeline({ airings, channel, live, nowMs: NOW, playheadMs: NOW });
 
-const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }) => {
-  const playheadMs = NOW - state.lagSeconds * 1000;
+const keys = {
+  density: "pointer" as const,
+  moreOpen: false,
+  muted: false,
+  onChannelDown: fn(),
+  onChannelUp: fn(),
+  onMore: fn(),
+  onToggleMute: fn(),
+  onTogglePlay: fn(),
+  playing: true,
+  pointer: true,
+  volume: 0.8,
+};
+
+const top = {
+  audioOpen: false,
+  density: "pointer" as const,
+  fullscreen: false,
+  onAudio: fn(),
+  onFullscreen: fn(),
+  onLeave: fn(),
+  pointer: true,
+};
+
+const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }, playheadAt = NOW) => {
+  const playheadMs = playheadAt - state.lagSeconds * 1000;
   const data = playbarFromTimeline({ airings, channel, live: state, nowMs: NOW, playheadMs });
   return {
     band: data.band,
-    playbar: { onSeek: fn(), playheadMs, segments: data.segments, window: data.window },
-    transport: {
-      ...transport,
-      live: state,
-      onStartOver: data.startOverMs === undefined ? undefined : fn(),
-      playing: state.mode !== "paused",
-    },
+    keys: { ...keys, playing: state.mode !== "paused" },
+    live: state,
   };
 };
 
-const transport = {
-  channelsOpen: false,
-  density: "pointer" as const,
-  fullscreen: false,
-  live,
-  muted: false,
-  onChannels: fn(),
-  onFullscreen: fn(),
-  onGoLive: fn(),
-  onInfo: fn(),
-  onLeave: fn(),
-  onSeekBack: fn(),
-  onSeekForward: fn(),
-  onSettings: fn(),
-  onToggleMute: fn(),
-  onTogglePlay: fn(),
-  onVolume: fn(),
-  playing: true,
-  pointer: true,
-  settingsOpen: false,
-  volume: 0.8,
+// What the More sheet reads from the same timeline.
+const moreData = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }) => {
+  const playheadMs = NOW - state.lagSeconds * 1000;
+  const data = playbarFromTimeline({ airings, channel, live: state, nowMs: NOW, playheadMs });
+  return {
+    schedule: { onSeek: fn(), playheadMs, segments: data.segments, window: data.window },
+    startOver: data.startOverMs === undefined ? undefined : { detail: data.band.title ?? "", onPress: fn() },
+  };
 };
+
+const sheetChannel = { name: "Coast 90s", number: "7" };
 
 // The picture the chrome sits on: a dark stand-in filling the frame.
 const Picture = ({ children }: { children: ReactNode }) => (
@@ -206,7 +218,8 @@ const meta = {
     ...chromeArgs(live),
     density: "pointer",
     formatTime,
-    onPreviewChange: fn(),
+    onGoLive: fn(),
+    top,
     visible: true,
   },
 } satisfies Meta<typeof PlayerChrome>;
@@ -215,58 +228,197 @@ type Story = StoryObj<typeof meta>;
 
 const Playing: Story = {};
 
-// Paused in the seekable past: the band reads how far behind, and Go live offers the way back.
+// The chrome is light words on the picture in both themes (the flat player, #3178), so the light
+// theme's page must not change it. The picture stays dark.
+const LightPlaying: Story = { globals: { theme: "light" } };
+
+// Controls hidden after three seconds: only the picture is left.
+const Idle: Story = { args: { visible: false } };
+
+// Paused in the seekable past: Go live in place of Live, a red tick on the progress line.
 const Behind: Story = { args: chromeArgs({ lagSeconds: 134, mode: "paused" }) };
 
-// A break airing at the playhead: the band names the spot, and its line takes the break's tint.
+// A break airing at the playhead: the programme's title, `Back in n min` in the break colour.
 const Commercials: Story = { args: chromeArgs({ lagSeconds: 75, mode: "behind" }) };
 
-// The schedule not read yet: the band and the transport, no playbar.
+// The schedule not read yet: the band names the channel and nothing else.
 const NoSchedule: Story = {
-  args: { band: { channelName: channel.name, channelNumber: channel.number }, playbar: undefined },
+  args: { band: { channelName: channel.name, channelNumber: channel.number } },
 };
 
+// Last is hidden until there is a channel to return to; this one has it, as does the player after a flip.
+const WithLast: Story = {
+  args: { keys: { ...keys, last: { number: "3", onPress: fn() } } },
+};
+
+// Touch: 56 px keys, no legends, no Volume, no tooltips.
 const Touch: Story = {
-  args: { density: "touch", transport: { ...transport, density: "touch", pointer: false } },
+  args: {
+    density: "touch",
+    keys: { ...keys, density: "touch", pointer: false },
+    top: { ...top, density: "touch", pointer: false },
+  },
 };
 
-const Settings: Story = {
+const AudioSheet: Story = {
   args: {
     sheet: (
-      <PlayerSheet
-        channelLabel="CH 7 · Coast 90s"
-        density="pointer"
-        icon="settings"
-        onClose={fn()}
-        title="Settings"
-      >
-        <PlayerSettings
-          audio={[
+      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Audio">
+        <PlayerAudio
+          density="pointer"
+          onSwitchSound={fn()}
+          options={[
             { label: "Auto", selected: false, value: "auto" },
             { label: "English", selected: true, value: "eng" },
             { label: "Spanish", selected: false, value: "spa" },
           ]}
-          density="pointer"
-          onSwitchSound={fn()}
-          quality={{
-            onSelect: fn(),
-            options: [
-              { label: "Auto · 4K", selected: true, value: "auto" },
-              { label: "1080p", selected: false, value: "1080" },
-              { label: "4K", selected: false, value: "2160" },
-            ],
-          }}
           switchSound
         />
       </PlayerSheet>
     ),
-    transport: { ...transport, settingsOpen: true },
+    top: { ...top, audioOpen: true },
   },
 };
 
-// The station-ID card: a settled tune, the controls hidden — the band alone, fuller, with the
-// station's era and place.
+// Digits being typed with the controls up: the readout on a solid ink backing, white, under the top row.
+const TypingChannel: Story = { args: { readout: { digits: "1–" } } };
+
+const NoSuchChannel: Story = { args: { readout: { digits: "99", missed: true } } };
+
+// The channel's watermark is burned into the picture and never moves. The chrome steps around it
+// (§9.6, #2772): a 16:9 frame so the picture fills it, and a stand-in bug drawn where playout puts it.
+const FRAME = { height: 720, width: 1280 } as const;
+const BugFrame = ({
+  corner,
+  ...args
+}: Story["args"] & { corner: "bottom-left" | "bottom-right" | "top-left" | "top-right" }) => {
+  const watermark = { corner, margin: 0.05, size: 0.06 };
+  const picture = pictureIn(FRAME);
+  const h = watermark.size * picture.height;
+  const inset = watermark.margin * picture.height;
+  return (
+    <div style={{ ...FRAME, margin: "0 auto", position: "relative" }}>
+      <div
+        style={{
+          background: "rgba(255, 255, 255, 0.4)",
+          [corner.startsWith("top") ? "top" : "bottom"]: picture.y + inset,
+          [corner.endsWith("right") ? "right" : "left"]: picture.x + inset,
+          height: h,
+          position: "absolute",
+          width: h * 2.5,
+        }}
+      />
+      <PlayerChrome {...(args as PlayerChromeProps)} watermark={watermark} />
+    </div>
+  );
+};
+const bugStory = (corner: "bottom-left" | "bottom-right" | "top-left" | "top-right"): Story => ({
+  render: (args) => <BugFrame {...args} corner={corner} />,
+});
+const WatermarkTopRight = bugStory("top-right");
+const WatermarkTopLeft = bugStory("top-left");
+const WatermarkBottomRight = bugStory("bottom-right");
+const WatermarkBottomLeft = bugStory("bottom-left");
+// A top-right bug with digits being typed: the readout starts below the bug too.
+const WatermarkTopRightTyping: Story = {
+  args: { readout: { digits: "1–" } },
+  render: (args) => <BugFrame {...args} corner="top-right" />,
+};
+
+const PictureSheet: Story = {
+  args: {
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Picture">
+        <PlayerOptions
+          density="pointer"
+          label="Picture quality"
+          onSelect={fn()}
+          options={[
+            { detail: "Best for your connection", label: "Auto · 1080p", selected: true, value: "auto" },
+            { label: "1080p", selected: false, value: "1080" },
+            { label: "720p", selected: false, value: "720" },
+          ]}
+        />
+      </PlayerSheet>
+    ),
+  },
+};
+
+const MoreSheet: Story = {
+  args: {
+    keys: { ...keys, moreOpen: true },
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="pointer"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+          picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          {...moreData(live)}
+        />
+      </PlayerSheet>
+    ),
+  },
+};
+
+// Behind live, More adds Start over and Go live.
+const MoreBehind: Story = {
+  args: {
+    ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
+    keys: { ...keys, moreOpen: true, playing: false },
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="pointer"
+          formatTime={formatTime}
+          goLive={{ detail: formatTime(NOW), onPress: fn() }}
+          info={{ onPress: fn() }}
+          last={{ number: "3", onPress: fn() }}
+          picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          {...moreData({ lagSeconds: 134, mode: "paused" })}
+        />
+      </PlayerSheet>
+    ),
+  },
+};
+
+// Title art, drawn as shapes (no real titles in a public repo): a wide wordmark, a nearly square emblem
+// and a 16:9 fanart. The band sizes each logo by area, so a wide and a square one carry the same weight.
+const svgArt = (width: number, height: number, body: string) => ({
+  height,
+  src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>`)}`,
+  srcSetWebp: "",
+  width,
+});
+const wordmark = svgArt(
+  600,
+  100,
+  '<rect width="600" height="100" rx="12" fill="#F4F6FA"/><rect x="24" y="30" width="552" height="40" rx="8" fill="#0B0C0E"/>',
+);
+const emblem = svgArt(
+  420,
+  400,
+  '<circle cx="210" cy="200" r="196" fill="#F4F6FA"/><circle cx="210" cy="200" r="120" fill="#0B0C0E"/><circle cx="210" cy="200" r="48" fill="#F4F6FA"/>',
+);
+const fanart = svgArt(
+  1280,
+  720,
+  '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(20 60% 50%)"/><stop offset="1" stop-color="hsl(280 45% 18%)"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/>',
+);
+
+const LogoWide: Story = { args: { band: { ...liveData.band, logo: wordmark } } };
+const LogoSquare: Story = { args: { band: { ...liveData.band, logo: emblem } } };
+
+// The station-ID card: a settled tune, the controls hidden — the band alone, with the station's era
+// and place.
 const StationId: Story = { args: { ident: true, visible: false } };
+
+// On the programme's fanart, heavily dimmed and contained at 16:9 (letterboxed), never stretched.
+const StationIdBackdrop: Story = {
+  args: { band: { ...liveData.band, backdrop: fanart, logo: wordmark }, ident: true, visible: false },
+};
 
 // The channel block in the channel's decade colour (#2767); without one it is amber (Playing).
 const Decade1970: Story = { args: { band: { ...liveData.band, decade: 1970 } } };
@@ -279,11 +431,10 @@ const StationIdDecade: Story = {
 const Info: Story = {
   args: {
     sheet: liveData.info ? (
-      <PlayerSheet channelLabel="CH 7 · Coast 90s" density="pointer" icon="info" onClose={fn()} title="Info">
+      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Info">
         <PlayerInfo density="pointer" formatTime={formatTime} info={liveData.info} />
       </PlayerSheet>
     ) : undefined,
-    transport: { ...transport, infoOpen: true },
   },
 };
 
@@ -320,18 +471,34 @@ const OffAir: Story = {
 
 export default meta;
 export {
+  AudioSheet,
   Behind,
   Commercials,
   Decade1970,
   Decade1980,
   Decade1990,
+  Idle,
   Info,
+  LightPlaying,
+  LogoSquare,
+  LogoWide,
+  MoreBehind,
+  MoreSheet,
   NoSchedule,
+  NoSuchChannel,
   OffAir,
+  PictureSheet,
   Playing,
-  Settings,
   StationId,
+  StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
   Touch,
+  TypingChannel,
+  WatermarkBottomLeft,
+  WatermarkBottomRight,
+  WatermarkTopLeft,
+  WatermarkTopRight,
+  WatermarkTopRightTyping,
+  WithLast,
 };

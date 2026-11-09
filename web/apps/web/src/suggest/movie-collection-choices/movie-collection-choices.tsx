@@ -1,7 +1,6 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Disclosure, LoadingStrip } from "@loomarr/design-system";
-import { Check } from "lucide-react";
+import { Action, Disclosure, Icon, icons, LoadingStrip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
@@ -127,7 +126,7 @@ const MovieCollectionChoices = ({
                       </div>
                       {selected ? (
                         <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                          <Check className="size-3.5" aria-hidden /> Selected
+                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> Selected
                         </span>
                       ) : (
                         editable && (

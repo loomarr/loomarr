@@ -1,7 +1,6 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Field, LoadingStrip, Surface } from "@loomarr/design-system";
-import { Sparkles, TriangleAlert } from "lucide-react";
+import { Action, Field, Icon, icons, LoadingStrip, Surface } from "@loomarr/design-system";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
@@ -92,7 +91,7 @@ const RefinePanel = ({
       className={cn("border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4", className)}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Sparkles className="text-suggest-300 size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
         <h3 id={headingId} className="text-sm font-medium">
           Refine with AI
         </h3>
@@ -108,7 +107,9 @@ const RefinePanel = ({
               role="alert"
               className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
             >
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="mt-0.5 flex">
+                <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+              </span>
               {failureCopy ? (
                 <span className="flex flex-col gap-0.5">
                   <span className="font-medium">{failureCopy.title}</span>
@@ -146,10 +147,7 @@ const RefinePanel = ({
                       value={field.state.value}
                     />
                   </Surface>
-                  <Action
-                    // A real submit button under Action's look, so Enter in a field still submits.
-                    render={<button disabled={field.state.value.trim().length === 0} type="submit" />}
-                  >
+                  <Action disabled={field.state.value.trim().length === 0} submit>
                     Suggest changes
                   </Action>
                 </>

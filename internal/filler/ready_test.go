@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type readyRepository struct {
@@ -33,8 +33,8 @@ func completedReadyRow(hash string, at time.Time) pipelinestate.ClipPipeline {
 	}
 }
 
-func readyClip(hash string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: clips.Clip{
+func readyClip(hash string) clipstore.Clip {
+	return clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: "clip.mp4", Source: "archive:classic_tv_commercials",
 		Role: clips.Unclassified, Held: true, DurationMs: 30_000,
 	}}

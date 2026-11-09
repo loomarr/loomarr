@@ -327,6 +327,7 @@ const Movie: Story = {
         seasons: [],
         match: { by: "app", app: "Radarr" },
         detailsFrom: { description: "TMDB", rating: "TMDB" },
+        channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
       }}
     />
   ),
@@ -357,6 +358,10 @@ const Series: Story = {
         })),
         match: { by: "you" },
         detailsFrom: { description: "TMDB", rating: "TMDB", episodeNames: "Sonarr" },
+        channels: [
+          { id: "90000972", name: "Late Show", number: 7 },
+          { id: "90000973", name: "Sunday Stories", number: 12 },
+        ],
       }}
     />
   ),
@@ -389,6 +394,7 @@ const SeriesOrderWaiting: Story = {
         })),
         match: { by: "file" },
         detailsFrom: { description: "TMDB", episodeNames: "TMDB" },
+        channels: [],
       }}
     />
   ),
@@ -532,6 +538,7 @@ const WizardStepAdding: Story = {
     <LibraryWizardStep
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
+      readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
       scan={{ enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: false }}
     />
   ),

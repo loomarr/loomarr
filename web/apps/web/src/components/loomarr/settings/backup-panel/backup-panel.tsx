@@ -1,6 +1,5 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
-import { AlertTriangle, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
 import { missingNights } from "./missing-nights";
@@ -35,7 +34,7 @@ const BackupPanel = ({
     return (
       <section className={cn("border-border rounded-lg border p-4", className)}>
         <div className="flex items-center gap-2">
-          <Database className="text-muted-foreground size-4" aria-hidden />
+          <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <h2 className="text-sm font-medium">Backups</h2>
         </div>
         <p className="text-muted-foreground mt-2 text-sm">
@@ -65,7 +64,9 @@ const BackupPanel = ({
 
       {error ? (
         <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          </span>
           {error}
         </p>
       ) : null}

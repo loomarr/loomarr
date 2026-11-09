@@ -24,7 +24,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -219,7 +218,7 @@ type FillerPipelineStore interface {
 	ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error)
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]clipstore.Clip, error)
 	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
 	// row, and appends the effective Ready event. It is the only non-composite publication path.
 	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
@@ -278,6 +277,10 @@ type FillerSourceStore interface {
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
+	// ChangeFillerSource applies one operator edit (switch, coverage, fetch tuning) in one
+	// statement, so a PATCH that names several of them cannot half-apply. store.ErrNotFound for an
+	// unknown id.
+	ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error
 }
 
 // Store is the core store extended with the filler store: the one value the composition root

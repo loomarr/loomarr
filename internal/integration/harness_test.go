@@ -111,7 +111,8 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	}))
 	t.Cleanup(h.tunarrStub.Close)
 	if h.llm = cfg.llm; h.llm == nil {
-		h.llm = testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))
+		// Unscripted: a journey that reaches the model scripts it through cfg.llm.
+		h.llm = testkit.NewLLM(t)
 	}
 	if cfg.seerr {
 		h.seerr = testkit.NewSeerr(t)

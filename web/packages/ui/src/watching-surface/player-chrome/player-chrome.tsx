@@ -1,18 +1,24 @@
 import { playerChrome, ThemeScope } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
-import { View } from "react-native";
+import { type LayoutChangeEvent, View } from "react-native";
 
-import { gradientOr, webOnly } from "./glass";
-import { LowerThirdBand } from "./lower-third-band";
+import { ChannelBand } from "./channel-band";
+import { gradientOr, webOnly } from "./flat";
+import { IdentBackdrop } from "./ident-backdrop";
 import type { PlayerChromeProps } from "./player-chrome.type";
-import { PlayerTransport } from "./player-transport";
-import { PreviewPlaybar } from "./preview-playbar";
+import { PlayerKeys } from "./player-keys";
+import { PlayerReadout } from "./player-readout";
+import { PlayerTopRow } from "./player-top-row";
+import { clearOfWatermark, type Frame } from "./watermark-clearance";
+
+// The height of a top-row key.
+const KEY = 48;
 
 // PlayerChrome — the chrome every Loomarr player wears (frontend-design §9; the mock of record is
-// design/watch-player). Drawn over the picture, back to front: a bottom scrim carrying the lower
-// third, the preview playbar and the transport; then the transient layer, one right-hand sheet over a
-// dimmed picture. Presentational: the app owns the player, the data and the input mapping. It is dark
-// in a light app too — it sits on a picture, not on a page.
+// design/watch-player, variant H). Drawn over the picture, back to front: one bottom scrim, the band
+// and the keys beside it, the top row at the upper right; then the transient layer, one right-hand
+// sheet over a dimmed picture. Presentational: the app owns the player, the data and the input
+// mapping. It is dark in a light app too — it sits on a picture, not on a page.
 
 const ChromeBody = memo(
   ({
@@ -20,34 +26,52 @@ const ChromeBody = memo(
     density,
     formatTime,
     ident = false,
-    onPreviewChange,
-    playbar,
+    keys,
+    live,
+    onGoLive,
+    readout,
     sheet,
-    transport,
+    top,
     visible,
+    watermark,
   }: PlayerChromeProps) => {
-    const [previewOpen, setPreviewOpen] = useState(false);
-    const preview = (open: boolean) => {
-      setPreviewOpen(open);
-      onPreviewChange?.(open);
-    };
     const touch = density === "touch";
-    const controls = visible && !sheet;
-    // The station-ID card stands in for hidden controls: the band alone, fuller (mock "station-id").
+    // The station-ID card stands in for hidden controls: the band alone, fuller.
     const card = ident && !visible && !sheet;
+    const controls = visible;
     const shown = controls || card;
+    const edge = touch ? 16 : 48;
+    // The channel's watermark is part of the picture, so the chrome steps around it (§9.6): the top
+    // row and the readout start below a top bug; the band and keys lift clear of a bottom one.
+    const [frame, setFrame] = useState<Frame>({ height: 0, width: 0 });
+    const [rowHeight, setRowHeight] = useState(0);
+    const topBase = touch ? 16 : 40;
+    const topRowAt = clearOfWatermark({ base: topBase, edge: "top", extent: KEY, frame, watermark });
+    const bottomBase = touch ? 16 : 48;
+    const bottomAt = clearOfWatermark({
+      base: bottomBase,
+      edge: "bottom",
+      extent: rowHeight,
+      frame,
+      watermark,
+    });
     return (
       <ThemeScope theme="dark">
         <View
+          onLayout={(e: LayoutChangeEvent) => setFrame(e.nativeEvent.layout)}
+          pointerEvents="none"
+          style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+        />
+        {card && band.backdrop && frame.width > 0 ? (
+          <IdentBackdrop art={band.backdrop} frame={frame} />
+        ) : null}
+        <View
           aria-hidden={!shown || undefined}
-          pointerEvents={shown ? "box-none" : "none"}
+          pointerEvents="none"
           style={{
             bottom: 0,
-            gap: touch ? 6 : 12,
             left: 0,
             opacity: shown ? 1 : 0,
-            paddingBottom: touch ? 10 : 20,
-            paddingHorizontal: touch ? 16 : 32,
             paddingTop: touch ? 40 : 96,
             position: "absolute",
             right: 0,
@@ -56,29 +80,56 @@ const ChromeBody = memo(
               `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
               playerChrome.scrimMid,
             ),
-            ...webOnly({ transition: "opacity 220ms ease" }),
+            ...webOnly({ transition: "opacity 120ms ease" }),
           }}
         >
-          <LowerThirdBand
-            band={band}
-            density={density}
-            ident={card}
-            steppedBack={previewOpen && transport.pointer}
-          />
-          {card ? null : playbar ? (
-            <PreviewPlaybar
-              density={density}
-              formatTime={formatTime}
-              onPreviewChange={preview}
-              onSeek={playbar.onSeek}
-              playheadMs={playbar.playheadMs}
-              pointer={transport.pointer}
-              segments={playbar.segments}
-              window={playbar.window}
-            />
-          ) : null}
-          {card ? null : <PlayerTransport {...transport} />}
+          <View
+            onLayout={(e: LayoutChangeEvent) => setRowHeight(e.nativeEvent.layout.height - bottomAt)}
+            pointerEvents={shown ? "box-none" : "none"}
+            style={{
+              alignItems: "flex-end",
+              flexDirection: "row",
+              gap: touch ? 32 : 64,
+              paddingBottom: bottomAt,
+              paddingHorizontal: edge,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <ChannelBand
+                band={band}
+                density={density}
+                formatTime={formatTime}
+                ident={card}
+                live={live}
+                onGoLive={onGoLive}
+              />
+            </View>
+            {card ? null : <PlayerKeys {...keys} />}
+          </View>
         </View>
+        <View
+          aria-hidden={!controls || undefined}
+          pointerEvents={controls ? "box-none" : "none"}
+          style={{
+            opacity: controls ? 1 : 0,
+            position: "absolute",
+            right: touch ? 16 : 48,
+            top: topRowAt,
+            zIndex: 40,
+            ...webOnly({ transition: "opacity 120ms ease" }),
+          }}
+        >
+          <PlayerTopRow {...top} />
+        </View>
+        {readout ? (
+          <PlayerReadout
+            density={density}
+            digits={readout.digits}
+            missed={readout.missed}
+            // Under the top row while the controls are up; in its place while they are hidden.
+            top={controls ? topRowAt + KEY + (touch ? 16 : 24) : topRowAt}
+          />
+        ) : null}
         {sheet ? (
           <>
             <View

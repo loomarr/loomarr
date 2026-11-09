@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // airingList is the catalog's clips on air.
-type airingList []cliplibrary.StoreClip
+type airingList []clipstore.Clip
 
-func (l airingList) ListClips(context.Context, filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
+func (l airingList) ListClips(context.Context, filler.ClipQuery) ([]clipstore.Clip, error) {
 	return l, nil
 }
 

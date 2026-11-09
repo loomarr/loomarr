@@ -108,7 +108,7 @@ func TestQueryExpansionDiagnosticScriptedRequestsFitReservedInput(t *testing.T) 
 			if !ok {
 				t.Fatalf("authored diagnostic case %q is missing", candidate.Name)
 			}
-			provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+			provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 			generator, _, err := NewEmbeddedQueryExpansionGenerator(provider)
 			if err != nil {
 				t.Fatal(err)
@@ -176,7 +176,7 @@ func TestQueryExpansionReviewedTGIFUsesProductionSuggestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := testkit.NewLLM(
+	provider := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"media_type": "series", "mode": "collection",
 			"titles":      []any{"Family Matters", "Step by Step", "Boy Meets World", "Sabrina the Teenage Witch"},
@@ -212,7 +212,7 @@ func TestQueryExpansionRecoversAfterAnObservedCatalogFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := testkit.NewLLM(queryExpansionRecoveryResponses()...)
+	provider := testkit.NewLLM(t, queryExpansionRecoveryResponses()...)
 	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestQueryExpansionReviewedMCUUsesProductionSuggestion(t *testing.T) {
 			authored = c
 		}
 	}
-	provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+	provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +291,7 @@ func TestQueryExpansionReviewedHistoryUsesProductionSuggestion(t *testing.T) {
 			authored = c
 		}
 	}
-	provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+	provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestQueryExpansionReviewedMovieEpochUsesProductionSuggestion(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+	provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 	if err != nil {
 		t.Fatal(err)
@@ -431,7 +431,7 @@ func TestQueryExpansionOperationalMovieRequestsUseProductionSuggestion(t *testin
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -470,7 +470,7 @@ func TestQueryExpansionMoviePeopleUseRequestedCatalogRoles(t *testing.T) {
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, corpus.Cases[i])...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -509,7 +509,7 @@ func TestQueryExpansionMovieIntervalsAndRefinementsUseProductionSuggestion(t *te
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, corpus.Cases[i])...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -551,7 +551,7 @@ func TestQueryExpansionMovieExclusionsAndThinResultsUseProductionSuggestion(t *t
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, corpus.Cases[i])...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -585,7 +585,7 @@ func TestQueryExpansionMovieAudienceCeilingsUseOneRatingAuthority(t *testing.T) 
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -619,7 +619,7 @@ func TestQueryExpansionMovieAudienceEmptyResultsAreExplicitAbstentions(t *testin
 			continue
 		}
 		run++
-		provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+		provider := testkit.NewLLM(t, queryExpansionResponses(t, authored)...)
 		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 		if err != nil {
 			t.Fatal(err)
@@ -975,7 +975,7 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 	}
 	for i, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+			provider := testkit.NewLLM(t, queryExpansionResponses(t, corpus.Cases[i])...)
 			generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
 			if err != nil {
 				t.Fatal(err)

@@ -2,12 +2,10 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Action, Badge, Card, Surface, Text } from "@loomarr/design-system";
-import { ChevronDown, ShieldAlert } from "lucide-react";
+import { Action, Badge, Card, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
@@ -227,7 +225,7 @@ const ApprovalQueueItem = ({
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
         <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm">
-            <ShieldAlert className="text-caution size-4 shrink-0" aria-hidden />
+            <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title was" : "titles were"} left out
             </span>
@@ -293,17 +291,15 @@ const ApprovalQueueItem = ({
 
       {hasPicks && (
         <div className="border-border border-t pt-2">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-            // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-            onClick={() => setOpen((v) => !v)}
+          <Action
             aria-expanded={open}
+            icon={open ? "showLess" : "showMore"}
+            onPress={() => setOpen((v) => !v)}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
-            <ChevronDown className={cn("size-4", open && "rotate-180")} aria-hidden />
             {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
-          </button>
+          </Action>
           {open &&
             // With an edit handler the disclosure IS the edit surface (V25b) — the same list,
             // with drop/add/note. Without one it stays read-only, so every other caller and the

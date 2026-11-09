@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A title's present files are listed in path order with labelled tracks; the copy its arr lists
@@ -79,8 +79,8 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	listed := func(page string) json.RawMessage {
 		raw, _ := json.Marshal(originExtension{Listed: &listedExtension{
-			Catalog: store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
-			Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: page},
+			Catalog: librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
+			Match:   librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: page},
 		}})
 		return raw
 	}
@@ -111,14 +111,14 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	if !ok {
 		t.Fatal("a movie with a present scanner origin is not listed")
 	}
-	want := store.LibraryItem{ID: "m1", Kind: "movie", Name: "Kept Film", SortName: "sort kept film", Year: 2001,
-		Catalog: store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
-		Origin:  store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
-		Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"},
+	want := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Kept Film", SortName: "sort kept film", Year: 2001,
+		Catalog: librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
+		Origin:  librarystore.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
+		Match:   librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"},
 		Studios: []string{"Ironbell Pictures", "Second Shift Films"}, Countries: []string{"Canada"},
 		Tagline: "Kept, at last.", Trailer: "https://www.youtube.com/watch?v=kept9000",
-		Credits: []store.LibraryCredit{
-			{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: store.LibraryID{Namespace: "tmdb", Value: "90003301"},
+		Credits: []librarystore.LibraryCredit{
+			{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90003301"},
 				Photo: "https://img.invalid/kept.jpg"},
 			{Name: "Kept Director", Role: "director"},
 		}}
@@ -136,7 +136,7 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	// An episode is listed with its numbering and its series' origin; its genres, studios and
 	// countries are its show's, so it has none of its own (decision 42).
 	epExt, _ := json.Marshal(originExtension{Listed: &listedExtension{
-		Series: store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "series:dir:1"}}})
+		Series: librarystore.LibraryOrigin{Authority: authorityPrefix + "a", Key: "series:dir:1"}}})
 	ep := origin(authorityPrefix+"a", "file:4", "Pilot", at, false, epExt)
 	ep.Observation.Facts.SeasonNumber, ep.Observation.Facts.EpisodeNumber = 1, 1
 	ep.Observation.Facts.Genres, ep.Observation.Facts.Studios = []string{"Drama"}, []string{"Network"}

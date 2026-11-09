@@ -44,6 +44,10 @@ const MOVIE: LibraryTitleDetail = {
   seasons: [],
   match: { by: "app", app: "Radarr" },
   detailsFrom: { description: "TMDB", rating: "TMDB" },
+  channels: [
+    { id: "ch-90000932", name: "Late Show", number: 7 },
+    { id: "ch-90000931", name: "Quiet Hours", number: 21 },
+  ],
 };
 
 const SERIES: LibraryTitleDetail = {
@@ -68,6 +72,7 @@ const SERIES: LibraryTitleDetail = {
   ],
   match: { by: "none" },
   detailsFrom: { description: "TMDB", episodeNames: "Sonarr" },
+  channels: [],
 };
 
 const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}) => {
@@ -187,6 +192,21 @@ describe("LibraryTitle", () => {
     expect(series.host.textContent).toContain("2 episodes can't be played — the files may be damaged");
     await act(async () => series.button("Check again").click());
     expect(series.host.textContent).toContain("Couldn't check the files just now. Try again in a moment.");
+    series.cleanup();
+  });
+
+  it("names the channels it's on, by number, and has no such section when it's on none", () => {
+    const movie = render(MOVIE);
+    const section = movie.host.querySelectorAll('[aria-label="On these channels"]');
+    expect(section.length).toBe(1);
+    const text = section[0]?.textContent ?? "";
+    expect(text).toContain("On these channels");
+    expect(text.indexOf("Late Show")).toBeGreaterThan(-1);
+    expect(text.indexOf("Late Show")).toBeLessThan(text.indexOf("Quiet Hours"));
+    movie.cleanup();
+
+    const series = render(SERIES);
+    expect(series.host.querySelectorAll('[aria-label="On these channels"]').length).toBe(0);
     series.cleanup();
   });
 

@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -158,10 +158,10 @@ type certificationScheduleExpectation struct {
 }
 
 type certificationFixtureResponse struct {
-	Operation  string              `json:"operation"`
-	Occurrence int                 `json:"occurrence,omitempty"`
-	Candidates []catalog.Candidate `json:"candidates"`
-	Error      string              `json:"error"`
+	Operation  string                  `json:"operation"`
+	Occurrence int                     `json:"occurrence,omitempty"`
+	Candidates []titlesearch.Candidate `json:"candidates"`
+	Error      string                  `json:"error"`
 }
 
 type certificationCorpusMetadata struct {
@@ -452,8 +452,8 @@ func fixtureCandidateKeys(c certificationFixtureCase) (map[provision.Key]bool, e
 	return keys, nil
 }
 
-func fixtureCandidateFacts(c certificationFixtureCase) (map[provision.Key]catalog.Candidate, error) {
-	keys := make(map[provision.Key]catalog.Candidate)
+func fixtureCandidateFacts(c certificationFixtureCase) (map[provision.Key]titlesearch.Candidate, error) {
+	keys := make(map[provision.Key]titlesearch.Candidate)
 	for _, response := range c.Responses {
 		for _, candidate := range response.Candidates {
 			key, err := candidate.Key()
@@ -740,7 +740,7 @@ func newEmbeddedCertificationGenerator(files fs.FS, provider llm.Provider) (Gene
 	}
 	fixture := newEmbeddedCatalogFixture(decoded)
 	observed := &observedProvider{inner: provider}
-	cat := catalog.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
+	cat := titlesearch.New(embeddedLibraryCatalog{fixture}, embeddedTMDBCatalog{fixture}).WithPresence(fixture)
 	suggester := suggest.New(observed, cat, fixture, 10).WithRatings(fixture)
 	caseByIntent := make(map[string]string, len(corpus.Cases))
 	bind := func(description string, mustInclude []string, fixtureCase string) error {
@@ -790,10 +790,10 @@ type embeddedCatalogFixture struct {
 	fixtureID     string
 	cases         map[string]certificationFixtureCase
 	responseCalls map[string]int
-	byID          map[int]catalog.Candidate
+	byID          map[int]titlesearch.Candidate
 	// Optional observation at the actual catalog boundary, after the Suggester
 	// has validated and projected its model-facing date interpretation.
-	onDiscover func(catalog.DiscoveryQuery)
+	onDiscover func(titlesearch.DiscoveryQuery)
 }
 
 func newEmbeddedCatalogFixture(decoded certificationCatalogFixture) *embeddedCatalogFixture {
@@ -801,7 +801,7 @@ func newEmbeddedCatalogFixture(decoded certificationCatalogFixture) *embeddedCat
 		fixtureID:     decoded.FixtureID,
 		cases:         make(map[string]certificationFixtureCase, len(decoded.Cases)),
 		responseCalls: make(map[string]int),
-		byID:          make(map[int]catalog.Candidate),
+		byID:          make(map[int]titlesearch.Candidate),
 	}
 	for _, c := range decoded.Cases {
 		f.cases[c.ID] = c
@@ -821,7 +821,7 @@ func (f *embeddedCatalogFixture) selectCase(id string) {
 	f.mu.Unlock()
 }
 
-func (f *embeddedCatalogFixture) response(operation string) ([]catalog.Candidate, error) {
+func (f *embeddedCatalogFixture) response(operation string) ([]titlesearch.Candidate, error) {
 	started := time.Now()
 	defer func() {
 		f.mu.Lock()
@@ -841,7 +841,7 @@ func (f *embeddedCatalogFixture) response(operation string) ([]catalog.Candidate
 		if response.Error != "" {
 			return nil, fmt.Errorf("%s", response.Error)
 		}
-		return append([]catalog.Candidate(nil), response.Candidates...), nil
+		return append([]titlesearch.Candidate(nil), response.Candidates...), nil
 	}
 	return nil, nil
 }
@@ -874,12 +874,12 @@ func (f *embeddedCatalogFixture) ContentRating(_ context.Context, _ provision.Me
 	return f.byID[tmdbID].OfficialRating, nil
 }
 
-func (f *embeddedCatalogFixture) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (catalog.Presence, bool, error) {
+func (f *embeddedCatalogFixture) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (titlesearch.Presence, bool, error) {
 	candidate, ok := f.byID[tmdbID]
 	if !ok || !candidate.InLibrary {
-		return catalog.Presence{}, false, nil
+		return titlesearch.Presence{}, false, nil
 	}
-	return catalog.Presence{LibraryItemID: candidate.LibraryItemID, OfficialRating: candidate.OfficialRating, Genres: candidate.Genres}, true, nil
+	return titlesearch.Presence{LibraryItemID: candidate.LibraryItemID, OfficialRating: candidate.OfficialRating, Genres: candidate.Genres}, true, nil
 }
 
 type embeddedLibraryCatalog struct{ fixture *embeddedCatalogFixture }
@@ -909,11 +909,11 @@ func (c embeddedLibraryCatalog) Search(context.Context, string, int) ([]library.
 
 type embeddedTMDBCatalog struct{ fixture *embeddedCatalogFixture }
 
-func (c embeddedTMDBCatalog) Search(context.Context, string, int) ([]catalog.Candidate, error) {
+func (c embeddedTMDBCatalog) Search(context.Context, string, int) ([]titlesearch.Candidate, error) {
 	return c.fixture.response("title")
 }
 
-func (c embeddedTMDBCatalog) Discover(_ context.Context, query catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+func (c embeddedTMDBCatalog) Discover(_ context.Context, query titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 	if c.fixture.onDiscover != nil {
 		c.fixture.onDiscover(query)
 	}

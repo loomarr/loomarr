@@ -43,19 +43,32 @@ const defectFindingsToShow = (findings: readonly FillerDefectFindingDTO[]): Fill
     .filter((f) => f.outcome !== "pass")
     .sort((a, b) => findingRank[a.outcome] - findingRank[b.outcome]);
 
-// Readings span shares of 0.0005 and edge widths of 9, so four significant figures keep both legible.
-const reading = (n: number): string => String(Number(n.toPrecision(4)));
+// What a viewer would see, in words: a plain sentence per check for a clear fault and for one that is
+// only close to the line (#2741). The measurements and bars behind it are not for the household.
+const FINDING_WORDS: Record<FillerDefectFindingDTOCheck, { fail: string; borderline: string }> = {
+  blocks: { fail: "Blocky picture", borderline: "Slightly blocky picture" },
+  blur: { fail: "Soft picture", borderline: "Slightly soft picture" },
+  dropouts: { fail: "Tape dropouts", borderline: "A few tape dropouts" },
+  interlace: { fail: "Combing lines", borderline: "Faint combing lines" },
+  windowbox: { fail: "Windowboxed", borderline: "Possibly windowboxed" },
+  upscale: {
+    fail: "Upscaled from a smaller picture",
+    borderline: "Possibly upscaled from a smaller picture",
+  },
+  clipping: { fail: "Clipped sound", borderline: "Slightly clipped sound" },
+};
 
-const defectFindingLine = (f: FillerDefectFindingDTO): string =>
-  f.outcome === "undecided"
-    ? `${defectCheckLabel(f.check)}: not enough picture to judge`
-    : `${defectCheckLabel(f.check)} ${reading(f.measured)}, ${f.outcome} (bar ${reading(f.bar)})`;
+const defectFindingLine = (f: FillerDefectFindingDTO): string => {
+  if (f.outcome === "undecided") return `${defectCheckLabel(f.check)}: not enough picture to judge`;
+  if (f.outcome === "pass") return `${defectCheckLabel(f.check)} looks fine`;
+  return FINDING_WORDS[f.check][f.outcome];
+};
 
 const defectJudgementLine = (j: FillerDefectJudgementDTO): string => {
   if (j.ruling === "no_judge") return "No vision model was set up to rule on it";
-  const who = j.model ? `Judge (${j.model})` : "Judge";
-  const ruling = j.ruling === "abstain" ? "couldn't decide" : j.ruling;
-  return j.reason ? `${who}: ${ruling}, “${j.reason}”` : `${who}: ${ruling}`;
+  const ruling = j.ruling === "abstain" ? "couldn't decide" : j.ruling === "pass" ? "it passes" : "it fails";
+  const verdict = `A second look by a vision model: ${ruling}`;
+  return j.reason ? `${verdict}, “${j.reason}”` : verdict;
 };
 
 const defectVerdictSummary = (report: Pick<FillerDefectReportDTO, "verdicts" | "unmeasured">): string =>

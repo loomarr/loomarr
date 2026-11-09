@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Manager is one arr that knows which files are which items: Sonarr or Radarr. A full pass lists it
@@ -67,7 +67,7 @@ func (idx managerIndex) knows(path string) bool {
 }
 
 // indexManagers lists every arr and keys its files by local path through the path map.
-func indexManagers(ctx context.Context, managers []Manager, paths []store.LibraryRootPath) (managerIndex, []error) {
+func indexManagers(ctx context.Context, managers []Manager, paths []librarystore.LibraryRootPath) (managerIndex, []error) {
 	idx := managerIndex{byPath: map[string]managed{}, complete: true}
 	var errs []error
 	for _, m := range managers {
@@ -161,7 +161,7 @@ func episodeOrder(rec mp.Record) int {
 
 // pathMapper translates one authority's paths to local ones by the longest matching path-map row.
 // A path no row covers translates to "".
-func pathMapper(authority string, paths []store.LibraryRootPath) func(string) string {
+func pathMapper(authority string, paths []librarystore.LibraryRootPath) func(string) string {
 	type row struct{ from, to string }
 	var rows []row
 	for _, p := range paths {
@@ -276,16 +276,19 @@ func embeddedRecord(file File) (mp.Record, string) {
 var seasonFolder = regexp.MustCompile(`(?i)^(season[ ._-]*\d+|s\d+|specials)$`)
 
 // seriesFolder is an episode's series folder relative to the root: the folder above its season
-// folder, else the nearest folder whose name carries an id, else its own folder. "" is the root.
+// folder, else the nearest folder whose name carries an id, else its own folder. An episode with
+// no series folder, loose at the root's top or in a season folder there, takes the folder its show
+// would have: its name before the episode mark. "" is the root, for one with no such name.
 func seriesFolder(rel string) string {
 	dir := path.Dir(rel)
 	if dir == "." {
-		return ""
+		return looseSeries(path.Base(rel))
 	}
 	if seasonFolder.MatchString(path.Base(dir)) {
 		if parent := path.Dir(dir); parent != "." {
 			return parent
 		}
+		return looseSeries(path.Base(rel))
 	}
 	for d := dir; d != "."; d = path.Dir(d) {
 		if len(idsIn(path.Base(d))) > 0 {
@@ -293,4 +296,16 @@ func seriesFolder(rel string) string {
 		}
 	}
 	return dir
+}
+
+// looseSeries is the show an episode with no series folder names before its episode mark:
+// "Example.Show.S01E02.mkv" is "Example Show", so loose episodes of two shows are two shows.
+// With nothing before the mark it is the root, "": a season folder never names a show.
+func looseSeries(name string) string {
+	mark := episodeMark.FindStringIndex(name)
+	if mark == nil {
+		return ""
+	}
+	show := strings.NewReplacer(".", " ", "_", " ").Replace(name[:mark[0]])
+	return strings.Trim(strings.Join(strings.Fields(show), " "), " -")
 }

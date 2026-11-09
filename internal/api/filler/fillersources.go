@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -714,7 +715,7 @@ func (s *Handlers) queueFillerSourceItem(ctx context.Context, in *queueFillerSou
 	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
-	if errors.Is(err, ErrIngestUnavailable) {
+	if errors.Is(err, operator.ErrIngestUnavailable) {
 		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
@@ -960,6 +961,11 @@ func (s *Handlers) setFillerProviderEnabled(ctx context.Context, in *setFillerPr
 // here rather than in the client: `folder` is derived from configuration so its switch is a
 // SETTING, while a collection is a row so its switch is a COLUMN. A UI that had to know which
 // is which would encode a persistence decision in a button handler.
+//
+// A registered source's switch, coverage and tuning are one store command (ChangeFillerSource), so
+// they land together. The folder's switch is a setting in another subsystem and cannot join that
+// statement: its coverage is written after the setting is accepted, which is why a pinned switch
+// refuses the whole PATCH before anything is saved.
 func (s *Handlers) setFillerSourceEnabled(ctx context.Context, in *setFillerSourceEnabledInput) (*setFillerSourceEnabledOutput, error) {
 	// ⚠ A derived GROUP node carries no state, so there is nothing here to write (§10 V51c). One
 	// prefix test rather than a case per provider: the ids are namespaced precisely so a single
@@ -1040,27 +1046,24 @@ func (s *Handlers) setFillerSourceEnabled(ctx context.Context, in *setFillerSour
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
 		}
-		// First write: an unknown id is refused here, before anything is saved.
+		// One command, one statement: the switch, the coverage and the tuning land together, so a
+		// refused or failed PATCH saves none of them. A switch- or geography-only PATCH names no
+		// policy and so must not reset automatic-download tuning.
+		change := records.FillerSourceChange{Enabled: in.Body.Enabled}
 		if in.Body.Geography != nil {
-			if err := s.setSourceGeography(ctx, in.ID, geography); err != nil {
-				return nil, err
-			}
+			change.Geography = &geography
 		}
-		if err := s.store.SetFillerSourceEnabled(ctx, in.ID, in.Body.Enabled); err != nil {
+		if in.Body.AutomaticDownloads != nil {
+			change.FetchPolicy = &records.FillerFetchPolicy{EverySeconds: every, MaxPerRun: maxPerRun}
+		}
+		if err := s.store.ChangeFillerSource(ctx, in.ID, change); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
-			return nil, huma.Error500InternalServerError("set filler source enabled", err)
+			return nil, huma.Error500InternalServerError("change filler source", err)
 		}
-		// A switch- or geography-only PATCH must not reset automatic-download tuning.
 		if in.Body.AutomaticDownloads == nil {
 			return out, nil
-		}
-		if err := s.store.SetFillerSourceFetchPolicy(ctx, in.ID, every, maxPerRun); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, httpcore.NotFound("Source not found", "That source isn't registered — it may have been removed.")
-			}
-			return nil, huma.Error500InternalServerError("set filler source fetch policy", err)
 		}
 		effectiveEvery := s.fillerFetchEvery()
 		effectiveMax := s.fillerFetchMaxPerCheck()
@@ -1526,7 +1529,7 @@ func (s *Handlers) fetchFillerSource(ctx context.Context, in *fetchFillerSourceI
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {
-		if errors.Is(err, ErrIngestUnavailable) {
+		if errors.Is(err, operator.ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}

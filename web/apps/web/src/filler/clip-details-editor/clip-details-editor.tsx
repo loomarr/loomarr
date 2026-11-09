@@ -4,7 +4,7 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, DateField, Field } from "@loomarr/design-system";
+import { Action, Chip, DateField, Field } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -332,28 +332,14 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               if (inAxis.length === 0) return null;
               return (
                 <div key={axis} className="flex flex-col gap-1.5">
-                  <span className="text-muted-foreground text-xs tracking-wide uppercase">
-                    {AXIS_LABEL[axis]}
-                  </span>
+                  <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
                   <div className="flex flex-wrap gap-1.5">
                     {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);
                       return (
-                        <button
-                          key={t.slug}
-                          type="button"
-                          aria-pressed={on}
-                          title={t.parent ? `${t.label}, under ${t.parent}` : `${t.label}, top level`}
-                          onClick={() => toggleTag(t.slug)}
-                          className={
-                            // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                            on
-                              ? "border-foreground bg-static-800 text-foreground rounded-full border px-2.5 py-0.5 text-xs font-semibold"
-                              : "border-border text-muted-foreground hover:border-static-500 rounded-full border px-2.5 py-0.5 text-xs"
-                          }
-                        >
+                        <Chip key={t.slug} onPress={() => toggleTag(t.slug)} selected={on} shape="pill">
                           {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}
-                        </button>
+                        </Chip>
                       );
                     })}
                   </div>

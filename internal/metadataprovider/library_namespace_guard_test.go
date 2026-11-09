@@ -23,7 +23,6 @@ import (
 var libraryNamespaceAllowed = map[string]string{
 	"internal/library/scan/identity.go": "file names and arr items carry {tmdb-…}/{tvdb-…}/{imdb-…} tags and arr ids",
 	"internal/library/scan/hooks.go":    "the arrs' webhooks name a movie by TMDB id and a series by TVDB id",
-	"internal/library/scan/parity.go":   "the media-server cutover check, deleted with the IDMapper after the cutover",
 }
 
 // libraryNamespaceScope is where the gate looks: every production file under these directories,

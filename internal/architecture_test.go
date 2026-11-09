@@ -304,6 +304,14 @@ func TestProposalStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/proposalstore")
 }
 
+// internal/platform/store/librarystore is the Library cluster (scan roots, files, items, titles, catalog
+// keys, collections, people, episodes, episode orders and needs). It builds on the storedb kernel
+// only; store embeds it and re-exports its names, and the inventory projection reaches it through
+// the exported SaveItemIn, so there is no import edge back.
+func TestLibraryStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/librarystore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

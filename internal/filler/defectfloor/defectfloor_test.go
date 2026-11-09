@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type defectMemStore struct {
@@ -42,14 +43,14 @@ func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at 
 	return ErrCopyGone
 }
 
-func (m *defectMemStore) GetClip(_ context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
+func (m *defectMemStore) GetClip(_ context.Context, hash string) (clipstore.Clip, bool, error) {
 	for _, c := range m.clips {
 		if c.Hash == hash {
 			c.Held = c.Held || m.heldNow[hash]
-			return c.StoreClip, true, nil
+			return c.Clip, true, nil
 		}
 	}
-	return cliplibrary.StoreClip{}, false, nil
+	return clipstore.Clip{}, false, nil
 }
 
 func (m *defectMemStore) ListClipPaths(context.Context) ([]string, error) {

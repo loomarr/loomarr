@@ -4,9 +4,19 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, CompactSelect, Field, Surface, Text, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  CompactSelect,
+  Field,
+  Icon,
+  icons,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { BellRing } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -308,10 +318,7 @@ const ProviderForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={pending || submitting} type="submit" />}
-              >
+              <Action disabled={pending || submitting} submit>
                 Save provider
               </Action>
             )}
@@ -484,10 +491,7 @@ const WebPushForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={pending || enabling || submitting} type="submit" />}
-              >
+              <Action disabled={pending || enabling || submitting} submit>
                 {provider ? "Save provider" : "Enable this browser"}
               </Action>
             )}
@@ -726,7 +730,7 @@ const NotificationDestinationsPanel = () => {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex gap-3">
           <span className="bg-signal/10 text-signal flex size-9 shrink-0 items-center justify-center rounded-lg">
-            <BellRing className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
           </span>
           <div>
             <h2 id="notification-providers-title" className="text-lg font-semibold">

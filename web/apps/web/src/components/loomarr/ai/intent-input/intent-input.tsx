@@ -1,4 +1,4 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Chip } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { IntentInputProps } from "./intent-input.type";
 
@@ -41,15 +41,9 @@ const IntentInput = ({
       {templates.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {templates.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              disabled={submitting}
-              onClick={() => onValueChange(t.value)}
-              className="border-border bg-static-800 text-static-400 hover:border-suggest hover:text-suggest-300 cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-50"
-            >
+            <Chip disabled={submitting} key={t.value} onPress={() => onValueChange(t.value)} shape="pill">
               {t.label}
-            </button>
+            </Chip>
           ))}
         </div>
       )}

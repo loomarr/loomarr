@@ -1,5 +1,5 @@
+import { Icon, icons } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Search } from "lucide-react";
 
 interface SettingsContextNavProps {
   section?: string;
@@ -17,7 +17,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
             to="/settings"
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
           >
-            <ArrowLeft className="size-3.5" aria-hidden />
+            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
             Settings
           </Link>
         </li>
@@ -36,7 +36,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
       aria-label="Find another setting"
       className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1.5 rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
     >
-      <Search className="size-3.5" aria-hidden />
+      <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
       <span className="hidden sm:inline">Find another setting</span>
       <span className="sm:hidden">Find</span>
     </Link>

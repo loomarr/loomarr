@@ -2,10 +2,10 @@ package filler
 
 import (
 	"context"
-	"errors"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -98,19 +98,8 @@ type Service interface {
 // atomic graph transaction; this seam adds an authoritative preview and post-commit channel
 // convergence without making HTTP handlers understand either implementation.
 type TaxonomyEditor interface {
-	Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
-	Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
-}
-
-type TaxonomyImpact struct {
-	Store    clipstore.TaxonomyEditImpact
-	Channels []TaxonomyChannelImpact
-}
-
-type TaxonomyChannelImpact struct {
-	ID     string
-	Name   string
-	Number int
+	Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (operator.Impact, error)
+	Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (operator.Impact, error)
 }
 
 // Rewinder is the optional recovery seam behind the Incoming UI. Separate from Service so a
@@ -178,9 +167,3 @@ type DiscoveredClipStats struct {
 	// Height is the best derivative's vertical resolution — the "480p" quality hint.
 	Height int `json:"height,omitempty"`
 }
-
-// ErrSplitUnavailable reports that compilation splitting cannot run because the
-// filler drop-folder (filler.dir) is unset — clip paths are relative to it, so
-// without it there is nothing to cut. Unlike ErrIngestUnavailable this IS a
-// configuration remedy: Settings → Filler opens it (§10, V34).
-var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")

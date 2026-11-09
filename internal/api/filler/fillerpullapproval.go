@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -137,7 +138,7 @@ func (s *Handlers) approveFillerPull(ctx context.Context, in *approveFillerPullI
 		if errors.Is(err, records.ErrPullNotPending) {
 			return nil, httpcore.Conflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
 		}
-		if errors.Is(err, ErrIngestUnavailable) {
+		if errors.Is(err, operator.ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling, so an approved pull would have nothing to fetch with.")
 		}

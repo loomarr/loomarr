@@ -5,9 +5,19 @@ import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { SettingUnit } from "@loomarr/api/models/settingUnit";
 import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, CompactSelect, Field, FieldHint, Surface, Text, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  CompactSelect,
+  Field,
+  FieldHint,
+  Icon,
+  icons,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
-import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
@@ -406,15 +416,13 @@ const SettingField = ({
               <Badge
                 shape="square"
                 icon={
-                  <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
-                    <Lock
-                      className="absolute size-3 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
-                      aria-hidden
-                    />
-                    <LockOpen
-                      className="absolute size-3 opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100"
-                      aria-hidden
-                    />
+                  <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
+                    <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
+                      <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
+                    </span>
+                    <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
+                      <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
+                    </span>
                   </span>
                 }
                 className="group-hover/unlock:bg-signal-tint-15! group-hover/unlock:text-signal! group-focus-visible/unlock:bg-signal-tint-15! group-focus-visible/unlock:text-signal! transition-colors duration-200"
@@ -423,7 +431,10 @@ const SettingField = ({
               </Badge>
             </button>
           ) : (
-            <Badge shape="square" icon={<Lock className="size-3" aria-hidden />}>
+            <Badge
+              shape="square"
+              icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
+            >
               set via environment
             </Badge>
           ))}
@@ -438,12 +449,20 @@ const SettingField = ({
               aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
-              <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
+              <Badge
+                shape="square"
+                tone="caution"
+                icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
+              >
                 overriding {entry.envVar ?? "the environment"}
               </Badge>
             </button>
           ) : (
-            <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
+            <Badge
+              shape="square"
+              tone="caution"
+              icon={<Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />}
+            >
               overriding {entry.envVar ?? "the environment"}
             </Badge>
           ))}
@@ -459,16 +478,15 @@ const SettingField = ({
           <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
             {entry.preview ?? "stored"}
           </span>
-          <button
-            type="button"
-            onClick={() => {
+          <Action
+            onPress={() => {
               setReplacing(true);
               onChange("");
             }}
-            className="border-input hover:bg-accent cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors"
+            variant="outline"
           >
             Replace
-          </button>
+          </Action>
         </div>
       ) : (
         control()
@@ -483,7 +501,7 @@ const SettingField = ({
 
       {entry.caution && (
         <FieldHint tone="error" className={cn("flex items-center gap-1", inlineSwitch && "col-span-2")}>
-          <TriangleAlert className="size-3" aria-hidden />
+          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
           The stored value was invalid and has been reset to the default.
         </FieldHint>
       )}
@@ -495,7 +513,9 @@ const SettingField = ({
           tone="error"
           className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
         >
-          <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          </span>
           {disabledReason}
         </FieldHint>
       )}

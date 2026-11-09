@@ -4,17 +4,15 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Field } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Icon, icons } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
 const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
@@ -109,19 +107,21 @@ const TaxonTree = ({
       return (
         <li key={taxon.slug}>
           <div className="flex items-start gap-2 px-4 py-3">
-            {nested ? <ChevronRight className="text-static-500 mt-1 size-3 shrink-0" aria-hidden /> : null}
+            {nested ? (
+              <span className="mt-1 flex">
+                <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
+              </span>
+            ) : null}
             <div className="min-w-0 flex-1">
-              <button
-                type="button"
+              <Action
                 disabled={!isAdmin}
-                className={cn(
-                  "text-left text-sm font-medium break-words",
-                  isAdmin && "hover:text-signal cursor-pointer",
-                )}
-                onClick={() => onEdit(taxon)}
+                layout="text"
+                onPress={() => onEdit(taxon)}
+                style={{ alignSelf: "flex-start" }}
+                variant="link"
               >
                 {taxon.label}
-              </button>
+              </Action>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
                 {resolverTermCount > 0 ? (
@@ -498,7 +498,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-3">
         <Card padding={16}>
-          <p className="text-muted-foreground text-xs tracking-wide uppercase">Library coverage</p>
+          <p className="text-muted-foreground text-xs">Library coverage</p>
           {data.totalClips === 0 ? (
             <>
               <p className="mt-1 text-xl font-semibold">No playable clips yet</p>

@@ -1,9 +1,8 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field, LoadingStrip } from "@loomarr/design-system";
+import { Action, Field, Icon, icons, LoadingStrip } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Check, Lock } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -144,8 +143,8 @@ const LocationPicker = ({
           Location
         </label>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase">
-            <Lock className="size-3" aria-hidden /> {lockedLabel}
+          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
+            <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
           </span>
         )}
       </div>
@@ -224,7 +223,9 @@ const LocationPicker = ({
                         )}
                       </span>
                       {candidate.country === value.country && (candidate.place ?? "") === place && (
-                        <Check className="ml-3 size-4 shrink-0" aria-hidden />
+                        <span className="ml-3 flex">
+                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                        </span>
                       )}
                     </button>
                   ))}
