@@ -1,7 +1,8 @@
 // The Web legacy-usage ledger (#970 step 5). It counts, per production file under apps/web/src,
 // the legacy presentation stack that the Web migration retires: Tailwind utility classes,
-// class-name helpers (tailwind-merge, clsx), CVA, Base UI, and the copied shadcn components in
-// src/components/ui. Tests, stories and test helpers are not production code and are not counted.
+// class-name helpers (tailwind-merge, clsx), CVA, Base UI, the copied shadcn components in
+// src/components/ui, direct lucide-react imports (the design system's Icon is the icon), and raw
+// <button> elements (its Action is the button). Tests, stories and test helpers are not production code and are not counted.
 //
 // The committed ledger (apps/web/legacy-usage.json) is a ratchet:
 //   - the check fails when any count rises or a file with legacy usage is not in the ledger;
@@ -20,7 +21,16 @@ const legacyUiRoot = join(sourceRoot, "components", "ui");
 const ledgerPath = join(appRoot, "legacy-usage.json");
 
 // Every measure, in report order. A file's entry lists only its non-zero measures.
-const MEASURES = ["tailwindClasses", "tailwindMerge", "clsx", "cva", "baseUi", "legacyUi"];
+const MEASURES = [
+  "tailwindClasses",
+  "tailwindMerge",
+  "clsx",
+  "cva",
+  "baseUi",
+  "legacyUi",
+  "lucideReact",
+  "rawButton",
+];
 
 // Copied components the design system has replaced (#2147), each with its Base UI primitive and the
 // only files still allowed to import either. Every other file fails, tests and stories included, and
@@ -64,6 +74,7 @@ const importCategory = (specifier, file) => {
   if (under("clsx")) return "clsx";
   if (under("class-variance-authority")) return "cva";
   if (under("@base-ui/react")) return "baseUi";
+  if (under("lucide-react")) return "lucideReact";
   let target = null;
   if (under("@/components/ui")) target = join(sourceRoot, specifier.slice(2));
   else if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
@@ -145,6 +156,22 @@ const countClasses = (node, inClass = false) => {
   }
 };
 
+// countRawButtons counts the native <button> elements a source renders. The design system's Action
+// is the button; a <button> in app code is a hand-styled control that skips its focus, press and
+// label handling.
+const countRawButtons = (node) => {
+  if (!node || typeof node !== "object") return 0;
+  if (Array.isArray(node)) return node.reduce((sum, child) => sum + countRawButtons(child), 0);
+  let sum =
+    node.type === "JSXOpeningElement" && node.name.type === "JSXIdentifier" && node.name.name === "button"
+      ? 1
+      : 0;
+  for (const [key, child] of Object.entries(node)) {
+    if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") sum += countRawButtons(child);
+  }
+  return sum;
+};
+
 // importSpecifiers returns every module a source imports: static and type-only imports,
 // re-exports, and dynamic import() of a string literal.
 const importSpecifiers = (node, found = []) => {
@@ -192,6 +219,7 @@ const measureSource = (source, file) => {
     plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
   }).program;
   counts.tailwindClasses = countClasses(program);
+  counts.rawButton = countRawButtons(program);
   for (const specifier of importSpecifiers(program)) {
     const category = importCategory(specifier, file);
     if (category) counts[category] += 1;
