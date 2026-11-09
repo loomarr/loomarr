@@ -1,6 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { Action } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -113,13 +114,14 @@ const IntentForm = ({
         }
       </form.Subscribe>
 
-      <button
-        type="button"
-        onClick={() => setRefining((v) => !v)}
-        className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm underline-offset-4 hover:underline"
+      <Action
+        layout="text"
+        onPress={() => setRefining((v) => !v)}
+        style={{ alignSelf: "flex-start" }}
+        variant="link"
       >
         {refining ? "Hide details" : "Add details"}
-      </button>
+      </Action>
 
       {refining && (
         <div className="grid grid-cols-2 gap-3">

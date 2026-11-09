@@ -23,12 +23,12 @@ are Claude Design mockups in the `.dc.html` format — a self-contained prototyp
 | `support.js` | — | The Claude Design runtime both prototypes load (generated; do not edit) |
 | `image-slot.js` | — | Claude Design starter scaffold the **v2** desktop prototype loads (generated; do not edit) |
 
-## Watch player (2026-10-29 — ratified)
+## Watch player (2026-11-08 — variant H ratified)
 
 [`watch-player/`](watch-player/README.md) is the mock of record for every video player (web, phone,
-TV): all 13 states on desktop, landscape and portrait frames, rendered from the #2088 prototype. Unlike
-the v2 files it **is** authoritative for structure as well as look, because the maintainer chose it
-state by state. Its rules are `docs/frontend-design.md` §9. It supersedes the v2 desktop mock's Watch
+TV): the channel-first design, variant H, in its states on desktop, landscape and portrait frames. It
+replaced the #2088 mock (2026-10-29) and, unlike the v2 files, **is** authoritative for structure as
+well as look. Its rules are `docs/frontend-design.md` §9. It supersedes the v2 desktop mock's Watch
 card and theater overlay.
 
 ## Library (2026-11-02 — ratified)

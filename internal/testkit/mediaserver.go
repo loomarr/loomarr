@@ -26,8 +26,8 @@ type MediaServer struct {
 	LastEmbyToken  string
 	LastEmbyAuthz  string
 	requests       []MediaServerRequest
-	// AdminToken is the only token the mock accepts for /Users, /Items and
-	// /Library/VirtualFolders; any other request is answered 401, as Emby does.
+	// AdminToken is the only token the mock accepts for /Users and /Library/VirtualFolders; any
+	// other request is answered 401, as Emby does.
 	AdminToken string
 	// GoodUser/GoodPass authenticate successfully via /Users/AuthenticateByName.
 	GoodUser string
@@ -99,21 +99,6 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			return
 		}
 		_, _ = w.Write(Fixture(t, "emby/virtual_folders.json"))
-	})
-
-	// /Items — a ParentId-scoped read (§10 filler) answers the pinned filler fixture; anything
-	// else (the cutover id map, collections) an empty list. Loomarr reads its catalog from its
-	// own Library, never from here (#2151 step 16).
-	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
-		ms.capture(r)
-		if !ms.authorized(w, r) {
-			return
-		}
-		if pid := r.URL.Query().Get("ParentId"); pid != "" {
-			_, _ = w.Write(Fixture(t, "emby/filler_library.json"))
-			return
-		}
-		_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
 	})
 
 	// /Users — list for import/sync (§11).

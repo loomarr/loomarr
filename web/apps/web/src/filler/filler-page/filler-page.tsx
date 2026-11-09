@@ -2,10 +2,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card } from "@loomarr/design-system";
+import { Action, Card, Icon, icons } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -147,7 +146,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             to="/filler/manage"
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
           >
-            <ArrowLeft className="size-3.5" aria-hidden />
+            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
             Manage
           </Link>
         ) : null}

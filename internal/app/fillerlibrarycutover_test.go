@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -25,8 +25,8 @@ func TestFillerLibraryCutoverRewritesANamedLibraryToItsFolder(t *testing.T) {
 	at := time.Unix(1_800_000_000, 0)
 
 	// The captured fixture's mixed library, as a hand-made commercials library usually is.
-	if err := st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{
+	if err := st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{
 			{Authority: "emby", AuthorityPath: "/data/fictional-backup/emby-live-recordings", RootPath: "/media/ads"},
 			{Authority: "emby", AuthorityPath: "/data/movies"},
 		},

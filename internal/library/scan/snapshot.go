@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Item kinds the scanner writes. Movie, series and episode match the media server's kinds, so the
@@ -155,12 +155,12 @@ type fileNotes struct {
 
 // listedExtension is what a title's library row needs that its facts do not say.
 type listedExtension struct {
-	Catalog store.LibraryCatalogKey `json:"catalog,omitzero"`
+	Catalog librarystore.LibraryCatalogKey `json:"catalog,omitzero"`
 	// Set is a movie's ready-made set, as the catalog row it is fetched by.
-	Set   store.LibraryCatalogKey `json:"set,omitzero"`
-	Match store.LibraryMatch      `json:"match,omitzero"`
+	Set   librarystore.LibraryCatalogKey `json:"set,omitzero"`
+	Match librarystore.LibraryMatch      `json:"match,omitzero"`
 	// Series is an episode's series by its scan origin.
-	Series store.LibraryOrigin `json:"series,omitzero"`
+	Series librarystore.LibraryOrigin `json:"series,omitzero"`
 	// Unnumbered is an episode its show's catalog could not number, whose show nobody has
 	// answered for (decision 53).
 	Unnumbered bool `json:"unnumbered,omitempty"`
@@ -194,9 +194,9 @@ func originExtensionOf(kind mp.Kind, res resolution, series inventory.OriginKey,
 // ProjectLibraryItem is the scanner's store.LibraryProjector: a title's library row, from its
 // newest present scanner origin (or, with none present, its newest scanner origin). An item with
 // no scanner origin, or whose origin predates its listing, is not listed by it.
-func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
+func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 	if item.Kind != kindMovie && item.Kind != kindSeries && item.Kind != kindEpisode {
-		return store.LibraryItem{}, false
+		return librarystore.LibraryItem{}, false
 	}
 	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
 	better := func(o, than inventory.ItemOrigin) bool {
@@ -215,15 +215,15 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		}
 	}
 	if best == nil {
-		return store.LibraryItem{}, false
+		return librarystore.LibraryItem{}, false
 	}
 	ext := readOriginExtension(best.Observation.Extension)
 	listed := ext.Listed
 	if listed == nil {
-		return store.LibraryItem{}, false
+		return librarystore.LibraryItem{}, false
 	}
 	facts := best.Observation.Facts
-	it := store.LibraryItem{
+	it := librarystore.LibraryItem{
 		ID: string(item.ID), Kind: string(item.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
 		Catalog: listed.Catalog, Set: listed.Set,
@@ -233,7 +233,7 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		Season: facts.SeasonNumber, Episode: facts.EpisodeNumber, EpisodeEnd: facts.EpisodeEnd,
 		Series: listed.Series, Unnumbered: listed.Unnumbered,
 		Tags: facts.Tags, Tagline: facts.Tagline, Trailer: facts.Trailer,
-		From: store.LibraryFrom{
+		From: librarystore.LibraryFrom{
 			Name: string(ext.From.Name), Year: string(ext.From.Year), Overview: string(ext.From.Description),
 			Premiere: string(ext.From.Premiere), Rating: string(ext.From.Rating), Score: string(ext.From.Score),
 			Runtime: string(ext.From.Runtime),
@@ -243,15 +243,15 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 	if item.Kind != kindEpisode {
 		it.Genres, it.Studios, it.Countries = facts.Genres, facts.Studios, facts.Countries
 		for _, p := range facts.People {
-			it.Credits = append(it.Credits, store.LibraryCredit{Name: p.Name, Role: p.Role, Character: p.Character,
-				ID: store.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}, Photo: p.Photo})
+			it.Credits = append(it.Credits, librarystore.LibraryCredit{Name: p.Name, Role: p.Role, Character: p.Character,
+				ID: librarystore.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}, Photo: p.Photo})
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
 	}
 	for _, a := range facts.Artwork {
-		it.Art = append(it.Art, store.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
+		it.Art = append(it.Art, librarystore.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
 	}
 	it.Sources = librarySources(item)
 	return it, true
@@ -259,13 +259,13 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 
 // librarySources is each of an item's present files with its tracks, in path order, the copy
 // that plays marked (decision 37).
-func librarySources(item inventory.Item) []store.LibrarySource {
+func librarySources(item inventory.Item) []librarystore.LibrarySource {
 	exts := map[inventory.OriginKey]originExtension{}
 	for _, o := range item.Origins {
 		exts[o.Key] = readOriginExtension(o.Observation.Extension)
 	}
 	type file struct {
-		src     store.LibrarySource
+		src     librarystore.LibrarySource
 		managed bool
 	}
 	var files []file
@@ -275,10 +275,10 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 				continue
 			}
 			f := o.Observation.Facts
-			src := store.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
+			src := librarystore.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
 				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition}
 			for _, ref := range exts[o.Key].Trickplay {
-				src.Trickplay = append(src.Trickplay, store.LibraryTrickplay{Ref: ref, Format: "bif"})
+				src.Trickplay = append(src.Trickplay, librarystore.LibraryTrickplay{Ref: ref, Format: "bif"})
 			}
 			next := 0
 			for _, st := range f.Streams {
@@ -289,10 +289,10 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 				src.Streams = append(src.Streams, externalStream(t, next+i))
 			}
 			for _, c := range f.Chapters {
-				src.Chapters = append(src.Chapters, store.LibraryChapter{StartMs: c.StartMillis, EndMs: c.EndMillis, Title: c.Title})
+				src.Chapters = append(src.Chapters, librarystore.LibraryChapter{StartMs: c.StartMillis, EndMs: c.EndMillis, Title: c.Title})
 			}
 			for _, m := range exts[o.Key].Markers {
-				src.Markers = append(src.Markers, store.LibraryMarker{StartMs: m.StartMs, EndMs: m.EndMs, Kind: m.Kind})
+				src.Markers = append(src.Markers, librarystore.LibraryMarker{StartMs: m.StartMs, EndMs: m.EndMs, Kind: m.Kind})
 			}
 			files = append(files, file{src: src, managed: exts[o.Key].Managed})
 			break
@@ -311,7 +311,7 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 			}
 			return 0
 		}, func(i int) int64 { return files[i].src.SizeBytes })
-	out := make([]store.LibrarySource, len(files))
+	out := make([]librarystore.LibrarySource, len(files))
 	for i, f := range files {
 		out[i] = f.src
 		out[i].Plays = plays[i]
@@ -320,8 +320,8 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 }
 
 // libraryStream is a header stream with its labels.
-func libraryStream(st inventory.Stream) store.LibraryStream {
-	out := store.LibraryStream{
+func libraryStream(st inventory.Stream) librarystore.LibraryStream {
+	out := librarystore.LibraryStream{
 		Index: st.Index, Kind: string(st.Kind), Codec: st.Codec, Profile: st.Profile, Title: st.Title,
 		Default: st.Disposition.Default, Forced: st.Disposition.Forced,
 		Commentary: st.Disposition.Comment, HearingImpaired: st.Disposition.HearingImpaired,
@@ -342,8 +342,8 @@ func libraryStream(st inventory.Stream) store.LibraryStream {
 }
 
 // externalStream is an external track as a row, at index, after the file's own tracks.
-func externalStream(t externalTrack, index int) store.LibraryStream {
-	out := store.LibraryStream{Index: index, Kind: t.Kind, Codec: t.Codec, Default: t.Default, Forced: t.Forced,
+func externalStream(t externalTrack, index int) librarystore.LibraryStream {
+	out := librarystore.LibraryStream{Index: index, Kind: t.Kind, Codec: t.Codec, Default: t.Default, Forced: t.Forced,
 		HearingImpaired: t.HearingImpaired, Commentary: t.Commentary, ExternalRef: t.Ref}
 	out.Language, out.LanguageName = languageLabel(t.Language)
 	if t.Kind == string(inventory.StreamAudio) {

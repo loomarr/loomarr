@@ -53,7 +53,6 @@ func (*Provider) Capabilities() mp.Capabilities {
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceFile},
 		},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification},
-		Rate:     mp.RateHint{MaxConcurrent: 4},
 	}
 }
 

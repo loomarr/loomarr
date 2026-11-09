@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The §10 database progress throttle, driven through the REAL runner.
@@ -25,7 +25,7 @@ import (
 // reached from here. It is kept to the minimum the runner touches.
 
 type progMemStore struct {
-	clips map[string]cliplibrary.StoreClip
+	clips map[string]clipstore.Clip
 	rows  map[string]pipelinestate.ClipPipeline
 	// writes counts persisted rows, which is the property under test — the throttle governs how
 	// often a row reaches the store, and nothing else observes it.
@@ -34,7 +34,7 @@ type progMemStore struct {
 
 func newProgMemStore(hash string) *progMemStore {
 	return &progMemStore{
-		clips: map[string]cliplibrary.StoreClip{hash: {Clip: clips.Clip{
+		clips: map[string]clipstore.Clip{hash: {Clip: clips.Clip{
 			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
 			Role: clips.Unclassified, Source: "test-source", Held: true,
 		}}},
@@ -61,7 +61,7 @@ func (m *progMemStore) PipelineOverview(_ context.Context, at time.Time) (pipeli
 	}
 	return SummarizePipelines(rows, at), nil
 }
-func (m *progMemStore) ListClipsWithoutPipeline(context.Context, int) ([]cliplibrary.StoreClip, error) {
+func (m *progMemStore) ListClipsWithoutPipeline(context.Context, int) ([]clipstore.Clip, error) {
 	return nil, nil
 }
 func (m *progMemStore) GetClipPipeline(_ context.Context, h string) (pipelinestate.ClipPipeline, bool, error) {
@@ -85,7 +85,7 @@ func (m *progMemStore) RetryClipPipeline(_ context.Context, _ pipelinestate.Clip
 	}
 	return nil
 }
-func (m *progMemStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (m *progMemStore) GetClip(_ context.Context, id string) (clipstore.Clip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
@@ -117,10 +117,10 @@ type reportingStage struct {
 
 func (s *reportingStage) ID() pipelinestate.StageID { return s.id }
 func (s *reportingStage) Cost() StageCost           { return CostCheap }
-func (s *reportingStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) {
+func (s *reportingStage) Applies(context.Context, clipstore.Clip) (bool, string) {
 	return true, ""
 }
-func (s *reportingStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (StageResult, error) {
+func (s *reportingStage) Run(ctx context.Context, _ clipstore.Clip) (StageResult, error) {
 	for _, pct := range s.samples {
 		if s.tick != nil {
 			s.tick()
@@ -138,10 +138,10 @@ type passStage struct{ id pipelinestate.StageID }
 
 func (s passStage) ID() pipelinestate.StageID { return s.id }
 func (s passStage) Cost() StageCost           { return CostCheap }
-func (s passStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) {
+func (s passStage) Applies(context.Context, clipstore.Clip) (bool, string) {
 	return true, ""
 }
-func (s passStage) Run(context.Context, cliplibrary.StoreClip) (StageResult, error) {
+func (s passStage) Run(context.Context, clipstore.Clip) (StageResult, error) {
 	return StageResult{Verdict: pipelinestate.VerdictContinue}, nil
 }
 
@@ -278,7 +278,7 @@ func TestProgress_EverySamplePublishesEvenWhenItDoesNotWrite(t *testing.T) {
 	st := newProgMemStore("c1")
 
 	var published int
-	notify := func(pipelinestate.ClipPipeline, cliplibrary.StoreClip) { published++ }
+	notify := func(pipelinestate.ClipPipeline, clipstore.Clip) { published++ }
 
 	samples := []int{1, 2, 3, 4, 5}
 	stage := &reportingStage{id: pipelinestate.StageProbe, samples: samples}

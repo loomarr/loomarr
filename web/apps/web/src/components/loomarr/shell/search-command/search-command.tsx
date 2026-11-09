@@ -1,5 +1,4 @@
-import { Action, Badge, Text } from "@loomarr/design-system";
-import { Search } from "lucide-react";
+import { Action, Badge, Icon, icons, PressableRow, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
@@ -164,7 +163,7 @@ const SearchCommand = ({
       )}
     >
       <div className="border-border flex items-center gap-2 border-b px-3">
-        <Search className="text-static-400 size-4 shrink-0" aria-hidden />
+        <Icon decorative glyph={icons.search} size="compact" tone="muted" />
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
@@ -213,7 +212,7 @@ const SearchCommand = ({
         {groups.map((group) => (
           // biome-ignore lint/a11y/useSemanticElements: the rule suggests <fieldset>, which is for form controls and is not a valid listbox child; role="group" is the ARIA-correct way to section options.
           <div key={group.scope} role="group" aria-labelledby={`${listboxId}-${group.scope}`}>
-            <Text as="p" className="px-2 pt-2 pb-1" id={`${listboxId}-${group.scope}`} shout textRole="mono">
+            <Text as="p" className="px-2 pt-2 pb-1" id={`${listboxId}-${group.scope}`} textRole="metadata">
               {SCOPE_LABEL[group.scope]}
             </Text>
             {group.items.map((item) => {
@@ -223,25 +222,20 @@ const SearchCommand = ({
               const index = flat.findIndex((r) => r.id === item.id);
               const isActive = index === active;
               return (
-                <button
+                <PressableRow
                   key={item.id}
+                  accessibilityRole="option"
                   id={optionId(index)}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
+                  onPress={() => onSelect?.(item)}
+                  // Hovering moves the active option too, so the pointer and the keyboard
+                  // cannot disagree about which row Enter would pick.
+                  onHoverIn={() => setActive(index)}
+                  selected={isActive}
                   // -1: the input keeps DOM focus (aria-activedescendant pattern), so options
                   // must not enter the tab sequence. They stay clickable.
                   tabIndex={-1}
-                  onClick={() => onSelect?.(item)}
-                  // Hovering moves the active option too, so the pointer and the keyboard
-                  // cannot disagree about which row Enter would pick.
-                  onMouseMove={() => setActive(index)}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
-                    isActive && "bg-static-800",
-                  )}
                 >
-                  <span className="min-w-0 truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-left text-sm">{item.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
                     {item.meta && <span className="text-static-400 font-mono text-xs">{item.meta}</span>}
                     {item.inLibrary && (
@@ -250,7 +244,7 @@ const SearchCommand = ({
                       </Badge>
                     )}
                   </span>
-                </button>
+                </PressableRow>
               );
             })}
           </div>

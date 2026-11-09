@@ -1,8 +1,6 @@
 import { Action, BrandMark, type Density, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
-import { webOnly } from "../glass";
-
 // The full-picture states (§9 mock "error" and "off-air"): nothing to play, so the message takes the
 // picture's place, with the way on — Retry for a stream that stopped — and the way out.
 
@@ -22,7 +20,7 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
     role={kind === "error" ? "alert" : "status"}
     style={{
       alignItems: "center",
-      backgroundColor: kind === "error" ? "rgba(11, 12, 14, 0.8)" : playerChrome.discInk,
+      backgroundColor: kind === "error" ? playerChrome.surface : playerChrome.discInk,
       bottom: 0,
       gap: 8,
       justifyContent: "center",
@@ -32,7 +30,6 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
       right: 0,
       top: 0,
       zIndex: 35,
-      ...webOnly(kind === "error" ? { backdropFilter: "blur(4px)" } : {}),
     }}
   >
     <BrandMark contained={false} decorative size={4} />

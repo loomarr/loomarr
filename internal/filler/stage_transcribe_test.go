@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The transcribe rung (§10 V44's job, V51b's stage). Its whole risk is COST: Whisper is ~341s a
@@ -80,8 +80,8 @@ func utter(text string) tools.TranscriptSegment {
 // ⚠ Hash is DERIVED from the path rather than equal to it. A fixture that sets the two to the same
 // string cannot tell a hash-keyed call from a path-keyed one, which is how two shipped bugs
 // survived their own tests (see records/conformance_filler_test.go).
-func transcribeClip(path, transcript string) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: clips.Clip{
+func transcribeClip(path, transcript string) clipstore.Clip {
+	return clipstore.Clip{Clip: clips.Clip{
 		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,
 		DurationMs: 30_000, Transcript: transcript,
 	}}
@@ -89,7 +89,7 @@ func transcribeClip(path, transcript string) cliplibrary.StoreClip {
 
 // tagged marks a clip fully tagged (era + audience + category), so it is NOT a candidate on the
 // "still untagged" arm — only its source text can make it one.
-func tagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
+func tagged(c clipstore.Clip) clipstore.Clip {
 	c.Era = 1994
 	c.Audience = clips.Kids
 	c.Category = "toys"
@@ -111,7 +111,7 @@ func sidecar(clipPath, description string) fstest.MapFS {
 
 // runIfApplies is the two-question shape every rung has: does this apply, and if so what happens.
 // Returning the applied flag lets a test assert "did not run" by COST rather than by outcome.
-func runIfApplies(t *testing.T, s filler.Stage, c cliplibrary.StoreClip) (filler.StageResult, bool) {
+func runIfApplies(t *testing.T, s filler.Stage, c clipstore.Clip) (filler.StageResult, bool) {
 	t.Helper()
 	if applies, _ := s.Applies(context.Background(), c); !applies {
 		return filler.StageResult{}, false

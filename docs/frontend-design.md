@@ -180,7 +180,7 @@ that disappears with the legacy Web consumers.
 
 **Layer 0 — tokens** (§2).
 **Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Dialog`, `Disclosure`, `Text`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
-**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
+**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
 
@@ -498,10 +498,15 @@ optional `logoImage` present only when the logo resolves to one of this instance
 ## 9. Player chrome — one design for every player
 
 Every Loomarr video player — web Watch, the phone apps, Android TV and Apple TV — wears the same
-chrome (maintainer, 2026-10-29, #2088). The mock of record is
-[`design/watch-player/`](../design/watch-player/README.md): every state on desktop, landscape and
-portrait frames. This section is the rules that mock follows; where they disagree, the mock wins and
-this text is fixed.
+chrome (maintainer, 2026-10-29, #2088). On 2026-11-08 the maintainer chose the channel-first design,
+variant **H** ("Loomarr TV · signature tune", #2768), over the #2088 mock and the design review's
+four-control layout. The mock of record is [`design/watch-player/`](../design/watch-player/README.md):
+every state on desktop, landscape and portrait frames. This section is the rules that mock follows;
+where they disagree, the mock wins and this text is fixed.
+
+The player is **channel-first and feels like live TV, not a streaming app**: a channel number, a
+broadcast band that says what is on and what is next, and a small remote. It has no catalogue-style
+timeline, no preview cards and no glass.
 
 **Where it is built.** The chrome is shared design-system code in `@loomarr/ui` (the
 `watching-surface` family, beside `WatchingPanel`), with focus and remote navigation in
@@ -509,80 +514,121 @@ this text is fixed.
 mapping. No platform keeps its own player chrome; the web-only `VideoPlayer` controls are replaced,
 not restyled alongside.
 
-### 9.1 Planes
+### 9.1 Layers
 
-The chrome is five planes, back to front, and each one is visibly separate:
+The chrome is four layers over the picture, back to front:
 
-1. **Picture.** Nothing is drawn on it in a portrait phone layout; elsewhere a bottom scrim carries
-   the planes above.
-2. **The lower-third band** — identity. An amber channel block (`CH` over the number) beside a glass
-   panel: `CH n · name`, the programme line (`Series · S2 E4 "Episode"`, or
-   `Commercials · <clip title>` in a break), a thin progress line, and `9m in · 13m left` (or
-   `2m 14s behind`). The same band is the **station-ID card**: on a settled tune it shows fuller —
-   a larger block and `era · place` — and clears after five seconds.
-3. **The preview playbar** on a glass tray (§9.3).
-4. **The transport** in glass capsules (§9.4).
-5. **The transient layer**: a preview card (pointer), or one right-hand sheet for Info, Settings,
-   Playback info, Channels and Shortcuts over a dimmed picture. While a preview card is open the band
-   steps back a plane — dimmer and slightly softened — so the card is unambiguously in front.
+1. **Picture.** Nothing is drawn on it but the bottom scrim and, while a channel flip is shown with the
+   controls hidden, the readout.
+2. **The band** — identity (§9.2).
+3. **The keys and the top row** — control (§9.3).
+4. **The transient layer**: one right-hand sheet (Subtitles, Audio, Picture, More, Channels) over a
+   dimmed picture, or the Playback details panel (§9.5). The band's seven-colour edge, a compact
+   amber channel block and the channel's name wear the sheet's header, so a sheet reads as part of the
+   same set.
 
-**Elevation exception.** §2.3's "borders first, shadows second" is for page surfaces. Over moving
-video a hairline separates nothing, so player chrome takes its elevation from glass (a translucent
-fill with a top inner highlight and backdrop blur) and a soft drop shadow per plane. These are
-player-chrome tokens, added through the token pipeline (§2.5) — never raw `rgb()` values in
-components. Where a platform has no backdrop blur (React Native without a blur view), the glass
-falls back to a solid tinted fill of the same luminance; the plane order must still read.
+**Flat.** The chrome is solid surfaces, hairlines and **one bottom-up scrim**, the only soft edge. No
+glass, backdrop blur, drop or inset shadows, gradients (other than the scrim) or bevels. Surfaces come
+from the dark theme's tokens (`surface.canvas` for the band and sheets, `surface.elevated` for keys,
+`border.decorative` for hairlines) through the `playerChrome` tokens; never raw `rgb()` values in
+components. Over moving video, text that sits directly on the picture gets a solid ink backing
+(`rgba(11, 12, 14, 0.94)`), which is what keeps it legible over any frame. This replaces the earlier
+glass elevation exception; §2.3's "borders first" holds for the player too.
 
-### 9.2 Depth is light, never size
+### 9.2 The band
 
-- Every segment of the playbar is the same height. Nothing grows, lifts or scales on hover, focus or
-  time. (Tried and rejected in review: it reads as a gimmick.)
-- Now is fully lit with an amber edge. The segment under the pointer or focus is fully lit with a
-  white ring. The rest of the future is dimmed (≈72 % brightness, 70 % saturation) — further away.
-- The 15-minute seekable past is amber-tinted, distinct from both now and the future.
-- Stills and clip thumbnails are always shown as pictures, never as flat colour. A programme without
-  a still gets a fallback tile; its look is decided in the first build step that meets one.
+- **Channel block.** A full-height amber block, `CH` over the number in mono. It is the only place a
+  channel's own identity colour may be wider than a hairline (see Amber discipline).
+- **Broadcast band** beside it, on `surface.canvas`, under a seven-bar edge:
+  1. channel name (sentence case) on the left; on the right Live (red dot and word) and the clock in
+     mono; behind live, a **Go live** button replaces Live;
+  2. **NOW** chip, then the programme's logo (the programme's text title when it has none; the title is
+     also the logo's accessible name) and the episode line; in a break, the programme's title and
+     `Back in n min` in the break colour;
+  3. one progress line over the programme's own time slot, start and stop clocks either side (white on a
+     faint track; behind live, a red tick marks live);
+  4. **NEXT** chip, the start time in mono and the next programme's name. Next stays text: the band is
+     not a carousel.
+- **One identity at a time.** While the band is up it names the channel and nothing else does. The big
+  channel readout (number and name on a solid ink backing) shows only for a flip or tune made while the
+  controls are hidden, or for digits being typed.
+- **Station-ID.** After a settled tune with the controls hidden, the band is replaced by the ident card
+  on the programme's backdrop, heavily dimmed, and clears after five seconds.
+- **Logos are sized by area, not height** (#2773), so a wide wordmark and a nearly square logo carry
+  the same weight. A programme with no logo shows its title as text.
 
-### 9.3 The preview playbar
+### 9.3 The keys and the top row
 
-- **Time-true.** Width is proportional to time, over a window of the fifteen minutes behind live
-  (`DVRHorizon`, seekable) to about two hours ahead (hover or focus only — the future can't be
-  played).
-- **Programmes** carry their still, their name and their start time. **Breaks** show one thumbnail
-  tick per spot in the pod (`pod.entries`), sized by duration, and never shrink below a hoverable
-  width; programmes give up the difference.
-- **Playhead**: a glowing amber line with a knob, and a warm wash over what has been watched. When
-  behind live, a red line marks live.
-- **Preview card** (pointer only), joined to its segment by a connector line:
-  - a programme: the still as hero with the title set on it, an `IN 16 MIN` badge, chips (S/E,
-    rating, genres) and two lines of synopsis;
-  - a break: every spot — thumbnail, name, `brand · era` or its kind (Station ID, Bumper, Coming up),
-    duration — with the one on air marked `ON NOW`.
-- Nothing the server did not supply is invented: clip names follow the viewer-copy rule in
-  [`playback-clients.md`](design/playback-clients.md#android-tv) (a filename-derived name is empty,
-  and the spot reads by its kind).
+- **Keys**, the same on desktop and phone, in one row beside the band (below it on a portrait phone):
+  **Last** (swap icon and the channel number; hidden until there is a channel to return to; pointer
+  devices only in the keys, on phones it is in More), a **Channel up / down rocker**, **Play / Pause**,
+  **Volume** (pointer devices), **More**. Keys are neutral solid surfaces with 6 px corners on an 8 px
+  grid, with room around them; the rocker is not louder than its neighbours. Pointer devices show a
+  short sentence-case legend under each key.
+- **Top row**, upper right: Subtitles and Audio (each a glyph and its word), then Fullscreen
+  (pointer) and Leave. Portrait phones keep Leave and one "Subtitles & audio" key; landscape adds
+  More. Pointer tooltips name the shortcut (`Leave  Esc`).
+- **More** holds the schedule, Last channel (phones), Picture, Playback details, Picture in picture,
+  Channels, Info and Shortcuts.
+- **Shortcuts** (when focus is not in a control that owns them): arrow up / down tune, digits tune
+  direct, `L` last channel, `C` subtitles, `A` audio, `I` Playback details, `M` mute, `F`
+  fullscreen, `Esc` closes the top layer and then leaves.
+- **Auto-hide** after three seconds; the keys stay with a sheet open. The first play in a session is
+  muted with a tap-to-unmute pill.
 
-### 9.4 The transport
+### 9.4 The tune
 
-- **One primary.** Play/pause is the only solid control: a white disc. Everything else is
-  secondary.
-- **Capsules grouped by job**, left to right: transport (⟲10 · play · ⟳10) · live state (the live
-  indicator or `2m 14s behind · Go live`, and Start over) · volume with its level · then, pushed
-  right, view options (Subtitles · Settings · Info · Channels) · window (Fullscreen · Leave).
-- One glyph size and weight (18 px, 1.75 stroke). Active is an amber glyph with a small amber dot,
-  never a filled square. ⟳10 is disabled at the live edge — there is nothing ahead to skip to.
-- On pointer devices every tool has a tooltip naming its shortcut (`Subtitles  C`); the full map is
-  the `?` sheet ([`playback-clients.md`](design/playback-clients.md)).
+- The tune only dresses a wait that already exists; it never adds one.
+- **Warm flip** (the next channel is already streaming; the default): about 340 ms and quiet. The
+  picture dips once, the seven bars run once along the band's top edge only, and the number updates in
+  the channel block. No static, no full-screen bars. Rapid flips re-target.
+- **Cold start** (the first tune, or a channel that must spin up): the full signature, paced by the real
+  wait: the held picture drains, brief static thins as the programme's backdrop comes up under it, the
+  seven bars sweep the frame, the number lands very large in ink on the bars; a wait of 1.5 s or more
+  folds the bars into a band across the middle with the backdrop dimmed above and below and "Tuning
+  in…"; when the picture is ready the bars collapse onto the band's top edge, the number lands in the
+  amber block, and the band unfolds. The length comes from playback readiness, never a timer. A wait of
+  960 ms or less is the warm flip.
+- **Reduced motion** replaces the sweep and flight with a plain crossfade.
+- Motion follows §2.4: 200 ms sheets, 120 ms fades, colour-only hover and focus; the tune is the one
+  other movement.
 
-### 9.5 Per platform
+### 9.5 Sheets and Playback details
+
+- Sheets are right-hand panels on `surface.canvas` over a dimmed picture, with the seven-bar edge, a
+  compact amber channel block and the channel name in the header. One sheet is open at a time.
+- **Subtitles**, **Audio** and **Picture** are in plain words. A track is named by its language, then
+  `Track n`, never by a raw title. The selected option is white with a check.
+- **Playback details** is the one place technical terms are allowed: mono values for stream (direct
+  play or transcode), resolution and frame rate, codec, HDR, audio, bitrate, buffer ahead, dropped
+  frames, behind live, server, session and segment, with **Copy details**. On a pointer it opens as a
+  panel at the upper left; on a phone as a sheet.
+- **Info** shows the programme's synopsis and, as metadata rows with links, its licence and source.
+
+### 9.6 Amber discipline, type and the watermark
+
+- **Amber** is the channel block, the play key and focus rings, nothing else. Progress, volume, the
+  readout and active states are white. Live stays red. A channel's decade colour appears only on its
+  channel-number block. Keys show their brand colour as a thin edge on hover and press only.
+- **Type.** Letter-spaced mono capitals only on the NOW and NEXT chips. Everything else is Geist in
+  sentence case. Mono is for channel numbers, clocks and Playback details' values. The channel is named
+  once at a time.
+- **The channel watermark.** Playout burns each channel's watermark into the video (default top-right,
+  6 % of the picture tall, 5 % inset, 40 % opacity), so the player cannot move it. The player reads the
+  watermark's corner, computes the 16:9 picture's rectangle (letterboxed as the video really is), and
+  keeps its chrome out of the box: the top row and readout start below a top-right watermark, the
+  rating badge below a top-left one, and the band and keys lift clear of a bottom one. When the box is
+  already clear (a portrait phone, where the picture is a strip mid-screen) nothing moves.
+
+### 9.7 Per platform
 
 | | Pointer (web) | Touch, landscape | Touch, portrait (phone) | TV (D-pad) |
 | --- | --- | --- | --- | --- |
-| Chrome | Overlay over the picture | Overlay, 44 px targets | Picture clean on top; the panel below (N5) uses the same band content and capsules | Overlay, TV focus rules |
-| Playbar | Hover bar + preview card | Hover bar, no floating card; a tap on a segment opens the right-hand sheet | A scrollable filmstrip, `Coming up` | Visual design as pointer; focus stands in for hover |
-| Shortcuts | Tooltips + `?` sheet | — | — | Remote keys (see below) |
+| Chrome | Band and keys side by side, overlay | Compact band and keys, overlay, 48 px keys | Band above the keys, 56 px keys; picture-aware layout is open (#2775) | Overlay, TV focus rules |
+| Top row | Subtitles, Audio, Fullscreen, Leave | Subtitles, Audio, More, Leave | Subtitles & audio, Leave | Remote keys |
+| Last channel | A key, with the number | In More | In More | Remote key |
+| Shortcuts | Tooltips and keys | — | — | Remote keys (below) |
 
-**Open for the TV adoption step:** the D-pad has no free key for walking the playbar — Up/Down and
-the Channel keys tune, OK opens the Guide, Left opens Surf ([`playback-clients.md`](design/playback-clients.md#android-tv)).
-How a remote reaches the bar and its cards is decided with the maintainer when that step starts, not
-here.
+**Open for the TV adoption step:** how a remote reaches the sheets is decided with the maintainer when
+that step starts, not here. Up/Down and the Channel keys tune, OK opens the Guide, Left opens Surf
+([`playback-clients.md`](design/playback-clients.md#android-tv)).

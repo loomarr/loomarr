@@ -24,6 +24,8 @@ const KEYBOARD: Record<TextFieldType, ComponentProps<typeof Field>["keyboardType
 
 interface TextFieldProps {
   autoComplete?: ComponentProps<typeof Field>["autoComplete"];
+  // Takes focus when the field mounts: a field that appears because someone asked for it.
+  autoFocus?: boolean;
   // The field's own wrapper, for its place in the form; the input keeps the Field's look.
   className?: string;
   disabled?: boolean;
@@ -39,6 +41,7 @@ interface TextFieldProps {
 // FieldError's alert rather than the Field's own error line, so it is announced on submit.
 const TextField = ({
   autoComplete,
+  autoFocus,
   className,
   disabled,
   id,
@@ -57,6 +60,7 @@ const TextField = ({
         autoCapitalize="none"
         autoComplete={autoComplete}
         autoCorrect={false}
+        autoFocus={autoFocus}
         disabled={disabled}
         id={id}
         invalid={errors.length > 0}

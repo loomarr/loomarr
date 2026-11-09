@@ -1,6 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Badge, Field, FieldHint } from "@loomarr/design-system";
-import { AlertTriangle, Check, Database, Lock } from "lucide-react";
+import { Action, Badge, Field, FieldHint, Icon, icons } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -48,7 +47,7 @@ const DatabaseMigration = ({
     return (
       <section className={cn("border-border rounded-lg border p-4", className)}>
         <div className="flex items-center gap-2">
-          <Database className="text-muted-foreground size-4" aria-hidden />
+          <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <h3 className="text-sm font-medium">Running on PostgreSQL</h3>
         </div>
         <p className="text-muted-foreground mt-2 text-sm">
@@ -63,7 +62,7 @@ const DatabaseMigration = ({
     <section className={cn("border-border rounded-lg border", className)}>
       <header className="border-border border-b p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Database className="text-tune size-4" aria-hidden />
+          <Icon decorative glyph={icons.database} size="compact" tone="info" />
           <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
           <Badge shape="square">{status.backend}</Badge>
         </div>
@@ -83,7 +82,9 @@ const DatabaseMigration = ({
       {envPinned ? (
         // An env pin wins at boot, so an atomic copy-and-switch cannot commit.
         <div className="flex gap-3 p-4">
-          <Lock className="text-lock mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.locked} size="compact" tone="success" />
+          </span>
           <div>
             <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -109,7 +110,7 @@ const DatabaseMigration = ({
                       !done && !current && "border-border text-muted-foreground",
                     )}
                   >
-                    {done ? <Check className="size-3" aria-hidden /> : i + 1}
+                    {done ? <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> : i + 1}
                   </span>
                   <span
                     className={cn(
@@ -250,7 +251,9 @@ const DatabaseMigration = ({
                 survived, and a generic "migration failed" leaves them to guess. */}
             {error && (
               <p className="text-onair-300 mt-3 flex items-start gap-2 text-sm">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="mt-0.5 flex">
+                  <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+                </span>
                 {error}
               </p>
             )}

@@ -6,9 +6,9 @@ import (
 
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -57,8 +57,8 @@ func buildApproval(
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)
-	approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-		return catalog.LibraryOwnership{Titles: st}
+	approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: st}
 	}})
 	return approvalBuild{
 		binder:          channelBinder,

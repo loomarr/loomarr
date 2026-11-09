@@ -60,7 +60,7 @@ func (j *AVIFJob) encodeLadder(ctx context.Context, rec Image) (int, error) {
 	if rec.Animated {
 		return 0, nil
 	}
-	widths := rec.Role.Widths()
+	widths := rec.Role.AVIFWidthsFor(rec.Width)
 	if _, err := j.svc.encodeRenditions(ctx, rec, FormatAVIF, widths); err != nil {
 		return 0, err
 	}

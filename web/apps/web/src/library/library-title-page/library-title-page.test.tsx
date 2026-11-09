@@ -31,6 +31,7 @@ const echo = {
   seasons: [],
   match: { by: "file" as const },
   detailsFrom: {},
+  channels: [],
 };
 
 const renderPage = () => {

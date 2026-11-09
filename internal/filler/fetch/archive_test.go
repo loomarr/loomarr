@@ -16,6 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // memSink is an in-memory fileSink for testing the walk without touching disk.
@@ -391,7 +392,7 @@ func TestPrepareReservationForNItemsMatchesTheDocumentedFormula(t *testing.T) {
 	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
 		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
 	})
-	ingestor := New(Downloaders{Archive: &ArchiveDownloader{client: c}}, "/filler", slog.New(slog.NewTextHandler(io.Discard, nil))).WithStorageGovernor(governor)
+	ingestor := New(Downloaders{Archive: &ArchiveDownloader{client: c}}, t.TempDir(), &testkit.ArtifactWriter{}, slog.New(slog.NewTextHandler(io.Discard, nil))).WithStorageGovernor(governor)
 	const items = 3
 	sources := make([]Source, items)
 	for index := range sources {

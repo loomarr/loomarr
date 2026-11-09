@@ -77,7 +77,6 @@ func (*Provider) Capabilities() mp.Capabilities {
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceFile},
 		},
 		Families: []mp.Family{mp.FamilyArtwork},
-		Rate:     mp.RateHint{MaxConcurrent: 4},
 	}
 }
 

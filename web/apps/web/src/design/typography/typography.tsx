@@ -37,7 +37,7 @@ const Typography = () => (
       <h2 className="text-base font-semibold">The two families</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="border-border flex flex-col gap-2 rounded-md border p-4">
-          <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">Sans</div>
+          <div className="text-static-400 font-mono text-[11px]">Sans</div>
           <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
           </div>
@@ -46,7 +46,7 @@ const Typography = () => (
           </p>
         </div>
         <div className="border-border flex flex-col gap-2 rounded-md border p-4">
-          <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">Mono</div>
+          <div className="text-static-400 font-mono text-[11px]">Mono</div>
           <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
           </div>
@@ -116,9 +116,7 @@ const Typography = () => (
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(webType.leading).map(([name, value]) => (
           <div key={name} className="border-border flex flex-col gap-2 rounded-md border p-4">
-            <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">
-              {`${name} · ${value}`}
-            </div>
+            <div className="text-static-400 font-mono text-[11px]">{`${name} · ${value}`}</div>
             <p style={{ lineHeight: value }} className="text-sm">
               A channel is a wall clock, not a playlist that starts when someone watches. Tune in forty
               minutes into an hour-long film and you land forty minutes in.

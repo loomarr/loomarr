@@ -21,7 +21,7 @@ import (
 // record — the state that causes an acquisition — is created in exactly ONE place.
 //
 // ⚠ NOT asserting "only Approve calls UpsertTitle". That is false and would be a brittle test:
-// internal/provisionbackstop advances existing titles through their lifecycle, and api/titles.go marks
+// internal/library/provisionbackstop advances existing titles through their lifecycle, and api/titles.go marks
 // a given-up title `unavailable` and re-enqueues a cancelled one. Those are transitions on
 // titles that already exist. The invariant is about CREATING an acquisition, not about touching
 // the table.

@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // defectMeasureBudget bounds how long one pass spends decoding. A pass that runs out leaves the rest
@@ -47,7 +48,7 @@ type DefectStore interface {
 	// rung for a held clip's verdict. A held clip carries its conveyor's stage.
 	ListDefectClips(ctx context.Context) ([]DefectClip, error)
 	// GetClip re-reads one clip, so evidence is released only from a clip still unheld.
-	GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error)
+	GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error)
 	// ListClipPaths is every clip's path, removed ones included: a removed clip can be restored,
 	// and the assets its sidecar names must survive until then.
 	ListClipPaths(ctx context.Context) ([]string, error)
@@ -65,8 +66,7 @@ type FingerprintFunc func(ctx context.Context, file string, durationMs int64) (c
 
 // DefectClip is a catalog clip with its admission time, so a backlog is measured oldest first.
 type DefectClip struct {
-	cliplibrary.StoreClip
-	CreatedAt time.Time
+	clipstore.Clip
 	// Stage is a held clip's conveyor rung. The floor measures it only once it reaches the
 	// defects rung: before then the bytes are not yet the ones that air, and a whole break not yet
 	// split would be judged as one ad.
@@ -151,7 +151,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 	judge := d.judgeNow(ctx)
 	var asks []defectAsk
 	for _, c := range clips {
-		if !defectCandidate(c.Clip) || !c.awaitingFloor() {
+		if !defectCandidate(c.Clip.Clip) || !c.awaitingFloor() {
 			continue
 		}
 		rec, known := records[c.Hash]
@@ -171,7 +171,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 				res.Pending++
 				continue
 			}
-			readings, err := d.measureClip(ctx, c.Clip)
+			readings, err := d.measureClip(ctx, c.Clip.Clip)
 			if err != nil {
 				if ctx.Err() != nil {
 					res.Pending++ // the pass was cancelled, not the clip
@@ -412,7 +412,7 @@ func (d *DefectFloor) save(ctx context.Context, rec *DefectRecord, changed bool)
 // itself (an outage, a spent budget) ends the asking for this pass, and every clip still waiting
 // stays pending for the next.
 func (d *DefectFloor) ask(ctx context.Context, ask *defectAsk, judge *judgeState, res *DefectFloorResult) (bool, error) {
-	rec, c := &ask.rec, ask.clip.Clip
+	rec, c := &ask.rec, ask.clip.Clip.Clip
 	if errors.Is(judge.err, ErrNoDefectJudge) {
 		rec.Judgement = &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingNoJudge}
 		res.Ruled++

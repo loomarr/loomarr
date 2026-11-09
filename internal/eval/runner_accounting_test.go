@@ -273,7 +273,7 @@ func TestRunnerFailsRubricWhenJudgeIsMissing(t *testing.T) {
 }
 
 func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
-	provider := testkit.NewLLM()
+	provider := testkit.NewLLM(t)
 	provider.Delay = time.Second
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -298,7 +298,7 @@ func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
 }
 
 func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
-	provider := testkit.NewLLM(testkit.FinalResponse("definitely not judge JSON"))
+	provider := testkit.NewLLM(t, testkit.FinalResponse("definitely not judge JSON"))
 	runner := NewRunner(scriptedGenerator{proposal: proposals.Proposal{
 		Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
@@ -335,7 +335,7 @@ func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
 	}
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(t, testkit.FinalResponse(response))}
 			if _, err := scorer.Score(context.Background(), mustJudgeEvidence(t, caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted output missing %s: %s", name, response)
 			}
@@ -358,7 +358,7 @@ func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
 	}
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(t, testkit.FinalResponse(response))}
 			if _, err := scorer.Score(context.Background(), mustJudgeEvidence(t, caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted out-of-range output: %s", response)
 			}
@@ -377,7 +377,7 @@ func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
 	}
 	for name, response := range tests {
 		t.Run(name, func(t *testing.T) {
-			var scorer Judge = modelJudge{provider: testkit.NewLLM(testkit.FinalResponse(response))}
+			var scorer Judge = modelJudge{provider: testkit.NewLLM(t, testkit.FinalResponse(response))}
 			if _, err := scorer.Score(context.Background(), mustJudgeEvidence(t, caseUnderTest, proposal, Observation{}, nil)); err == nil {
 				t.Fatalf("Judge.Score accepted %s reason: %s", name, response)
 			}

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // #2121: the bytes that would replace an airing clip are held to the floor before the switch, on
@@ -18,7 +18,7 @@ import (
 func TestCheckReplacement_JudgesTheStagedBytesAndSavesNothing(t *testing.T) {
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	const staged = "/clips/.transcode/replacement.mp4"
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: "airing", Path: "ai/ri/airing.mp4", Era: 1988, Role: clips.Commercial}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: "airing", Path: "ai/ri/airing.mp4", Era: 1988, Role: clips.Commercial}}
 	readings := func(blur float64) defects.Readings {
 		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 	}

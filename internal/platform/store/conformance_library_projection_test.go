@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // The Library's rows follow inventory writes: a snapshot writes its item's row, an origin marked
@@ -102,7 +102,7 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 				{Name: "Pen Name", Role: "writer"},
 				{Name: "", Role: "actor"},
 			}
-			it.IDs = []LibraryID{{"tmdb", "90000701"}, {"tvdb", "90000702"}}
+			it.IDs = []LibraryID{{Namespace: "tmdb", Value: "90000701"}, {Namespace: "tvdb", Value: "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
 			if it.Name == "Rated" {
@@ -123,7 +123,7 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	}
 	row := func(id inventory.ItemID) (seriesID, rating, from string) {
 		t.Helper()
-		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT series_id, rating, rating_from FROM library_items
+		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COALESCE(series_id, ''), rating, rating_from FROM library_items
 			WHERE id = ?`), string(id)).Scan(&seriesID, &rating, &from); err != nil {
 			t.Fatal(err)
 		}

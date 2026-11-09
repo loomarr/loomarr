@@ -5,12 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
 // ideaLibraryTTL is how long one library listing serves channel ideas (#1665). Listing reads the
@@ -24,8 +24,8 @@ type libraryLister interface {
 // libraryIdeaTitles lists what channel ideas draw from: the Library's movies and series with a
 // file to play, with their year and genres (#2151 step 16). The media server is never asked.
 type libraryIdeaTitles struct {
-	titles store.LibraryTitleReader
-	facts  store.LibraryItemFactsReader
+	titles librarystore.LibraryTitleReader
+	facts  librarystore.LibraryItemFactsReader
 }
 
 func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult, error) {
@@ -43,7 +43,7 @@ func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult
 	}
 	out := make([]library.SearchResult, 0, len(titles))
 	for _, t := range titles {
-		r := catalog.LibrarySearchResult(t)
+		r := titlesearch.LibrarySearchResult(t)
 		r.Year, r.Genres = facts[t.ID].Year, facts[t.ID].Genres
 		out = append(out, r)
 	}

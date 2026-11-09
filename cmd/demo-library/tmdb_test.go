@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/demolibrary"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // #1941: the real TMDB client, pointed at the demo server's /tmdb/3, finds the demo catalogue's
@@ -44,7 +44,7 @@ func TestServeAnswersAsTMDBOverTheDemoCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	i := slices.IndexFunc(got, func(c catalog.Candidate) bool { return c.TMDBID == film.ProviderID() })
+	i := slices.IndexFunc(got, func(c titlesearch.Candidate) bool { return c.TMDBID == film.ProviderID() })
 	if i < 0 {
 		t.Fatalf("search %q = %+v, want tmdb id %d", film.Name, got, film.ProviderID())
 	}

@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
+	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // Locale returns the installation's metadata language (such as "en-US") and certification country
@@ -97,7 +97,7 @@ func (*Provider) Capabilities() mp.Capabilities {
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyArtwork},
 		// TMDB documents roughly 50 requests per second per address and 20 simultaneous
 		// connections. 8 in flight at 25 ms apart stays well under both.
-		Rate: mp.RateHint{MaxConcurrent: 8, MinInterval: 25 * time.Millisecond},
+		Rate: mp.RateHint{MinInterval: 25 * time.Millisecond},
 	}
 }
 

@@ -10,10 +10,18 @@
 package proposals
 
 import (
+	"errors"
+
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/provision"
 )
+
+// ErrNoGroundedTitles is returned when a run produced no grounded picks at all — the intent
+// surfaced no themed, real content. The worker fails the job with this (a clear operator-facing
+// reason), and it is NOT cached, so a re-submit re-runs. The suggester returns it and the workflow
+// refuses to commit a Proposal that carries nothing, so both name the one sentinel here.
+var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
 
 // EditorialRole records the grounded origin of a selected pick in one proposal run.
 // A missing role is unknown; ownership never means favorite or explicit preference.
@@ -27,7 +35,7 @@ const (
 
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
 // Identity is always a real external id (the grounding guarantee); Name/Year are
-// for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
+// for display only. It mirrors a titlesearch.Candidate plus the LLM's rationale.
 type ProposalItem struct {
 	EditorialRole EditorialRole       `json:"editorialRole,omitempty" enum:"core,adjacent,discovery"`
 	MediaType     provision.MediaType `json:"mediaType"`

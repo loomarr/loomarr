@@ -1,12 +1,13 @@
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { ApprovalQueueItem } from "./approval-queue-item";
 
 describe("ApprovalQueueItem", () => {
-  it("approves in one click; deny arms a reason first", () => {
+  it("approves in one click; deny arms a reason first", async () => {
     const onApprove = vi.fn();
     const onDeny = vi.fn();
     render(<ApprovalQueueItem title="90s Action" acquisitions={3} onApprove={onApprove} onDeny={onDeny} />);
@@ -18,10 +19,10 @@ describe("ApprovalQueueItem", () => {
     fireEvent.click(screen.getByRole("button", { name: /deny/i }));
     expect(onDeny).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /deny/i }));
-    expect(onDeny).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onDeny).toHaveBeenCalledOnce());
   });
 
-  it("sends the typed reason to onDeny", () => {
+  it("sends the typed reason to onDeny", async () => {
     // A1: the API has persisted `denyReason` and this component has rendered it since
     // day one, but every call site sent `{}` — so the field was always empty and a
     // member never learned why. This is the missing capture half.
@@ -32,10 +33,18 @@ describe("ApprovalQueueItem", () => {
       target: { value: "Over the cap this week." },
     });
     fireEvent.click(screen.getByRole("button", { name: /deny/i }));
-    expect(onDeny).toHaveBeenCalledWith("Over the cap this week.");
+    await waitFor(() => expect(onDeny).toHaveBeenCalledWith("Over the cap this week."));
   });
 
-  it("sends undefined rather than an empty string when no reason is typed", () => {
+  it("denies when Enter is pressed in the reason", async () => {
+    const onDeny = vi.fn();
+    render(<ApprovalQueueItem title="X" onDeny={onDeny} />);
+    fireEvent.click(screen.getByRole("button", { name: /deny/i }));
+    await userEvent.type(screen.getByLabelText(/why not/i), "  Ask Monday  {Enter}");
+    await waitFor(() => expect(onDeny).toHaveBeenCalledWith("Ask Monday"));
+  });
+
+  it("sends undefined rather than an empty string when no reason is typed", async () => {
     // The reason is optional by design — requiring one would make declining a chore.
     // But "" must not reach the API as a reason: omitempty drops it, and a blank
     // string would render as an empty explanation rather than none at all.
@@ -43,7 +52,7 @@ describe("ApprovalQueueItem", () => {
     render(<ApprovalQueueItem title="X" onDeny={onDeny} />);
     fireEvent.click(screen.getByRole("button", { name: /deny/i }));
     fireEvent.click(screen.getByRole("button", { name: /deny/i }));
-    expect(onDeny).toHaveBeenCalledWith(undefined);
+    await waitFor(() => expect(onDeny).toHaveBeenCalledWith(undefined));
   });
 
   it("cancel abandons the deny without calling onDeny", () => {

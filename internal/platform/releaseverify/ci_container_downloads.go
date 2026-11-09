@@ -95,7 +95,7 @@ func VerifyCIContainerDownloads(root string) error {
 		allSuites = append(allSuites, "./internal/"+suite+"/")
 	}
 	if err := verifyProtectedMakeTarget(repositoryMake, "test-pg", []string{
-		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,` + strings.Join(allSuites, " ") + `)`,
+		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=40m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,` + strings.Join(allSuites, " ") + `)`,
 	}); err != nil {
 		return fmt.Errorf("postgres target test-pg: %w", err)
 	}

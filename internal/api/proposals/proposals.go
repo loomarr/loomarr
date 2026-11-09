@@ -105,8 +105,12 @@ func (s *Handlers) submitProposal(ctx context.Context, in *submitInput) (*submit
 	if s.suggest == nil {
 		return nil, httpcore.FeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
 	}
-	if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
-		return nil, err
+	// A demo submitter builds its proposal from the library with no AI, so the AI and TMDB settings
+	// it would otherwise need are not required (#2729).
+	if canned, ok := s.suggest.(interface{ Canned() bool }); !ok || !canned.Canned() {
+		if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
+			return nil, err
+		}
 	}
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err

@@ -1,9 +1,17 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
+import {
+  Action,
+  Icon,
+  icons,
+  Menu,
+  MenuAction,
+  MenuContent,
+  MenuGroup,
+  MenuTrigger,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Info, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ignoreFailure, useChannelSave } from "../use-channel-save";
@@ -53,7 +61,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const DetailsGlyph = isAdmin ? Pencil : Info;
+  const detailsGlyph = isAdmin ? icons.edit : icons.info;
   const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
   const paused = channel.status === "paused";
 
@@ -120,7 +128,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               channel still opens it (the surface shows the "off air" poster and explains, rather
               than the menu guessing). */}
           <MenuAction
-            icon={<Tv className="text-signal size-4" aria-hidden />}
+            icon={<Icon decorative glyph={icons.channels} size="compact" tone="primary" />}
             onSelect={() => void navigate({ to: "/watch/$id", params: { id: channel.id } })}
           >
             Watch
@@ -130,7 +138,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               options are Pause and Delete reads as a destructive-actions menu. A member gets the
               same page read-only, so their item names it for what it is (#2732). */}
           <MenuAction
-            icon={<DetailsGlyph className="text-static-400 size-4" aria-hidden />}
+            icon={<Icon decorative glyph={detailsGlyph} size="compact" tone="muted" />}
             onSelect={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
           >
             {isAdmin ? "Edit channel" : "Channel details"}
@@ -144,7 +152,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               <MenuAction
                 disabled={busy}
                 icon={
-                  paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />
+                  <Icon decorative glyph={paused ? icons.play : icons.pause} size="compact" tone="inherit" />
                 }
                 onSelect={() => void togglePaused()}
               >
@@ -160,7 +168,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
                 <MenuAction
                   closeOnSelect={false}
                   disabled={busy}
-                  icon={<Trash2 className="size-4" aria-hidden />}
+                  icon={<Icon decorative glyph={icons.delete} size="compact" tone="inherit" />}
                   onSelect={arm}
                   tone="danger"
                 >

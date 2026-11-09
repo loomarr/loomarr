@@ -4,15 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // libraryTitleScanner answers the availability scan from the Library's own titles, so a title
 // confirms with its library item id (#2151 step 16). The media server is never asked.
 type libraryTitleScanner struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (s libraryTitleScanner) RecentlyAdded(ctx context.Context, since time.Time) ([]library.SearchResult, error) {
@@ -30,7 +30,7 @@ func (s libraryTitleScanner) scan(ctx context.Context, since time.Time) ([]libra
 	}
 	out := make([]library.SearchResult, 0, len(titles))
 	for _, t := range titles {
-		out = append(out, catalog.LibrarySearchResult(t))
+		out = append(out, titlesearch.LibrarySearchResult(t))
 	}
 	return out, nil
 }
@@ -39,12 +39,12 @@ func (s libraryTitleScanner) scan(ctx context.Context, since time.Time) ([]libra
 // (provisionbackstop.LibraryLookup): a title the Library holds is confirmed with its library item
 // id (#2151 step 16).
 type libraryLookup struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (l libraryLookup) Lookup(
 	ctx context.Context, kind library.ProviderKind, id string, mt library.MediaType,
 ) (string, bool, error) {
-	t, ok, err := catalog.OwnedTitle(ctx, l.titles, kind, id, mt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, l.titles, kind, id, mt)
 	return t.ID, ok, err
 }

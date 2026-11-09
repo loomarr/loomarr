@@ -11,8 +11,8 @@ import (
 // context here recreates the restart race while leaving every ordinary success-path test green.
 func TestInteractiveOperationAdaptersCannotEscapeApplicationLifecycle(t *testing.T) {
 	targets := map[string]map[string]bool{
-		"filler.go":    {"fillerServiceAdapter.ingest": false, "fillerServiceAdapter.Split": false},
-		"systemllm.go": {"systemLLMService.Pull": false},
+		"../filler/operator/operator.go":    {"Operator.ingest": false, "Operator.Split": false},
+		"../platform/llm/picker/service.go": {"Service.Pull": false},
 	}
 	fset := token.NewFileSet()
 	for path, wanted := range targets {

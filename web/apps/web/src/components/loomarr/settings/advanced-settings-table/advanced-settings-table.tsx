@@ -1,6 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Action } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,7 @@ const AdvancedSettingsTable = ({
 
       <div className="border-border overflow-x-auto rounded-lg border">
         <div className="min-w-[780px]">
-          <div className="border-border text-2xs text-muted-foreground grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2 font-mono tracking-wide uppercase">
+          <div className="border-border text-2xs text-muted-foreground grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2">
             <div>Key</div>
             <div>Value</div>
             <div>Owner</div>
@@ -158,12 +159,7 @@ const AdvancedSettingsTable = ({
                 ) : (
                   <span className="text-muted-foreground truncate text-xs">{entry.group}</span>
                 )}
-                <span
-                  className={cn(
-                    "text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase",
-                    prov.className,
-                  )}
-                >
+                <span className={cn("text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono", prov.className)}>
                   {prov.label}
                 </span>
                 {pickerOwned ? (
@@ -171,14 +167,15 @@ const AdvancedSettingsTable = ({
                     Choose model
                   </Link>
                 ) : (
-                  <button
-                    type="button"
+                  <Action
                     disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
-                    onClick={() => onClear?.(entry)}
-                    className="text-muted-foreground enabled:hover:text-foreground w-fit text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:underline disabled:opacity-40"
+                    layout="text"
+                    onPress={() => onClear?.(entry)}
+                    style={{ alignSelf: "flex-start" }}
+                    variant="link"
                   >
                     Use default
-                  </button>
+                  </Action>
                 )}
               </div>
             );

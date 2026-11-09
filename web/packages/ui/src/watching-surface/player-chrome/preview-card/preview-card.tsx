@@ -1,7 +1,7 @@
-import { type Density, playerChrome, semanticColors, Text } from "@loomarr/design-system";
+import { type Density, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
-import { gradientOr, panelGlass, webOnly } from "../glass";
+import { panel } from "../flat";
 import { PlaybarStill } from "../playbar-still";
 import type { PlaybarBreak, PlaybarProgramme } from "../player-chrome.type";
 
@@ -42,10 +42,7 @@ const ProgrammeCard = ({
           position: "absolute",
           right: 0,
           top: 0,
-          ...gradientOr(
-            `linear-gradient(0deg, ${playerChrome.panelBottom} 0%, rgba(11, 12, 14, 0.25) 55%, transparent 100%)`,
-            semanticColors.artwork.scrim,
-          ),
+          backgroundColor: playerChrome.dim,
         }}
       />
       <View
@@ -79,8 +76,8 @@ const ProgrammeCard = ({
             <View
               key={chip}
               style={{
-                backgroundColor: playerChrome.glassBottom,
-                borderColor: playerChrome.glassRing,
+                backgroundColor: playerChrome.surfaceRaised,
+                borderColor: playerChrome.hairline,
                 borderRadius: 6,
                 borderWidth: 1,
                 paddingHorizontal: 6,
@@ -112,11 +109,11 @@ const BreakCard = ({
   <View>
     <View
       style={{
-        borderBottomColor: playerChrome.glassRing,
+        backgroundColor: playerChrome.breakTint,
+        borderBottomColor: playerChrome.hairline,
         borderBottomWidth: 1,
         paddingHorizontal: 14,
         paddingVertical: 10,
-        ...webOnly({ backgroundImage: `linear-gradient(90deg, ${playerChrome.breakTint}, transparent)` }),
       }}
     >
       <Text density={density} strong textRole="cardLabel" tone="info">
@@ -164,7 +161,7 @@ const PreviewCard = (props: PreviewCardProps) => (
       borderRadius: 12,
       overflow: "hidden",
       width: CARD_WIDTH,
-      ...panelGlass(playerChrome.shadowCard),
+      ...panel(),
     }}
   >
     {props.segment.kind === "break" ? (

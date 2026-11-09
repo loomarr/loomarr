@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
-func epochCandidate() catalog.Candidate {
-	return catalog.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Gear Ledger", Year: 1993, InLibrary: true, Genres: []string{"Documentary"}, Networks: []string{"Almanac"}, Overview: "Almanac Channel documentaries about the history of technology."}
+func epochCandidate() titlesearch.Candidate {
+	return titlesearch.Candidate{MediaType: "series", TMDBID: 90000002, Name: "Gear Ledger", Year: 1993, InLibrary: true, Genres: []string{"Documentary"}, Networks: []string{"Almanac"}, Overview: "Almanac Channel documentaries about the history of technology."}
 }
 
 func epochFinal(t *testing.T, meaning map[string]any) string {
@@ -35,8 +35,8 @@ func TestSuggest_NetworkEpochAllowsEditorialDecadeWithoutEpisodeCutoff(t *testin
 		"A channel like the Almanac Channel from the nineties",
 	} {
 		t.Run(description, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-			model := testkit.NewLLM(
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+			model := testkit.NewLLM(t,
 				testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 			)
@@ -61,8 +61,8 @@ func TestSuggest_NetworkEpochAllowsEditorialDecadeWithoutEpisodeCutoff(t *testin
 }
 
 func TestSuggest_FranchiseChannelIsNotNetworkProgramming(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{marigoldCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
@@ -77,8 +77,8 @@ func TestSuggest_NetworkEpochRepairsMistakenEpisodeAiringConstraintBeforeDiscove
 	start := strings.Index(description, "1990s")
 	wrong := dateMeaningAiring1990()
 	wrong["anchors"] = []any{map[string]any{"field": "description", "start": start, "end": start + 5}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": wrong}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -96,8 +96,8 @@ func TestSuggest_NetworkEpochRepairsUnnecessaryDateClarification(t *testing.T) {
 	const description = "A channel like the Almanac Channel from the 1990s, when Gear Ledger was around"
 	start := strings.Index(description, "1990s")
 	ambiguous := map[string]any{"kind": "ambiguous", "anchors": []any{map[string]any{"field": "description", "start": start, "end": start + 5}}, "axes": []any{}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": ambiguous}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -113,12 +113,12 @@ func TestSuggest_NetworkEpochRepairsUnnecessaryDateClarification(t *testing.T) {
 
 func TestSuggest_NetworkStyleRejectsTitleLookupBeforeNetworkDiscovery(t *testing.T) {
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) {
-			return []catalog.Candidate{{MediaType: "series", TMDBID: 90000001, Name: "Almanac Channel Documentaries", InLibrary: true, Genres: []string{"Documentary"}}}, nil
+		SearchFunc: func(context.Context, string, int) ([]titlesearch.Candidate, error) {
+			return []titlesearch.Candidate{{MediaType: "series", TMDBID: 90000001, Name: "Almanac Channel Documentaries", InLibrary: true, Genres: []string{"Documentary"}}}, nil
 		},
-		Candidates: []catalog.Candidate{epochCandidate()},
+		Candidates: []titlesearch.Candidate{epochCandidate()},
 	}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Almanac Channel", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -139,8 +139,8 @@ func TestSuggest_NetworkEpochDoesNotEraseSeparateExplicitDates(t *testing.T) {
 		"ordinary dated series":       {Description: "1990s documentary episodes on the Almanac Channel"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-			model := testkit.NewLLM(testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}))
+			corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+			model := testkit.NewLLM(t, testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}))
 			_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), intent)
 			if err == nil || len(corpus.Discoveries()) != 0 {
 				t.Fatalf("explicit date was ignored: err=%v discoveries=%+v", err, corpus.Discoveries())
@@ -151,11 +151,11 @@ func TestSuggest_NetworkEpochDoesNotEraseSeparateExplicitDates(t *testing.T) {
 
 func TestSuggest_NetworkStyleDirectFinalMustDiscoverInsteadOfGroundingTitleNames(t *testing.T) {
 	corpus := &catalogfixture.Corpus{
-		SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) {
-			return []catalog.Candidate{{MediaType: "series", TMDBID: 90000003, Name: "The Harrowgates", Year: 2014, InLibrary: true}}, nil
-		}, Candidates: []catalog.Candidate{epochCandidate()},
+		SearchFunc: func(context.Context, string, int) ([]titlesearch.Candidate, error) {
+			return []titlesearch.Candidate{{MediaType: "series", TMDBID: 90000003, Name: "The Harrowgates", Year: 2014, InLibrary: true}}, nil
+		}, Candidates: []titlesearch.Candidate{epochCandidate()},
 	}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","name":"The Harrowgates","key":"series:tmdb:90000003"}]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -170,13 +170,13 @@ func TestSuggest_NetworkStyleDirectFinalMustDiscoverInsteadOfGroundingTitleNames
 }
 
 func TestSuggest_NetworkEpochCoverageFindsChoicesBeyondExemplarTopic(t *testing.T) {
-	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, query catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, query titlesearch.DiscoveryQuery, _ int) ([]titlesearch.Candidate, error) {
 		if len(query.Keywords) > 0 {
 			return nil, nil
 		}
-		return []catalog.Candidate{epochCandidate()}, nil
+		return []titlesearch.Candidate{epochCandidate()}, nil
 	}}
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "keywords": []any{"engineering"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
@@ -191,8 +191,8 @@ func TestSuggest_NetworkEpochCoverageFindsChoicesBeyondExemplarTopic(t *testing.
 }
 
 func TestSuggest_NetworkEpochExposesOnlyRelevantLookupInterface(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
@@ -232,8 +232,8 @@ func TestSuggest_NetworkEpochExposesOnlyRelevantLookupInterface(t *testing.T) {
 }
 
 func TestSuggest_NetworkStyleRejectsUnrequestedPopularityThresholdBeforeDispatch(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "vote_count_min": 50, "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -248,8 +248,8 @@ func TestSuggest_NetworkStyleRejectsUnrequestedPopularityThresholdBeforeDispatch
 }
 
 func TestSuggest_NetworkStyleRejectsGenericDiscovery(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
+	model := testkit.NewLLM(t,
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
@@ -264,9 +264,9 @@ func TestSuggest_NetworkStyleRejectsGenericDiscovery(t *testing.T) {
 }
 
 func TestSuggest_NetworkStyleDoesNotReopenToolsOnJSONRepair(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{epochCandidate()}}
 	lookup := testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()})
-	model := testkit.NewLLM(lookup, testkit.FinalResponse("{"), lookup, testkit.FinalResponse(epochFinal(t, dateMeaningNone())))
+	model := testkit.NewLLM(t, lookup, testkit.FinalResponse("{"), lookup, testkit.FinalResponse(epochFinal(t, dateMeaningNone())))
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposals.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
 	if err != nil {
 		t.Fatal(err)

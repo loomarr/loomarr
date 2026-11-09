@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -95,15 +95,15 @@ func TestPlayoutResolver_AudioTrackReadsTheLibraryForAScannedFile(t *testing.T) 
 		t.Fatal(err)
 	}
 	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	if err := st.SaveLibraryItems(t.Context(), []store.LibraryItem{{ID: "m1", Kind: "movie", Name: "Film",
-		Sources: []store.LibrarySource{{Path: path, Plays: true, Streams: []store.LibraryStream{
+	if err := st.SaveLibraryItems(t.Context(), []librarystore.LibraryItem{{ID: "m1", Kind: "movie", Name: "Film",
+		Sources: []librarystore.LibrarySource{{Path: path, Plays: true, Streams: []librarystore.LibraryStream{
 			{Index: 0, Kind: "video"}, {Index: 1, Kind: "audio", Language: "ru"}, {Index: 2, Kind: "audio", Language: "en"},
 		}}}}}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(t.Context(), []store.LibraryFile{{Path: path, Root: filepath.Dir(path),
+	if err := st.SaveLibraryFiles(t.Context(), []librarystore.LibraryFile{{Path: path, Root: filepath.Dir(path),
 		Size: info.Size(), ModifiedNs: info.ModTime().UnixNano(), Identity: "digest", Kind: "movie",
-		Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
+		Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
 		t.Fatal(err)
 	}
 	probeCalls := 0
@@ -221,7 +221,7 @@ func TestPlayoutResolver_EmptyAudioPreferenceSkipsTheLibraryAndProbe(t *testing.
 
 type libraryAudioPanics struct{ t *testing.T }
 
-func (f libraryAudioPanics) LibraryAudioTracks(context.Context, string, int64, int64) ([]store.LibraryStream, bool, error) {
+func (f libraryAudioPanics) LibraryAudioTracks(context.Context, string, int64, int64) ([]librarystore.LibraryStream, bool, error) {
 	f.t.Fatal("an empty preference read the Library")
 	return nil, false, nil
 }

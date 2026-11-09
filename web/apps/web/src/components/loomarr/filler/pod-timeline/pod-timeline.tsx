@@ -66,9 +66,7 @@ const PodTimeline = ({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-static-400 font-mono text-xs tracking-wide uppercase">
-          {`Pod · ${formatClipDuration(total)}`}
-        </span>
+        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">

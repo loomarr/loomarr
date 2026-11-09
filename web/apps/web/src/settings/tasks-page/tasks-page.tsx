@@ -4,9 +4,8 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, Icon, icons, StatusDot, type StatusTone } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ErrorDetails } from "@/components/loomarr/feedback/error-details";
@@ -216,11 +215,12 @@ const TasksPage = () => {
                 aria-controls={`task-group-${group.id}`}
                 onClick={() => toggleGroup(group.id)}
               >
-                {groupOpen ? (
-                  <ChevronDown className="text-muted-foreground size-4" aria-hidden />
-                ) : (
-                  <ChevronRight className="text-muted-foreground size-4" aria-hidden />
-                )}
+                <Icon
+                  decorative
+                  glyph={groupOpen ? icons.rowCollapse : icons.rowExpand}
+                  size="compact"
+                  tone="muted"
+                />
                 <span className="font-medium">{group.label}</span>
                 <span className="text-muted-foreground ml-auto text-xs">{groupSummary(groupedJobs)}</span>
               </button>
@@ -264,7 +264,7 @@ const TasksPage = () => {
                                   </span>
                                   <span className="font-medium">{job.title}</span>
                                   {job.paused && (
-                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
                                       Paused
                                     </span>
                                   )}

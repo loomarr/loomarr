@@ -36,7 +36,7 @@ const Stat = ({
   tone?: "warn";
 }) => (
   <div className="flex min-w-0 flex-col gap-0.5">
-    <Text as="span" shout textRole="mono">
+    <Text as="span" textRole="metadata">
       {label}
     </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}

@@ -29,6 +29,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -191,7 +192,7 @@ func (f *fakeTools) Cut(_ context.Context, in string, start, end int64, out stri
 // splitMemStore is an in-memory SplitStore.
 type splitMemStore struct {
 	mu           sync.Mutex
-	clips        map[string]cliplibrary.StoreClip
+	clips        map[string]clipstore.Clip
 	proposals    map[string]filler.SplitProposal
 	claims       map[string]string
 	fingerprints map[string]creative.Fingerprint
@@ -288,7 +289,7 @@ func (s *failingSplitStore) fail(operation string) error {
 	return nil
 }
 
-func (s *failingSplitStore) UpsertClip(ctx context.Context, clip cliplibrary.StoreClip) error {
+func (s *failingSplitStore) UpsertClip(ctx context.Context, clip clipstore.Clip) error {
 	if err := s.fail("catalog"); err != nil {
 		return err
 	}
@@ -371,7 +372,7 @@ func (s *failingSplitStore) CompleteSplitConfirmation(ctx context.Context, compl
 
 func newSplitMemStore() *splitMemStore {
 	return &splitMemStore{
-		clips: map[string]cliplibrary.StoreClip{}, proposals: map[string]filler.SplitProposal{},
+		clips: map[string]clipstore.Clip{}, proposals: map[string]filler.SplitProposal{},
 		claims: map[string]string{}, fingerprints: map[string]creative.Fingerprint{}, pipelines: map[string]pipelinestate.ClipPipeline{},
 	}
 }
@@ -383,7 +384,7 @@ func newSplitMemStore() *splitMemStore {
 // Both were invisible here because a path-keyed fixture answers a question production never asks.
 // Keep this keyed exactly as the real store is — a fixture that indexes differently from the
 // thing it stands in for cannot see key confusion by construction.
-func (m *splitMemStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (m *splitMemStore) GetClip(_ context.Context, id string) (clipstore.Clip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
@@ -404,8 +405,8 @@ func (m *splitMemStore) RecordFillerEraObservation(_ context.Context, hash strin
 	return nil
 }
 
-func (m *splitMemStore) ListClips(context.Context) ([]cliplibrary.StoreClip, error) {
-	var out []cliplibrary.StoreClip
+func (m *splitMemStore) ListClips(context.Context) ([]clipstore.Clip, error) {
+	var out []clipstore.Clip
 	for _, c := range m.clips {
 		out = append(out, c)
 	}
@@ -432,7 +433,7 @@ func (m *splitMemStore) UpsertClipFingerprint(ctx context.Context, clipHash, alg
 	m.fingerprints[clipHash+"|"+algorithm] = fp
 	return nil
 }
-func (m *splitMemStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error {
+func (m *splitMemStore) UpsertClip(_ context.Context, c clipstore.Clip) error {
 	if old, ok := m.clips[c.Hash]; ok {
 		// Match production's lifecycle preservation on conflict.
 		c.RemovedAt = old.RemovedAt
@@ -727,7 +728,7 @@ func (m *splitMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
 // production does not perform. Handing back the hash means no test re-derives the identity, and
 // none can express "look this clip up by its location" even by accident.
 func seedCompilation(st *splitMemStore, path string, durationMs int64) string {
-	c := cliplibrary.StoreClip{}
+	c := clipstore.Clip{}
 	// ⚠ Hash is the IDENTITY (§10 V38c) SetClipComposite/ParentHash key on, and it must be NON-EMPTY
 	// and DISTINCT from the path. Leaving it "" made SetClipComposite(clip.Hash=="") match whichever
 	// empty-hash clip the map iteration reached first — the compilation OR a freshly-cut segment — an
@@ -985,10 +986,7 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
 		{StartMs: 30000, EndMs: 61000, Title: "Brickle"},
 	}}
-	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["fast_food"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["toys"]}`),
-	)
+	llmMock := testkit.NewLLM(t) // chapters name the segments: any model call errors
 	drop := t.TempDir()
 	sp := newSplitter(st, tools, llmMock, drop)
 
@@ -1343,11 +1341,7 @@ func TestPropose_CoarseSplit(t *testing.T) {
 		blacks:   []tools.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 29800, EndMs: 30200}},
 		silences: []tools.Interval{{StartMs: 59900, EndMs: 60100}},
 	}
-	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["cars"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["cereal"]}`),
-	)
+	llmMock := testkit.NewLLM(t) // a coarse split names from the parent: any model call errors
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
 	p, err := sp.Propose(context.Background(), hash)
@@ -1392,17 +1386,12 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 			},
 		},
 	}
-	llmMock := testkit.NewLLM(
-		// 1: the rescue — three adverts, cut at 27.4s exactly (the measured cut).
+	llmMock := testkit.NewLLM(t,
+		// The rescue is the only model call: three adverts, cut at 27.4s exactly (the measured cut).
 		testkit.FinalResponse(`{"adverts":[
 			{"start":"00:00","end":"00:27","product":"Dustwick"},
 			{"start":"00:27","end":"00:54","product":"Drip Orbs"},
 			{"start":"00:54","end":"02:29","product":"amazing knife set"}]}`),
-		// 2-4: classify each rescued segment. The Drip Orbs era is grounded
-		// ("since 1987" IS in the transcript); the knife era is INVENTED.
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["tech"]}`),
-		testkit.FinalResponse(`{"era":1950,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -1445,9 +1434,8 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 			"0:121000": {{StartMs: 0, EndMs: 121000, Text: "The amazing knife slices, dices, and juliennes"}},
 		},
 	}
-	llmMock := testkit.NewLLM(
+	llmMock := testkit.NewLLM(t,
 		testkit.FinalResponse(`{"adverts":[{"start":"00:00","end":"02:01","product":"amazing knife"}]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -1468,7 +1456,7 @@ func TestPropose_WhisperFailureMarksUnsplittable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/late-night.mp4", 149_000)
 	tools := &fakeTools{transcribeErr: fmt.Errorf("whisper not configured")}
-	sp := newSplitter(st, tools, testkit.NewLLM(), t.TempDir())
+	sp := newSplitter(st, tools, testkit.NewLLM(t), t.TempDir())
 
 	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
@@ -1509,7 +1497,7 @@ func TestPropose_NoLLMDegradesHonestly(t *testing.T) {
 func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 60_000)
-	existing := cliplibrary.StoreClip{}
+	existing := clipstore.Clip{}
 	// ⚠ A distinct, non-empty hash. Left empty, this clip and any other unhashed fixture share
 	// the map key "" — the collapsed-key trap that has now hidden four separate bugs in this file.
 	existing.Hash = "hash-of-old/burgerbarn.mp4"
@@ -1546,7 +1534,7 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
 	st := newSplitMemStore()
 	firstHash := seedCompilation(st, "comps/first.mp4", 30_000)
-	existing := cliplibrary.StoreClip{}
+	existing := clipstore.Clip{}
 	existing.Hash = "hash-of-catalog-ad"
 	existing.Path = "old/catalog-ad.mp4"
 	existing.DurationMs = 30_000
@@ -1591,7 +1579,7 @@ func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
 func TestPropose_CatalogFingerprintCompletedAtDeadlineIsStillPersisted(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/deadline.mp4", 30_000)
-	existing := cliplibrary.StoreClip{}
+	existing := clipstore.Clip{}
 	existing.Hash = "hash-of-deadline-candidate"
 	existing.Path = "old/deadline-candidate.mp4"
 	existing.DurationMs = 30_000
@@ -1630,7 +1618,7 @@ func TestPropose_CatalogFingerprintCompletedAtDeadlineIsStillPersisted(t *testin
 func TestPropose_CatalogFingerprintCacheFailureFallsBackToMedia(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/cache-failure.mp4", 30_000)
-	existing := cliplibrary.StoreClip{}
+	existing := clipstore.Clip{}
 	existing.Hash = "hash-of-cache-failure-candidate"
 	existing.Path = "old/cache-failure-candidate.mp4"
 	existing.DurationMs = 30_000
@@ -1888,7 +1876,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	// …and the segments are real clips with tags, durations, provenance, AND lineage back to the
 	// composite. Skip the kept composite itself when counting segments.
-	var segments []cliplibrary.StoreClip
+	var segments []clipstore.Clip
 	for path, c := range st.clips {
 		if c.IsComposite {
 			continue // the kept parent, not a segment
@@ -2041,6 +2029,48 @@ func TestConfirm_StopsAndPublishesNothingWhenSplitOutputExceedsReservation(t *te
 	}
 }
 
+// A parent whose sidecar is present but damaged holds the confirm: cutting children from it would
+// inherit empty source and acquisition ids, and the catalog would read them as hand-added media.
+// Nothing is cut or published, and the proposal stays for a retry once the sidecar is repaired.
+func TestConfirm_HoldsWhenTheParentSidecarIsInvalid(t *testing.T) {
+	st := newSplitMemStore()
+	parentHash := seedCompilation(st, "comps/damaged-sidecar.mp4", 60_000)
+	drop := t.TempDir()
+	parent := filepath.Join(drop, "comps", "damaged-sidecar.mp4")
+	if err := os.MkdirAll(filepath.Dir(parent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parent, []byte("compilation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
+	mediaTools := &fakeTools{chapters: []tools.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
+		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
+	}}
+	sp := newSplitter(st, mediaTools, nil, drop)
+	proposal, err := sp.Propose(context.Background(), parentHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tools.SidecarPathFor(parent), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sp.Confirm(context.Background(), proposal.ID, proposal.Segments); err == nil {
+		t.Fatal("Confirm succeeded from a parent with a damaged sidecar")
+	}
+	if len(mediaTools.cutCalls) != 0 {
+		t.Errorf("cuts made from a parent with a damaged sidecar: %v", mediaTools.cutCalls)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), proposal.ID); err != nil {
+		t.Errorf("the proposal was consumed despite the hold: %v", err)
+	}
+	if clips, err := st.ListClips(context.Background()); err != nil || len(clips) != 1 {
+		t.Errorf("catalog clips = %d, err %v, want only the parent", len(clips), err)
+	}
+}
+
 func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 	st := newSplitMemStore()
 	parentHash := seedCompilation(st, "comps/sidecar-failure.mp4", 60_000)
@@ -2118,7 +2148,7 @@ func TestConfirm_SourceReplacementAfterValidationPublishesNothing(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "reviewed-parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	stageParentForSplitReview(st, parentHash)
@@ -2181,7 +2211,7 @@ func TestConfirm_SparseIdentityCollisionCannotHideCompositeReplacement(t *testin
 	if replacementHash, err := asset.ClipID(check); err != nil || replacementHash != parentHash {
 		t.Fatalf("fixture does not collide under ClipID: %q, %v", replacementHash, err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "reviewed-parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	tools := &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}
@@ -2222,7 +2252,7 @@ func TestConfirm_ExistingChildReuseRejectsBytesThatDoNotMatchTheirAddress(t *tes
 	}
 	delete(st.clips, parentHash)
 	parentHash = honestParentHash
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	sp := newSplitter(st, &fakeTools{chapters: []tools.Chapter{{StartMs: 0, EndMs: 30_000, Title: "Child"}}}, nil, drop)
@@ -2273,7 +2303,7 @@ func TestConfirm_ExistingChildRequiresExactStagedBytesBeyondClipID(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000,
 	}}
 	stagedBytes, existingBytes := testkit.SparseIdentityCollision()
@@ -2340,7 +2370,7 @@ func TestConfirm_ConcurrentScanNeverObservesAnUnboundChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	parentHash := parentFileHash
-	st.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	st.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: filepath.ToSlash(cliplibrary.ClipRelPath(parentHash, ".mp4")),
 		Name: "Compilation", Role: clips.Commercial, DurationMs: 30_000,
 	}}
@@ -2404,7 +2434,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+			base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 				Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 			}}
 			failOn := 1
@@ -2476,7 +2506,7 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 	}}
 	tools := &fakeTools{chapters: []tools.Chapter{
@@ -2547,7 +2577,7 @@ func TestConfirm_LaterCutFailurePublishesNoGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 	}}
 	cuts := 0
@@ -2591,7 +2621,7 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	stageParentForSplitReview(base, parentHash)
@@ -2795,7 +2825,7 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 			if err != nil {
 				t.Fatal(err)
 			}
-			base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+			base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 				Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 			}}
 			stageParentForSplitReview(base, parentHash)
@@ -2926,7 +2956,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	proposal := filler.SplitProposal{ID: "cancel", ClipHash: parentHash, CreatedAt: time.Now(), Segments: []split.Segment{
@@ -2988,7 +3018,7 @@ func TestConfirm_StaleRollbackCannotDeleteRecoveredWinnersMedia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.clips[parentHash] = cliplibrary.StoreClip{Clip: clips.Clip{
+	base.clips[parentHash] = clipstore.Clip{Clip: clips.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 30_000, Held: true,
 	}}
 	stageParentForSplitReview(base, parentHash)

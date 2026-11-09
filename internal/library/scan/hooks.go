@@ -44,6 +44,11 @@ type HookStatus struct {
 // or an arr connected later, is put back within the hour.
 const hookRefresh = time.Hour
 
+// hookRetry is the first wait after a registration fails; each further failure doubles it, up to
+// hookRefresh. Loomarr registers as it starts, and a reverse proxy that routes only to a healthy
+// container (Traefik) answers the arr's test post 404 for that first half minute.
+const hookRetry = time.Minute
+
 var (
 	// ErrHookUnknownApp is an event for an arr Loomarr does not register with.
 	ErrHookUnknownApp = errors.New("scan: not a webhook Loomarr registers")
@@ -64,24 +69,41 @@ type ArrHooks struct {
 	// Secret is what each arr sends as its password.
 	Secret string
 	Now    func() time.Time
-	// Degraded hears when an arr's registration starts failing (decision 32): its new files then
-	// wait for the hourly walk. Nil hears nothing.
+	// Degraded hears when an arr's registration keeps failing (decision 32): its new files then
+	// wait for the hourly walk. It hears the second failure in a row, so a failure the retry
+	// clears (a restart) is not reported. Nil hears nothing.
 	Degraded func(ctx context.Context, app string, err error)
 
 	mu     sync.Mutex
 	status map[string]HookStatus
+	// written holds the apps registered since start. The first registration writes the connection
+	// even when it looks unchanged, since the arr masks the password Loomarr would compare.
+	written map[string]bool
+	// failures counts each app's registrations that failed in a row.
+	failures map[string]int
 }
 
-// Run registers at start and every hour until ctx ends.
+// Run registers at start and every hour until ctx ends. After a failure it tries again sooner:
+// hookRetry, doubling up to the hour.
 func (h *ArrHooks) Run(ctx context.Context) {
-	t := time.NewTicker(hookRefresh)
-	defer t.Stop()
+	retry := hookRetry
 	for {
+		failed := false
 		for _, app := range h.apps() {
-			_ = h.Register(ctx, app)
+			if h.Register(ctx, app) != nil {
+				failed = true
+			}
 		}
+		wait := hookRefresh
+		if failed {
+			wait, retry = retry, min(retry*2, hookRefresh)
+		} else {
+			retry = hookRetry
+		}
+		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return
 		case <-t.C:
 		}
@@ -99,7 +121,10 @@ func (h *ArrHooks) Register(ctx context.Context, app string) error {
 		h.setState(app, HookNoAddress, nil)
 		return nil
 	}
-	_, err := client.Register(ctx, url, h.Secret)
+	h.mu.Lock()
+	rewrite := !h.written[app]
+	h.mu.Unlock()
+	_, err := client.Register(ctx, url, h.Secret, rewrite)
 	switch {
 	case errors.Is(err, arrhook.ErrNotConfigured):
 		h.setState(app, HookNotConfigured, nil)
@@ -110,11 +135,17 @@ func (h *ArrHooks) Register(ctx context.Context, app string) error {
 		}
 		h.Scanner.Importer.log().Warn("library scan: an arr's webhook is not registered; the hourly walk still finds its files",
 			"app", app, "err", err)
-		if was := h.setState(app, HookFailed, err); was != HookFailed && h.Degraded != nil {
+		if h.setState(app, HookFailed, err) == 2 && h.Degraded != nil {
 			h.Degraded(ctx, app, err)
 		}
 		return err
 	}
+	h.mu.Lock()
+	if h.written == nil {
+		h.written = map[string]bool{}
+	}
+	h.written[app] = true
+	h.mu.Unlock()
 	h.setState(app, HookRegistered, nil)
 	return nil
 }
@@ -204,12 +235,11 @@ func (h *ArrHooks) statusLocked(app string) HookStatus {
 	return s
 }
 
-// setState records app's state and returns the one it replaced.
-func (h *ArrHooks) setState(app string, state HookState, err error) HookState {
+// setState records app's state and returns how many registrations in a row have now failed.
+func (h *ArrHooks) setState(app string, state HookState, err error) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s := h.statusLocked(app)
-	was := s.State
 	s.State, s.Error = state, ""
 	if err != nil {
 		s.Error = err.Error()
@@ -218,7 +248,15 @@ func (h *ArrHooks) setState(app string, state HookState, err error) HookState {
 		s.RegisteredAt = h.now()
 	}
 	h.status[app] = s
-	return was
+	if h.failures == nil {
+		h.failures = map[string]int{}
+	}
+	if state == HookFailed {
+		h.failures[app]++
+	} else {
+		delete(h.failures, app)
+	}
+	return h.failures[app]
 }
 
 func (h *ArrHooks) apps() []string {

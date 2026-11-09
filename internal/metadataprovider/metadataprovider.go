@@ -160,12 +160,8 @@ type Resolvable struct {
 
 // RateHint is how a caller should pace a provider. A zero field declares no limit.
 type RateHint struct {
-	// MaxConcurrent is the most fetches to have in flight at once.
-	MaxConcurrent int
 	// MinInterval is the least time between two requests.
 	MinInterval time.Duration
-	// PreferList is true when listing everything costs less than fetching items one by one.
-	PreferList bool
 }
 
 // Capabilities is what a provider declares about itself. Every record it returns stays inside

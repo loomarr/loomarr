@@ -7,9 +7,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // An external track's name says its language and flags; a file that only shares the stem's
@@ -35,10 +35,10 @@ func TestExternalTracksReadTheirNames(t *testing.T) {
 }
 
 // An .edl's spans are read in milliseconds with their action; a line that does not parse, names
-// no known action or runs backwards is skipped, and a missing file has none.
+// no known action, runs backwards or names no real time is skipped, and a missing file has none.
 func TestReadEDL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Film.edl")
-	body := "12.5 30 3\n0 1.25\n40 41 1\nnot a line\n50 49 0\n60 61 9\n70 71 2\n"
+	body := "12.5 30 3\n0 1.25\n40 41 1\nnot a line\n50 49 0\n60 61 9\n70 71 2\nNaN NaN 0\n1e30 1e31 0\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -86,14 +86,14 @@ func TestAMovieKeepsItsSidecarTracksMarkersAndChapters(t *testing.T) {
 	if len(s.Streams) != 3 || !s.Streams[1].Commentary {
 		t.Fatalf("streams = %+v, want the file's two (audio commentary) and the subtitle file", s.Streams)
 	}
-	if got, want := s.Streams[2], (store.LibraryStream{Index: 2, Kind: "subtitle", Codec: "subrip",
+	if got, want := s.Streams[2], (librarystore.LibraryStream{Index: 2, Kind: "subtitle", Codec: "subrip",
 		Language: "es", LanguageName: "Spanish", HearingImpaired: true, ExternalRef: srt}); got != want {
 		t.Errorf("external stream = %+v, want %+v", got, want)
 	}
-	if want := []store.LibraryMarker{{StartMs: 5000, EndMs: 65000, Kind: "commercial"}}; !slices.Equal(s.Markers, want) {
+	if want := []librarystore.LibraryMarker{{StartMs: 5000, EndMs: 65000, Kind: "commercial"}}; !slices.Equal(s.Markers, want) {
 		t.Errorf("markers = %+v, want %+v", s.Markers, want)
 	}
-	if want := []store.LibraryChapter{{StartMs: 0, EndMs: 600_000, Title: "Opening"}, {StartMs: 600_000, EndMs: 1_320_000}}; !slices.Equal(s.Chapters, want) {
+	if want := []librarystore.LibraryChapter{{StartMs: 0, EndMs: 600_000, Title: "Opening"}, {StartMs: 600_000, EndMs: 1_320_000}}; !slices.Equal(s.Chapters, want) {
 		t.Errorf("chapters = %+v, want %+v", s.Chapters, want)
 	}
 }

@@ -126,6 +126,8 @@ describe("CollectionEditorPage", () => {
     renderPage("c1");
 
     await userEvent.click(await screen.findByRole("button", { name: "Delete collection" }));
+    expect(deleted).toBe(false);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleted).toBe(true));
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/collections" }));
   });

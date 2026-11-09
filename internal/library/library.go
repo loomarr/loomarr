@@ -38,20 +38,6 @@ type User struct {
 	Disabled bool
 }
 
-// Library is the port the auth layer depends on (§2). Concrete impl is the flavored
-// Emby/Jellyfin client below.
-type Library interface {
-	// AuthenticateByName verifies a user's credentials against the media server
-	// (§11 login). Returns the authenticated User on success. The media-server
-	// access token is used only to confirm + best-effort logout; callers issue
-	// their own session.
-	AuthenticateByName(ctx context.Context, username, password string) (User, error)
-
-	// ListUsers returns all media-server users for import/sync (§11), using the
-	// admin LIBRARY_TOKEN.
-	ListUsers(ctx context.Context) ([]User, error)
-}
-
 // LibraryScanner is the narrow port the poll-based availability scan depends on (§4, §18.1):
 // bulk reads of the library with provider ids, so the scan job confirms every in-flight title
 // in one call instead of an N-lookup storm. The Library's titles satisfy it (#2151 step 16).

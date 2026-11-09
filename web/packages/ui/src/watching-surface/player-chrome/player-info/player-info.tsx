@@ -62,7 +62,7 @@ const PlayerInfo = ({ density, formatTime, info }: PlayerInfoProps) => (
     {info.upNext ? (
       <View
         style={{
-          borderTopColor: playerChrome.glassRing,
+          borderTopColor: playerChrome.hairline,
           borderTopWidth: 1,
           gap: 2,
           marginTop: 20,

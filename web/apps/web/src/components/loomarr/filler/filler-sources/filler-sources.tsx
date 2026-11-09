@@ -1,7 +1,6 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import { Action, Icon, icons, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
-import { Archive, FolderOpen } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
@@ -183,9 +182,9 @@ const FillerSources = ({
       ...(source.license ? [source.license] : []),
     ];
     const lead = source.parentId ? (
-      <Archive aria-hidden className="text-muted-foreground size-5" />
+      <Icon decorative glyph={icons.archive} size="default" tone="muted" />
     ) : (
-      <FolderOpen aria-hidden className="text-muted-foreground size-5" />
+      <Icon decorative glyph={icons.folder} size="default" tone="muted" />
     );
     return (
       <div

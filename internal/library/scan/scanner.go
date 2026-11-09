@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Pass timing (decision 9).
@@ -199,17 +199,17 @@ type Library struct {
 	*Roots
 	Scanner *Scanner
 	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
-	ItemStore store.LibraryItemStore
+	ItemStore librarystore.LibraryItemStore
 	Inventory inventory.Service
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
-	NeedStore store.LibraryNeedsStore
+	NeedStore librarystore.LibraryNeedsStore
 	Search    Searcher
 	// Orders keeps which order each show's episode files follow (nil: no show is asked about).
-	Orders store.LibraryEpisodeOrderStore
+	Orders librarystore.LibraryEpisodeOrderStore
 	// CollectionStore keeps the household's collections; Records reads cached catalog records: the
 	// ready-made sets' own (nil: none are listed), whose movies Keys places by their catalog rows,
 	// and a show's episode orders.
-	CollectionStore store.LibraryCollectionStore
+	CollectionStore librarystore.LibraryCollectionStore
 	Records         RecordReader
 	Keys            CatalogKeys
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
@@ -235,9 +235,9 @@ func (l *Library) Enabled() bool {
 }
 
 // Counts counts the scanner's files.
-func (l *Library) Counts(ctx context.Context) (store.LibraryFileCounts, error) {
+func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, error) {
 	if l.Scanner == nil {
-		return store.LibraryFileCounts{}, nil
+		return librarystore.LibraryFileCounts{}, nil
 	}
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
 }

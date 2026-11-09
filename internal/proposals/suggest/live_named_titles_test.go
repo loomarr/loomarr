@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -99,7 +99,7 @@ func TestLive_NamedTitles(t *testing.T) {
 			if os.Getenv("LOOMARR_LIVE_CORPUS") == "era" {
 				corpus = liveExampleFillCorpus() // #1499: on-era neighbours plus off-era distractors
 			}
-			s := suggest.New(rec, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+			s := suggest.New(rec, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 			start := time.Now()
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: desc})
 			var names []string

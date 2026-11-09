@@ -2,13 +2,13 @@ import { type Density, playerChrome, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
-import { glass, gradientOr, webOnly } from "../glass";
+import { raised, webOnly } from "../flat";
 import { layoutPlaybar } from "../playbar-layout";
 import { PlaybarStill } from "../playbar-still";
 import type { PlaybarBreak, PlaybarSegment, PlaybarWindow } from "../player-chrome.type";
 import { CARD_WIDTH, PreviewCard } from "../preview-card";
 
-// The preview playbar (§9.3, plane 3), on a glass tray. Time-true: a block is as wide as its share
+// The preview playbar (§9.3, plane 3), on a flat tray. Time-true: a block is as wide as its share
 // of the window, fifteen minutes behind live to about two hours ahead. Programmes carry their still,
 // name and start; a break carries one thumbnail per spot, sized by duration. Depth is light, never
 // size (§9.2): every block is the same height and nothing moves; now has an amber edge, the block
@@ -101,17 +101,14 @@ const PreviewPlaybar = ({
               position: "absolute",
               width: 1,
               zIndex: 20,
-              ...gradientOr(
-                `linear-gradient(0deg, ${playerChrome.focusRing}, transparent)`,
-                playerChrome.focusRing,
-              ),
+              backgroundColor: playerChrome.focusRing,
             }}
           />
         </>
       ) : null}
 
-      {/* The tray: a lit glass shelf the blocks stand on, so the bar has a surface of its own. */}
-      <View style={{ borderRadius: 12, padding: 6, ...glass(playerChrome.shadowPlane) }}>
+      {/* The tray: a flat shelf the blocks stand on, so the bar has a surface of its own. */}
+      <View style={{ borderRadius: 12, padding: 6, ...raised() }}>
         <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={{ height }}>
           {width > 0
             ? boxes.map((box) => {
@@ -135,7 +132,7 @@ const PreviewPlaybar = ({
                           ? playerChrome.focusRing
                           : isNow
                             ? playerChrome.signal
-                            : playerChrome.glassRing,
+                            : playerChrome.hairline,
                         width: lit ? 2 : 1,
                       };
                 return (
@@ -152,18 +149,16 @@ const PreviewPlaybar = ({
                     // that names it without claiming an action.
                     role={seek ? "button" : "group"}
                     style={{
+                      borderColor: ring.color,
                       borderRadius: 6,
+                      borderWidth: ring.width,
                       height: "100%",
                       left: box.x,
                       overflow: "hidden",
                       position: "absolute",
                       width: box.width,
                       zIndex: lit ? 10 : 1,
-                      ...webOnly({
-                        boxShadow: `inset 0 0 0 ${ring.width}px ${ring.color}`,
-                        filter,
-                        transition: "filter 220ms ease, box-shadow 220ms ease",
-                      }),
+                      ...webOnly({ filter, transition: "filter 120ms ease, border-color 120ms ease" }),
                     }}
                   >
                     {segment.kind === "break" ? (
@@ -205,10 +200,7 @@ const PreviewPlaybar = ({
                             position: "absolute",
                             right: 0,
                             top: 0,
-                            ...gradientOr(
-                              "linear-gradient(90deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.4) 50%, transparent)",
-                              playerChrome.scrimMid,
-                            ),
+                            backgroundColor: playerChrome.dim,
                           }}
                         >
                           {/* Left-aligned by hand: a seekable tile is a button, which the web centres. */}
@@ -255,10 +247,7 @@ const PreviewPlaybar = ({
               top: 0,
               width: Math.max(0, head),
               zIndex: 15,
-              ...gradientOr(
-                `linear-gradient(90deg, transparent, ${playerChrome.signalWash})`,
-                playerChrome.signalPast,
-              ),
+              backgroundColor: playerChrome.signalPast,
             }}
           />
           <View
@@ -271,7 +260,6 @@ const PreviewPlaybar = ({
               top: -8,
               width: 2,
               zIndex: 30,
-              ...webOnly({ boxShadow: playerChrome.signalGlow }),
             }}
           >
             <View
@@ -285,7 +273,7 @@ const PreviewPlaybar = ({
                 position: "absolute",
                 top: -6,
                 width: 14,
-                ...webOnly({ backgroundClip: "padding-box", boxShadow: playerChrome.signalGlow }),
+                ...webOnly({ backgroundClip: "padding-box" }),
               }}
             />
           </View>

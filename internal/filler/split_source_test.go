@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
@@ -65,7 +65,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
 
 	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, split.SourceAsset{})
 	if err != nil {

@@ -14,7 +14,7 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
+import { Action, Chip, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -32,7 +32,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 
@@ -383,16 +382,9 @@ const GuidePage = () => {
               {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
                   future one is a plan. The chip says which, and doubles as the way back. */}
               {dayOffset !== 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDayOffset(0)}
-                  className={cn(
-                    "border-border text-2xs hover:border-static-400 cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
-                    dayOffset < 0 ? "text-static-400" : "text-tune",
-                  )}
-                >
-                  {dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today
-                </button>
+                <Chip mono onPress={() => setDayOffset(0)} tone={dayOffset < 0 ? "muted" : "info"}>
+                  {`${dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today`}
+                </Chip>
               )}
             </div>
 
@@ -426,29 +418,22 @@ const GuidePage = () => {
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
             <div className="flex items-center gap-1.75 sm:ml-auto">
-              <Text as="span" shout textRole="mono" tracking={0.06}>
+              <Text as="span" textRole="metadata">
                 Span
               </Text>
               <div className="flex gap-1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
                   return (
-                    <button
+                    <Chip
+                      accessibilityLabel={`Show ${w.description}`}
                       key={w.value}
-                      type="button"
-                      onClick={() => setWindowMinutes(Number(w.value))}
-                      aria-label={`Show ${w.description}`}
-                      aria-pressed={active}
-                      className={cn(
-                        "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
-                        // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                        active
-                          ? "border-foreground bg-static-800 text-foreground font-semibold"
-                          : "border-border text-static-400 hover:border-static-400",
-                      )}
+                      mono
+                      onPress={() => setWindowMinutes(Number(w.value))}
+                      selected={active}
                     >
                       {w.label}
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>
@@ -474,7 +459,7 @@ const GuidePage = () => {
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
               <div className="flex items-center gap-1.75">
-                <Text as="span" shout textRole="mono" tracking={0.06}>
+                <Text as="span" textRole="metadata">
                   Start at
                 </Text>
                 <div>

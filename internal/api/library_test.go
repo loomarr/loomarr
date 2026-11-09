@@ -11,8 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
@@ -84,6 +84,9 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 		Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
 		Now:     time.Now,
 	}
+	// The Library's rows follow every inventory write, as the app wires it: a file's title is a
+	// foreign key to its row (#2793).
+	st.ProjectLibraryWith(scan.ProjectLibraryItem)
 	inv := inventory.New(st)
 	// The catalog the app wires; it is never asked anything here, only what it fetches by.
 	keys := mptmdb.New(nil, nil).Capabilities().Resolves

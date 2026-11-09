@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Needs you (#2151 step 11, decision 27): the titles nothing grounds, with what a search
@@ -155,7 +156,7 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
-	summaries := make([]store.LibraryItemSummary, 0, len(needs)+len(orders)+len(problems))
+	summaries := make([]librarystore.LibraryItemSummary, 0, len(needs)+len(orders)+len(problems))
 	for _, n := range needs {
 		summaries = append(summaries, n.LibraryItemSummary)
 	}
@@ -193,7 +194,7 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			})
 		}
 		for _, f := range n.Present {
-			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending})
+			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending})
 		}
 		out.Body.Needs = append(out.Body.Needs, dto)
 	}
@@ -216,7 +217,7 @@ func (s *Handlers) linkLibraryItem(ctx context.Context, in *linkLibraryItemInput
 	if err != nil {
 		return nil, err
 	}
-	id := store.LibraryID{Namespace: in.Body.ExternalID.Namespace, Value: in.Body.ExternalID.Value}
+	id := librarystore.LibraryID{Namespace: in.Body.ExternalID.Namespace, Value: in.Body.ExternalID.Value}
 	return nil, libraryAnswerErr(svc.Link(ctx, in.ID, id))
 }
 
@@ -259,7 +260,7 @@ func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*httpcore.ImageDTO)
 			choice.Seasons = append(choice.Seasons, librarySeasonSizeDTO{Season: s.Number, Episodes: s.Episodes})
 			choice.Episodes += s.Episodes
 		}
-		if c.Choice == store.OrderByOrder {
+		if c.Choice == librarystore.OrderByOrder {
 			choice.OrderID, choice.Kind, choice.Name = c.Order.ID, string(c.Order.Kind), c.Order.Name
 			choice.Episodes = max(choice.Episodes, c.Order.Episodes)
 		}
@@ -281,7 +282,7 @@ func (s *Handlers) chooseLibraryEpisodeOrder(ctx context.Context, in *chooseLibr
 	if err != nil {
 		return nil, err
 	}
-	return nil, libraryAnswerErr(svc.ChooseOrder(ctx, in.ID, store.LibraryOrderChoice(in.Body.Choice), in.Body.OrderID))
+	return nil, libraryAnswerErr(svc.ChooseOrder(ctx, in.ID, librarystore.LibraryOrderChoice(in.Body.Choice), in.Body.OrderID))
 }
 
 func libraryAnswerErr(err error) error {
@@ -293,7 +294,10 @@ func libraryAnswerErr(err error) error {
 	case errors.Is(err, scan.ErrNotAnswerable):
 		return httpcore.Problem(http.StatusConflict, "Loomarr didn't find this title itself",
 			"Only titles Loomarr found in your media folders can be answered here.")
-	case errors.Is(err, store.ErrBadEpisodeOrder):
+	case errors.Is(err, scan.ErrNotCatalogID):
+		return httpcore.Problem(http.StatusBadRequest, "Not a title Loomarr can look up",
+			"Pick a title from the search results or the suggestions.")
+	case errors.Is(err, librarystore.ErrBadEpisodeOrder):
 		return httpcore.Problem(http.StatusBadRequest, "Pick one order", "Name an order only when you choose one of TMDB's other orders.")
 	case errors.Is(err, scan.ErrUnknownOrder):
 		return httpcore.Problem(http.StatusConflict, "TMDB no longer lists that order", "Reload Needs you and choose again.")

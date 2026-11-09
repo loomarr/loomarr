@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // fakeStore is an in-memory ScheduleStore with a controllable clock-independent view; the
@@ -57,7 +58,7 @@ func (f *fakeStore) GetScheduledJob(_ context.Context, name string) (jobstore.Sc
 	defer f.mu.Unlock()
 	j, ok := f.rows[name]
 	if !ok {
-		return jobstore.ScheduledJob{}, errors.New("not found")
+		return jobstore.ScheduledJob{}, storedb.ErrNotFound
 	}
 	return j, nil
 }

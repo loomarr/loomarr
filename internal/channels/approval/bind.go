@@ -79,7 +79,7 @@ func Bind(in BindInput) (Binding, error) {
 		ch.ID = "ch_" + hex.EncodeToString(identity[:8])
 		// The job that creates a channel is its origin and stays its intent_ref for life; a later
 		// refine or re-curation is a different job that names the channel instead.
-		ch.IntentRef = p.JobID
+		ch.IntentRef, ch.FromRequest = p.JobID, true
 		// Whoever asked is recorded once. A refine or re-curation never changes it, so the
 		// requester stays the person who made the request after housekeeping purges the job.
 		ch.RequestedBy = p.CreatedBy

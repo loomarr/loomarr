@@ -81,7 +81,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -309,7 +309,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the channel. Other tables point here. | `TEXT` · key |
-| `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from. Empty for a channel made by hand. No two channels share one. | `TEXT` |
 | `name` | The channel's display name. | `TEXT` |
 | `number` | The channel number, which is its position in the guide. Unique. | `INTEGER` |
 | `grp` | The group the channel is listed under in the guide. Empty for none. | `TEXT` |
@@ -327,7 +326,9 @@ One row per channel. A channel is created by approving a channel request or by h
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
-| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
+| `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
+| `from_request` | Whether the channel was made from a member's request rather than by hand. Refine and auto-curate re-run that request; it outlives the job intent_ref names. | `BOOLEAN` |
+| `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
 
 ### channel_lineup
 
@@ -426,7 +427,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `workflow_version` | Which version of the job process ran it. 0 is a job from before per-attempt history was kept; 1 is the current process, which records each attempt in proposal_job_attempts. | `INTEGER` |
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
 | `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
-| `channel_id` | The existing channel a refine or re-curation job changes (channels.id). Empty for a job that creates a new channel. | `TEXT` |
+| `channel_id` | The existing channel a refine or re-curation job changes (channels.id); the job goes with that channel. Null for a job that creates a new channel. | `TEXT` · may be empty · → `channels.id` |
 
 ### proposal_job_attempts
 
@@ -474,9 +475,9 @@ The Keep, Less like this, Never and Surprise me choices people make about titles
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the choice. | `TEXT` · key |
-| `actor_id` | The person who made it (users.id). | `TEXT` |
+| `actor_id` | The person who made it (users.id), or `api-token` for a choice sent with the API token. | `TEXT` |
 | `scope` | Where it applies. `household` for every channel, or `channel` for one channel. | `TEXT` |
-| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`; empty for `household`. | `TEXT` |
+| `scope_id` | The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`. | `TEXT` · may be empty · → `channels.id` |
 | `target_key` | The title it is about, by its key, such as `movie:tmdb:603`. | `TEXT` |
 | `action` | `keep` (favour this title), `less` (less like this, which also lowers titles of its genres), `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear` (remove an earlier choice). | `TEXT` |
 | `reason` | An optional reason the person gave. | `TEXT` |
@@ -590,8 +591,8 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
-| `inventory_item_id` | The title the file was last written as (a library_items id); empty until known. | `TEXT` |
-| `inventory_series_id` | For an episode, its show (a library_items id); empty otherwise or until known. | `TEXT` |
+| `inventory_item_id` | The title the file was last written as (a library_items id); null until known. | `TEXT` · may be empty · → `library_items.id` |
+| `inventory_series_id` | For an episode, its show (a library_items id); null otherwise or until known. | `TEXT` · may be empty · → `library_items.id` |
 
 ### library_items
 
@@ -652,7 +653,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `episode_end` | The last episode number a multi-episode file covers; 0 for a single episode. | `INTEGER` |
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
-| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+| `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; null otherwise. | `TEXT` · may be empty · → `library_items.id` |
 | `unnumbered` | 1 for an episode its show's catalog could not number, because the catalog numbers the show in more than one order or its seasons end elsewhere than the disk's, and nobody has said which order the show's files follow. It keeps its file's name and number, and its show is in Needs you. 0 otherwise. | `BOOLEAN` |
 
 **Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
@@ -749,20 +750,6 @@ The movies and series of the people who directed or created a title, are among a
 | `role` | What they did on it, one of actor, creator, director or writer. | `TEXT` |
 | `character_name` | An actor's part; empty for crew or when unknown. | `TEXT` |
 | `namespace` | The catalog the title's id is from, such as tmdb. | `TEXT` |
-
-### library_id_map
-
-The cutover's id map: each media-server item id Loomarr may have stored, and the library item it names. Movies and episodes pair by file path through the derived path map; a series pairs through its episodes. Replaced whole on each pass while the media server still lists the catalog, and read once by the cutover's rewrite.
-
-**Kept:** The whole table is replaced on each mapping pass; only the last pass is kept.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `media_id` | The media server's item id. | `TEXT` · key |
-| `kind` | movie, episode or series. | `TEXT` |
-| `item_id` | The library item it names (a library_items id); empty when it did not pair. | `TEXT` |
-| `reason` | Why it did not pair; empty when it did. | `TEXT` |
-| `mapped_at_ms` | When the pass that wrote it ran, in Unix milliseconds. | `INTEGER` |
 
 ### library_credits
 
@@ -924,7 +911,7 @@ The catalog search results for a movie or show Loomarr can't identify, offered i
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key |
+| `inventory_item_id` | The title searched for (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `rank` | The result's place in the list, from 0 for the best. | `INTEGER` · key |
 | `kind` | One of movie or series. | `TEXT` |
 | `external_id` | The result's id in that catalog. | `TEXT` |

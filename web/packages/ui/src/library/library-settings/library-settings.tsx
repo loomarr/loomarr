@@ -10,14 +10,16 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
+import { LibraryPoster } from "../library-poster";
 import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
   LibraryHook,
   LibraryPathMapping,
+  LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
   LibraryWizardStepProps,
@@ -51,7 +53,8 @@ const foundThrough = (folder: LibraryFolder) => {
 const MOUNT_HINT =
   "Loomarr needs to open your media folders itself. Make them available to Loomarr (read-only is fine), then Check again.";
 
-// A calm warning with one way out.
+// A calm warning with one way out. It stands for as long as the state lasts, so it is a polite
+// status, not an alert that interrupts the reader each time the page draws it.
 const Callout = ({
   title,
   children,
@@ -61,7 +64,7 @@ const Callout = ({
   children?: ReactNode;
   actions?: ReactNode;
 }) => (
-  <Surface borderColor="stateWarning" borderRadius="control" gap="control" padding="section" role="alert">
+  <Surface borderColor="stateWarning" borderRadius="control" gap="control" padding="section" role="status">
     <Text textRole="headline" tone="warning">
       {title}
     </Text>
@@ -104,8 +107,38 @@ const CheckAgain = ({ checking, onPress }: { checking: boolean; onPress: () => v
   </Action>
 );
 
+// The latest few titles that became ready while the import runs (decision 29): a plain 2:3 tile
+// each, too narrow to set the name in, so it is the one-line caption under it.
+const READY_SO_FAR = 5;
+const ReadySoFar = ({ titles }: { titles: readonly LibraryReadyTitle[] }) => (
+  <Stack gap="inline">
+    <Text textRole="label" tone="secondary">
+      Ready so far
+    </Text>
+    <Line gap="control">
+      {titles.slice(0, READY_SO_FAR).map((t) => (
+        <Stack key={t.id} width={64}>
+          <LibraryPoster art={t.poster} name="" />
+          {/* A clipped, min-width-0 box is what lets the design system truncate. */}
+          <Stack marginTop={6} minWidth={0} overflow="hidden" width={64}>
+            <Text numberOfLines={1} textRole="label" tone="secondary">
+              {t.name}
+            </Text>
+          </Stack>
+        </Stack>
+      ))}
+    </Line>
+  </Stack>
+);
+
 // The one line at the top of the status while nothing needs the maintainer.
-const Headline = ({ scan }: { scan: LibraryScan }) => {
+const Headline = ({
+  scan,
+  readySoFar = [],
+}: {
+  scan: LibraryScan;
+  readySoFar?: readonly LibraryReadyTitle[];
+}) => {
   const { percent, reading, text: headline, tone } = scanHeadline(scan);
   return (
     <>
@@ -127,6 +160,7 @@ const Headline = ({ scan }: { scan: LibraryScan }) => {
               ? "Picks up again when everyone's done watching."
               : "Titles appear as they're ready."}
           </Text>
+          {!scan.paused && readySoFar.length > 0 ? <ReadySoFar titles={readySoFar} /> : null}
         </Stack>
       ) : null}
     </>
@@ -189,6 +223,7 @@ const LibraryStatus = ({
   health,
   folders,
   scan,
+  readySoFar,
   held,
   hooks,
   checking,
@@ -200,6 +235,7 @@ const LibraryStatus = ({
   | "health"
   | "folders"
   | "scan"
+  | "readySoFar"
   | "held"
   | "hooks"
   | "checking"
@@ -211,7 +247,7 @@ const LibraryStatus = ({
   const offline = inUse.filter((f) => !f.readable);
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
-      {health === "ok" && held.length === 0 ? <Headline scan={scan} /> : null}
+      {health === "ok" && held.length === 0 ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
       {held.map((removal) => (
         <Callout
           actions={
@@ -401,12 +437,21 @@ const PathMapRow = ({
   onMapFolder: LibrarySettingsProps["onMapFolder"];
 }) => {
   const [value, setValue] = useState(mapping.localPath);
+  // What this edit already sent. Enter then leaving the field would otherwise save twice: the
+  // second commit runs before the server's answer updates mapping.localPath. Typing clears it, so
+  // a save that failed can be sent again.
+  const sent = useRef<string | null>(null);
   const name = AUTHORITY_NAMES[mapping.authority];
   const commit = () => {
     const next = value.trim();
-    if (next !== mapping.localPath) {
+    if (next !== mapping.localPath && next !== sent.current) {
+      sent.current = next;
       onMapFolder({ authority: mapping.authority, authorityPath: mapping.authorityPath, localPath: next });
     }
+  };
+  const type = (text: string) => {
+    sent.current = null;
+    setValue(text);
   };
   return (
     <Line alignItems="flex-end" gap="control">
@@ -425,7 +470,7 @@ const PathMapRow = ({
         <Field
           accessibilityLabel={`${name} ${mapping.authorityPath} maps to`}
           onBlur={commit}
-          onChangeText={setValue}
+          onChangeText={type}
           onSubmitEditing={commit}
           placeholder="Not found here"
           value={value}
@@ -469,6 +514,7 @@ const LibrarySettings = ({
   folders,
   pathMap,
   scan,
+  readySoFar,
   held,
   hooks,
   checking,
@@ -491,6 +537,7 @@ const LibrarySettings = ({
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}
         onRescan={onRescan}
+        readySoFar={readySoFar}
         scan={scan}
       />
     </Section>
@@ -520,6 +567,7 @@ const LibraryWizardStep = ({
   folders,
   pathMap,
   scan,
+  readySoFar,
   checking,
   checkedJustNow,
   onCheckAgain,
@@ -562,7 +610,7 @@ const LibraryWizardStep = ({
         </Line>
         {folders.some((f) => f.inUse) ? (
           <>
-            <Headline scan={scan} />
+            <Headline readySoFar={readySoFar} scan={scan} />
             <Text textRole="body" tone="secondary">
               You can carry on — titles appear as they're ready.
             </Text>
