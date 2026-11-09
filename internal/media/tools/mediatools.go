@@ -444,8 +444,6 @@ func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64
 // msToSeconds renders milliseconds as ffmpeg's seconds-with-decimals timestamp.
 // msToSeconds renders milliseconds as ffmpeg's `SS.mmm`.
 //
-// ⚠ One implementation, in `msToFFmpegTime`. This was a second copy of the same body — same
-// format string, same arithmetic — differing only in that it did NOT clamp negatives. Keeping
-// the clamping one is strictly safer for both callers: the extraction helper passes a
-// SUBTRACTION (`endMs-startMs`), and a negative `-t` makes ffmpeg emit nothing at all, silently.
+// ⚠ One implementation, in `MsToFFmpegTime`, which clamps negatives: the extraction helper passes
+// a SUBTRACTION (`endMs-startMs`), and a negative `-t` makes ffmpeg emit nothing at all, silently.
 func msToSeconds(ms int64) string { return MsToFFmpegTime(ms) }
