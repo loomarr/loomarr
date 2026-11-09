@@ -65,7 +65,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
 - **`platform/store/channeldatastore`** · 6 importers · → `platform/store/storedb`, `provision`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
-- **`platform/store/channelstore`** · 21 importers · → `channels/schedule`, `platform/store/storedb`, `provision`
+- **`platform/store/channelstore`** · 22 importers · → `channels/schedule`, `platform/store/storedb`, `provision`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
 - **`platform/store/clipstore`** · 12 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
