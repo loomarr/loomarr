@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -37,7 +38,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
-	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
@@ -82,8 +82,6 @@ type Server struct {
 	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
 	suggest          SuggestService
-	proposalWorkflow ProposalWorkflow
-	proposalProgress ProposalProgress
 	search           SearchService
 	movieCollections MovieCollectionService
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
@@ -155,8 +153,6 @@ type Server struct {
 	settings                 SettingsService
 	notificationDestinations NotificationDestinationService
 	webPushPublicKey         string
-	proposalNotifications    suggest.ProposalNotifier
-	decisionQuality          ProposalDecisionQuality
 	// backendTransition owns the durable setting mutation -> prepare -> publish -> retire
 	// workflow for playout backend and URL changes. It serializes that entire workflow
 	// across replicas; failures after mutation remain non-fatal follow-on failures.
@@ -168,8 +164,7 @@ type Server struct {
 	// approver is the one proposal -> titles + channel gate shared with every
 	// automatic approval path (§7/§8). The API owns authorization and presentation;
 	// the coordinator owns the indivisible domain transition.
-	approver        ProposalApprover
-	proposalOutlook ProposalOutlook
+	approver ProposalApprover
 	// binder serves the explicit channel creation helpers. Proposal approval does
 	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
@@ -248,6 +243,11 @@ type Server struct {
 // dep still serves.
 func (s *Server) featureOff(ctx context.Context, feature string) bool {
 	return s.settings != nil && !s.settings.Features(ctx)[feature]
+}
+
+// personNames resolves user ids to display names, one ListUsers per request.
+func (s *Server) personNames(ctx context.Context) (httpcore.PersonNames, error) {
+	return httpcore.LoadPersonNames(ctx, s.store)
 }
 
 // unconfigured reports whether a required string setting is empty right now. Safe when
@@ -888,11 +888,6 @@ type DiscoveredArr struct {
 	APIKey string
 }
 
-// ProposalOutlook observes pending content without approval or persistence.
-type ProposalOutlook interface {
-	Assess(context.Context, proposalstore.Proposal, *accept.ApprovalEdit) (outlook.Assessment, error)
-}
-
 // ProposalApprover is the complete approval gate. Its implementation plans the
 // channel and commits proposal, titles, and channel atomically before post-commit
 // runtime work; a handler cannot reproduce or reorder that choreography.
@@ -903,12 +898,6 @@ type ProposalApprover interface {
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
 	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
-}
-
-// ProposalDecisionQuality receives a denial only after its submitted-to-denied
-// compare-and-swap commits. It cannot affect the HTTP decision outcome.
-type ProposalDecisionQuality interface {
-	ProposalDenied(context.Context, string, time.Time)
 }
 
 // ChannelBinder shares channel-number occupancy with manually typed channel numbers.
@@ -966,27 +955,27 @@ type Options struct {
 	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
 	// acceptable only in tests. Production wires it at composition beside Devices.
 	DeviceLimiter    *auth.RateLimiter
-	CookieSecure     string                 // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy       bool                   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
-	DevLogin         bool                   // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof            bool                   // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	MetricsToken     string                 // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
-	Demo             DemoAccount            // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
-	Channels         ChannelService         // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV           LiveTVService          // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
-	TunarrConnect    TunarrConnector        // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	ArrDiscovery     ArrDiscovery           // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
-	Suggest          SuggestService         // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	ProposalProgress ProposalProgress       // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
-	ProposalWorkflow ProposalWorkflow       // authoritative /v1/proposal-jobs Journey reads
-	Search           SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
-	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
-	Collections      CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
-	LibraryRoots     LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
-	LibraryHooks     LibraryHookService     // /v1/library/hooks/* (#2151); nil ⇒ 409
-	IdeaLibrary      IdeaLibrary            // /v1/discovery/ideas (#1665); nil ⇒ route 501
-	Icons            IconService            // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	CookieSecure     string                        // COOKIE_SECURE: auto|true|false (§11)
+	TrustProxy       bool                          // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	DevLogin         bool                          // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof            bool                          // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	MetricsToken     string                        // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
+	Demo             DemoAccount                   // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
+	Channels         ChannelService                // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV           LiveTVService                 // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner   TunerRescanner                // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect    TunarrConnector               // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	ArrDiscovery     ArrDiscovery                  // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
+	Suggest          SuggestService                // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	ProposalProgress proposalsapi.ProposalProgress // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
+	ProposalWorkflow proposalsapi.ProposalWorkflow // authoritative /v1/proposal-jobs Journey reads
+	Search           SearchService                 // /v1/search (Phase 11); nil ⇒ search route 501
+	MovieCollections MovieCollectionService        // /v1/movie-collections; nil ⇒ route 501
+	Collections      CollectionService             // /v1/library/collections (§2.2); nil ⇒ route 501
+	LibraryRoots     LibraryRootService            // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
+	LibraryHooks     LibraryHookService            // /v1/library/hooks/* (#2151); nil ⇒ 409
+	IdeaLibrary      IdeaLibrary                   // /v1/discovery/ideas (#1665); nil ⇒ route 501
+	Icons            IconService                   // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
@@ -1043,12 +1032,12 @@ type Options struct {
 	NotificationDestinations NotificationDestinationService                            // redacted product-delivery routing (§11)
 	WebPushPublicKey         string                                                    // public half of the generated VAPID identity (§11)
 	ProposalNotifications    suggest.ProposalNotifier                                  // best-effort product lifecycle publication (§11)
-	DecisionQuality          ProposalDecisionQuality                                   // committed Proposal denial quality outcome (§17)
+	DecisionQuality          proposalsapi.ProposalDecisionQuality                      // committed Proposal denial quality outcome (§17)
 	BackendTransition        BackendTransitioner                                       // durable backend prepare/publish/retire coordinator
 	BackendCheckpoint        func(context.Context) (httpcore.BackendCheckpoint, error) // durable checkpoint, once per operation
 	Guide                    GuideReader                                               // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision                Provisioner                                               // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	ProposalOutlook          ProposalOutlook
+	ProposalOutlook          proposalsapi.ProposalOutlook
 	Approver                 ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
 	Binder                   ChannelBinder    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.

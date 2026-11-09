@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -38,7 +39,7 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET Journey = %d, want 200", resp.StatusCode)
 	}
-	var body api.ProposalJourneyDTO
+	var body proposalsapi.ProposalJourneyDTO
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 		t.Fatalf("GET Journeys = %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Journeys []api.ProposalJourneyDTO `json:"journeys"`
+		Journeys []proposalsapi.ProposalJourneyDTO `json:"journeys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -256,7 +257,7 @@ func (f *fakeProposalWorkflow) Revise(
 	return f.err
 }
 
-func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow, configure ...func(*api.Options)) *httptest.Server {
+func proposalJourneyServer(t *testing.T, workflow proposalsapi.ProposalWorkflow, configure ...func(*api.Options)) *httptest.Server {
 	t.Helper()
 	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), ProposalWorkflow: workflow}
 	for _, fn := range configure {
@@ -288,7 +289,7 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
-	var body api.ProposalJourneyDTO
+	var body proposalsapi.ProposalJourneyDTO
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -309,14 +310,14 @@ func (f *fakeProgress) Progress(jobID string) (suggest.ProgressSnapshot, bool) {
 	return f.snap, f.ok
 }
 
-func getJourney(t *testing.T, srv *httptest.Server) api.ProposalJourneyDTO {
+func getJourney(t *testing.T, srv *httptest.Server) proposalsapi.ProposalJourneyDTO {
 	t.Helper()
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET Journey = %d, want 200", resp.StatusCode)
 	}
-	var body api.ProposalJourneyDTO
+	var body proposalsapi.ProposalJourneyDTO
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +376,7 @@ func TestProposalJourneyListCarriesLiveProgressToo(t *testing.T) {
 	resp := do(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }), http.MethodGet, "/v1/proposal-jobs", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var body struct {
-		Journeys []api.ProposalJourneyDTO `json:"journeys"`
+		Journeys []proposalsapi.ProposalJourneyDTO `json:"journeys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

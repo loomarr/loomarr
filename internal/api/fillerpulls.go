@@ -120,10 +120,10 @@ func pullToDTO(p filler.Pull) PullDTO {
 	return dto
 }
 
-// applyPull resolves a pull's ProposedBy the same way proposalToDTO's names.apply resolves a
-// proposal's CreatedBy — so the filler-pull card never has to render a raw user id (#1430).
-func (n personNames) applyPull(dto PullDTO) PullDTO {
-	dto.ProposedByName = n.name(dto.ProposedBy)
+// applyPullNames resolves a pull's ProposedBy the same way a proposal's CreatedBy is resolved — so
+// the filler-pull card never has to render a raw user id (#1430).
+func applyPullNames(n httpcore.PersonNames, dto PullDTO) PullDTO {
+	dto.ProposedByName = n.Name(dto.ProposedBy)
 	return dto
 }
 
@@ -191,7 +191,7 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	out := &listFillerPullsOutput{}
 	out.Body.Pulls = make([]PullDTO, 0, len(pulls))
 	for _, p := range pulls {
-		out.Body.Pulls = append(out.Body.Pulls, names.applyPull(pullToDTO(p)))
+		out.Body.Pulls = append(out.Body.Pulls, applyPullNames(names, pullToDTO(p)))
 	}
 	out.Body.Total = len(out.Body.Pulls)
 	return out, nil

@@ -438,7 +438,7 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 	if s.suggest == nil {
 		return nil, httpcore.NotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to refine channels.")
 	}
-	if err := s.suggestionConfigurationError(ctx); err != nil {
+	if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
 		return nil, err
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)

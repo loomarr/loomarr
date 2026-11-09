@@ -1,4 +1,4 @@
-package api
+package proposals
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
-	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
@@ -30,7 +29,7 @@ import (
 // visible to all; approve/deny require admin (the approval gate — §11). Approve
 // is the ONLY path from a proposal to an acquisition, and it is admin-gated, so
 // nothing unapproved ever reaches /v1/titles (§19).
-func (s *Server) registerProposals(api huma.API) {
+func (s *Handlers) registerProposals(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "submit-proposal", Method: http.MethodPost, Path: "/v1/proposals",
 		Summary: "Start a proposal job from an intent", Description: "Any authenticated user (§8).",
@@ -101,42 +100,11 @@ func checkDescription(description string) error {
 	return nil
 }
 
-// suggestionConfigurationError maps the settings-owned readiness explanation to
-// one user-facing recovery contract. Proposal creation and channel refinement share
-// it so a missing grounding source cannot be called an AI failure on one surface and
-// something else on another.
-func (s *Server) suggestionConfigurationError(ctx context.Context) error {
-	if !s.featureOff(ctx, "suggestions") {
-		return nil
-	}
-	missing := s.settings.MissingRequirements(ctx, "suggestions")
-	aiMissing := false
-	tmdbMissing := false
-	for _, key := range missing {
-		switch key {
-		case settings.LLMProvider.Key(), settings.LLMModel.Key():
-			aiMissing = true
-		case settings.TMDBAPIKey.Key():
-			tmdbMissing = true
-		}
-	}
-	if tmdbMissing && !aiMissing {
-		return httpcore.GroundingNotConfigured(
-			"TMDB is needed for channel suggestions",
-			"Connect TMDB in Settings → Connections so Loomarr can match channel descriptions to real titles.",
-		)
-	}
-	return httpcore.FeatureNotConfigured(
-		"AI isn't set up",
-		"Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.",
-	)
-}
-
-func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
+func (s *Handlers) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
 	if s.suggest == nil {
 		return nil, httpcore.FeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
 	}
-	if err := s.suggestionConfigurationError(ctx); err != nil {
+	if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
 		return nil, err
 	}
 	if err := checkDescription(in.Body.Description); err != nil {
@@ -212,20 +180,16 @@ func proposalToDTO(p proposalstore.Proposal, holidays holidayvocab.Vocabulary) P
 	}
 }
 
-// personNames resolves user ids to display names for a proposal payload. One ListUsers per
-// request (a household has a handful of accounts) rather than a lookup per row.
-type personNames map[string]string
+// personNames resolves user ids to display names for a proposal payload, and labels the
+// auto-approval grant "Automatic".
+type personNames struct{ httpcore.PersonNames }
 
-func (s *Server) personNames(ctx context.Context) (personNames, error) {
-	users, err := s.store.ListUsers(ctx)
+func (s *Handlers) personNames(ctx context.Context) (personNames, error) {
+	names, err := httpcore.LoadPersonNames(ctx, s.store)
 	if err != nil {
-		return nil, err
+		return personNames{}, err
 	}
-	names := make(personNames, len(users))
-	for _, u := range users {
-		names[u.ID] = u.Name
-	}
-	return names, nil
+	return personNames{names}, nil
 }
 
 // name maps a stored created_by/decided_by to something a person can read. An unknown id
@@ -234,7 +198,7 @@ func (n personNames) name(id string) string {
 	if id == accept.AutoApprovedBy {
 		return "Automatic"
 	}
-	return n[id]
+	return n.Name(id)
 }
 
 func (n personNames) apply(dto ProposalDTO) ProposalDTO {
@@ -259,7 +223,7 @@ type listProposalsOutput struct {
 	}
 }
 
-func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*listProposalsOutput, error) {
+func (s *Handlers) listProposals(ctx context.Context, in *listProposalsInput) (*listProposalsOutput, error) {
 	status := in.Status
 	if status == "" {
 		status = "submitted"
@@ -309,7 +273,7 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 	}
 	out := &listProposalsOutput{}
 	out.Body.Proposals = make([]ProposalDTO, 0, len(props))
-	holidays := s.holidayCalendar().Vocab()
+	holidays := s.holidays()
 	for _, p := range props {
 		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p, holidays)))
 	}
@@ -321,7 +285,7 @@ type proposalIDInput struct {
 }
 type proposalOutput struct{ Body ProposalDTO }
 
-func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposalOutput, error) {
+func (s *Handlers) getProposal(ctx context.Context, in *proposalIDInput) (*proposalOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
@@ -333,7 +297,7 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 	if err != nil {
 		return nil, err
 	}
-	return &proposalOutput{Body: names.apply(proposalToDTO(p, s.holidayCalendar().Vocab()))}, nil
+	return &proposalOutput{Body: names.apply(proposalToDTO(p, s.holidays()))}, nil
 }
 
 // --- approve / deny (the approval gate — §8/§11) ---
@@ -408,7 +372,7 @@ func errProposalTooOld() huma.StatusError {
 // proposal to approved and enqueues each acquisition as a `wanted` title — the
 // only path from a proposal to /v1/titles. Members cannot reach this (403), so
 // nothing unapproved ever acquires.
-func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approveOutput, error) {
+func (s *Handlers) approveProposal(ctx context.Context, in *approveInput) (*approveOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
@@ -493,21 +457,6 @@ type bulkApproveResult struct {
 	Retryable bool   `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id may succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)"`
 }
 
-// bulkFailure classifies one id's approval error for either bulk approve endpoint (Refs
-// #1876). The SERVER decides retryability from the status the single-approve handler raised,
-// so no client keeps its own status rule or guesses from the message text.
-//
-// A 5xx is a server or upstream fault that a retry may clear (a store read, a download that
-// couldn't start), except 501: this install can't do it at all. Every 4xx is the item's own
-// state, which a retry repeats. An error carrying no status is an unexpected fault, so it is a
-// 500, as huma would answer it. It counts as retryable even though some such faults, like a
-// missing approver, persist: the server can't tell them apart, and a refused retry costs less
-// than a stuck item with nothing to press.
-func bulkFailure(err error) (status int, retryable bool) {
-	status = httpcore.StatusFromError(err, http.StatusInternalServerError)
-	return status, status >= http.StatusInternalServerError && status != http.StatusNotImplemented
-}
-
 type bulkApproveOutput struct {
 	Body struct {
 		// PER-ID results rather than a single status. One id that was already approved must not
@@ -528,7 +477,7 @@ type bulkApproveOutput struct {
 //
 // Sequential, not concurrent: approvals write titles and channels, and household-scale batches
 // are small. Concurrency here would buy milliseconds and risk interleaving writes.
-func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput) (*bulkApproveOutput, error) {
+func (s *Handlers) bulkApproveProposals(ctx context.Context, in *bulkApproveInput) (*bulkApproveOutput, error) {
 	out := &bulkApproveOutput{}
 	out.Body.Results = make([]bulkApproveResult, 0, len(in.Body.IDs))
 	for _, id := range in.Body.IDs {
@@ -536,9 +485,9 @@ func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput)
 		if err != nil {
 			// A per-id failure is DATA, not a request failure: the ones that worked are already
 			// durable, so 500ing the whole call would hide successful approvals behind an error.
-			status, retryable := bulkFailure(err)
+			status, retryable := httpcore.BulkFailure(err)
 			out.Body.Results = append(out.Body.Results, bulkApproveResult{
-				ID: id, OK: false, Error: humaErrMessage(err), Status: status, Retryable: retryable,
+				ID: id, OK: false, Error: httpcore.ErrMessage(err), Status: status, Retryable: retryable,
 			})
 			continue
 		}
@@ -548,16 +497,6 @@ func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput)
 		out.Body.Approved++
 	}
 	return out, nil
-}
-
-// humaErrMessage renders a handler error for a per-id result line, preferring the human-facing
-// title a huma StatusError carries ("Already handled") over the raw error string.
-func humaErrMessage(err error) string {
-	var se huma.StatusError
-	if errors.As(err, &se) {
-		return se.Error()
-	}
-	return err.Error()
 }
 
 type denyInput struct {
@@ -572,7 +511,7 @@ type denyOutput struct {
 	}
 }
 
-func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, error) {
+func (s *Handlers) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
@@ -621,7 +560,7 @@ func approvedLine(enqueued int) string {
 	}
 }
 
-func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body outlook.Assessment }, error) {
+func (s *Handlers) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body outlook.Assessment }, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Suggestion not found", "That suggestion no longer exists.")

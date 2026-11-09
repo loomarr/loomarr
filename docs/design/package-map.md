@@ -101,6 +101,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `people/access` | `people/contact` |
 | `people/contact` | — |
 | `people/notifications` | `platform/httpx` |
+| `platform/activity` | `platform/store/activitystore` |
 | `platform/buildinfo` | — |
 | `platform/config` | — |
 | `platform/diagnostics` | `platform/storagegovernor` |
