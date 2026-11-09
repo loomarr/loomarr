@@ -227,11 +227,12 @@ describe("LibraryNeedsStrip", () => {
     cleanup();
   });
 
-  it("puts the question back when the answer fails", async () => {
+  it("puts the question back when the answer fails, and says it wasn't saved", async () => {
     const onLink = vi.fn(() => Promise.reject(new Error("no")));
     const { host, button, cleanup } = mount(strip({ needs: [need("90000811")], onLink }));
     await act(async () => button("Yes, that's it").click());
     expect(host.textContent).toContain("Paper Kites — is this the 1996 movie?");
+    expect(host.textContent).toContain("Couldn't save your answer. Try again in a moment.");
     cleanup();
   });
 
@@ -354,6 +355,20 @@ describe("LibraryNeedsCards", () => {
     const { host, button, cleanup } = mount(cards({ needs: [], orders: [tidewater], onChooseOrder }));
     await act(async () => button("Use this order").click());
     expect(host.textContent).toContain("Which order are your Tidewater episodes in?");
+    expect(host.textContent).toContain("Couldn't save your answer. Try again in a moment.");
+    cleanup();
+  });
+
+  it("says a title's answer wasn't saved, and clears it when answered again", async () => {
+    let fail = true;
+    const onIgnore = vi.fn(() => (fail ? Promise.reject(new Error("no")) : new Promise<void>(() => {})));
+    const { host, button, cleanup } = mount(cards({ needs: [need("90000812")], onIgnore }));
+    await act(async () => button("Ignore this").click());
+    expect(host.textContent).toContain("Is this Paper Kites (1996)?");
+    expect(host.textContent).toContain("Couldn't save your answer.");
+    fail = false;
+    await act(async () => button("Ignore this").click());
+    expect(host.textContent).not.toContain("Couldn't save your answer.");
     cleanup();
   });
 

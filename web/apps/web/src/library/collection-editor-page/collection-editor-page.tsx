@@ -81,8 +81,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
       titles: draft.members.map((m) => m.id),
     };
     try {
-      const res = id ? await libraryApi.updateCollection(id, body) : await libraryApi.createCollection(body);
-      if (res.status !== 200 && res.status !== 201) throw new Error("not saved");
+      await (id ? libraryApi.updateCollection(id, body) : libraryApi.createCollection(body));
       await done();
     } catch {
       setFailed("save");
@@ -95,8 +94,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
     setBusy(true);
     setFailed(undefined);
     try {
-      const res = await libraryApi.deleteCollection(id);
-      if (res.status !== 204) throw new Error("not deleted");
+      await libraryApi.deleteCollection(id);
       await done();
     } catch {
       setFailed("delete");

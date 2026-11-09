@@ -105,20 +105,17 @@ const useLibraryNeeds = () => {
   const ignore = libraryApi.useIgnoreLibraryItem({ mutation: { onSettled: refresh } });
   const order = libraryApi.useChooseLibraryEpisodeOrder({ mutation: { onSettled: refresh } });
 
-  // A mutation that answers with an error status still resolves; unwrap turns it into a rejection
-  // so the card puts the question back.
+  // A mutation that answers with an error status rejects, so the card puts the question back and
+  // says it wasn't saved.
   const answers: LibraryNeedsAnswers = {
     onLink: async (id, externalId) => {
-      const res = await link.mutateAsync({ id, data: { externalId } });
-      if (res.status !== 204) throw new Error("Couldn't save your answer");
+      await link.mutateAsync({ id, data: { externalId } });
     },
     onIgnore: async (id) => {
-      const res = await ignore.mutateAsync({ id });
-      if (res.status !== 204) throw new Error("Couldn't save your answer");
+      await ignore.mutateAsync({ id });
     },
     onChooseOrder: async (id, answer) => {
-      const res = await order.mutateAsync({ id, data: answer });
-      if (res.status !== 204) throw new Error("Couldn't save your answer");
+      await order.mutateAsync({ id, data: answer });
     },
   };
 

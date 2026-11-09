@@ -133,10 +133,11 @@ const LockIn = ({ children, onDone }: { children: ReactNode; onDone: () => void 
 
 // The answers given here. An answered title locks in and leaves on its own time: the list that
 // refetches after the answer no longer holds it, so it is kept where it was until it has left. A
-// failed answer puts the question back.
+// failed answer puts the question back and says so, as the title page does.
 type Phase = "added" | "ignored" | "gone";
 const useAnswers = <T extends { id: string }>(needs: readonly T[]) => {
   const [phases, setPhases] = useState<Record<string, Phase>>({});
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
   const last = useRef<readonly T[]>([]);
   const fresh = new Map(needs.map((n) => [n.id, n]));
   const kept: T[] = [];
@@ -158,10 +159,21 @@ const useAnswers = <T extends { id: string }>(needs: readonly T[]) => {
   }, []);
   const answer = (id: string, phase: "added" | "ignored", save: Promise<void>) => {
     set(id, phase);
-    save.catch(() => set(id));
+    setFailed((all) => ({ ...all, [id]: false }));
+    save.catch(() => {
+      set(id);
+      setFailed((all) => ({ ...all, [id]: true }));
+    });
   };
-  return { list, phases, answer, done: (id: string) => set(id, "gone") };
+  return { list, phases, failed, answer, done: (id: string) => set(id, "gone") };
 };
+
+// The line a card shows under its actions when its answer was not saved.
+const NotSaved = () => (
+  <Text textRole="body" tone="secondary">
+    Couldn't save your answer. Try again in a moment.
+  </Text>
+);
 
 // ── Episode order (#2151 decision 53, the approved mock in project/prototypes) ──────────────────
 // TMDB lists some shows in more than one order (its episode groups). Each is named in plain words
@@ -346,6 +358,7 @@ const OrderCard = ({
   need,
   primary,
   done,
+  failed,
   onChoose,
   onDone,
   onOpenTitle,
@@ -354,6 +367,8 @@ const OrderCard = ({
   primary: boolean;
   /** The answer given, as the done line says it; absent while it is asked. */
   done?: { line: string; fromTmdb: boolean };
+  /** The last answer was not saved. */
+  failed?: boolean;
   onChoose: (option: OrderOption) => void;
   onDone: () => void;
   onOpenTitle: (id: string) => void;
@@ -398,6 +413,7 @@ const OrderCard = ({
                   See the show
                 </Action>
               </Line>
+              {failed ? <NotSaved /> : null}
               <OrderFiles files={need.files} />
             </>
           ) : (
@@ -432,6 +448,7 @@ const OrderCard = ({
                   {picked === FILES ? "Keep the file names" : "Use this order"}
                 </Action>
               </Line>
+              {failed ? <NotSaved /> : null}
               <OrderFiles files={need.files} />
             </>
           )}
@@ -465,12 +482,15 @@ const useOrderAnswers = (
 const StripRow = ({
   need,
   answered,
+  failed,
   onYes,
   onDone,
   onOpenNeeds,
 }: {
   need: LibraryNeed;
   answered: boolean;
+  /** The last answer was not saved. */
+  failed?: boolean;
   onYes: () => void;
   onDone: () => void;
   onOpenNeeds: () => void;
@@ -487,6 +507,7 @@ const StripRow = ({
         <Thumb art={best?.poster} name={name} width={36} />
         <Stack flexShrink={1} minWidth={0}>
           <Text textRole="body">{answered ? `Done — ${name} is sorted.` : line}</Text>
+          {failed && !answered ? <NotSaved /> : null}
         </Stack>
       </Line>
       {answered ? (
@@ -532,7 +553,7 @@ const LibraryNeedsStrip = ({
   onOpenNeeds,
   onOpenTitle,
 }: LibraryNeedsStripProps) => {
-  const { list: open, phases, answer, done } = useAnswers(needs);
+  const { list: open, phases, failed, answer, done } = useAnswers(needs);
   const [all, setAll] = useState(false);
   const entries = problemEntries(problems);
   // The shows whose order to say, the titles to answer, then the ones that need a look, as the
@@ -547,6 +568,7 @@ const LibraryNeedsStrip = ({
       row: (
         <StripRow
           answered={phases[need.id] !== undefined}
+          failed={failed[need.id]}
           need={need}
           onDone={() => done(need.id)}
           onOpenNeeds={onOpenNeeds}
@@ -591,6 +613,7 @@ const NeedCard = ({
   need,
   primary,
   phase,
+  failed,
   onYes,
   onPick,
   onIgnore,
@@ -600,6 +623,8 @@ const NeedCard = ({
   need: LibraryNeed;
   primary: boolean;
   phase?: Phase;
+  /** The last answer was not saved. */
+  failed?: boolean;
   onYes: () => void;
   onPick: (c: LibraryNeedCandidate) => void;
   onIgnore: () => void;
@@ -662,6 +687,7 @@ const NeedCard = ({
                   Ignore this
                 </Action>
               </Line>
+              {failed ? <NotSaved /> : null}
               {other ? (
                 <PickTitle kind={need.kind} onPick={onPick} onSearch={onSearch} others={need.others} />
               ) : null}
@@ -724,7 +750,7 @@ const LibraryNeedsCards = ({
   onSearch,
   onOpenTitle,
 }: LibraryNeedsCardsProps) => {
-  const { list: open, phases, answer, done } = useAnswers(needs);
+  const { list: open, phases, failed, answer, done } = useAnswers(needs);
   const shows = useOrderAnswers(orders, onChooseOrder);
   const entries = problemEntries(problems);
   const waiting =
@@ -742,6 +768,7 @@ const LibraryNeedsCards = ({
       {shows.list.map((need, i) => (
         <OrderCard
           done={shows.doneOf(need.id)}
+          failed={shows.failed[need.id]}
           key={need.id}
           need={need}
           onChoose={(option) => shows.choose(need, option)}
@@ -761,6 +788,7 @@ const LibraryNeedsCards = ({
           onYes={() => {
             if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
           }}
+          failed={failed[need.id]}
           phase={phases[need.id]}
           primary={shows.list.length === 0 && i === 0}
         />
