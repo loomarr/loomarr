@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -42,21 +42,21 @@ type backupWriter interface {
 // would confirm which paths exist.
 var errBackupNotFound = errors.New("backup not found")
 
-func (b *backupsService) List(context.Context) (api.BackupList, error) {
+func (b *backupsService) List(context.Context) (system.BackupList, error) {
 	dir := b.dir()
 	files, err := store.ListBackups(dir)
 	if err != nil {
-		return api.BackupList{}, err
+		return system.BackupList{}, err
 	}
-	out := api.BackupList{
+	out := system.BackupList{
 		Supported: true,
 		Dir:       dir,
 		Schedule:  b.sched(),
 		Retain:    b.retain(),
-		Backups:   make([]api.BackupEntry, 0, len(files)),
+		Backups:   make([]system.BackupEntry, 0, len(files)),
 	}
 	for _, f := range files {
-		out.Backups = append(out.Backups, api.BackupEntry{
+		out.Backups = append(out.Backups, system.BackupEntry{
 			Name:      filepath.Base(f.Path),
 			Bytes:     f.Bytes,
 			WrittenAt: f.WrittenAt,
@@ -65,39 +65,39 @@ func (b *backupsService) List(context.Context) (api.BackupList, error) {
 	return out, nil
 }
 
-func (b *backupsService) Open(_ context.Context, name string) (api.BackupContent, error) {
+func (b *backupsService) Open(_ context.Context, name string) (system.BackupContent, error) {
 	// ⚠ `name` is a client-supplied path segment. Validate it against the pattern the
 	// writer produces BEFORE it reaches the filesystem: the pattern admits no separators
 	// and no dots beyond the extension, so "../../etc/passwd" is rejected here rather
 	// than being cleaned into something that happens to be safe.
 	if !store.IsBackupName(name) {
-		return api.BackupContent{}, errBackupNotFound
+		return system.BackupContent{}, errBackupNotFound
 	}
 	// Listing rather than stat-ing the joined path keeps ONE definition of "a backup
 	// that exists" — the same function the UI's table was built from. A file that is on
 	// disk but not in the listing is not something this endpoint should serve.
 	files, err := store.ListBackups(b.dir())
 	if err != nil {
-		return api.BackupContent{}, err
+		return system.BackupContent{}, err
 	}
 	for _, f := range files {
 		if filepath.Base(f.Path) == name {
-			return api.BackupContent{Name: name, Path: f.Path, Bytes: f.Bytes}, nil
+			return system.BackupContent{Name: name, Path: f.Path, Bytes: f.Bytes}, nil
 		}
 	}
-	return api.BackupContent{}, errBackupNotFound
+	return system.BackupContent{}, errBackupNotFound
 }
 
-func (b *backupsService) Run(ctx context.Context) (api.BackupEntry, error) {
+func (b *backupsService) Run(ctx context.Context) (system.BackupEntry, error) {
 	dir := b.dir()
 	bf, err := b.w.WriteBackup(ctx, dir)
 	if err != nil {
-		return api.BackupEntry{}, err
+		return system.BackupEntry{}, err
 	}
 	// Prune AFTER the write, never before — see store.PruneBackups. A prune failure does
 	// not fail the call: the backup the operator asked for is on disk and valid.
 	_, _ = store.PruneBackups(dir, b.retain())
-	return api.BackupEntry{
+	return system.BackupEntry{
 		Name:      filepath.Base(bf.Path),
 		Bytes:     bf.Bytes,
 		WrittenAt: bf.WrittenAt,

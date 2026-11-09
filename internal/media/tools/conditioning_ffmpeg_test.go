@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -215,7 +215,7 @@ func TestMeasureConditioningRealPrimedMezzanineKeepsTrailingSilenceOnTheContaine
 		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", source).CombinedOutput(); err != nil {
 		t.Fatalf("build source fixture: %v: %s", err, raw)
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	input, err := probe(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)

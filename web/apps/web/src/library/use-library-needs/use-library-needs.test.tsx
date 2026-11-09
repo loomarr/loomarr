@@ -48,6 +48,7 @@ describe("useLibraryNeeds", () => {
           need("90000011", [candidate("90000101", "Alpha", true), candidate("90000102", "Alpha II", false)]),
           need("90000012", [candidate("90000103", "Bravo", false)]),
         ],
+        orders: [],
         problems: [],
       }),
     );
@@ -66,6 +67,7 @@ describe("useLibraryNeeds", () => {
     server.use(
       getListLibraryNeedsMockHandler({
         needs: [],
+        orders: [],
         problems: [
           {
             item: { ...need("90000013", []).item, name: "Charlie", files: 2, extraCopies: 1 },
@@ -92,7 +94,7 @@ describe("useLibraryNeeds", () => {
     server.use(
       http.get("*/v1/library/needs", () => {
         lists += 1;
-        return HttpResponse.json({ needs: [need("90000011", [])], problems: [] });
+        return HttpResponse.json({ needs: [need("90000011", [])], orders: [], problems: [] });
       }),
       http.post("*/v1/library/items/:id/link", async ({ request }) => {
         linked = await request.json();
@@ -112,5 +114,44 @@ describe("useLibraryNeeds", () => {
     await result.current.answers.onLink("90000011", { namespace: "imdb", value: "tt90000101" });
     expect(linked).toEqual({ externalId: { namespace: "imdb", value: "tt90000101" } });
     await waitFor(() => expect(lists).toBeGreaterThanOrEqual(2));
+  });
+
+  it("lists the shows whose episode order to say, and sends the household's answer", async () => {
+    let chosen: unknown;
+    const order = {
+      item: { ...need("90000014", []).item, kind: "series" as const, name: "Tidewater" },
+      disk: [{ season: 1, episodes: 12 }],
+      files: [{ path: "/media/tv/Tidewater.S01E12.mkv", season: 1, episode: 12 }],
+      choices: [
+        { choice: "catalog" as const, seasons: [{ season: 1, episodes: 13 }], episodes: 13, fits: false },
+        {
+          choice: "order" as const,
+          orderId: "90000799a",
+          kind: "dvd" as const,
+          name: "DVD Order",
+          seasons: [{ season: 1, episodes: 12 }],
+          episodes: 12,
+          fits: true,
+        },
+      ],
+    };
+    server.use(
+      getListLibraryNeedsMockHandler({ needs: [], orders: [order], problems: [] }),
+      http.post("*/v1/library/items/:id/episode-order", async ({ request, params }) => {
+        chosen = { id: params.id, body: await request.json() };
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { result } = renderHook(() => useLibraryNeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.orders).toHaveLength(1));
+    expect(result.current.orders[0]).toMatchObject({ id: "90000014", name: "Tidewater", disk: order.disk });
+    expect(result.current.orders[0]?.choices[1]).toMatchObject({
+      orderId: "90000799a",
+      kind: "dvd",
+      fits: true,
+    });
+    await result.current.answers.onChooseOrder("90000014", { choice: "order", orderId: "90000799a" });
+    expect(chosen).toEqual({ id: "90000014", body: { choice: "order", orderId: "90000799a" } });
   });
 });

@@ -19,8 +19,8 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/internal/app":     "is the composition root that narrows the store for domain modules",
 	modulePath + "/internal/filler/records": "is the aggregate's filler half: it extends the core store.Store " +
 		"with filler persistence (#1747)",
-	modulePath + "/internal/proposals/suggest": "contains compile-time conformance assertions for its narrow store roles",
-	modulePath + "/internal/testkit":           "owns shared complete-store factories for tests",
+	modulePath + "/internal/proposals/accept": "contains compile-time conformance assertions for its narrow store roles",
+	modulePath + "/internal/testkit":          "owns shared complete-store factories for tests",
 }
 
 // aggregateStorePackages export the aggregate. records.Store embeds store.Store, so naming it
@@ -126,8 +126,13 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 // clusterPackages are the store's cluster packages. The store re-exports their types and
 // sentinels by alias so its own Store contract can name them unqualified.
 var clusterPackages = map[string]bool{
-	modulePath + "/internal/platform/store/identitystore": true,
-	modulePath + "/internal/platform/store/clipstore":     true,
+	modulePath + "/internal/platform/store/identitystore":    true,
+	modulePath + "/internal/platform/store/clipstore":        true,
+	modulePath + "/internal/platform/store/jobstore":         true,
+	modulePath + "/internal/platform/store/activitystore":    true,
+	modulePath + "/internal/platform/store/channeldatastore": true,
+	modulePath + "/internal/platform/store/channelstore":     true,
+	modulePath + "/internal/platform/store/proposalstore":    true,
 }
 
 // The store's cluster aliases are for the store itself. Everything else names the cluster type

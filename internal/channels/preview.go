@@ -6,12 +6,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
-// CycleResult is everything one preview computation answers. It exists because the draft
-// preview grew a fifth thing to report (the exclusion report) and a six-value return is not a
-// signature anyone can read — but ALSO because CyclePreview's tuple is consumed by the cached
+// CycleResult is everything one preview computation answers. It exists because a many-value
+// return is not a signature anyone can read — but ALSO because CyclePreview's tuple is consumed by the cached
 // playout path (app/playoutresolve/cyclecache.go → playoutresolve.Resolver.AiringNow), which must not churn every time
 // the authoring surface learns to show one more fact. So the struct is returned by the DRAFT
 // variant only, and CyclePreview keeps its tuple by unpacking it.
@@ -25,10 +24,8 @@ type CycleResult struct {
 	// Window is the resolved rolling-window horizon at At (0 = the whole run).
 	Window time.Duration
 	// Excluded is what the §4 audience ceiling and the scope filters REFUSED, with a reason
-	// per item. ⚠ ComputeDesiredAt has always produced this and, until now, every caller threw
-	// it away — so "why isn't X on my channel" had no answer anywhere in the product, despite
-	// being the documented purpose of the type. It is the same report reconcile computes,
-	// because it comes from the same call.
+	// per item. ⚠ This is what answers "why isn't X on my channel". It is the same report
+	// reconcile computes, because it comes from the same ComputeDesiredAt call.
 	Excluded schedule.ExclusionReport
 	// Trace is the scheduler-owned evidence emitted by the same ComputeDesiredAt call as Slots.
 	Trace schedule.ScheduleTrace
@@ -94,7 +91,7 @@ func (e *Engine) CyclePreviewDraft(
 // PreviewPlannedChannel evaluates an unsaved channel using observed availability.
 // It performs the same read-only settings, history, filler and scheduling computation
 // as the persisted-channel preview; it never stores a channel or acquires media.
-func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at time.Time, availability schedule.Availability) (CycleResult, error) {
+func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch channelstore.Channel, at time.Time, availability schedule.Availability) (CycleResult, error) {
 	if availability == nil {
 		return CycleResult{}, fmt.Errorf("preview requires observed availability")
 	}
@@ -177,8 +174,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at, e.Calendar()),
 		Window: schedule.ResolveWindow(chDomain, ch.Policy, at),
 		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
-		// a caller: reconcile computes the identical report and discards it, so a title refused
-		// by the ceiling or the scope filters was invisible everywhere in the product.
+		// a caller: reconcile computes the identical report and discards it.
 		Excluded:        desired.Excluded,
 		Trace:           desired.Trace,
 		HolidayEpisodes: desired.HolidayEpisodes,

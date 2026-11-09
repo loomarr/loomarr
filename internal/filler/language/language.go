@@ -243,7 +243,7 @@ func (w *Whisper) DetectLanguage(ctx context.Context, file string, startMs, endM
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
-	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
+	// backend through `tools.ExtractSpanWAV`.
 	wav := tools.SpanWAVPath(dir)
 	if err := tools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return Undetermined, err

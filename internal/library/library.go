@@ -44,7 +44,7 @@ type Library interface {
 	// AuthenticateByName verifies a user's credentials against the media server
 	// (§11 login). Returns the authenticated User on success. The media-server
 	// access token is used only to confirm + best-effort logout; callers issue
-	// their own session (Phase 9).
+	// their own session.
 	AuthenticateByName(ctx context.Context, username, password string) (User, error)
 
 	// ListUsers returns all media-server users for import/sync (§11), using the

@@ -1,5 +1,6 @@
+import { Field } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Input, Label } from "@/components/ui";
+import { useState } from "react";
 import { FieldError } from "./field-error";
 
 const meta = {
@@ -9,12 +10,28 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
+// The password field as the app's forms draw it (lib/app-form's TextField).
+const PasswordField = () => {
+  const [value, setValue] = useState("short");
+  return (
+    <Field
+      autoCapitalize="none"
+      autoCorrect={false}
+      id="story-password"
+      invalid
+      label="Password"
+      onChangeText={setValue}
+      secureTextEntry
+      value={value}
+    />
+  );
+};
+
 // In context: the line under a field that failed validation on submit.
 const UnderAField: Story = {
   render: (args) => (
     <div className="flex max-w-sm flex-col gap-2">
-      <Label htmlFor="story-password">Password</Label>
-      <Input id="story-password" type="password" aria-invalid="true" defaultValue="short" />
+      <PasswordField />
       <FieldError {...args} />
     </div>
   ),

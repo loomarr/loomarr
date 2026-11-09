@@ -1,11 +1,8 @@
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Text } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
 import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
@@ -93,9 +90,9 @@ const DateAxisRow = ({
           value={draft.to}
         />
       </div>
-      <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove <span className="sr-only">{where}</span>
-      </Button>
+      <Action accessibilityLabel={`Remove ${where}`} onPress={() => onRemove(index)} variant="ghost">
+        Remove
+      </Action>
     </div>
   );
 };
@@ -145,7 +142,7 @@ const DateAxisEditor = ({
   return (
     <div className="border-border flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-3">
-        <Label className="text-sm">{label}</Label>
+        <Text textRole="label">{label}</Text>
       </div>
       {ranges.length === 0 ? (
         <p className="text-muted-foreground text-xs">No date requirement.</p>
@@ -176,9 +173,9 @@ const DateAxisEditor = ({
             value={draft.to}
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
+        <Action accessibilityLabel={`Add range for ${label}`} onPress={add} variant="outline">
           Add range
-        </Button>
+        </Action>
       </div>
       {error && (
         <p className="text-onair-300 text-xs" role="alert">
@@ -218,9 +215,9 @@ const PolicyField = ({
     <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <Label id={labelId} htmlFor={htmlFor}>
+          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
-          </Label>
+          </Text>
           <FieldHelp label={label}>{help}</FieldHelp>
         </div>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
@@ -371,8 +368,8 @@ const ChannelPolicyFields = ({
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
-          forbids an empty-string item value, so "inherit" is the sentinel. */}
+      {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
+          choice "inherit". */}
       {showOrdering && (
         <PolicyField
           id="policy-ordering"
@@ -381,24 +378,14 @@ const ChannelPolicyFields = ({
           help="The channel's normal play order. In order plays the list start to finish and starts over. Shuffled plays a random mix. Syndication deals the list like a deck of cards, so everything plays once before anything repeats. Scheduled rules can temporarily override it."
           {...source("ordering")}
         >
-          <Select
-            value={policy.ordering || "inherit"}
+          <CompactSelect
+            aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
+            id="policy-ordering"
+            label="Play order"
             onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
-          >
-            <SelectTrigger
-              id="policy-ordering"
-              aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {orderingOptions(strategy).map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={orderingOptions(strategy)}
+            value={policy.ordering || "inherit"}
+          />
           {orderConsequence && (
             <Text as="p" id="policy-ordering-consequence" textRole="caption" tone="muted">
               {orderConsequence}
@@ -417,26 +404,18 @@ const ChannelPolicyFields = ({
           help="Content stays at or below this, a safety limit Loomarr never loosens."
           {...source("ceiling")}
         >
-          <Select
-            value={policy.audience?.ceiling || "none"}
+          <CompactSelect
+            id="policy-ceiling"
+            label="Audience ceiling"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-ceiling">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CEILING_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={CEILING_OPTIONS}
+            value={policy.audience?.ceiling || "none"}
+          />
         </PolicyField>
       )}
 
@@ -452,31 +431,28 @@ const ChannelPolicyFields = ({
           help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
           {...source("unrated")}
         >
-          <Select
-            value={policy.audience?.unrated || "default"}
+          <CompactSelect
+            id="policy-unrated"
+            label="Unrated titles"
             onValueChange={(v) =>
               onChange({
                 ...policy,
                 audience: { ...policy.audience, unrated: v === "default" ? "" : v },
               })
             }
-          >
-            <SelectTrigger id="policy-unrated">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNRATED_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {/* "Automatic" alone is not actionable — the operator cannot tell which way it
-                      falls without knowing the kids-ceiling rule. Naming the current resolution
-                      turns it into a real choice. */}
-                  {o.value === "default"
-                    ? `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
-                    : o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            // "Automatic" alone is not actionable — the operator cannot tell which way it falls
+            // without knowing the kids-ceiling rule. Naming the current resolution turns it into a
+            // real choice.
+            options={UNRATED_OPTIONS.map((o) =>
+              o.value === "default"
+                ? {
+                    ...o,
+                    label: `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`,
+                  }
+                : o,
+            )}
+            value={policy.audience?.unrated || "default"}
+          />
         </PolicyField>
       )}
 
@@ -535,14 +511,15 @@ const ChannelPolicyFields = ({
               placeholder="Any"
               width={112}
             />
-            <Button
-              type="button"
+            {/* Lifted 10 px so the line sits level with the year boxes' text, not their bottom edge. */}
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(true)}
+              style={{ marginBottom: 10 }}
               variant="link"
-              className="h-auto p-0 pb-2.5 text-xs underline"
-              onClick={() => setAxesRequested(true)}
             >
               Use separate date windows
-            </Button>
+            </Action>
           </div>
         </PolicyField>
       )}
@@ -592,14 +569,14 @@ const ChannelPolicyFields = ({
           ))}
           {/* Back to Era only while that loses nothing: the windows are identical or empty. */}
           {eraShaped && (
-            <Button
-              type="button"
+            <Action
+              layout="text"
+              onPress={() => setAxesRequested(false)}
+              style={{ alignSelf: "flex-start" }}
               variant="link"
-              className="h-auto self-start p-0 text-xs underline"
-              onClick={() => setAxesRequested(false)}
             >
               Use a single era
-            </Button>
+            </Action>
           )}
         </PolicyField>
       )}

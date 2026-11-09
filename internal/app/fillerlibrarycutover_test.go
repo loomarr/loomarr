@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -52,7 +52,7 @@ func TestFillerLibraryCutoverRewritesANamedLibraryToItsFolder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		byID := map[string]filler.ScanSource{}
+		byID := map[string]cliplibrary.ScanSource{}
 		for _, s := range listed {
 			byID[s.ID] = s
 		}

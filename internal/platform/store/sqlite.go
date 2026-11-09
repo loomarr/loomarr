@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	_ "modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
 )
@@ -29,7 +30,7 @@ RETURNING ` + titleColumns
 // SQLite channel claim: same guarded-UPDATE lease as titles, keyed on
 // reconcile_deadline and excluding detached + paused channels (§9/§18) — both are
 // off the sweep (detached = unmanaged; paused = deliberately off-air). RETURNs the
-// full channel column set (channelSelect order) so scanChannel serves it.
+// full channel column set (channelstore.Select order) so channelstore.ScanChannel serves it.
 // Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 //
 // ⚠ **There is deliberately NO `reconcile_deadline > 0` guard. A zero deadline means DUE NOW**
@@ -39,14 +40,14 @@ RETURNING ` + titleColumns
 // Tunarr, while the binder's comment promised "the sweep retries". The sweep retried everything
 // except the one case it existed for. Channels that opt out of reconciliation say so in `status`;
 // that is the only exclusion, and a magic deadline value must never become a second one.
-const sqliteChannelClaimSQL = `
+var sqliteChannelClaimSQL = `
 UPDATE channels SET reconcile_deadline = ?1, revision = revision + 1
 WHERE id IN (
     SELECT id FROM channels
     WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2
     ORDER BY reconcile_deadline LIMIT ?3
 )
-RETURNING ` + channelColumns
+RETURNING ` + channelstore.Columns(channelstore.SQLiteLineup("channels"))
 
 // sqliteMaxOpenConns is the pool size: enough that reads run beside the one writer and River's
 // polls, small enough that a household server's file handles and memory don't notice.

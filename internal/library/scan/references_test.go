@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -44,7 +45,7 @@ func TestReferenceRewriterRewritesWhatMapsAndImportsCollections(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ch := store.Channel{Name: "Ch", Number: 7, Strategy: schedule.Sequential, Status: schedule.StatusLive}
+	ch := channelstore.Channel{Name: "Ch", Number: 7, Strategy: schedule.Sequential, Status: schedule.StatusLive}
 	ch.ID = "ch-1"
 	ch.Policy.Scope.Collections = []string{"90000201", "90000299"}
 	if _, err := st.SaveChannel(ctx, ch); err != nil {

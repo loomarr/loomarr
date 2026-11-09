@@ -11,7 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -72,7 +73,7 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		if i == 1 {
 			channelID = "channel-b"
 		}
-		if _, err := h.store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		if _, err := h.store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 			ID: channelID, Number: 80 + i, Name: channelID, Status: schedule.StatusBuilding,
 			IntentRef: id, Strategy: schedule.Sequential,
 		}, IntentJSON: `{"description":"action"}`,
@@ -167,7 +168,7 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 	ctx := context.Background()
 	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
-		var found []store.Proposal
+		var found []proposalstore.Proposal
 		for _, status := range []string{"submitted", "approved"} {
 			proposals, err := h.store.ListProposalsByStatus(ctx, status)
 			if err != nil {
@@ -181,7 +182,7 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 			}
 		}
 		if len(found) > previous {
-			slices.SortFunc(found, func(a, b store.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
+			slices.SortFunc(found, func(a, b proposalstore.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
 			return found[len(found)-1].Body, len(found)
 		}
 		time.Sleep(20 * time.Millisecond)

@@ -42,7 +42,7 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	foundNever := false
 	for _, decision := range trace.Candidates {
 		if decision.Key == "movie:tmdb:90000003" {
-			foundNever = decision.Disposition == DispositionNotSelected && decision.Reason == ReasonNever
+			foundNever = decision.Disposition == proposals.DispositionNotSelected && decision.Reason == proposals.ReasonNever
 		}
 	}
 	if !foundNever || trace.RecordedTotal != len(candidates) || trace.Terminal != "" {
@@ -71,10 +71,10 @@ func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing
 	if got[3] != 90000400 {
 		t.Fatalf("surprise ranking = %v, irrelevant diversity crossed the relevance floor", got)
 	}
-	if ranked.Trace.Candidates[0].Rank.Novelty != rankNoveltyMax {
+	if ranked.Trace.Candidates[0].Rank.Novelty != proposals.RankNoveltyMax {
 		t.Fatalf("diverse candidate trace = %+v, want bounded novelty/diversity term", ranked.Trace.Candidates[0].Rank)
 	}
-	if err := ValidateDecisionTrace(ranked.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(ranked.Trace); err != nil {
 		t.Fatalf("surprise trace rejected by shared validator: %v", err)
 	}
 }
@@ -127,15 +127,15 @@ func candidateIDs(candidates []catalog.Candidate) []int {
 }
 
 func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {
-	candidates := make([]catalog.Candidate, 0, DecisionTraceMaxCandidates+1)
-	for i := 0; i < DecisionTraceMaxCandidates+1; i++ {
+	candidates := make([]catalog.Candidate, 0, proposals.DecisionTraceMaxCandidates+1)
+	for i := 0; i < proposals.DecisionTraceMaxCandidates+1; i++ {
 		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: 90_000_001 + i, Name: "same", Genres: []string{"same"}})
 	}
 	got := RankGroundedCandidatesWithTrace("same", candidates, nil)
-	if !got.Trace.Truncated || got.Trace.SurfacedTotal != DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != DecisionTraceMaxCandidates {
+	if !got.Trace.Truncated || got.Trace.SurfacedTotal != proposals.DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != proposals.DecisionTraceMaxCandidates {
 		t.Fatalf("trace bounds = %+v", got.Trace)
 	}
-	if err := ValidateDecisionTrace(got.Trace); err != nil {
+	if err := proposals.ValidateDecisionTrace(got.Trace); err != nil {
 		t.Fatalf("ranker emitted trace rejected by shared validator: %v", err)
 	}
 	for i, item := range got.Trace.Candidates {
@@ -150,7 +150,7 @@ func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound
 
 func TestRankGroundedCandidatesWithTraceClassifiesRetrievalEmpty(t *testing.T) {
 	got := RankGroundedCandidatesWithTrace("nothing", nil, nil)
-	if got.Trace.Version != DecisionTraceVersion || got.Trace.Terminal != ReasonRetrievalEmpty || got.Trace.SurfacedTotal != 0 || got.Trace.RecordedTotal != 0 {
+	if got.Trace.Version != proposals.DecisionTraceVersion || got.Trace.Terminal != proposals.ReasonRetrievalEmpty || got.Trace.SurfacedTotal != 0 || got.Trace.RecordedTotal != 0 {
 		t.Fatalf("empty retrieval trace = %+v", got.Trace)
 	}
 }
@@ -252,9 +252,9 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 }
 
 func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t *testing.T) {
-	dst := proposals.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+	dst := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAdjacent)}}}
-	src := proposals.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
+	src := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
 		Candidates: []proposals.DecisionCandidate{
 			{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAll)},
 			{Key: "movie:tmdb:90000604", Source: string(catalog.ScopeAll)},
@@ -267,10 +267,10 @@ func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t
 		t.Fatalf("latest decision facts did not replace adjacency facts: %+v", dst.Candidates[0])
 	}
 
-	full := proposals.DecisionTrace{Version: DecisionTraceVersion, RecordedTotal: DecisionTraceMaxCandidates,
-		Candidates: make([]proposals.DecisionCandidate, DecisionTraceMaxCandidates)}
-	traceDecision(&full, proposals.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
-	if full.RecordedTotal != DecisionTraceMaxCandidates+1 || !full.Truncated {
+	full := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, RecordedTotal: proposals.DecisionTraceMaxCandidates,
+		Candidates: make([]proposals.DecisionCandidate, proposals.DecisionTraceMaxCandidates)}
+	traceDecision(&full, proposals.DecisionCandidate{Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID})
+	if full.RecordedTotal != proposals.DecisionTraceMaxCandidates+1 || !full.Truncated {
 		t.Fatalf("truncated decision total = %+v", full)
 	}
 }

@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -15,11 +19,11 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err := os.WriteFile(source, []byte("archive source master"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceHash, err := ClipID(source)
+	sourceHash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := preserveSourceMaster(context.Background(), root, source, sourceHash, SidecarTags{})
+	master, err := preserveSourceMaster(context.Background(), root, source, sourceHash, asset.SidecarTags{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,16 +32,16 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 		ExecutableSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
-		ClipDir: root, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
+		ClipDir: root, Source: master, Input: tools.Probed{DurationMs: 61_000, Height: 480},
 		Recipe: tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine()), Tool: tool,
-		Probe: func(context.Context, string) (Probed, error) {
-			return Probed{DurationMs: 61_000, Height: 480}, nil
+		Probe: func(context.Context, string) (tools.Probed, error) {
+			return tools.Probed{DurationMs: 61_000, Height: 480}, nil
 		},
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
-		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-			return MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, []byte("evidence derivative bytes"), 0o600)
+		Transcode: func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
+			return tools.MediaQuality{DurationMs: 61_000}, os.WriteFile(request.Out, []byte("evidence derivative bytes"), 0o600)
 		},
 	})
 	if err != nil {
@@ -52,23 +56,23 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err := os.WriteFile(playable, []byte("playback derivative bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	playableHash, err := ClipID(playable)
+	playableHash, err := asset.ClipID(playable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(playable, SidecarTags{MediaAssets: &MediaAssetManifest{
-		Version: mediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	if err := asset.WriteSidecarTags(playable, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master, Evidence: &evidence,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	clip := StoreClip{Clip: Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
+	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: playableHash, Path: playableRel, DurationMs: 61_000}}
 
-	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, SplitSourceAsset{})
+	bound, gotPath, err := resolveSplitSource(context.Background(), root, clip, split.SourceAsset{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantPath := filepath.Join(root, filepath.FromSlash(evidence.Asset.Path))
-	if bound.Role != SplitSourceEvidence || bound.SHA256 != evidence.Asset.SHA256 ||
+	if bound.Role != split.SourceEvidence || bound.SHA256 != evidence.Asset.SHA256 ||
 		bound.ClipHash != evidence.Asset.ClipHash || bound.DurationMs != evidence.DurationMs || gotPath != wantPath {
 		t.Fatalf("resolved source = (%+v, %q), want evidence %+v at %q", bound, gotPath, evidence, wantPath)
 	}

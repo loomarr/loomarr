@@ -8,7 +8,7 @@
 // and it is a tar pit — timestamps, keyframes, and stream parameters all have to be reconciled
 // across the join.
 //
-// This package does not splice transport files. The channel packager (#1512 phase 2) asks the
+// This package does not splice transport files. The channel packager (#1512) asks the
 // application what is on (PackagerSource.ItemAt), runs one encoder per scheduled item into its
 // slot of frames, and stitches the fragments in-process onto one monotonic timeline: every item
 // encodes to the same output parameters, so a boundary is a keyframe, not a decoder reset. The

@@ -8,9 +8,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -28,12 +30,12 @@ func (taxonomyAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResol
 }
 
 type taxonomyWakeRecorder struct {
-	snapshots []filler.Clip
+	snapshots []clips.Clip
 }
 
 func (*taxonomyWakeRecorder) Reconcile(context.Context, string) error { return nil }
 
-func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshots []filler.Clip) error {
+func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshots []clips.Clip) error {
 	r.snapshots = append(r.snapshots, snapshots...)
 	return nil
 }
@@ -41,9 +43,9 @@ func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshot
 func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
-		DurationMs: 30_000, Era: 1994, Audience: filler.General,
+	clip := clips.Clip{
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
+		DurationMs: 30_000, Era: 1994, Audience: clips.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
@@ -51,7 +53,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, channel := range []store.Channel{
+	for _, channel := range []channelstore.Channel{
 		{
 			Channel: schedule.Channel{ID: "direct", Name: "Direct", Number: 20, Status: schedule.StatusLive},
 			Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
@@ -111,9 +113,9 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
-		DurationMs: 30_000, Era: 1994, Audience: filler.General,
+	clip := clips.Clip{
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
+		DurationMs: 30_000, Era: 1994, Audience: clips.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
@@ -121,7 +123,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
 		t.Fatal(err)
 	}
-	channel := store.Channel{
+	channel := channelstore.Channel{
 		Channel: schedule.Channel{
 			ID: "alcohol-channel", Name: "Alcohol channel", Number: 31,
 			Strategy: schedule.Sequential, Status: schedule.StatusBuilding,
@@ -137,8 +139,8 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	if _, err := st.SaveChannel(t.Context(), channel); err != nil {
 		t.Fatal(err)
 	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
+	pods := pod.NewAdapter(clipCatalogAdapter{st: st}, nil, func() pod.Policy {
+		return pod.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
 	engine := channels.New(st, nil, taxonomyAvailability{
 		provision.Key("movie:tmdb:90000001"): "lib-1",

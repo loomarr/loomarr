@@ -95,8 +95,8 @@ type listingProvider struct {
 // WRITE-ONLY on Jellyfin: POST works, GET returns 405 (verified against Jellyfin
 // 10.10.3 — see fixtures/livetv/FINDINGS.md). Reading through them meant the
 // enumerate-first idempotency check errored on every Jellyfin install, so a connect
-// either failed outright or re-registered the tuner on each attempt. §6 has always
-// claimed both flavors; the Phase-10 capture was Emby-only, which is how it went
+// either fail outright or re-register the tuner on each attempt. §6 covers both flavors,
+// but the Phase-10 capture was Emby-only, which is how the Jellyfin difference went
 // unnoticed until the maintainer smoke wired a real Jellyfin.
 const liveTVConfigPath = "/System/Configuration/livetv"
 

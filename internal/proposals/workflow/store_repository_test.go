@@ -11,6 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -152,10 +154,10 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	clock := started
 	workflow := New(st, func() string { return "proposal-1" }, func() time.Time { return clock })
 	intent := proposals.Intent{Description: "Saturday morning cartoons"}
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-1", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
 		IntentJSON:      `{"description":"Saturday morning cartoons"}`,
-		WorkflowVersion: store.ProposalWorkflowVersion,
+		WorkflowVersion: proposalstore.ProposalWorkflowVersion,
 		Deadline:        started, CreatedAt: started, UpdatedAt: started,
 	}); err != nil {
 		t.Fatal(err)
@@ -216,10 +218,10 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 17, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-failed", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
 		IntentJSON:      `{"description":"Obscure regional monster movies"}`,
-		WorkflowVersion: store.ProposalWorkflowVersion,
+		WorkflowVersion: proposalstore.ProposalWorkflowVersion,
 		Deadline:        now, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -265,9 +267,9 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.August, 22, 18, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
-	for _, job := range []store.Job{
-		{ID: "alice-running", Kind: "suggest", Status: "queued", CreatedBy: "alice", IntentJSON: `{"description":"Anime after school"}`, WorkflowVersion: store.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
-		{ID: "bob-running", Kind: "suggest", Status: "queued", CreatedBy: "bob", IntentJSON: `{"description":"Noir"}`, WorkflowVersion: store.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
+	for _, job := range []proposalstore.Job{
+		{ID: "alice-running", Kind: "suggest", Status: "queued", CreatedBy: "alice", IntentJSON: `{"description":"Anime after school"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "bob-running", Kind: "suggest", Status: "queued", CreatedBy: "bob", IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion, Deadline: now, CreatedAt: now, UpdatedAt: now},
 	} {
 		if err := st.CreateJob(ctx, job); err != nil {
 			t.Fatal(err)
@@ -300,11 +302,11 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
-	for _, job := range []store.Job{
+	for _, job := range []proposalstore.Job{
 		{ID: "poison", IntentJSON: "[1]"}, // JSON, as the column demands, but not an Intent
 		{ID: "good", IntentJSON: `{"description":"Noir"}`},
 	} {
-		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", store.ProposalWorkflowVersion
+		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", proposalstore.ProposalWorkflowVersion
 		job.Deadline, job.CreatedAt, job.UpdatedAt = now, now, now
 		if err := st.CreateJob(ctx, job); err != nil {
 			t.Fatal(err)
@@ -345,11 +347,11 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 	now := time.Date(2026, time.September, 22, 3, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
 
-	approve := func(jobID string, number int) store.Channel {
+	approve := func(jobID string, number int) channelstore.Channel {
 		t.Helper()
-		if err := st.CreateJob(ctx, store.Job{
+		if err := st.CreateJob(ctx, proposalstore.Job{
 			ID: jobID, Kind: "suggest", Status: "queued", CreatedBy: "alice",
-			IntentJSON: `{"description":"Noir"}`, WorkflowVersion: store.ProposalWorkflowVersion,
+			IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion,
 			Deadline: now, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatal(err)
@@ -357,7 +359,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		if claimed, err := st.ClaimDueJobs(ctx, now, time.Minute, 10); err != nil || len(claimed) == 0 {
 			t.Fatalf("claim %s = %+v, %v", jobID, claimed, err)
 		}
-		prop := store.Proposal{
+		prop := proposalstore.Proposal{
 			ID: "proposal-" + jobID, JobID: jobID, Status: "submitted", CreatedBy: "alice",
 			Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Noir"}}}, CreatedAt: now, UpdatedAt: now,
 		}
@@ -365,7 +367,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 			t.Fatal(err)
 		}
 		prop.Status, prop.ApprovedBy, prop.ApprovedAt = "approved", "admin", now
-		ch := store.Channel{}
+		ch := channelstore.Channel{}
 		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
 		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
 		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: prop, Channel: ch}); err != nil {

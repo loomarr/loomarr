@@ -35,10 +35,6 @@ tables:
       shuffle_seed: >
         The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it
         is worked out from the channel id.
-      lineup_json: >
-        The approved lineup, a list of entries. Each names a title by its key (such as
-        `movie:tmdb:603`), with its display name, known runtime, any season range or episode
-        selection, and the rating, genres and year the channel rules filter on.
       desired_json: >
         The last computed schedule, a list of slots. Each slot is a programme, a pending title not
         yet in the library, a filler break, or flexible padding, with its title, length and
@@ -71,6 +67,23 @@ tables:
       requested_by: >
         The person who asked for the channel (users.id). Set when the channel is created and never
         changed. Empty when no member asked.
+
+  - name: channel_lineup
+    about: >
+      A channel's approved lineup, one row per title in order: what should play on it. Whether
+      each title becomes a programme or waits as "coming soon" is decided when the channel is
+      checked.
+    retention: Rewritten whenever the channel is saved; goes with its channel.
+    columns:
+      channel_id: The channel (a channels id).
+      position: Where the title sits in the lineup, from 0.
+      title_key: >
+        The title, by its key (such as `movie:tmdb:603`). A title added by hand may have no titles
+        row yet, until something asks for it.
+      entry: >
+        The rest of the entry: its display name, known runtime, any season range or episode
+        selection, the rating, genres and year the channel rules filter on, and its media-server
+        box sets.
 
   - name: airings
     about: >

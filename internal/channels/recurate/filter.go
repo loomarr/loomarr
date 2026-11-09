@@ -7,7 +7,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -35,7 +36,7 @@ type retirement struct {
 
 // filterResult carries the rewritten proposal plus what it discarded and why.
 type filterResult struct {
-	Proposal store.Proposal
+	Proposal proposalstore.Proposal
 	BelowBar []dropped
 	OverCap  []dropped
 	// Retired are the keys the caller must remove from the channel's lineup, paired with
@@ -44,7 +45,7 @@ type filterResult struct {
 	RetiredKey []provision.Key
 }
 
-// filterAcquisitions rewrites a re-curation proposal so its acquisition list contains ONLY the
+// filterAcquisitionsProtected rewrites a re-curation proposal so its acquisition list contains ONLY the
 // net-new titles that (a) clear the quality bar (per-title Confidence ≥ minScorePct/100) and
 // (b) fit within the growth cap (channel's current title count + kept acquisitions ≤ maxTitles).
 // The in-library lineup is left untouched (already available, no acquisition, no score gate).
@@ -52,7 +53,7 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
+func filterAcquisitionsProtected(p proposalstore.Proposal, ch channelstore.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
 	body := p.Body
 	var res filterResult
 
@@ -159,9 +160,8 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 
 	body.Acquisitions = kept
 	// ⚠ The retirements ride the PROPOSAL to the binder, which is the only writer of a
-	// channel's lineup (§8.2a). This subsystem used to trim `ch.Lineup` and persist the channel
-	// itself, which made it a second writer racing the binder's additive union — ordered against
-	// each other by a comment rather than by anything the compiler or a test could check.
+	// channel's lineup (§8.2a). Persisting a trimmed `ch.Lineup` from here would make this
+	// subsystem a second writer racing the binder's additive union.
 	body.Retired = res.RetiredKey
 	p.Body = body
 	res.Proposal = p
@@ -196,7 +196,7 @@ func effectiveMaxTitles(ctx context.Context, ac *schedule.AutoCurate, th Thresho
 // returned none for it (§8.3).
 //
 // The bar reads a confidence the MODEL assigns, and an omitted one unmarshals to 0 — which
-// filterAcquisitions deliberately treats as "never clears a positive bar", the right call for
+// filterAcquisitionsProtected deliberately treats as "never clears a positive bar", the right call for
 // a title the model searched for and then declined to stand behind. An adjacency pick is not
 // that: it was HANDED to the model with a consensus the model neither computed nor can see,
 // and a model that scores only what it found itself would silently zero out the entire second
@@ -209,7 +209,7 @@ func effectiveMaxTitles(ctx context.Context, ac *schedule.AutoCurate, th Thresho
 //
 // ⚠ This is a floor on an UNSCORED pick, never a bypass. Everything downstream is unchanged:
 // the title cap still applies, the per-channel opt-in still gates the run, and the acquisition
-// still routes through the one suggest.Approver gate (§8.2). It cannot make a pick the operator
+// still routes through the one accept.Approver gate (§8.2). It cannot make a pick the operator
 // never authorized, and it cannot admit a title the model marked as a poor fit.
 const adjacencyUnscoredFloor = 0.60
 
@@ -266,12 +266,12 @@ func (b *bench) weakestBelow(incoming float64) (benchEntry, bool) {
 // Every lineup entry stores the Fit of the pick that added or last re-scored it, so the order
 // reflects both how well a title serves the intent and how long it has gone without airing. An
 // unscored entry reads as the neutral fit, never as the weakest.
-func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) *bench {
+func retirableByWeakest(ch channelstore.Channel, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) *bench {
 	// ⚠ FAIL CLOSED on an unknown schedule. An empty Desired means "we do not know what is
 	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
 	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an
 	// entire lineup, which is the opposite of the guard's purpose. No schedule ⇒ nothing
-	// retires, and the channel simply behaves as it did before the turnstile existed.
+	// retires, and the channel only grows.
 	if len(ch.Desired) == 0 {
 		return &bench{}
 	}

@@ -6,11 +6,9 @@ import (
 	"time"
 )
 
-// Dialect names a backend. It exists so capability checks read as what they mean:
-// backend identity used to be inferred by comparing `claimSQL` against the SQLite
-// constant, which works but states "this store's claim statement is the SQLite one"
-// when it means "this is SQLite" — and would break silently if the two backends ever
-// shared a statement.
+// Dialect names a backend. It exists so capability checks read as what they mean: "this is
+// SQLite", not "this store's claim statement is the SQLite one", which would break silently if
+// the two backends ever shared a statement.
 type Dialect string
 
 const (

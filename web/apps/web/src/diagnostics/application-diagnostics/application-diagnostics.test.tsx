@@ -89,8 +89,8 @@ describe("ApplicationDiagnostics", () => {
     expect(await screen.findByText("Show informational logs")).toBeInTheDocument();
     expect(screen.getByText("2 events dropped since startup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Older" })).toBeEnabled();
-    expect(screen.getByRole("combobox", { name: "Time range" })).toHaveTextContent("All retained");
-    expect(screen.getByRole("combobox", { name: "Log order" })).toHaveTextContent("Newest first");
+    expect(screen.getByRole("combobox", { name: "Time range" })).toHaveDisplayValue("All retained");
+    expect(screen.getByRole("combobox", { name: "Log order" })).toHaveDisplayValue("Newest first");
     expect(screen.queryByRole("button", { name: /pause|resume|refresh now/i })).not.toBeInTheDocument();
 
     await userEvent.click(errors);
@@ -126,8 +126,7 @@ describe("ApplicationDiagnostics", () => {
       subsystem: "api",
     });
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Log order" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Oldest first" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Log order" }), "Oldest first");
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ order: "oldest" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Newer" })).toBeEnabled());
     expect(screen.getByRole("button", { name: "Older" })).toBeDisabled();

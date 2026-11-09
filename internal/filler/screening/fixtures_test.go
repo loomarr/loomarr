@@ -6,25 +6,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests, which an
 // external package cannot import; production code exports nothing for them.
 
-// mediaAssetManifestVersion is filler's manifest version. A wrong value makes the manifest fail
+// mediaAssetManifestVersion mirrors asset.ManifestVersion. A wrong value makes the manifest fail
 // Validate, which fails the tests that depend on it rather than passing silently.
 const mediaAssetManifestVersion = 1
 
 // screeningBlobPath is where FileSegmentScreeningEvidenceRepository (rooted at root) keeps the
 // blob of the given kind and digest. Tests that tamper with or remove stored evidence need it; the
-// production code derives the same path inside filler.
+// production code derives the same path inside the repository.
 func screeningBlobPath(root, kind, digest string) string {
 	return filepath.Join(root, kind, digest[:2], digest+".json")
 }
 
-func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
+func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	t.Helper()
 	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
@@ -39,31 +39,31 @@ func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := filler.Probed{DurationMs: 30_000, Height: 480}
-	output := filler.Probed{DurationMs: 30_000, Height: 480}
-	quality := filler.MediaQuality{
+	input := tools.Probed{DurationMs: 30_000, Height: 480}
+	output := tools.Probed{DurationMs: 30_000, Height: 480}
+	quality := tools.MediaQuality{
 		EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
-	source := filler.MediaAssetIdentity{
-		Role: filler.MediaAssetSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
+	source := asset.Identity{
+		Role: asset.RoleSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
 		ClipHash: strings.Repeat("2", 64), Path: ".loomarr-media/masters/11/11/source.mp4",
 	}
-	manifest := filler.MediaAssetManifest{
+	manifest := asset.Manifest{
 		Version: mediaAssetManifestVersion, SourceMaster: source,
-		Evidence: &filler.MediaDerivativeLineage{
-			Asset: filler.MediaAssetIdentity{
-				Role: filler.MediaAssetEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
+		Evidence: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RoleEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
 				ClipHash: strings.Repeat("4", 64), Path: ".loomarr-media/evidence/11/11/recipe/evidence.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: evidenceRecipe, RecipeSHA256: evidenceRecipeSHA,
 			Tool: tool, DurationMs: 30_000, QC: fixtureDerivativeQC(30_000, evidenceRecipe.KeyframeSeconds, true, 0),
 			InputProbe: input, OutputProbe: output, Quality: quality,
 		},
-		Playback: &filler.MediaDerivativeLineage{
-			Asset: filler.MediaAssetIdentity{
-				Role: filler.MediaAssetPlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
+		Playback: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RolePlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
 				ClipHash: strings.Repeat("6", 64), Path: "66/66/playback.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: playbackRecipe, RecipeSHA256: playbackRecipeSHA,
@@ -112,7 +112,7 @@ func completeConditioningMeasurement(lufs float64) tools.ConditioningMeasurement
 			IntegratedLUFS: lufs, Available: true,
 			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2.1},
 		},
-		Quality: filler.MediaQuality{
+		Quality: tools.MediaQuality{
 			EvidenceVersion: tools.MediaQualityEvidenceV1,
 			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,

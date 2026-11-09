@@ -139,11 +139,10 @@ type Proposal struct {
 	// binder — never by the suggester, and never by a human approval.
 	//
 	// ⚠ It rides the PROPOSAL rather than being applied directly to the channel, and that is
-	// the whole point of the field. `recurate` used to trim `ch.Lineup` and call UpsertChannel
-	// itself, which made it a second lineup writer racing the binder's additive union — the
-	// two were ordered against each other by a code comment, and an additive union that ran
-	// first would put every retired title straight back. One writer (the binder), one
-	// primitive (schedule.ApplyLineup), and the retirement is now an INPUT to it.
+	// the whole point of the field. If `recurate` trimmed `ch.Lineup` and called UpsertChannel
+	// itself it would be a second lineup writer racing the binder's additive union, and an
+	// additive union that ran first would put every retired title straight back. One writer
+	// (the binder), one primitive (schedule.ApplyLineup), and the retirement is an INPUT to it.
 	Retired []provision.Key `json:"retired,omitempty"`
 	// Refused are picks the model grounded that this proposal's OWN extracted policy cannot
 	// air (§4). They are moved out of Lineup/Acquisitions and kept here with a reason, so the

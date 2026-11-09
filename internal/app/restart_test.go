@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -242,7 +242,7 @@ func TestRestartDrift(t *testing.T) {
 			"filler.watch_dir": "/watch/old",
 		})
 		frozen, applied := set.freeze(settings.NewRegistry().RestartKeys()...)
-		layout, err := filler.NewLayout(settings.FillerDir.Get(frozen), settings.FillerWatchDir.Get(frozen))
+		layout, err := cliplibrary.NewLayout(settings.FillerDir.Get(frozen), settings.FillerWatchDir.Get(frozen))
 		if err != nil {
 			t.Fatal(err)
 		}

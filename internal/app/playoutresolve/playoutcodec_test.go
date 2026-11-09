@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -26,17 +26,17 @@ func TestMajorityBroadcastCodec(t *testing.T) {
 		codecs []string
 		want   string
 	}{
-		{"empty sample defaults h264", nil, store.BroadcastCodecH264},
-		{"all h264", []string{"h264", "h264", "h264"}, store.BroadcastCodecH264},
-		{"all hevc", []string{"hevc", "hevc"}, store.BroadcastCodecHEVC},
-		{"h265 alias counts as hevc", []string{"h265", "h265"}, store.BroadcastCodecHEVC},
-		{"hevc majority wins", []string{"hevc", "hevc", "h264"}, store.BroadcastCodecHEVC},
-		{"h264 majority wins", []string{"h264", "h264", "hevc"}, store.BroadcastCodecH264},
-		{"even split breaks to h264", []string{"hevc", "h264"}, store.BroadcastCodecH264},
+		{"empty sample defaults h264", nil, channelstore.BroadcastCodecH264},
+		{"all h264", []string{"h264", "h264", "h264"}, channelstore.BroadcastCodecH264},
+		{"all hevc", []string{"hevc", "hevc"}, channelstore.BroadcastCodecHEVC},
+		{"h265 alias counts as hevc", []string{"h265", "h265"}, channelstore.BroadcastCodecHEVC},
+		{"hevc majority wins", []string{"hevc", "hevc", "h264"}, channelstore.BroadcastCodecHEVC},
+		{"h264 majority wins", []string{"h264", "h264", "hevc"}, channelstore.BroadcastCodecH264},
+		{"even split breaks to h264", []string{"hevc", "h264"}, channelstore.BroadcastCodecH264},
 		// Non-h264/non-hevc sources (vp9, mpeg2, theora) all normalize DOWN to h264, so they count
 		// against HEVC — a channel of mixed legacy codecs broadcasts h264, never HEVC.
-		{"legacy codecs count as not-hevc", []string{"vp9", "mpeg2video", "hevc"}, store.BroadcastCodecH264},
-		{"hevc beats a lone legacy codec", []string{"hevc", "hevc", "vp9"}, store.BroadcastCodecHEVC},
+		{"legacy codecs count as not-hevc", []string{"vp9", "mpeg2video", "hevc"}, channelstore.BroadcastCodecH264},
+		{"hevc beats a lone legacy codec", []string{"hevc", "hevc", "vp9"}, channelstore.BroadcastCodecHEVC},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestComputeChannelCodecRetriesAChangingChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != store.BroadcastCodecH264 {
+	if got != channelstore.BroadcastCodecH264 {
 		t.Fatalf("codec = %q, want h264 fallback", got)
 	}
 	if len(access.Writes) != 1 || access.Writes[0].ExpectedRevision != 2 {
@@ -68,7 +68,7 @@ func TestComputeChannelCodecRetriesAStaleTargetedWrite(t *testing.T) {
 	t.Parallel()
 	access := &testkit.ChannelCodecStore{
 		ReadRevisions: []int64{1, 1, 2, 2},
-		WriteErrors:   []error{store.ErrChannelStale, nil},
+		WriteErrors:   []error{channelstore.ErrChannelStale, nil},
 	}
 	r := &Resolver{channels: access, codecs: access}
 
@@ -120,7 +120,7 @@ func TestMeasureChannelCodecProbesTheLibrarysFiles(t *testing.T) {
 		},
 	}
 
-	if got := r.measureChannelCodec(context.Background(), "channel-1"); got != store.BroadcastCodecHEVC {
+	if got := r.measureChannelCodec(context.Background(), "channel-1"); got != channelstore.BroadcastCodecHEVC {
 		t.Fatalf("codec = %q, want hevc", got)
 	}
 	if want := []string{files["lib-1"], files["lib-2"]}; !slices.Equal(inputs, want) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
@@ -38,6 +38,7 @@ type libraryStore interface {
 	store.LibraryProjection
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
+	store.LibraryEpisodeOrderStore
 	store.LibraryCollectionStore
 	store.LibraryPeopleStore
 	store.LibraryIDMapStore
@@ -88,8 +89,8 @@ func libraryNotifierOf(c *productNotificationCoordinator) libraryNotifier {
 
 // libraryServices is Settings → Library and the arrs' webhooks; both nil without a store.
 type libraryServices struct {
-	roots api.LibraryRootService
-	hooks api.LibraryHookService
+	roots libraryapi.LibraryRootService
+	hooks libraryapi.LibraryHookService
 }
 
 // buildLibrary wires Settings → Library (#2151 decision 6) and starts the scanner, its folder
@@ -115,7 +116,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	if err != nil {
 		deps.log.Error("library scan: not started", "err", err)
 		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv, CollectionStore: st,
-			SetRecords: st}}
+			Records: st}}
 	}
 	conns := set.arrConns()
 	sonarr, radarr := arr.NewSonarr(conns.Sonarr, nil), arr.NewRadarr(conns.Radarr, nil)
@@ -194,7 +195,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		CollectionStore: st, SetRecords: st, Keys: keys}
+		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,

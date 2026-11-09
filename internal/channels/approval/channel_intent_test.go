@@ -10,14 +10,16 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // proposalFor builds an approved candidate for jobID carrying intent, made by createdBy.
-func proposalFor(t *testing.T, id, jobID, createdBy string, intent proposals.Intent) store.Proposal {
+func proposalFor(t *testing.T, id, jobID, createdBy string, intent proposals.Intent) proposalstore.Proposal {
 	t.Helper()
-	return store.Proposal{
+	return proposalstore.Proposal{
 		ID: id, JobID: jobID, Status: "approved", CreatedBy: createdBy, ApprovedBy: "admin",
 		Body: proposals.Proposal{
 			Intent: intent,
@@ -37,7 +39,7 @@ func TestPlan_NewChannelOwnsItsIntentAndRequester(t *testing.T) {
 		ChannelName: "Fixed Name", RefineText: "one-run note",
 		CurrentLineup: []proposals.LineupContext{{Key: "movie:tmdb:90000001"}},
 	})
-	if err := st.CreateJob(context.Background(), store.Job{ID: "job-new", Kind: "suggest", Status: "done"}); err != nil {
+	if err := st.CreateJob(context.Background(), proposalstore.Job{ID: "job-new", Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,7 +79,7 @@ func TestPlan_JobNamingAChannelPatchesItWithoutMovingTheRequest(t *testing.T) {
 	if _, err := st.SaveChannel(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "c1",
 	}); err != nil {
 		t.Fatal(err)
@@ -110,7 +112,7 @@ func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
 	putAvailable(t, st, 1, "Exact")
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orphan", Kind: "recurate", Status: "done", ChannelID: "c-removed",
 	}); err != nil {
 		t.Fatal(err)
@@ -118,7 +120,7 @@ func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	p := proposalFor(t, "p-orphan", "job-orphan", "", proposals.Intent{Description: "90s action"})
 
 	_, err := approval.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
-	if !errors.Is(err, store.ErrJobChannelGone) {
+	if !errors.Is(err, channelstore.ErrJobChannelGone) {
 		t.Fatalf("plan for a removed channel = %v, want ErrJobChannelGone", err)
 	}
 }
@@ -136,7 +138,7 @@ func TestPlan_RefusesToCreateAChannelForAProposalWithNoJob(t *testing.T) {
 	if err == nil {
 		t.Fatalf("planned a channel %q for a proposal whose job does not exist", ch.ID)
 	}
-	if errors.Is(err, store.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, channelstore.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
 		t.Errorf("error %v must not read as 'no channel yet' (which replans) or 'channel gone'", err)
 	}
 }

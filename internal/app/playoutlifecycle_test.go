@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -220,7 +221,7 @@ func seedLifecycleChannel(
 	playout *schedule.PlayoutPolicy,
 ) {
 	t.Helper()
-	_, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+	_, err := st.SaveChannel(context.Background(), channelstore.Channel{Channel: schedule.Channel{
 		ID: id, Name: id, Number: number, Strategy: schedule.Sequential, Status: status,
 	}, Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: playout}}})
 	if err != nil {

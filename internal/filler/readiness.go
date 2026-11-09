@@ -1,5 +1,11 @@
 package filler
 
+import (
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+)
+
 // ReadinessAction is the highest-impact operator action for the filler system. The server owns
 // this ordering so every client presents the same diagnosis instead of reverse-engineering it
 // from counters.
@@ -39,12 +45,12 @@ type StorageStatus struct {
 // this classifier: pipeline ownership, fetch limits, and channel matching have already crossed
 // their respective single sources of truth.
 type ReadinessInput struct {
-	Fetch    FetchStatus
+	Fetch    acquisition.FetchStatus
 	Storage  StorageStatus
-	Pipeline PipelineOverview
-	Pool     PoolReport
-	Runs     []AcquisitionRun
-	Repairs  AcquisitionRepairSummary
+	Pipeline pipelinestate.PipelineOverview
+	Pool     pod.PoolReport
+	Runs     []acquisition.AcquisitionRun
+	Repairs  acquisition.RepairSummary
 	// NeedsYou is Incoming's needs-help total: the choices Incoming lists. Review asks for a
 	// choice only when Incoming has one to show (#2733).
 	NeedsYou int
@@ -59,12 +65,12 @@ type Readiness struct {
 	ChannelID string
 	Count     int
 
-	Fetch    FetchStatus
+	Fetch    acquisition.FetchStatus
 	Storage  StorageStatus
-	Pipeline PipelineOverview
-	Pool     PoolReport
-	Runs     []AcquisitionRun
-	Repairs  AcquisitionRepairSummary
+	Pipeline pipelinestate.PipelineOverview
+	Pool     pod.PoolReport
+	Runs     []acquisition.AcquisitionRun
+	Repairs  acquisition.RepairSummary
 }
 
 // ProjectReadiness chooses one next action in impact order. Machine blockage precedes operator
@@ -88,7 +94,7 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 	// below, is the accurate next step. Sending it to "choose another folder" was the wrong fix.
 	case in.Repairs.Count > 0:
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Repairs.Count
-	case len(in.Runs) > 0 && (in.Runs[0].Status == AcquisitionError || in.Runs[0].Artifacts.Repair > 0):
+	case len(in.Runs) > 0 && (in.Runs[0].Status == acquisition.RunError || in.Runs[0].Artifacts.Repair > 0):
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Runs[0].Failed+in.Runs[0].Artifacts.Repair
 	case in.Pipeline.Recoverable > 0:
 		out.Next, out.Count = ReadinessRetryWork, in.Pipeline.Recoverable
@@ -97,7 +103,7 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 	case in.Pool.Eligible == 0:
 		out.Next = ReadinessAddFiller
 	default:
-		if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != MatchExact {
+		if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != pod.MatchExact {
 			out.Next, out.ChannelID = ReadinessImproveCoverage, weakest.ChannelID
 			out.Count = weakest.Report.Total
 		} else {

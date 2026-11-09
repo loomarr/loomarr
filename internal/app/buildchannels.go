@@ -8,12 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -32,21 +35,21 @@ import (
 )
 
 type channelBuild struct {
-	channelService         api.ChannelService
-	liveTV                 api.LiveTVService
-	tunerRescanner         api.TunerRescanner
-	tunarrConnector        api.TunarrConnector
+	channelService         guideapi.ChannelService
+	liveTV                 setupapi.LiveTVService
+	tunerRescanner         channelsapi.TunerRescanner
+	tunarrConnector        setupapi.TunarrConnector
 	backendController      *backendtransition.Controller
 	refreshBackendSettings func(context.Context) error
 	desiredBackend         func(context.Context) (string, error)
 	appliedBackend         func(context.Context) (string, error)
 	checkpoint             func(context.Context) (backendtransition.Snapshot, error)
-	playoutObserver        api.PlayoutObserver
+	playoutObserver        playoutapi.PlayoutObserver
 	playoutCapability      func() playout.Capacity
-	playout                api.Playout
-	playoutResolverService api.PlayoutResolver
+	playout                playoutapi.Playout
+	playoutResolverService playoutapi.PlayoutResolver
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
-	playoutGuide           api.PlayoutGuide
+	playoutGuide           playoutapi.PlayoutGuide
 	playoutResolver        *playoutresolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
 	channelNumbers         approval.NumberSource
@@ -58,18 +61,18 @@ func buildChannels(
 	libraryClient *library.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
-	jobReg *jobs.Registry, fillerLayout filler.Layout,
+	jobReg *jobs.Registry, fillerLayout cliplibrary.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
 ) (channelBuild, error) {
-	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
+	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
 	// store, Tunarr, and the media-server library are configured.
-	var channelSvc api.ChannelService
-	var liveTVSvc api.LiveTVService
-	var tunerRescanner api.TunerRescanner
-	var tunarrConnectSvc api.TunarrConnector
+	var channelSvc guideapi.ChannelService
+	var liveTVSvc setupapi.LiveTVService
+	var tunerRescanner channelsapi.TunerRescanner
+	var tunarrConnectSvc setupapi.TunarrConnector
 	var mediaSource *livetvpublish.MediaSourceConnector
 	var channelEngine *channels.Engine
 	var liveTVConnector *livetvpublish.LiveTVConnector
@@ -122,19 +125,19 @@ func buildChannels(
 	}
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
-	var playoutObserver api.PlayoutObserver
+	var playoutObserver playoutapi.PlayoutObserver
 	var playoutCapability func() playout.Capacity
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
-	var playoutSvc api.Playout
-	var playoutResolverSvc api.PlayoutResolver
+	var playoutSvc playoutapi.Playout
+	var playoutResolverSvc playoutapi.PlayoutResolver
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
-	var playoutGuideSvc api.PlayoutGuide
+	var playoutGuideSvc playoutapi.PlayoutGuide
 	// Declared out here so the pod assembler can be attached further down: the resolver is
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
@@ -218,9 +221,8 @@ func buildChannels(
 		// disagree about which numbers exist. Both must read the same Tunarr.
 		chanNumbers = tunarrNumbers{pusher}
 		channelEngine = channels.New(st, pusher, avail, transportFreshness, channels.Config{
-			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
-			// alternative is future design work; backfill is stable today
-			// placement, handled inside the engine, not the placeholder kind.
+			// Pending-slot policy is pod-fill (§9); backfill placement is stable and is handled
+			// inside the engine, not by the placeholder kind.
 			Policy:               schedule.PodFill,
 			ReconcileTTL:         settings.ChannelReconcileEvery.Get(set),
 			BreaksPerHour:        settings.FillerBreaksPerHour.Get(set),
@@ -271,7 +273,7 @@ func buildChannels(
 		// handler: provisioning availability events (webhook + reconciler) fan to
 		// OnAvailability, so an acquisition that lands `available` reconciles the
 		// channels referencing it immediately — instead of waiting up to a full
-		// sweep interval. (#10: the emitter was nil before this wire.)
+		// sweep interval.
 		emitter.setEngine(channelEngine)
 
 		backendView = backendtransition.NewDurableView(st)
@@ -299,9 +301,9 @@ func buildChannels(
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := settings.ChannelReconcileEvery.Get(set)
-		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
-		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
-		// constructed here; it has no standalone loop.
+		// The channel sweep is a scheduler job (§18.1): the desired-vs-actual Sweep (with its own
+		// ClaimDueChannels lease), driven by River. The Runner's lease/batch are constructed
+		// here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)

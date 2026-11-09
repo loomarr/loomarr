@@ -6,11 +6,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/moviecollections"
@@ -25,6 +31,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -33,18 +40,18 @@ import (
 
 type suggestionBuild struct {
 	suggest          api.SuggestService
-	progress         api.ProposalProgress // the same *suggest.Service, read for live generation progress
-	workflow         api.ProposalWorkflow
+	progress         proposalsapi.ProposalProgress // the same *suggest.Service, read for live generation progress
+	workflow         proposalsapi.ProposalWorkflow
 	durableWorkflow  *workflow.Workflow
-	search           api.SearchService
-	movieCollections api.MovieCollectionService
-	collections      api.CollectionService
-	ideaLibrary      api.IdeaLibrary
-	systemLLM        api.SystemLLMService
-	icons            api.IconService
+	search           catalogapi.SearchService
+	movieCollections libraryapi.MovieCollectionService
+	collections      libraryapi.CollectionService
+	ideaLibrary      channelsapi.IdeaLibrary
+	systemLLM        system.SystemLLMService
+	icons            channelsapi.IconService
 	images           *images.Service
 	imageFetcher     *images.Fetcher
-	timelineThumbs   api.TimelineThumbResolver
+	timelineThumbs   guideapi.TimelineThumbResolver
 }
 
 func buildSuggestions(
@@ -55,13 +62,13 @@ func buildSuggestions(
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
-	fillerLayout filler.Layout,
+	fillerLayout cliplibrary.Layout,
 	activityRecorder *activity.Recorder,
 	log *slog.Logger,
 	libraryClient *library.Client,
 	tmdbClient *tmdb.Client,
-	channelService api.ChannelService,
-	approver *suggest.Approver,
+	channelService guideapi.ChannelService,
+	approver *accept.Approver,
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
 	holidays holidayvocab.Source,
@@ -127,7 +134,7 @@ func buildSuggestions(
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
 		WithQualityRecorder(st)
-	service = service.WithAutoApprove(suggest.NewAutoApprover(
+	service = service.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))

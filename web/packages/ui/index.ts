@@ -94,6 +94,7 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
   LibraryScan,
@@ -186,6 +187,15 @@ export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header"
 export { ScreenHeader } from "./src/screen-header";
 export type { SearchFieldProps } from "./src/search-field";
 export { SearchField } from "./src/search-field";
+export type {
+  SettingsOverviewAdvanced,
+  SettingsOverviewCard,
+  SettingsOverviewLink,
+  SettingsOverviewPage,
+  SettingsOverviewProblem,
+  SettingsOverviewProps,
+} from "./src/settings-overview";
+export { SettingsOverview } from "./src/settings-overview";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
 export type {

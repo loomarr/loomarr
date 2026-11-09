@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -99,11 +99,11 @@ func (r recordingClipIngestor) Prepare(_ context.Context, sources []fetch.Source
 }
 
 type recordingAcquisitions struct {
-	runs chan filler.AcquisitionRun
+	runs chan acquisition.AcquisitionRun
 	err  error
 }
 
-func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run filler.AcquisitionRun) error {
+func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run acquisition.AcquisitionRun) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -325,7 +325,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 		sources: make(chan []fetch.Source, 1),
 		result:  fetch.Result{Fetched: 2, Skipped: 1},
 	}
-	runs := make(chan filler.AcquisitionRun, 3)
+	runs := make(chan acquisition.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" }, now: func() time.Time { return fixed },
@@ -341,8 +341,8 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	if jobID != "acq-17" {
 		t.Fatalf("job id = %q, want acq-17", jobID)
 	}
-	for i, want := range []filler.AcquisitionStatus{
-		filler.AcquisitionQueued, filler.AcquisitionRunning, filler.AcquisitionSuccess,
+	for i, want := range []acquisition.RunStatus{
+		acquisition.RunQueued, acquisition.RunRunning, acquisition.RunSuccess,
 	} {
 		select {
 		case run := <-runs:
@@ -352,7 +352,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 			if run.ID != "acq-17" || run.SourceID != "archive:classic" || run.Requested != 2 {
 				t.Fatalf("snapshot %d = %+v, want stable run identity and request count", i, run)
 			}
-			if want == filler.AcquisitionSuccess && (run.Fetched != 2 || run.Skipped != 1 || run.CompletedAt.IsZero()) {
+			if want == acquisition.RunSuccess && (run.Fetched != 2 || run.Skipped != 1 || run.CompletedAt.IsZero()) {
 				t.Fatalf("terminal snapshot = %+v, want downloader counts and completion", run)
 			}
 		case <-time.After(time.Second):
@@ -372,7 +372,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 }
 
 func TestIngestPull_RejectsUnknownRegisteredKindBeforeDurableWork(t *testing.T) {
-	runs := make(chan filler.AcquisitionRun, 1)
+	runs := make(chan acquisition.AcquisitionRun, 1)
 	a := fillerServiceAdapter{
 		fetcher: successfulClipIngestor{}, acquisitions: recordingAcquisitions{runs: runs},
 		newID: func() string { return "acq-17" },
@@ -381,9 +381,9 @@ func TestIngestPull_RejectsUnknownRegisteredKindBeforeDurableWork(t *testing.T) 
 			return nil
 		},
 	}
-	if _, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{{
+	if _, err := a.IngestPull(t.Context(), "pull-7", []acquisition.AcquisitionTarget{{
 		SourceID: "unknown", Kind: "other", URL: "https://archive.org/details/one",
-	}}, func(context.Context, filler.AcquisitionRun) error {
+	}}, func(context.Context, acquisition.AcquisitionRun) error {
 		t.Error("invalid source reached approval commit")
 		return nil
 	}); err == nil {
@@ -401,7 +401,7 @@ func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
 	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
 		t.Fatal(err)
 	}
-	runs := make(chan filler.AcquisitionRun, 1)
+	runs := make(chan acquisition.AcquisitionRun, 1)
 	a := fillerServiceAdapter{
 		sources: st, fetcher: successfulClipIngestor{}, acquisitions: recordingAcquisitions{runs: runs},
 		newID: func() string { return "must-not-start" },
@@ -410,7 +410,7 @@ func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
 			return nil
 		},
 	}
-	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/one"}); !errors.Is(err, filler.ErrProviderPaused) {
+	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/one"}); !errors.Is(err, acquisition.ErrProviderPaused) {
 		t.Fatalf("direct ingest while Archive.org paused = %v, want ErrProviderPaused", err)
 	}
 	select {
@@ -421,7 +421,7 @@ func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
 }
 
 func TestIngest_StorageRefusalHappensBeforeDurableQueueMutation(t *testing.T) {
-	runs := make(chan filler.AcquisitionRun, 1)
+	runs := make(chan acquisition.AcquisitionRun, 1)
 	refusal := &fetch.CapacityError{Decision: storagegovernor.Decision{
 		Snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonHostReserve},
 	}}
@@ -496,11 +496,11 @@ func TestFillerServiceAdapter_FindsSourcesThroughTheRegisteredProvider(t *testin
 			t.Errorf("ResolveSource(%q) succeeded, want a refusal", kind)
 		}
 	}
-	if _, err := adapter.SuggestSources(t.Context(), "youtube", "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
-		t.Errorf("SuggestSources(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	if _, err := adapter.SuggestSources(t.Context(), "youtube", "retro", 3); !errors.Is(err, acquisition.ErrSourceProvider) {
+		t.Errorf("SuggestSources(youtube) without yt-dlp = %v, want acquisition.ErrSourceProvider", err)
 	}
-	if _, err := adapter.ResolveSource(t.Context(), "youtube", "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
-		t.Errorf("ResolveSource(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	if _, err := adapter.ResolveSource(t.Context(), "youtube", "https://www.youtube.com/@vault"); !errors.Is(err, acquisition.ErrSourceProvider) {
+		t.Errorf("ResolveSource(youtube) without yt-dlp = %v, want acquisition.ErrSourceProvider", err)
 	}
 }
 
@@ -602,7 +602,7 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	application := &Application{lifecycle: lifecycle}
 	started := make(chan struct{})
 	cancelled := make(chan struct{})
-	runs := make(chan filler.AcquisitionRun, 3)
+	runs := make(chan acquisition.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
 		fetcher:      blockingClipIngestor{started: started, cancelled: cancelled},
 		acquisitions: recordingAcquisitions{runs: runs},
@@ -614,7 +614,7 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	if _, err := a.Ingest(requestCtx, []string{"https://archive.org/details/one"}); err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
-	if run := <-runs; run.Status != filler.AcquisitionQueued {
+	if run := <-runs; run.Status != acquisition.RunQueued {
 		t.Fatalf("first run = %q, want queued", run.Status)
 	}
 	<-started
@@ -629,11 +629,11 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 		t.Fatalf("Shutdown: %v", err)
 	}
 	<-cancelled
-	if run := <-runs; run.Status != filler.AcquisitionRunning {
+	if run := <-runs; run.Status != acquisition.RunRunning {
 		t.Fatalf("second run = %q, want running", run.Status)
 	}
 	terminal := <-runs
-	if terminal.Status != filler.AcquisitionError || terminal.Error == "" || terminal.CompletedAt.IsZero() {
+	if terminal.Status != acquisition.RunError || terminal.Error == "" || terminal.CompletedAt.IsZero() {
 		t.Fatalf("terminal run = %+v, want durable cancellation error", terminal)
 	}
 }
@@ -647,14 +647,14 @@ func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
 
 func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []fetch.Source, 1)}
-	runs := make(chan filler.AcquisitionRun, 3)
+	runs := make(chan acquisition.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" },
 		start: testInteractiveOperationLauncher,
 	}
 
-	_, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{
+	_, err := a.IngestPull(t.Context(), "pull-7", []acquisition.AcquisitionTarget{
 		{SourceID: "classic", Kind: "archive", URL: "https://archive.org/details/one"},
 		{SourceID: "holiday", Kind: "youtube", URL: "https://youtube.com/watch?v=two"},
 	}, a.acquisitions.UpsertAcquisitionRun)
@@ -686,7 +686,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []fetch.Source, 1)}
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)}, providers: testFillerProviders(),
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan acquisition.AcquisitionRun, 3)}, providers: testFillerProviders(),
 		newID: func() string { return "acq-18" },
 		start: testInteractiveOperationLauncher,
 	}

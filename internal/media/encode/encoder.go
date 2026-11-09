@@ -7,7 +7,7 @@ type Encoder string
 
 // The families ErsatzTV maintains pipelines for, which is the breadth real deployments
 // need: NVIDIA, Intel, AMD on both OSes, Apple Silicon, and ARM SBCs. Availability is never
-// assumed from this list — `playout.Detect` asks the local ffmpeg build and then tries each one.
+// assumed from this list — `playout.DetectObserved` asks the local ffmpeg build and then tries each one.
 const (
 	EncoderSoftware     Encoder = "libx264"           // always available
 	EncoderNVENC        Encoder = "h264_nvenc"        // NVIDIA
@@ -26,11 +26,10 @@ const (
 // its init segment and cannot survive a mid-stream codec change; mixing h264 into an HEVC fMP4 is a
 // black frame.) Each is the hevc sibling of the h264 encoder above, on the same hardware engine, so
 // it shares that family's preset vocabulary — see HEVCVariant and the family-keyed VideoArgs.
-// ⚠ TYPED `Encoder`, not bare strings. They were untyped constants until 2026-08-09, and that is
-// the mechanical reason nine encoders silently skipped every `switch enc Encoder` in capability.go:
-// an untyped constant satisfies `Encoder` where one is expected, so nothing ever failed to compile
-// — it just never matched a case either. Typing them does not by itself fix a missing case, but it
-// makes the omission the kind of thing a reader and a linter can see.
+// ⚠ TYPED `Encoder`, not bare strings. An untyped constant satisfies `Encoder` where one is
+// expected, so a `switch enc Encoder` that omits it never fails to compile — it just never matches
+// a case either. Typing them does not by itself fix a missing case, but it makes the omission the
+// kind of thing a reader and a linter can see.
 const (
 	EncoderSoftwareHEVC Encoder = "libx265"
 	EncoderNVENCHEVC    Encoder = "hevc_nvenc"
@@ -54,21 +53,19 @@ var H264Engines = []Encoder{
 // engineByEncoder backs EngineOf.
 //
 // ⚠ **Why this exists, and why it is DERIVED rather than written out.** Three functions —
-// DeviceInitArgs, UploadFilter, DecodeArgs — key on the encoder's engine, and each once listed only
-// the h264 constants. So every hevc_* encoder fell to `default` and got
-// `deviceInit=[] hwdec=[] upload=""`: no `-vaapi_device`, no `-init_hw_device` for QSV/Vulkan, no
-// `-hwaccel cuda` for NVENC. The consequence was not a clean failure but a WORSE one — the
-// hardware encode produced nothing, the ladder fell through to libx264, and for an HEVC fMP4
-// session that mid-stream codec change is the black frame the plan exists to prevent.
+// DeviceInitArgs, UploadFilter, DecodeArgs — key on the encoder's engine, so every hevc_* encoder
+// must normalise to its h264 engine. A switch listing only the h264 constants would send an hevc_*
+// encoder to `default` and give it `deviceInit=[] hwdec=[] upload=""`: no `-vaapi_device`, no
+// `-init_hw_device` for QSV/Vulkan, no `-hwaccel cuda` for NVENC. The consequence is not a clean
+// failure but a WORSE one — the hardware encode produces nothing, the ladder falls through to
+// libx264, and for an HEVC fMP4 session that mid-stream codec change is the black frame.
 //
-// playout's familyOf is NOT the right tool here and the distinction matters: it collapses VAAPI,
-// Vulkan, VideoToolbox, RKMPP and V4L2M2M into `familyOther` because they share a *preset
-// vocabulary*. These three functions need them kept APART, because they differ in exactly the thing
-// being selected — the device, the upload filter, the decode flag.
+// A preset-vocabulary grouping that collapses VAAPI, Vulkan, VideoToolbox, RKMPP and V4L2M2M into
+// one family is NOT the right tool here: these three functions need them kept APART, because they
+// differ in exactly the thing being selected — the device, the upload filter, the decode flag.
 //
 // The map is built from HEVCVariant rather than hand-written, so the pair list has one home. A
-// tenth engine added there is normalized here with no second edit — which is the property the
-// original three switches lacked.
+// tenth engine added there is normalized here with no second edit.
 var engineByEncoder = func() map[Encoder]Encoder {
 	m := make(map[Encoder]Encoder, len(H264Engines)*2)
 	for _, h := range H264Engines {

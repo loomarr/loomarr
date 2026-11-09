@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 type collectionBody struct {
@@ -152,7 +153,7 @@ func TestCollections(t *testing.T) {
 		t.Fatalf("edited %+v", edited)
 	}
 
-	if _, err := h.Store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+	if _, err := h.Store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch-4", Name: "Saturday Morning", Number: 4, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
 	}, Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{
 		{What: &schedule.ScopePolicy{Collections: []string{made.ID}}},

@@ -19,7 +19,7 @@ import (
 // scratchLock is the file in each root whose lock its owner holds.
 const scratchLock = ".owner"
 
-// unlockedQuiet is how long a root with no lock file (made before roots had one) must go
+// unlockedQuiet is how long a root with no lock file must go
 // unwritten before it is taken for a dead process's.
 const unlockedQuiet = 24 * time.Hour
 

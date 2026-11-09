@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -40,14 +41,14 @@ const memberToken = "test-member-token"
 // "member" and mean it.
 type testAuthorizer struct{}
 
-func (testAuthorizer) Authorize(r *http.Request) api.Role {
+func (testAuthorizer) Authorize(r *http.Request) httpcore.Role {
 	switch strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") {
 	case adminToken:
-		return api.RoleAdmin
+		return httpcore.RoleAdmin
 	case memberToken:
-		return api.RoleMember
+		return httpcore.RoleMember
 	default:
-		return api.RoleAnonymous
+		return httpcore.RoleAnonymous
 	}
 }
 

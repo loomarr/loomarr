@@ -9,9 +9,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -30,7 +36,7 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 			t.Fatal(err)
 		}
 	}
-	layout, err := filler.NewLayout(clipDir, watchDir)
+	layout, err := cliplibrary.NewLayout(clipDir, watchDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +73,8 @@ printf '%s\n' '{"id":"retro-toy","title":"Retro Toy Spot","license":"https://exa
 printf '%s\n' 'youtube retro-toy' > "$archive"
 printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 `)
-	scanProbe := func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+	scanProbe := func(context.Context, string) (tools.Probed, error) {
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	artwork := func(_ context.Context, _, stillDst, animDst string, _ float64) error {
 		if err := os.WriteFile(stillDst, []byte("still"), 0o600); err != nil {
@@ -78,14 +84,14 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 
 	probeCalls := 0
-	interruptedProbe := func(context.Context, string) (filler.Probed, error) {
+	interruptedProbe := func(context.Context, string) (tools.Probed, error) {
 		probeCalls++
 		if probeCalls == 1 {
-			return filler.Probed{}, errors.New("decoder temporarily unavailable")
+			return tools.Probed{}, errors.New("decoder temporarily unavailable")
 		}
-		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	newPipeline := func(database records.Store, probe filler.Prober) *filler.Pipeline {
+	newPipeline := func(database records.Store, probe tools.Prober) *filler.Pipeline {
 		clipStore := fillerPipelineClipAdapter{st: database}
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),
@@ -94,7 +100,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 			WithRewind(fillerRewindAdapter{st: database}, layout.ClipDir())
 	}
 	pipeline := newPipeline(st, interruptedProbe)
-	syncer := filler.NewSyncer(filler.DirSource{
+	syncer := filler.NewSyncer(cliplibrary.DirSource{
 		Layout: layout, Probe: scanProbe, Artwork: artwork,
 	}, fillerStoreAdapter{st: st}, layout, func() time.Time { return now }, nil).
 		WithAcquisitionManifests(st)
@@ -132,7 +138,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if jobID != "acq-beta-journey" {
 		t.Fatalf("job id = %q, want acq-beta-journey", jobID)
 	}
-	waitForAcquisition(t, st, jobID, now, filler.AcquisitionSuccess)
+	waitForAcquisition(t, st, jobID, now, acquisition.RunSuccess)
 
 	held, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
@@ -144,14 +150,14 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Logf("acquisition = %+v artifacts = %+v", run, artifacts)
 		t.Fatalf("catalog after acquisition = %+v, want one held clip", held)
 	}
-	if held[0].Role != filler.Unclassified {
+	if held[0].Role != clips.Unclassified {
 		t.Fatalf("downloaded clip kind = %q, want descriptively unclassified", held[0].Role)
 	}
 	if playable, err := (clipCatalogAdapter{st: st}).AllClips(ctx); err != nil || len(playable) != 0 {
 		t.Fatalf("playable catalog before readiness = %+v, %v; want empty", playable, err)
 	}
 	row, found, err := st.GetClipPipeline(ctx, held[0].Hash)
-	if err != nil || !found || row.AcquisitionID != jobID || row.Disposition != filler.DispositionRunning {
+	if err != nil || !found || row.AcquisitionID != jobID || row.Disposition != pipelinestate.DispositionRunning {
 		t.Fatalf("enrolled conveyor = %+v, found=%v, err=%v", row, found, err)
 	}
 	failed, err := pipeline.RunOnce(ctx)
@@ -162,7 +168,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatalf("interrupted first pass = %+v, want one durable retry", failed)
 	}
 	row, found, err = st.GetClipPipeline(ctx, held[0].Hash)
-	if err != nil || !found || row.Status != filler.StatusFailed || row.Attempts != 1 || !row.NextRun.After(clock) {
+	if err != nil || !found || row.Status != pipelinestate.StatusFailed || row.Attempts != 1 || !row.NextRun.After(clock) {
 		t.Fatalf("retry state = %+v, found=%v, err=%v", row, found, err)
 	}
 
@@ -190,14 +196,14 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(playable) != 1 || playable[0].Held || playable[0].Role != filler.Unclassified || playable[0].Placement != filler.PlacementBreakBody {
+	if len(playable) != 1 || playable[0].Held || playable[0].Role != clips.Unclassified || playable[0].Placement != clips.PlacementBreakBody {
 		t.Fatalf("playable catalog = %+v, want one unclassified break-body Ready clip", playable)
 	}
 	event, found, err := reopened.GetFillerReadyEvent(ctx, playable[0].Hash)
 	if err != nil || !found || event.AcquisitionID != jobID || event.Enrollment.Kind != filler.EnrollmentAcquisition {
 		t.Fatalf("Ready event = %+v, found=%v, err=%v", event, found, err)
 	}
-	pool, err := filler.NewPodAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
+	pool, err := pod.NewAdapter(clipCatalogAdapter{st: reopened}, nil, nil, nil).PoolCounts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +228,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want filler.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.RunStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

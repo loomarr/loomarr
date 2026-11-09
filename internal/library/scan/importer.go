@@ -34,8 +34,8 @@ const (
 const headerConcurrency = 4
 
 // arrRetry is how long a folder pass goes on with an arr's failed listing before asking it again.
-// A change notification arrives every few seconds on a busy share; each used to ask a down arr
-// again, and wait on it.
+// A change notification arrives every few seconds on a busy share; asking a down arr again on each
+// would wait on it every time.
 const arrRetry = time.Minute
 
 // ImportStore is the store the importer reads roots from and keeps its file table in.
@@ -57,9 +57,9 @@ type Artwork interface {
 // landscape, clearart, discart) stay references: nothing shows them yet.
 var ImportedArt = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo}
 
-// Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
+// Importer is the Library's scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of
-// files that have none yet. Nothing reads the scanner's origins until the cutover.
+// files that have none yet. The Library's tables are projected from those origins.
 type Importer struct {
 	Store     ImportStore
 	Inventory inventory.Service

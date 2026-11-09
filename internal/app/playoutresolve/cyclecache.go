@@ -18,9 +18,9 @@ import (
 // with GC a further 21% from the allocation churn that arrangement produces. The store was
 // 0.66% — this path is CPU, not I/O.
 //
-// A previous round made the channels resolve CONCURRENTLY (see api.channelGuide), which turned
-// a sum into a max and took ~490ms to ~100ms. That is the floor concurrency can reach: you
-// cannot parallelize below the slowest single channel. The remaining cost is REDUNDANT rather
+// The channels already resolve CONCURRENTLY (see api.channelGuide), which turns a sum into a max
+// (~490ms to ~100ms). That is the floor concurrency can reach: you cannot parallelize below the
+// slowest single channel. The remaining cost is REDUNDANT rather
 // than slow — the same channel, unchanged, is re-arranged on every poll of a grid that refetches
 // on an SSE frame and re-renders every thirty seconds.
 //

@@ -9,14 +9,15 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type journeyNotificationSource struct {
 	*testkit.NotificationRepository
-	channel store.Channel
+	channel channelstore.Channel
 }
 
 func (s *journeyNotificationSource) ListNotificationReferenceRecipients(
@@ -30,7 +31,7 @@ func (s *journeyNotificationSource) ListNotificationReferenceRecipients(
 	return nil, nil
 }
 
-func (s *journeyNotificationSource) GetChannel(context.Context, string) (store.Channel, error) {
+func (s *journeyNotificationSource) GetChannel(context.Context, string) (channelstore.Channel, error) {
 	return s.channel, nil
 }
 
@@ -59,7 +60,7 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 	}
 	source := &journeyNotificationSource{
 		NotificationRepository: repository,
-		channel:                store.Channel{Channel: schedule.Channel{ID: "channel-1", Name: "Saturday Cartoons"}, Revision: 3},
+		channel:                channelstore.Channel{Channel: schedule.Channel{ID: "channel-1", Name: "Saturday Cartoons"}, Revision: 3},
 	}
 	nextID := 0
 	service := notifications.NewService(repository, notifications.NewDestinationRouter(source, nil), nil, func() string {
@@ -69,7 +70,7 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 	coordinator := &productNotificationCoordinator{
 		publisher: notifications.NewProductPublisher(service), source: source,
 	}
-	proposal := store.Proposal{
+	proposal := proposalstore.Proposal{
 		ID: "proposal-1", CreatedBy: "requester-1",
 		Body: proposals.Proposal{ChannelName: "Saturday Cartoons"},
 	}
@@ -178,7 +179,7 @@ func TestLibraryNotificationsReachOperators(t *testing.T) {
 }
 
 func TestProposalSubjectTruncatesLongUnicodeWithoutBreakingUTF8(t *testing.T) {
-	row := store.Proposal{Body: proposals.Proposal{Intent: proposals.Intent{Description: strings.Repeat("é", 150)}}}
+	row := proposalstore.Proposal{Body: proposals.Proposal{Intent: proposals.Intent{Description: strings.Repeat("é", 150)}}}
 	subject := proposalSubject(row)
 	if len(subject) > 200 || subject == "Channel proposal" {
 		t.Fatalf("unicode subject = %q (%d bytes)", subject, len(subject))

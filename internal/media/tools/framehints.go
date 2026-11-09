@@ -18,7 +18,7 @@ import (
 //
 // ⚠ **These are HINTS, never facts, and never override a grounded tag.** They seed
 // a suggested era for a clip that has NO other era signal — exactly the demotion the
-// era-grounding rule (tag.go validateTags) applies to an LLM-proposed year: the
+// era-grounding rule applies to an LLM-proposed year: the
 // guess is shown as an uncited Context suggestion, and a human confirms it by
 // PATCHing Era, which hides it. They are the
 // weakest tier for a reason. A B&W 4:3 spot is *probably* pre-1970s, but a modern

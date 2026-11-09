@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -53,7 +53,7 @@ func TestToAPIEntry_CarriesRegistryPresets(t *testing.T) {
 		Key: "filler.fetch.every", Owner: settings.OwnerFillerDownloads, Kind: settings.KindDuration,
 		Presets: []settings.Preset{{Value: "0s", Label: "Never"}, {Value: "6h0m0s", Label: "Every 6 hours"}},
 	}})
-	want := []api.SettingPreset{{Value: "0s", Label: "Never"}, {Value: "6h0m0s", Label: "Every 6 hours"}}
+	want := []setupapi.SettingPreset{{Value: "0s", Label: "Never"}, {Value: "6h0m0s", Label: "Every 6 hours"}}
 	if !slices.Equal(entry.Presets, want) {
 		t.Fatalf("presets = %#v, want %#v", entry.Presets, want)
 	}

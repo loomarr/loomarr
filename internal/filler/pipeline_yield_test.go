@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // scriptedHeadroom reports busy for its first `busyFor` questions, then clear. startPlayback is a
@@ -63,7 +64,7 @@ func TestPipelineYield_TranscodeWaitsForPlaybackToClearThenRuns(t *testing.T) {
 	if _, err := yieldPipe(st, asSlice(stages), head, sl).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := stages[filler.StageTranscode].runs; got != 1 {
+	if got := stages[pipelinestate.StageTranscode].runs; got != 1 {
 		t.Fatalf("transcode ran %d times, want 1 after playback cleared", got)
 	}
 	if len(sl.slept) != 2 {
@@ -82,7 +83,7 @@ func TestPipelineYield_ContinuousPlaybackLeavesTheClipQueuedAfterABoundedWait(t 
 	if _, err := yieldPipe(st, asSlice(stages), &scriptedHeadroom{busyFor: 1 << 30}, sl).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := stages[filler.StageTranscode].runs; got != 0 {
+	if got := stages[pipelinestate.StageTranscode].runs; got != 0 {
 		t.Fatalf("transcode ran %d times while playback never cleared", got)
 	}
 	var total time.Duration
@@ -93,7 +94,7 @@ func TestPipelineYield_ContinuousPlaybackLeavesTheClipQueuedAfterABoundedWait(t 
 		t.Fatalf("waited %v, the bound is 20s", total)
 	}
 	row := st.rows["c1"]
-	if row.Stage != filler.StageTranscode || row.Status != filler.StatusQueued || row.Attempts != 0 {
+	if row.Stage != pipelinestate.StageTranscode || row.Status != pipelinestate.StatusQueued || row.Attempts != 0 {
 		t.Fatalf("clip = %q/%q attempts=%d, want queued at transcode with no attempt spent", row.Stage, row.Status, row.Attempts)
 	}
 }
@@ -123,8 +124,8 @@ func TestPipelineYield_IdleBoxNeverWaits(t *testing.T) {
 	if _, err := yieldPipe(st, asSlice(stages), &scriptedHeadroom{}, sl).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(sl.slept) != 0 || stages[filler.StageTranscode].runs != 1 {
-		t.Fatalf("idle box: slept %v, transcode runs %d", sl.slept, stages[filler.StageTranscode].runs)
+	if len(sl.slept) != 0 || stages[pipelinestate.StageTranscode].runs != 1 {
+		t.Fatalf("idle box: slept %v, transcode runs %d", sl.slept, stages[pipelinestate.StageTranscode].runs)
 	}
 }
 
@@ -139,8 +140,8 @@ func TestPipelineYield_CheapRungsAreNeverGated(t *testing.T) {
 	if _, err := yieldPipe(st, asSlice(stages), head, sl).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range filler.StageOrder {
-		if id == filler.StageProbe && stages[id].runs != 1 {
+	for _, id := range pipelinestate.StageOrder {
+		if id == pipelinestate.StageProbe && stages[id].runs != 1 {
 			t.Errorf("cheap rung %s ran %d times under continuous playback, want 1", id, stages[id].runs)
 		}
 	}
@@ -155,13 +156,13 @@ func TestPipelineYield_PlaybackStartingMidEncodeDefersIt(t *testing.T) {
 	seedEnrolled(st, "c2")
 	stages := yieldStages()
 	head := &scriptedHeadroom{}
-	stages[filler.StageTranscode].killCtx = head.startPlayback
+	stages[pipelinestate.StageTranscode].killCtx = head.startPlayback
 
 	res, err := yieldPipe(st, asSlice(stages), head, &sleepLog{}).RunOnce(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := stages[filler.StageTranscode].runs; got != 1 {
+	if got := stages[pipelinestate.StageTranscode].runs; got != 1 {
 		t.Fatalf("transcode ran %d times, want 1: the yield speaks for the rest of the pass", got)
 	}
 	if res.Failed != 0 || res.Deferred == 0 {
@@ -169,7 +170,7 @@ func TestPipelineYield_PlaybackStartingMidEncodeDefersIt(t *testing.T) {
 	}
 	for _, id := range []string{"c1", "c2"} {
 		row := st.rows[id]
-		if row.Stage != filler.StageTranscode || row.Status != filler.StatusQueued || row.Attempts != 0 {
+		if row.Stage != pipelinestate.StageTranscode || row.Status != pipelinestate.StatusQueued || row.Attempts != 0 {
 			t.Errorf("%s = %q/%q attempts=%d, want queued at transcode with no attempt spent", id, row.Stage, row.Status, row.Attempts)
 		}
 	}
@@ -182,20 +183,20 @@ func TestPipelineYield_TranscriptionIsNotPreempted(t *testing.T) {
 	seedEnrolled(st, "c1")
 	stages := yieldStages()
 	head := &scriptedHeadroom{}
-	stages[filler.StageTranscribe].cost = filler.CostWhisper
-	stages[filler.StageTranscribe].killCtx = head.startPlayback
+	stages[pipelinestate.StageTranscribe].cost = filler.CostWhisper
+	stages[pipelinestate.StageTranscribe].killCtx = head.startPlayback
 
 	if _, err := yieldPipe(st, asSlice(stages), head, &sleepLog{}).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if row := st.rows["c1"]; filler.StageIndex(row.Stage) <= filler.StageIndex(filler.StageTranscribe) {
+	if row := st.rows["c1"]; pipelinestate.StageIndex(row.Stage) <= pipelinestate.StageIndex(pipelinestate.StageTranscribe) {
 		t.Fatalf("clip = %q/%q, want it past transcription", row.Stage, row.Status)
 	}
 }
 
 // yieldStages is allStages with the transcode rung declaring the cost the real one does.
-func yieldStages() map[filler.StageID]*fakeStage {
+func yieldStages() map[pipelinestate.StageID]*fakeStage {
 	stages := allStages()
-	stages[filler.StageTranscode].cost = filler.CostTranscode
+	stages[pipelinestate.StageTranscode].cost = filler.CostTranscode
 	return stages
 }

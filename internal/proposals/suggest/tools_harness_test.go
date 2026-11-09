@@ -19,7 +19,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	ledger := newWorkLedger()
 	ledger.beginGeneration()
 	if !ledger.reserve(1) {
-		return `{"error":"suggestion budget exhausted"}`, nil, proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}, false
+		return `{"error":"suggestion budget exhausted"}`, nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: FailureBudgetExhausted}, false
 	}
 	result, candidates, trace, valid, _ := s.runToolWithDateMeaning(ctx, tc, intent, feedback, nil, ledger)
 	return result, candidates, trace, valid
@@ -42,7 +42,7 @@ func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall,
 		extra = len(prepared.queries) - 1
 	}
 	if !ledger.reserve(extra) {
-		return `{"error":"suggestion budget exhausted"}`, nil, proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}, true, &prepared.meaning
+		return `{"error":"suggestion budget exhausted"}`, nil, proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, Terminal: FailureBudgetExhausted}, true, &prepared.meaning
 	}
 	result, candidates, trace, valid := s.executePreparedTool(ctx, prepared, intent, feedback)
 	return result, candidates, trace, valid, &prepared.meaning

@@ -318,7 +318,7 @@ func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 
 	// ⚠ Order matters and is not interchangeable. The new row exists before the refs move, so no
 	// ref ever points at a hash with no row; the refs move before the old row is deleted, because
-	// `image_refs` cascades on delete and doing it the other way round would silently drop the
+	// every owner's image refs cascade on delete and doing it the other way round would silently drop the
 	// association the image existed to record.
 	if err := f.store.RepointRefs(ctx, img.Hash, hash); err != nil {
 		return fetchOutcome{err: err}

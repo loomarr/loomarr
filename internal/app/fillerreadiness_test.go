@@ -9,28 +9,31 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type readinessStoreFuncs struct {
-	pipeline func(context.Context, time.Time) (filler.PipelineOverview, error)
-	runs     func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
-	repairs  func(context.Context) (filler.AcquisitionRepairSummary, error)
+	pipeline func(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
+	runs     func(context.Context, int, time.Time) ([]acquisition.AcquisitionRun, error)
+	repairs  func(context.Context) (acquisition.RepairSummary, error)
 }
 
 func (readinessStoreFuncs) CountReadySplitProposals(context.Context) (int, error) { return 0, nil }
 
-func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error) {
+func (s readinessStoreFuncs) PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
 	return s.pipeline(ctx, at)
 }
 
-func (s readinessStoreFuncs) ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error) {
+func (s readinessStoreFuncs) ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]acquisition.AcquisitionRun, error) {
 	return s.runs(ctx, limit, at)
 }
 
-func (s readinessStoreFuncs) AcquisitionRepairSummary(ctx context.Context) (filler.AcquisitionRepairSummary, error) {
+func (s readinessStoreFuncs) AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error) {
 	return s.repairs(ctx)
 }
 
@@ -51,17 +54,17 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 	}
 	a := fillerServiceAdapter{
 		readiness: readinessStoreFuncs{
-			pipeline: func(context.Context, time.Time) (filler.PipelineOverview, error) {
-				return filler.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
+			pipeline: func(context.Context, time.Time) (pipelinestate.PipelineOverview, error) {
+				return pipelinestate.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
 			},
-			runs: func(context.Context, int, time.Time) ([]filler.AcquisitionRun, error) { return nil, nil },
-			repairs: func(context.Context) (filler.AcquisitionRepairSummary, error) {
-				return filler.AcquisitionRepairSummary{}, nil
+			runs: func(context.Context, int, time.Time) ([]acquisition.AcquisitionRun, error) { return nil, nil },
+			repairs: func(context.Context) (acquisition.RepairSummary, error) {
+				return acquisition.RepairSummary{}, nil
 			},
 		},
-		pool: func(context.Context) (filler.PoolReport, error) {
+		pool: func(context.Context) (pod.PoolReport, error) {
 			poolAsked = true
-			return filler.PoolReport{Eligible: 12}, nil
+			return pod.PoolReport{Eligible: 12}, nil
 		},
 		now:              func() time.Time { return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC) },
 		storage:          governor,
@@ -98,18 +101,18 @@ func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	for i := 0; i < 21; i++ {
 		at := now.Add(time.Duration(-21+i) * time.Minute)
-		run := filler.AcquisitionRun{ID: "acq-" + string(rune('a'+i)), Trigger: filler.AcquisitionSource, SourceID: "source", Status: filler.AcquisitionSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}
+		run := acquisition.AcquisitionRun{ID: "acq-" + string(rune('a'+i)), Trigger: acquisition.TriggerSource, SourceID: "source", Status: acquisition.RunSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}
 		if err := st.UpsertAcquisitionRun(ctx, run); err != nil {
 			t.Fatal(err)
 		}
 		if i == 0 {
-			artifact := filler.AcquisitionArtifact{ID: "repair-old", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "youtube", SourceURL: "https://youtube.example/old", MediaPath: "old.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: filler.ArtifactRepair, RepairReason: "old repair remains actionable", CompletedAt: at, UpdatedAt: at}
-			if err := st.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+			artifact := acquisition.Artifact{ID: "repair-old", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "youtube", SourceURL: "https://youtube.example/old", MediaPath: "old.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: "old repair remains actionable", CompletedAt: at, UpdatedAt: at}
+			if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (filler.PoolReport, error) { return filler.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
+	a := fillerServiceAdapter{readiness: st, pool: func(context.Context) (pod.PoolReport, error) { return pod.PoolReport{Eligible: 1}, nil }, now: func() time.Time { return now }}
 	got, err := a.Readiness(ctx)
 	if err != nil {
 		t.Fatal(err)

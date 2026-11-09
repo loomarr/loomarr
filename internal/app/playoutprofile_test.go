@@ -8,14 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type staticChannelReader struct{ channel store.Channel }
+type staticChannelReader struct{ channel channelstore.Channel }
 
-func (s staticChannelReader) GetChannel(context.Context, string) (store.Channel, error) {
+func (s staticChannelReader) GetChannel(context.Context, string) (channelstore.Channel, error) {
 	return s.channel, nil
 }
 
@@ -58,7 +58,7 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/playout/sessions = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	var telemetry api.PlayoutTelemetry
+	var telemetry opsapi.PlayoutTelemetry
 	if err := json.NewDecoder(rec.Body).Decode(&telemetry); err != nil {
 		t.Fatal(err)
 	}

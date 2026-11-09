@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -12,19 +12,20 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 type approvalBuild struct {
 	binder          *approval.Binder
-	approver        *suggest.Approver
+	approver        *accept.Approver
 	decisionQuality *quality.ProposalDecisionRecorder
 }
 
 func buildApproval(
 	st store.Store,
-	channelService api.ChannelService,
+	channelService guideapi.ChannelService,
 	playoutResolver *playoutresolve.Resolver,
 	activityRecorder *activity.Recorder,
 	channelNumbers approval.NumberSource,
@@ -52,7 +53,7 @@ func buildApproval(
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
 	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
-	approver := suggest.NewApprover(st, channelBinder, time.Now).
+	approver := accept.NewApprover(st, channelBinder, time.Now).
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)

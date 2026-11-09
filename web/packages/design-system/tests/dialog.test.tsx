@@ -225,6 +225,54 @@ describe("Dialog", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back to the list" }));
   });
 
+  // The command palette: no title to show, so the dialog is named by a label; no corner close, so
+  // Escape is the way out; and it sits near the top, not centred.
+  it("holds an untitled command surface near the top, named by its label and closed by Escape", async () => {
+    const Palette = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Search
+          </button>
+          <Dialog onOpenChange={setOpen} open={open}>
+            <DialogContent accessibilityLabel="Search Loomarr" placement="top">
+              <input aria-label="Search" />
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    };
+    const user = userEvent.setup();
+    render(<Palette />);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    const surface = await screen.findByRole("dialog", { name: "Search Loomarr" });
+    expect(surface.style.top).toBe("96px");
+    expect(surface.style.maxWidth).toBe("576px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Search" }));
+  });
+
+  // A phone's full-screen search: it covers the screen and draws its own close, so the dialog adds
+  // no corner close of its own.
+  it("fills the screen with no corner close of its own", async () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent accessibilityLabel="Search Loomarr" placement="fill">
+          <input aria-label="Search" />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const surface = await screen.findByRole("dialog", { name: "Search Loomarr" });
+    expect(surface.style.inset).toBe("0px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
   // jsdom never matches `:focus-visible`, so it stands in for the browser here: focus that arrives by
   // the keyboard is visible, the way Chrome, Firefox and Safari decide it.
   it("rings the corner button while the browser marks its focus visible", async () => {

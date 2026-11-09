@@ -65,7 +65,7 @@ var realTitles = []string{
 	"Battlestar Galactica", "Mad Max", "Marge vs. the Monorail", "Wings of the Dope", "Dog of Death",
 	"Canine Mutiny", "Halloween of Horror", "Life on the Fast Lane", "Farpoint", "Tribble", "Realm of Fear",
 	"Truffaut", "Jules & Jim", "Top Goon", "Halloweeners",
-	// The filler, fillerenrichment and fillerstore tests (slice 12). Brands that are ordinary words
+	// The filler, filler/enrichment and filler/records tests (slice 12). Brands that are ordinary words
 	// ("Ford", "Fox", "Puma", "Coke", "Mustang", "Total", "Five") are left out: they would match
 	// ordinary prose.
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
@@ -113,7 +113,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/people/invitation-join/invitation-join.stories.tsx",
 	"web/apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.stories.tsx",
 	"web/apps/web/src/components/loomarr/shell/app-shell/app-shell.stories.tsx",
-	"web/apps/web/src/components/ui/label/label.stories.tsx",
 	// The layout and incoming stories and the e2e mock backend (slice 14).
 	"web/apps/web/src/design-system/layout.stories.tsx",
 	"web/apps/web/src/filler/incoming/incoming.stories.tsx",
@@ -230,8 +229,8 @@ var migratedGo = []string{
 	"internal/proposals/suggest/reference_discovery_internal_test.go",
 	"internal/proposals/suggest/reference_discovery_test.go",
 	// The remaining suggest tests (slice 8).
-	"internal/proposals/suggest/approval_size_test.go",
-	"internal/proposals/suggest/approve_test.go",
+	"internal/proposals/accept/approval_size_test.go",
+	"internal/proposals/accept/approve_test.go",
 	"internal/proposals/suggest/candidate_key_test.go",
 	"internal/proposals/suggest/channel_name_test.go",
 	"internal/proposals/suggest/date_retrieval_test.go",
@@ -242,7 +241,7 @@ var migratedGo = []string{
 	"internal/proposals/suggest/named_example_titles_test.go",
 	"internal/proposals/suggest/parse_test.go",
 	"internal/proposals/suggest/policy_extract_test.go",
-	"internal/proposals/suggest/prepare_approval_test.go",
+	"internal/proposals/accept/prepare_approval_test.go",
 	"internal/proposals/suggest/progress_stream_test.go",
 	"internal/proposals/suggest/proposal_size_internal_test.go",
 	"internal/proposals/suggest/ranker_test.go",
@@ -290,7 +289,7 @@ var migratedGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in filler/enrichment's deterministic.go end to end, whose phrases are real brands",
 	"internal/eval/corpus_live_test.go":                     "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
 	"internal/eval/mood_review_test.go":                     "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
 	"internal/eval/query_expansion_test.go":                 "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",

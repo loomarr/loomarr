@@ -6,6 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -21,7 +26,7 @@ func CertifiedShadowFixture(t *testing.T) (SplitProposal, *AutoSplitPolicy, *Str
 // binary, so they live here rather than in the package, where deadcode would report them.
 
 // Year is the single-year range — what a channel targeting "1992" means.
-func Year(y int) EraRange { return EraRange{From: y, To: y} }
+func Year(y int) pod.EraRange { return pod.EraRange{From: y, To: y} }
 
 // DefaultBudget is the budget with the historical batch sizes.
 func DefaultBudget() Budget {
@@ -34,66 +39,26 @@ func DefaultBudget() Budget {
 	}
 }
 
-// PlanAcquisition is PlanAcquisitionFor with no coverage gaps.
-func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState) (AcquisitionPlan, error) {
-	return PlanAcquisitionFor(intent, candidates, existing, CoverageGaps{})
-}
-
 // SummarizePipelines is the in-memory adapter for tests. Production SQL groups equivalent facts
 // before calling Add, but both paths cross Lifecycle for the actual decision.
-func SummarizePipelines(rows []ClipPipeline, at time.Time) PipelineOverview {
-	var out PipelineOverview
+func SummarizePipelines(rows []pipelinestate.ClipPipeline, at time.Time) pipelinestate.PipelineOverview {
+	var out pipelinestate.PipelineOverview
 	for _, row := range rows {
 		out.AddLifecycle(row.Lifecycle(at), 1)
 	}
 	return out
 }
 
-// ScanDir is scanDir with no watch folder excluded. The duration floor is optional because most
-// tests only assert that a file is catalogued.
-func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int64) (clips []RawClip, skipped int, err error) {
-	if dir == "" {
-		return nil, 0, nil
-	}
-	if probe == nil {
-		probe = FFprobe
-	}
-	var minMs int64
-	if len(minDurationMs) > 0 {
-		minMs = minDurationMs[0]
-	}
-	clips, skipped, _, err = scanDir(ctx, dir, "", probe, minMs)
-	return clips, skipped, err
-}
-
-// GenerateArtwork is generateArtwork with no storage governor, returning the failure count.
-func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer) (failed int) {
-	return generateArtwork(ctx, dir, clips, render, nil).Failed
-}
-
-// TakeIn is takeInFrom with no source, binding or storage governor.
-func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil, nil)
-}
-
-func movePath(src, dst string) error {
-	return movePathWithStorage(context.Background(), src, dst, nil)
-}
-
-func moveIfPresent(src, dst string) error {
-	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
-}
-
-func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
-	return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
+func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags asset.SidecarTags) (asset.Identity, error) {
+	return asset.PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
 }
 
 // SidecarFetchedMarkFor is the fetched mark for a source with no acquisition run.
 func SidecarFetchedMarkFor(sourceID string) map[string]any {
-	return SidecarFetchedMarkForAcquisition(sourceID, "")
+	return asset.SidecarFetchedMarkForAcquisition(sourceID, "")
 }
 
-func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSegment) string {
+func structureDecisionSHA256ForInterval(proposal SplitProposal, segment split.Segment) string {
 	authority, ok := structureDecisionAuthorityForInterval(proposal, segment)
 	if !ok {
 		return ""
@@ -102,20 +67,20 @@ func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSeg
 }
 
 // ground is groundFromSource for the clip's own file rather than a proposal's evidence derivative.
-func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) groundPass {
+func (s *SplitStage) ground(ctx context.Context, c cliplibrary.StoreClip, segs []split.Segment) groundPass {
 	file := ""
 	if s.vision != nil {
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
 	}
-	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
+	return s.groundAt(ctx, c, file, split.SourceAsset{}, segs)
 }
 
 // AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an
 // NVENC host that re-encodes it, for the library re-encode's pipeline tests. Each replacement's
 // defect check calls check; switches counts the commits.
-func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, StoreClip, func() int) {
+func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, cliplibrary.StoreClip, func() int) {
 	t.Helper()
-	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c StoreClip, staged string) (defects.Record, error) {
+	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c cliplibrary.StoreClip, staged string) (defects.Record, error) {
 		if err := check(ctx); err != nil {
 			return defects.Record{}, err
 		}

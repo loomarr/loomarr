@@ -227,8 +227,7 @@ func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (Device
 		return DevicePrincipal{}, store.ErrNotFound
 	}
 	// Record the use, so the paired-devices list shows what is actually in use and a TV's use
-	// counts as its owner's last-seen (#1667). Nothing called this before #2446, so a device's
-	// last_seen_at never moved. Throttled like sessions; best-effort, as a failure must never
+	// counts as its owner's last-seen (#1667). Throttled like sessions; best-effort, as a failure must never
 	// fail the request that carried the token.
 	if now := m.now(); touchDue(dt.LastSeenAt, now) {
 		_ = m.store.TouchDeviceToken(ctx, id, now)

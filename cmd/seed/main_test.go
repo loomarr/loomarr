@@ -14,10 +14,10 @@ import (
 
 // #1534: a seeded backend's Proposal Job must be listable through the real
 // workflow — the same path GET /v1/proposal-jobs uses — not just readable as a
-// raw store.Job. Seed used to write store.Job{Kind:"suggest",Status:"done"}
-// without ever creating its versioned proposal_job_attempts row, so the
-// workflow's own invariant check (a done Job must have a succeeded Attempt)
-// rejected it with ErrInvalidState and the endpoint 500'd.
+// raw store.Job. A seed that writes store.Job{Kind:"suggest",Status:"done"}
+// without creating its versioned proposal_job_attempts row fails the
+// workflow's own invariant check (a done Job must have a succeeded Attempt):
+// ErrInvalidState, and the endpoint 500s.
 func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)

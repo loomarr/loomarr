@@ -27,16 +27,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -46,17 +49,17 @@ import (
 
 const adminToken = "admin-integration-token"
 
-// clipCatalog adapts the store to filler.CatalogReader (mirrors main.go's
+// clipCatalog adapts the store to pod.CatalogReader (mirrors main.go's
 // clipCatalogAdapter — the pod assembler's catalog source).
 type clipCatalog struct{ st store.Store }
 
-func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
+func (a clipCatalog) AllClips(ctx context.Context) ([]clips.Clip, error) {
+	rows, err := a.st.ListClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Clip, len(clips))
-	for i, c := range clips {
+	out := make([]clips.Clip, len(rows))
+	for i, c := range rows {
 		out[i] = c.Clip
 	}
 	return out, nil
@@ -115,7 +118,7 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	engine := channels.New(st, tun, avail, nil, channels.Config{
 		Policy: schedule.PodFill, ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 	}, clock, testkit.Logger())
-	engine.WithPods(filler.NewPodAdapter(clipCatalog{st}, nil, nil, testkit.Logger()))
+	engine.WithPods(pod.NewAdapter(clipCatalog{st}, nil, nil, testkit.Logger()))
 
 	// Run the worker pool for the life of the test (real async path).
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,13 +127,13 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 
 	log := slog.New(slog.DiscardHandler)
 	chBinder := approval.New(st, engine, nil, log)
-	approver := suggest.NewApprover(st, chBinder, clock)
+	approver := accept.NewApprover(st, chBinder, clock)
 	// engine (*channels.Engine) satisfies approval.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
@@ -217,12 +220,12 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Propo
 // handle for the same distinct clip.
 func seedFillerClips(t *testing.T, st store.Store) {
 	t.Helper()
-	clips := []filler.Clip{
-		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Role: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
+	clips := []clips.Clip{
+		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Role: clips.Bumper, Era: 1992, Audience: clips.Kids, DurationMs: 5000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: clips.Commercial, Era: 1992, Audience: clips.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {

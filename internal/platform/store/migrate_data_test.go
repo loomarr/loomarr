@@ -642,10 +642,9 @@ func TestMigrateReportsProgress(t *testing.T) {
 // is not valid UTF-8, and `coerce`'s BYTEA/BLOB arm is the two lines that prevent it.
 //
 // ⚠ **This test CREATES ITS OWN TABLE, and that is the whole design rather than a shortcut.**
-// It replaces `TestIconBytesSurviveMigration`, which asserted the same property against
-// `channel_icons.bytes` — the schema's only binary column until V52 phase 8 dropped the table retired-ok
-// (retired-ok). That left the coercion branch defensive but unexercised, and the two obvious fixes
-// are both wrong: deleting the branch means the next binary column silently arrives mangled, and
+// The schema has no binary column of its own (the last one, `channel_icons.bytes`, went with its table retired-ok
+// in V52 phase 8), so the coercion branch would otherwise be defensive but unexercised. The two
+// obvious fixes are both wrong: deleting the branch means the next binary column silently arrives mangled, and
 // adding a binary column to both dialects' migrations puts a table that exists for a test's benefit
 // into every operator's database.
 //

@@ -10,7 +10,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt time.Time) {
@@ -20,7 +25,7 @@ func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt ti
 	if err != nil || !claimed {
 		t.Fatalf("claim source check %q = %v, %v", id, claimed, err)
 	}
-	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: checkedAt}); err != nil {
+	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, acquisition.SourceCheckCompletion{CheckedAt: checkedAt}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -36,7 +41,7 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 		records.NewFillerSource("folder", "folder", "", "Drop folder", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	layout, err := filler.NewLayout("/data/filler", "")
+	layout, err := cliplibrary.NewLayout("/data/filler", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +110,7 @@ func newFillerWatchServer(t *testing.T) (*httptest.Server, records.Store, *fakeF
 
 func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 	srv, _, ff := newFillerWatchServer(t)
-	ff.fetchStatus = filler.FetchStatus{
+	ff.fetchStatus = acquisition.FetchStatus{
 		Enabled: true, StoppedBy: "catalog",
 		CatalogClips: 2000, MaxCatalog: 2000,
 	}
@@ -122,7 +127,7 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 // seedHeldClip is a clip that arrived but has not been terminally admitted.
 func seedHeldClip(t *testing.T, st records.Store, id string) {
 	t.Helper()
-	seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, id, clips.Commercial, 1992, clips.Kids, "toys")
 	// HoldClips is the ordinary one-way writer; terminal applied admission is the atomic release.
 	if _, err := st.HoldClips(t.Context(), []string{id}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
@@ -146,7 +151,7 @@ func getWatch(t *testing.T, srvURL, token string) (watchBody, int) {
 // library targets — this carries counts and a verdict, and nothing else.
 func TestFillerWatch_IsMemberReadable(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
 
 	body, code := getWatch(t, srv.URL, memberToken)
 	if code != http.StatusOK {
@@ -188,7 +193,7 @@ func TestFillerWatch_FreshInstallIsUnconfiguredNotBroken(t *testing.T) {
 func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
 
 	src := records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
@@ -226,8 +231,8 @@ func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
 func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
-	seedClip(t, st, "b.mp4", filler.Commercial, 1994, filler.Kids, "cereal")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
+	seedClip(t, st, "b.mp4", clips.Commercial, 1994, clips.Kids, "cereal")
 
 	for _, id := range []string{"classic", "retro"} {
 		if err := st.UpsertFillerSource(ctx,
@@ -268,9 +273,9 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 	}
 	for _, id := range []string{"a.mp4", "b.mp4", "c.mp4"} {
 		seedHeldClip(t, st, id)
-		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-			ClipHash: id, Stage: filler.StageTranscode, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+			ClipHash: id, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -302,17 +307,17 @@ func TestFillerWatch_CountsAreIncomingsTotals(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	for i, hash := range []string{"a.mp4", "b.mp4", "c.mp4"} {
 		seedHeldClip(t, st, hash)
-		if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageTranscode, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
+		if err := st.UpsertClipPipeline(t.Context(), pipelinestate.ClipPipeline{
+			ClipHash: hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: now.Add(time.Duration(i) * time.Second),
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	putClip(t, st, filler.Clip{Hash: "reel", Path: "reel.mp4", Name: "Reel", Held: true, IsComposite: true})
+	putClip(t, st, clips.Clip{Hash: "reel", Path: "reel.mp4", Name: "Reel", Held: true, IsComposite: true})
 	if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
 		ID: "split-1", ClipHash: "reel", CreatedAt: now,
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +355,7 @@ func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
 // every drop-folder install amber forever, which is how an operator learns to ignore the dot.
 func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
 	if err := st.UpsertFillerSource(t.Context(),
 		records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -369,7 +374,7 @@ func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
 func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
 	if err := st.UpsertFillerSource(ctx,
 		records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -390,7 +395,7 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
-	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
+	seedClip(t, st, "a.mp4", clips.Commercial, 1992, clips.Kids, "toys")
 	for _, id := range []string{"stale", "fresh"} {
 		if err := st.UpsertFillerSource(ctx,
 			records.NewFillerSource(id, "archive", id, id, time.Now().UTC())); err != nil {

@@ -1,0 +1,195 @@
+package cliplibrary
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+	"unicode"
+
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/split"
+)
+
+// IsHashDisplayName reports whether value is a hash-named file (with or without an extension),
+// which says nothing about what the clip is.
+func IsHashDisplayName(value string) bool {
+	base := filepath.Base(value)
+	return IsOpaqueHash(strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+// IsOpaqueHash reports whether value is a 40- or 64-character lowercase hex digest.
+func IsOpaqueHash(value string) bool {
+	return (len(value) == 40 || len(value) == 64) && split.IsLowerHex(value)
+}
+
+// NameSource records which evidence produced a clip's derived display name (#1452). It is written
+// beside the name in the sidecar, so a derived name is recognisably Loomarr's and can be improved
+// when better evidence arrives, while a name the source or a person gave never is.
+type NameSource string
+
+const (
+	NameFromBrand      NameSource = "brand"
+	NameFromTranscript NameSource = "transcript"
+	NameFromScreenText NameSource = "on_screen_text"
+	NameFromCategory   NameSource = "category"
+	NameFromEra        NameSource = "era"
+	NameUntitled       NameSource = "untitled"
+)
+
+// excerptWords bounds a quoted excerpt: long enough to identify a spot, short enough for a guide cell.
+const excerptWords = 6
+
+// GroundedName names a clip that has no source title from grounded evidence, most specific first:
+// the grounded brand, then the opening words of its transcript, then the on-screen text a vision
+// pass read, then category or era, and only then the neutral "Untitled <kind>".
+//
+// ⚠ Quotes, never paraphrase. A transcript or on-screen excerpt appears verbatim inside quotation
+// marks, so the name states only what the clip itself says (§10 grounding). Summarising it would
+// be the model inventing a title. No step needs the LLM or vision to be on: evidence that was
+// never gathered simply leaves its rung empty.
+func GroundedName(c clips.Clip) (string, NameSource) {
+	withEra := func(base string) string {
+		if c.Era > 0 {
+			return fmt.Sprintf("%s — %d", base, c.Era)
+		}
+		return base
+	}
+	if brand := strings.TrimSpace(c.Brand); brand != "" {
+		return withEra(brand), NameFromBrand
+	}
+	if quote := transcriptExcerpt(c.Transcript); quote != "" {
+		return withEra(quote), NameFromTranscript
+	}
+	if quote := screenTextExcerpt(c.VisibleText); quote != "" {
+		return withEra(quote), NameFromScreenText
+	}
+	if category := strings.ReplaceAll(c.Category, "_", " "); category != "" {
+		return withEra(strings.ToUpper(category[:1]) + category[1:] + " commercial"), NameFromCategory
+	}
+	kind := strings.TrimSpace(strings.ReplaceAll(string(c.Role), "_", " "))
+	if c.Era > 0 && kind != "" {
+		return fmt.Sprintf("%d %s", c.Era, kind), NameFromEra
+	}
+	if kind == "" {
+		kind = "filler clip"
+	}
+	return "Untitled " + kind, NameUntitled
+}
+
+// transcriptExcerpt quotes the opening of what the clip says: its first sentence, cut at a word
+// boundary. Whisper's cue markers ("[Music]", "(applause)", "♪") are not speech and are dropped.
+// A wordless clip, or an opening with fewer than two words, yields nothing.
+func transcriptExcerpt(transcript string) string {
+	if transcript == clips.TranscriptNone {
+		return ""
+	}
+	text := stripCues(transcript)
+	if end := strings.IndexAny(text, ".!?"); end >= 0 {
+		text = text[:end]
+	}
+	return quoteExcerpt(strings.Fields(text), true)
+}
+
+// screenTextExcerpt quotes the first line of on-screen text, as read (logos are often all caps).
+func screenTextExcerpt(visible string) string {
+	for _, line := range strings.Split(visible, "\n") {
+		if words := strings.Fields(line); len(words) > 0 {
+			return quoteExcerpt(words, false)
+		}
+	}
+	return ""
+}
+
+func quoteExcerpt(words []string, sentenceCase bool) string {
+	letters := 0
+	for _, w := range words {
+		for _, r := range w {
+			if unicode.IsLetter(r) {
+				letters++
+			}
+		}
+	}
+	if len(words) < 2 || letters < 4 {
+		return ""
+	}
+	cut := len(words) > excerptWords
+	if cut {
+		words = words[:excerptWords]
+	}
+	text := strings.TrimRight(strings.Join(words, " "), ",;:-–—")
+	if sentenceCase {
+		r := []rune(text)
+		r[0] = unicode.ToUpper(r[0])
+		text = string(r)
+	}
+	if cut {
+		text += "…"
+	}
+	return "“" + text + "”"
+}
+
+// ViewerName is the clip name a viewer may see in a programme line, or "" when the name is a
+// file identity rather than viewer copy (#1980, #1988).
+//
+// A clip with no source title and no grounded name keeps its filename stem as its catalogue name
+// (scan.go), which helps an operator find the file and means nothing to a household. Provenance
+// decides: a name whose recorded source is the filename is withheld however it reads
+// ("Widgetmax Ad 1991"), and every other recorded source shows.
+//
+// ⚠ The shape test below is ONLY the fallback for a name whose provenance was never recorded:
+// a row migration 00134 could not classify and no scan has relabelled, which a split segment cut
+// before #1988 stays for good. It withholds a name that carries a clip extension, is an opaque
+// content hash, contains an underscore, or is one lowercase token joined by hyphens, dots or path
+// separators ("commercial-sneakers-1993"). A spaced or capitalised stem passes it, which is why
+// provenance replaced it everywhere provenance exists.
+func ViewerName(name string, source clips.NameSource) string {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return ""
+	case source.Known():
+		if source.ShownToViewers() {
+			return name
+		}
+		return ""
+	case strings.Contains(name, "_") || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
+		IsHashDisplayName(name) || lowerSlug(name):
+		return ""
+	default:
+		return name
+	}
+}
+
+// lowerSlug reports a single lowercase token joined by hyphens, dots or path separators: a
+// filename stem's or a relative path's shape.
+func lowerSlug(name string) bool {
+	letter := false
+	for _, r := range name {
+		switch {
+		case unicode.IsLower(r):
+			letter = true
+		case unicode.IsDigit(r), r == '-', r == '.', r == '/', r == '\\':
+		default:
+			return false
+		}
+	}
+	return letter && strings.ContainsAny(name, `-./\`)
+}
+
+// stripCues removes bracketed and parenthesised cues and music notes from a transcript.
+func stripCues(text string) string {
+	var b strings.Builder
+	depth := 0
+	for _, r := range text {
+		switch {
+		case r == '[' || r == '(':
+			depth++
+		case (r == ']' || r == ')') && depth > 0:
+			depth--
+		case depth > 0, r == '♪', r == '♫':
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}

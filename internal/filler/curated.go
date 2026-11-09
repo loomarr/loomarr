@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 // The curated sources are Loomarr's vetted list of archive.org collections and YouTube channels
@@ -69,7 +71,7 @@ func CuratedSources() (CuratedList, error) {
 		case s.EraFrom != 0 && s.EraTo != 0 && s.EraFrom > s.EraTo:
 			return CuratedList{}, fmt.Errorf("curated source %q: era %d-%d is backwards", s.Target, s.EraFrom, s.EraTo)
 		}
-		if err := (Geography{Country: s.Country}).Validate(); err != nil {
+		if err := (pod.Geography{Country: s.Country}).Validate(); err != nil {
 			return CuratedList{}, fmt.Errorf("curated source %q: %w", s.Target, err)
 		}
 		for i, id := range s.Stations {

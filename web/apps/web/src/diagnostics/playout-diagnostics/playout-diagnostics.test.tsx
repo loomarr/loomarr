@@ -114,8 +114,7 @@ describe("PlayoutDiagnostics", () => {
     });
     fireEvent.scroll(output!);
     expect(screen.getByRole("button", { name: "Follow tail" })).toHaveAttribute("aria-pressed", "false");
-    await userEvent.click(screen.getByRole("combobox", { name: "Process status" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Failed" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Process status" }), "Failed");
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ processStatus: "failed" }));
   });
 

@@ -1,6 +1,5 @@
-import { Toggle } from "@loomarr/design-system";
+import { Text, Toggle } from "@loomarr/design-system";
 import { CommitField } from "@loomarr/ui";
-import { Label } from "@/components/ui/label";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
@@ -73,7 +72,9 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         />
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Label htmlFor="policy-auto-curate">{OPT_IN_LABEL}</Label>
+            <Text as="label" htmlFor="policy-auto-curate" textRole="label" tone="primary">
+              {OPT_IN_LABEL}
+            </Text>
             <FieldHelp label={OPT_IN_LABEL}>{OPT_IN_HELP}</FieldHelp>
             {/* Reset removes the opt-in and its thresholds, exactly like unticking the box. */}
             <PolicyFieldSource
@@ -109,9 +110,9 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label htmlFor="policy-auto-curate-score" className="text-muted-foreground text-xs">
+              <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
                 Quality bar
-              </Label>
+              </Text>
               <PolicyFieldSource
                 overridden={isThresholdOverridden(policy, "minScorePct")}
                 onReset={() => onChange(resetThreshold(policy, "minScorePct"))}
@@ -136,9 +137,9 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label htmlFor="policy-auto-curate-cap" className="text-muted-foreground text-xs">
+              <Text as="label" htmlFor="policy-auto-curate-cap" textRole="hint" tone="secondary">
                 Title cap
-              </Label>
+              </Text>
               <PolicyFieldSource
                 overridden={isThresholdOverridden(policy, "maxTitles")}
                 onReset={() => onChange(resetThreshold(policy, "maxTitles"))}

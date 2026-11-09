@@ -1,0 +1,135 @@
+package acquisition
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
+)
+
+// ArtifactState is the durable publication lifecycle of one exact downloaded file.
+// It is deliberately independent of RunStatus: a run may terminate with a repairable
+// artifact still quarantined, and a published artifact remains authoritative after the run ends.
+type ArtifactState string
+
+const (
+	ArtifactStaged    ArtifactState = "staged"
+	ArtifactPublished ArtifactState = "published"
+	ArtifactConsumed  ArtifactState = "consumed"
+	ArtifactRepair    ArtifactState = "repair"
+)
+
+// Artifact is the canonical manifest value connecting downloaded bytes to intake.
+// Paths are relative to the configured watch folder; absolute and escaping paths are invalid.
+// MediaSHA256 is a full-file digest, distinct from the sparse ClipHash used for catalog identity.
+type Artifact struct {
+	ID            string
+	AcquisitionID string
+	SourceID      string
+	Provider      string
+	SourceURL     string
+	RemoteID      string
+	StagingPath   string
+	MediaPath     string
+	SidecarPath   string
+	MediaSHA256   string
+	MediaBytes    int64
+	ClipHash      string
+	// ProviderArchiveEntry is the exact downloader-emitted deduplication line for this output.
+	// ProviderArchiveCommitted becomes true only after that line is durable in the shared archive.
+	ProviderArchiveEntry     string
+	ProviderArchiveCommitted bool
+	// Gap is the channel coverage gap this download was acquired for (EraGapKey), "" when it was
+	// not steered by one (#749). Recorded once at download and carried through recovery.
+	Gap          string
+	State        ArtifactState
+	RepairReason string
+	CompletedAt  time.Time
+	UpdatedAt    time.Time
+}
+
+// ArtifactCursor is the stable ordering boundary for bounded recovery scans.
+// It deliberately uses the immutable scan key captured before recovery mutates a manifest.
+type ArtifactCursor struct {
+	UpdatedAt time.Time
+	ID        string
+}
+
+// Validate rejects manifests that could widen filesystem authority or fail to identify exact
+// bytes. State-specific filesystem checks remain at publication/intake, where the files exist.
+func (a Artifact) Validate() error {
+	if strings.TrimSpace(a.ID) == "" || strings.TrimSpace(a.AcquisitionID) == "" {
+		return errors.New("acquisition artifact requires id and acquisition id")
+	}
+	if strings.TrimSpace(a.Provider) == "" || strings.TrimSpace(a.SourceURL) == "" {
+		return errors.New("acquisition artifact requires provider and source URL")
+	}
+	if !split.IsRelativePath(a.MediaPath) {
+		return fmt.Errorf("acquisition artifact media path %q is not watch-relative", a.MediaPath)
+	}
+	if a.StagingPath != "" && !split.IsRelativePath(a.StagingPath) {
+		return fmt.Errorf("acquisition artifact staging path %q is not watch-relative", a.StagingPath)
+	}
+	if a.SidecarPath != "" && !split.IsRelativePath(a.SidecarPath) {
+		return fmt.Errorf("acquisition artifact sidecar path %q is not watch-relative", a.SidecarPath)
+	}
+	if len(a.MediaSHA256) != 64 || strings.Trim(a.MediaSHA256, "0123456789abcdef") != "" {
+		return errors.New("acquisition artifact requires a lowercase full SHA-256 digest")
+	}
+	if a.MediaBytes <= 0 {
+		return errors.New("acquisition artifact requires a positive media byte length")
+	}
+	if a.ProviderArchiveEntry != "" {
+		if err := ValidateProviderArchiveEntry(a.ProviderArchiveEntry); err != nil {
+			return fmt.Errorf("acquisition artifact provider archive entry: %w", err)
+		}
+	} else if a.ProviderArchiveCommitted {
+		return errors.New("acquisition artifact cannot commit an empty provider archive entry")
+	}
+	switch a.State {
+	case ArtifactStaged, ArtifactPublished, ArtifactConsumed, ArtifactRepair:
+	default:
+		return fmt.Errorf("unknown acquisition artifact state %q", a.State)
+	}
+	if a.State == ArtifactRepair && strings.TrimSpace(a.RepairReason) == "" {
+		return errors.New("repair acquisition artifact requires a reason")
+	}
+	if a.CompletedAt.IsZero() || a.UpdatedAt.IsZero() {
+		return errors.New("acquisition artifact requires completion and update times")
+	}
+	return nil
+}
+
+// ValidateProviderArchiveEntry accepts exactly one canonical extractor-and-ID archive line.
+// Newlines, extra fields, and non-canonical spacing could otherwise smuggle additional identities.
+func ValidateProviderArchiveEntry(entry string) error {
+	if len(entry) > 4096 || strings.ContainsAny(entry, "\r\n") {
+		return errors.New("provider archive entry must be one bounded line")
+	}
+	fields := strings.Fields(entry)
+	if len(fields) != 2 || entry != fields[0]+" "+fields[1] {
+		return errors.New("provider archive entry must contain one extractor and one identity")
+	}
+	return nil
+}
+
+// Repair reasons the runtime writes and later has to recognise. They are compared by value, so
+// they live here rather than as literals at each site.
+const (
+	// ArtifactMediaMissing is a TRANSIENT observation: the file was not where the manifest looked at
+	// that instant (e.g. mid transcode re-key). It says nothing about whether the bytes still exist.
+	ArtifactMediaMissing = "manifested media is missing, symlinked, or not a regular file"
+	// ArtifactMediaGone is the terminal counterpart, recorded only once no candidate location holds
+	// the file. It is deliberately not retryable.
+	ArtifactMediaGone = "manifested media is permanently missing: no file remains at its manifested or catalog location"
+
+	ArtifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
+)
+
+// retryableRepair reports whether a stored repair reason describes an observation the scan should
+// re-check against the file, rather than a settled verdict.
+func RetryableRepair(reason string) bool {
+	return reason == ArtifactIdentityMismatch || reason == ArtifactMediaMissing
+}

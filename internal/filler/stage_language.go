@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // The LANGUAGE stage (§10 V51b): what language is the speech in, and does some channel air it
@@ -46,14 +48,14 @@ func NewLanguageStage(detector language.Detector, store LanguageClipStore, clipD
 	return &LanguageStage{detector: detector, store: store, clipDir: clipDir, want: want, now: now}
 }
 
-func (s *LanguageStage) ID() StageID { return StageLanguage }
+func (s *LanguageStage) ID() pipelinestate.StageID { return pipelinestate.StageLanguage }
 
 // Cost: whisper. The local backend samples at most 30s of audio, so it remains background work and
 // draws on the same bounded budget as transcription.
 func (s *LanguageStage) Cost() StageCost { return CostWhisper }
 
 // Applies when the gate is on and this clip has not been heard yet.
-func (s *LanguageStage) Applies(ctx context.Context, c StoreClip) (bool, string) {
+func (s *LanguageStage) Applies(ctx context.Context, c cliplibrary.StoreClip) (bool, string) {
 	if s.detector == nil {
 		return false, "no language backend is configured"
 	}
@@ -78,7 +80,7 @@ func (s *LanguageStage) Applies(ctx context.Context, c StoreClip) (bool, string)
 }
 
 // Run hears the clip, records the answer, and rejects a foreign one.
-func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+func (s *LanguageStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
 	want := ""
 	if s.want != nil {
 		var err error
@@ -96,7 +98,7 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 		// and the clip carries on — a gate we could not run must never strand a commercial.
 		return StageResult{}, fmt.Errorf("detect language for %s: %w", c.Path, err)
 	}
-	reportProgress(ctx, StageLanguage, 100)
+	pipelinestate.ReportProgress(ctx, pipelinestate.StageLanguage, 100)
 
 	if detected == language.Undetermined {
 		// ⚠ **The backend ran and could not tell — treated as a failure so the retry ladder
@@ -123,14 +125,14 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 	updated.Language = detected
 
 	if detected == language.None {
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "no speech to judge"}, nil
+		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue, Note: "no speech to judge"}, nil
 	}
 	if language.Rejects(detected, want) {
 		return StageResult{
-			Clip: updated, Verdict: VerdictReject, Reason: ReasonLanguage,
+			Clip: updated, Verdict: pipelinestate.VerdictReject, Reason: pipelinestate.ReasonLanguage,
 			Detail: fmt.Sprintf("heard %s; the channels air %s",
 				language.Normalize(detected), language.Names(want)),
 		}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, nil
 }

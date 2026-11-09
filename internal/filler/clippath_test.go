@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 const testHash = "a3f9c2000000000000000000000000000000000000000000000000000000beef"
 
 // A bare id resolves into its shard directories.
 func TestClipPath_ShardsByTheHash(t *testing.T) {
-	got, err := filler.ClipPath("/clips", testHash, ".mp4")
+	got, err := cliplibrary.ClipPath("/clips", testHash, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +25,8 @@ func TestClipPath_ShardsByTheHash(t *testing.T) {
 // A stored row's shard path resolves to the same place, so the row and the id cannot disagree
 // about where a clip lives.
 func TestClipPath_AcceptsAStoredShardPath(t *testing.T) {
-	rel := filler.ClipRelPath(testHash, ".mp4")
-	got, err := filler.ClipPath("/clips", filepath.ToSlash(rel), "")
+	rel := cliplibrary.ClipRelPath(testHash, ".mp4")
+	got, err := cliplibrary.ClipPath("/clips", filepath.ToSlash(rel), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestClipPath_RefusesAnythingThatIsNotAHash(t *testing.T) {
 		testHash[:63],             // one character short
 		"ads/sparkra.mp4",         // a pre-V38c path is no longer an id
 	} {
-		if got, err := filler.ClipPath("/clips", bad, ".mp4"); err == nil {
+		if got, err := cliplibrary.ClipPath("/clips", bad, ".mp4"); err == nil {
 			t.Errorf("accepted %q → %s", bad, got)
 		}
 	}
@@ -63,7 +63,7 @@ func TestClipPath_RefusesAnythingThatIsNotAHash(t *testing.T) {
 // An empty clip folder is refused rather than resolving to a relative path off the working
 // directory — which on a server is wherever the process happened to start.
 func TestClipPath_RefusesAnEmptyClipFolder(t *testing.T) {
-	if _, err := filler.ClipPath("", testHash, ".mp4"); err == nil {
+	if _, err := cliplibrary.ClipPath("", testHash, ".mp4"); err == nil {
 		t.Error("accepted an empty clip folder")
 	}
 }

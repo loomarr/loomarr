@@ -26,6 +26,8 @@ interface CronFieldProps {
   presets: readonly SettingPreset[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** A schedule the environment pins: locked, but shown at full strength (#2759). */
+  readOnly?: boolean;
   invalid?: boolean;
   describedBy?: string;
   labelledBy?: string;
@@ -41,6 +43,7 @@ const CronField = ({
   presets,
   onChange,
   disabled,
+  readOnly,
   invalid,
   describedBy,
   labelledBy,
@@ -75,6 +78,7 @@ const CronField = ({
           onChange(next === DAILY ? dailyCron(daily ?? DEFAULT_DAILY) : next);
         }}
         options={modeOptions}
+        readOnly={readOnly}
         value={mode}
       />
 
@@ -86,6 +90,7 @@ const CronField = ({
               label={`${label} hour`}
               onValueChange={(hour) => onChange(dailyCron({ ...daily, hour: Number(hour) }))}
               options={HOUR_OPTIONS}
+              readOnly={readOnly}
               value={String(daily.hour)}
             />
           </Surface>
@@ -94,6 +99,7 @@ const CronField = ({
             label={`${label} minute`}
             onValueChange={(minute) => onChange(dailyCron({ ...daily, minute: Number(minute) }))}
             options={minutes.map((minute) => ({ value: String(minute), label: `:${twoDigits(minute)}` }))}
+            readOnly={readOnly}
             value={String(daily.minute)}
             width={112}
           />
@@ -106,7 +112,8 @@ const CronField = ({
             aria-label={`${label} custom schedule`}
             autoCapitalize="none"
             autoCorrect={false}
-            disabled={disabled}
+            // DS Field has no read-only state yet, so a pinned custom expression stays disabled.
+            disabled={disabled || readOnly}
             invalid={invalid}
             onChangeText={onChange}
             value={value}

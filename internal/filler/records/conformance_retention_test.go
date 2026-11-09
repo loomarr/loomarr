@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -24,7 +24,7 @@ func testFillerRetention(t *testing.T, newStore NewStoreFunc) {
 	long := now.AddDate(-1, 0, 0).Unix() // older than every window
 	recent := now.Add(-time.Hour).Unix()
 
-	if err := s.UpsertClip(ctx, sampleClip("live", "live.mp4", filler.Commercial, 1990, filler.General, "")); err != nil {
+	if err := s.UpsertClip(ctx, sampleClip("live", "live.mp4", clips.Commercial, 1990, clips.General, "")); err != nil {
 		t.Fatal(err)
 	}
 	exec := func(sql string, args ...any) {

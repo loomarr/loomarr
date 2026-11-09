@@ -15,11 +15,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -41,18 +46,18 @@ type guideBody struct {
 		PendingCount int    `json:"pendingCount"`
 		Decade       int    `json:"decade"`
 		Airings      []struct {
-			Kind          string        `json:"kind"`
-			Title         string        `json:"title"`
-			Series        string        `json:"series"`
-			StartMs       int64         `json:"startMs"`
-			StopMs        int64         `json:"stopMs"`
-			Nominal       bool          `json:"nominal"`
-			RuntimeMs     int64         `json:"runtimeMs"`
-			Provenance    string        `json:"provenance"`
-			ThumbURL      string        `json:"thumbUrl"`
-			ThumbImage    *api.ImageDTO `json:"thumbImage"`
-			LogoImage     *api.ImageDTO `json:"logoImage"`
-			BackdropImage *api.ImageDTO `json:"backdropImage"`
+			Kind          string             `json:"kind"`
+			Title         string             `json:"title"`
+			Series        string             `json:"series"`
+			StartMs       int64              `json:"startMs"`
+			StopMs        int64              `json:"stopMs"`
+			Nominal       bool               `json:"nominal"`
+			RuntimeMs     int64              `json:"runtimeMs"`
+			Provenance    string             `json:"provenance"`
+			ThumbURL      string             `json:"thumbUrl"`
+			ThumbImage    *httpcore.ImageDTO `json:"thumbImage"`
+			LogoImage     *httpcore.ImageDTO `json:"logoImage"`
+			BackdropImage *httpcore.ImageDTO `json:"backdropImage"`
 			Pod           *struct {
 				MatchLevel string `json:"matchLevel"`
 				TotalMs    int64  `json:"totalMs"`
@@ -113,10 +118,10 @@ func (f *slowGuideThumbs) ThumbFor(_ context.Context, key string, season, episod
 }
 
 type guideHarnessConfig struct {
-	Guide          api.PlayoutGuide
-	Pods           api.PodPreviewer
-	TimelineThumbs api.TimelineThumbResolver
-	Images         api.ImageService
+	Guide          playoutapi.PlayoutGuide
+	Pods           guideapi.PodPreviewer
+	TimelineThumbs guideapi.TimelineThumbResolver
+	Images         imagesapi.ImageService
 	Timezone       string
 	RetentionHours int
 }
@@ -157,7 +162,7 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 
 func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
 	t.Helper()
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
 	}); err != nil {
 		t.Fatal(err)
@@ -241,7 +246,7 @@ func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
 func TestGuide_RowCarriesReadyAndPendingTitleCounts(t *testing.T) {
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: &fakeXMLTVGuide{}})
 	srv, st := harness.Server, harness.Store
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch1", Name: "ch1", Number: 1, Strategy: "sequential", Status: schedule.StatusLive},
 		Desired: []schedule.Slot{
 			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000101", Title: "Ready"},
@@ -269,7 +274,7 @@ func TestGuide_RowCarriesTheEraDecade(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	save := func(id string, number int, policy schedule.ChannelPolicy) {
 		t.Helper()
-		if _, err := st.SaveChannel(context.Background(), store.Channel{
+		if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 			Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
 			Policy:  policy,
 		}); err != nil {
@@ -445,7 +450,7 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential", Status: schedule.StatusLive},
 		Policy: schedule.ChannelPolicy{
 			OperatorPolicy: schedule.OperatorPolicy{
@@ -497,12 +502,12 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    65000,
-		Entries: []filler.PodEntry{
-			{Name: "Channel bumper", Role: filler.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
-			{Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
+		Entries: []pod.Entry{
+			{Name: "Channel bumper", Role: clips.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
+			{Name: "Fizzbolt", Role: clips.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -513,15 +518,15 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	if len(airings) != 1 || airings[0].Pod == nil {
 		t.Fatalf("filler block has no pod composition: %+v", airings)
 	}
-	pod := airings[0].Pod
-	if len(pod.Entries) != 2 {
-		t.Fatalf("pod has %d entries, want the clips that actually play", len(pod.Entries))
+	brk := airings[0].Pod
+	if len(brk.Entries) != 2 {
+		t.Fatalf("pod has %d entries, want the clips that actually play", len(brk.Entries))
 	}
-	if pod.MatchLevel == "" {
+	if brk.MatchLevel == "" {
 		t.Error("no match level — the answer to 'why are my commercials wrong' is missing")
 	}
-	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
-		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	if brk.Entries[0].Quality == "" || brk.Entries[0].Era == 0 {
+		t.Errorf("entry lacks era/quality context: %+v", brk.Entries[0])
 	}
 }
 
@@ -533,12 +538,12 @@ func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    60000,
-		Entries: []filler.PodEntry{
-			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Role: filler.Commercial, DurationMs: 30000},
+		Entries: []pod.Entry{
+			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: clips.Commercial, DurationMs: 30000},
+			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Role: clips.Commercial, DurationMs: 30000},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -575,16 +580,16 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    90000,
-		Entries: []filler.PodEntry{
+		Entries: []pod.Entry{
 			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 			{Hash: "h-curated", Name: "Zap Cola", NameSource: clips.NameFromCurated,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clips.NameFromSidecar,
-				Role: filler.Commercial, DurationMs: 30000},
+				Role: clips.Commercial, DurationMs: 30000},
 		},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
@@ -631,12 +636,12 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 			},
 		},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    30_000,
-		Entries: []filler.PodEntry{{
+		Entries: []pod.Entry{{
 			Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial",
-			Role: filler.Commercial, DurationMs: 30_000,
+			Role: clips.Commercial, DurationMs: 30_000,
 		}},
 	}}
 	img := newFakeImageService()
@@ -658,8 +663,8 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 	})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
-	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
-		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Role: filler.Commercial,
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
+		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Role: clips.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "filler-still", HoverImageHash: "filler-hover",
 	}}); err != nil {
 		t.Fatal(err)
@@ -815,15 +820,15 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    30000,
-		Entries: []filler.PodEntry{{
-			Name: "Crunchlings", Role: filler.Commercial, DurationMs: 30000,
+		Entries: []pod.Entry{{
+			Name: "Crunchlings", Role: clips.Commercial, DurationMs: 30000,
 			Era: 1994, Quality: "480p",
 			// Grounded at the source (§8): each of these persisted on the clip only because a
 			// text/visual signal literally contained it. Here the mapper merely carries them.
-			Brand: "Brightfield's", Audience: filler.Kids, Category: "cereal",
+			Brand: "Brightfield's", Audience: clips.Kids, Category: "cereal",
 			VisibleText: "BRIGHTFIELD'S CRUNCHLINGS",
 		}},
 	}}
@@ -836,7 +841,7 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 		t.Fatalf("filler block has no pod entry: %+v", airings)
 	}
 	e := airings[0].Pod.Entries[0]
-	// Each field must survive the Clip → PodEntry → PodEntryDTO trip. Sabotage check: drop any
+	// Each field must survive the Clip → pod.Entry → PodEntryDTO trip. Sabotage check: drop any
 	// one of these in podToPoolDTO and exactly its assertion goes red.
 	if e.Brand != "Brightfield's" {
 		t.Errorf("brand = %q, want it carried to the hover card", e.Brand)
@@ -861,8 +866,8 @@ func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		Entries: []filler.PodEntry{{Name: "Mystery spot", Role: filler.Commercial, DurationMs: 30000}},
+	fp := &fakePods{pod: pod.Pod{
+		Entries: []pod.Entry{{Name: "Mystery spot", Role: clips.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
@@ -894,8 +899,8 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 			gridBlock(schedule.SlotFiller, "Break", 30*time.Minute, 4),
 		},
 	}}
-	fp := &fakePods{pod: filler.Pod{
-		Entries: []filler.PodEntry{{Name: "Ad", Role: filler.Commercial, DurationMs: 30000}},
+	fp := &fakePods{pod: pod.Pod{
+		Entries: []pod.Entry{{Name: "Ad", Role: clips.Commercial, DurationMs: 30000}},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
@@ -929,13 +934,13 @@ func TestGuide_ProgrammesCarryNoPod(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 	}}
-	fp := &fakePods{pod: filler.Pod{Entries: []filler.PodEntry{{Name: "Ad", DurationMs: 30000}}}}
+	fp := &fakePods{pod: pod.Pod{Entries: []pod.Entry{{Name: "Ad", DurationMs: 30000}}}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
-	if pod := getGuide(t, srv, "").Channels[0].Airings[0].Pod; pod != nil {
-		t.Errorf("a programme carried a pod: %+v", pod)
+	if brk := getGuide(t, srv, "").Channels[0].Airings[0].Pod; brk != nil {
+		t.Errorf("a programme carried a pod: %+v", brk)
 	}
 }
 

@@ -8,17 +8,20 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-func newDashboardServer(t *testing.T, sessions api.PlayoutObserver) *httptest.Server {
+func newDashboardServer(t *testing.T, sessions playoutapi.PlayoutObserver) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/dash.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
+		Auth:            httpcore.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutObserver: sessions,
 	}))
@@ -26,9 +29,9 @@ func newDashboardServer(t *testing.T, sessions api.PlayoutObserver) *httptest.Se
 	return srv
 }
 
-func telemetry(t *testing.T, resp *http.Response) api.PlayoutTelemetry {
+func telemetry(t *testing.T, resp *http.Response) opsapi.PlayoutTelemetry {
 	t.Helper()
-	var body api.PlayoutTelemetry
+	var body opsapi.PlayoutTelemetry
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}

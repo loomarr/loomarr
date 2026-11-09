@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -22,20 +23,20 @@ func openRecoveryStore(t *testing.T) records.Store {
 	return db
 }
 
-func seedRecoveryArtifact(t *testing.T, db records.Store, artifact filler.AcquisitionArtifact) {
+func seedRecoveryArtifact(t *testing.T, db records.Store, artifact acquisition.Artifact) {
 	t.Helper()
-	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
-		ID: artifact.AcquisitionID, Trigger: filler.AcquisitionPull, SourceID: artifact.SourceID,
-		Status: filler.AcquisitionSuccess, Requested: 1, UpdatedAt: artifact.UpdatedAt,
+	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
+		ID: artifact.AcquisitionID, Trigger: acquisition.TriggerPull, SourceID: artifact.SourceID,
+		Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: artifact.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpsertAcquisitionArtifacts(t.Context(), []filler.AcquisitionArtifact{artifact}); err != nil {
+	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func stagedRecoveryArtifact(t *testing.T, root string) filler.AcquisitionArtifact {
+func stagedRecoveryArtifact(t *testing.T, root string) acquisition.Artifact {
 	t.Helper()
 	stage := filepath.Join(root, ".loomarr-acquisitions", "acq-1", "000", "download.mp4")
 	if err := os.MkdirAll(filepath.Dir(stage), 0o750); err != nil {
@@ -44,28 +45,28 @@ func stagedRecoveryArtifact(t *testing.T, root string) filler.AcquisitionArtifac
 	if err := os.WriteFile(stage, []byte("downloaded video bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := filler.WriteSidecarTags(stage, filler.SidecarTags{
+	if err := asset.WriteSidecarTags(stage, asset.SidecarTags{
 		SourceID: "youtube:classic", AcquisitionID: "acq-1",
 	}, true); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(stage)
+	digest, size, err := asset.FileSHA256(stage)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(stage)
+	clipHash, err := asset.ClipID(stage)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	return filler.AcquisitionArtifact{
+	return acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: filepath.ToSlash(filepath.Join(".loomarr-acquisitions", "acq-1", "000", "download.mp4")),
 		MediaPath:   "download.mp4", SidecarPath: "download.info.json",
 		MediaSHA256: digest, MediaBytes: size, ClipHash: clipHash,
 		ProviderArchiveEntry: "youtube one", ProviderArchiveCommitted: true,
-		State: filler.ArtifactStaged, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactStaged, CompletedAt: now, UpdatedAt: now,
 	}
 }
 
@@ -80,7 +81,7 @@ func TestRecoverAcquisitionArtifacts_PublishesValidatedStagedPair(t *testing.T) 
 		t.Fatal(err)
 	}
 	got, found, err := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if err != nil || !found || result.Published != 1 || got.State != filler.ArtifactPublished {
+	if err != nil || !found || result.Published != 1 || got.State != acquisition.ArtifactPublished {
 		t.Fatalf("recovery = %+v, artifact = %+v, found=%v, err=%v", result, got, found, err)
 	}
 	for _, path := range []string{"download.mp4", "download.info.json"} {
@@ -105,7 +106,7 @@ func TestRecoverAcquisitionArtifacts_DigestSubstitutionBecomesRepair(t *testing.
 		t.Fatal(err)
 	}
 	got, found, err := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if err != nil || !found || result.Repair != 1 || got.State != filler.ArtifactRepair || got.RepairReason == "" {
+	if err != nil || !found || result.Repair != 1 || got.State != acquisition.ArtifactRepair || got.RepairReason == "" {
 		t.Fatalf("recovery = %+v, artifact = %+v, found=%v, err=%v", result, got, found, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, artifact.MediaPath)); !os.IsNotExist(err) {
@@ -150,7 +151,7 @@ func TestRecoverAcquisitionArtifacts_HoldsHistoricalYtDlpStageWithoutExactArchiv
 		t.Fatal(err)
 	}
 	got, found, err := db.AcquisitionArtifactForClip(t.Context(), artifact.MediaPath, artifact.ClipHash)
-	if err != nil || !found || result.Repair != 1 || got.State != filler.ArtifactRepair {
+	if err != nil || !found || result.Repair != 1 || got.State != acquisition.ArtifactRepair {
 		t.Fatalf("recovery = %+v, artifact = %+v, found=%v, err=%v", result, got, found, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, artifact.MediaPath)); !errors.Is(err, os.ErrNotExist) {

@@ -9,10 +9,11 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
@@ -32,11 +33,11 @@ import (
 const playoutGPUIdentityTimeout = 250 * time.Millisecond
 
 type playoutBuild struct {
-	observer          api.PlayoutObserver
+	observer          playoutapi.PlayoutObserver
 	capability        func() playout.Capacity
-	service           api.Playout
-	resolverService   api.PlayoutResolver
-	guide             api.PlayoutGuide
+	service           playoutapi.Playout
+	resolverService   playoutapi.PlayoutResolver
+	guide             playoutapi.PlayoutGuide
 	resolver          *playoutresolve.Resolver
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
@@ -53,14 +54,13 @@ type playoutDeps struct {
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
-	layout                filler.Layout
+	layout                cliplibrary.Layout
 	channels              *channels.Engine
 	liveTVConnector       *livetvpublish.LiveTVConnector
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
 	// programmer is the SAME Tunarr adapter instance buildChannels built (not an override-aware
-	// one: the Live TV URL fallback always reads the live tunarr.url setting, same as before
-	// this seam existed — see liveTVURLsFor).
+	// one: the Live TV URL fallback always reads the live tunarr.url setting — see liveTVURLsFor).
 	programmer         tunarr.Adapter
 	log                *slog.Logger
 	processDiagnostics *diagnostics.ProcessManager
@@ -70,7 +70,7 @@ type playoutDeps struct {
 	// tone-map self-check.
 	capacityProbe bool
 	startup       *diagnostics.Startup
-	// watermarks draws the channel's bug on programme items (#1512 phase 1d).
+	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
 }
 
@@ -81,10 +81,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	eventBus, fillerLayout := deps.events, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
-	var playoutObserver api.PlayoutObserver
-	var playoutSvc api.Playout
-	var playoutResolverSvc api.PlayoutResolver
-	var playoutGuideSvc api.PlayoutGuide
+	var playoutObserver playoutapi.PlayoutObserver
+	var playoutSvc playoutapi.Playout
+	var playoutResolverSvc playoutapi.PlayoutResolver
+	var playoutGuideSvc playoutapi.PlayoutGuide
 	var playoutRes *playoutresolve.Resolver
 	var backendController *backendtransition.Controller
 	var residentVRAM func(context.Context) (float64, string)
@@ -146,21 +146,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}).WithLog(log)
 	// The channel packager is built after the resolver it reads the schedule through.
 	var packagedHLS *playout.PackagerHLS
-	// Host measurements live in playout.state_dir; the encoder evidence moves there from the retired
-	// prepared library once (#1512), so an upgrade reuses its verified measurement instead of
-	// re-benchmarking. The prepared library's setting is retired (phase 4), so the move reads its
-	// default home, <data dir>/prepared, the sibling of the default state directory; a custom
-	// state_dir finds nothing there and measures again.
+	// Host measurements live in playout.state_dir. The retired prepared library's setting is gone, so
+	// its default home, <data dir>/prepared (the sibling of the default state directory), is the one
+	// place left to reclaim; a custom layout finds nothing there.
 	stateDir := settings.PlayoutStateDir.Get(set)
 	legacyPrepared := filepath.Join(filepath.Dir(filepath.Clean(stateDir)), "prepared")
-	if moved, merr := playout.MigrateCapabilityEvidence(legacyPrepared, stateDir); merr != nil {
-		log.Warn("playout: could not move the encoder measurement to the state directory; it will be re-measured", "err", merr)
-	} else if moved {
-		log.Info("playout: moved the encoder measurement to the state directory", "dir", stateDir)
-	}
-	// With the evidence out, the rest of the retired library is media nothing reads (decision 0040).
-	// Reclaim it once the generation has built, off the critical path: an upgraded install can hold
-	// hundreds of GB there. Only what that library wrote goes (#1563).
+	// The retired library is media nothing reads (decision 0040). Reclaim it once the generation
+	// has built, off the critical path: an upgraded install can hold hundreds of GB there. Only what
+	// that library wrote goes (#1563).
 	owner.goRunAfterBuild(func(context.Context) {
 		got, err := playout.ReclaimRetiredPrepared(legacyPrepared)
 		if got.Entries > 0 {
@@ -243,16 +236,16 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	go measurer.Run(rootCtx)
 	playoutResolverSvc = playoutRes
 
-	// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
-	// channel to h264 — a data migration runs in the store with no library access, so it
-	// cannot probe. Channels bound AFTER this upgrade get their codec at bind; the ones that
-	// predate it would otherwise stay h264 (and needlessly transcode an HEVC library down)
-	// until their next re-curation. This pass recomputes each once, off the boot path.
+	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every
+	// existing channel to h264 — a data migration runs in the store with no library access, so
+	// it cannot probe. Channels bound after V50 get their codec at bind; the ones that predate
+	// it would otherwise stay h264 (and needlessly transcode an HEVC library down) until their
+	// next re-curation. Each boot this pass recomputes every channel's codec, off the boot path.
 	//
 	// Async and best-effort: channels still play (as h264) while it runs, so a slow or
 	// failing probe delays convergence, never startup. Idempotent — ComputeChannelCodec
-	// writes the measured majority every time — so it needs no "already backfilled" marker
-	// and re-running on a later boot is harmless bounded work.
+	// writes the measured majority every time — so there is no "already backfilled" marker,
+	// and every boot repeats the (bounded) lineup probes.
 	if st != nil {
 		// After Build: it reads the channel engine, whose pods the filler subsystem sets later.
 		owner.goRunAfterBuild(func(ctx context.Context) {
@@ -309,7 +302,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	if store.PublishesInvalidations(store.DialectOf(st)) {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
-	// Live playout is the channel packager (#1512 phase 2): one encoder per scheduled item,
+	// Live playout is the channel packager (#1512): one encoder per scheduled item,
 	// stitched in-process into gapless fMP4 HLS for browsers and one continuous MPEG-TS per
 	// media-server tuner. One packager per watched channel, admitted against the transcode
 	// budget; viewers of a running channel join it.
@@ -338,7 +331,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// A packager starting or stopping is a structural change the dashboard sees at once over
 		// the SSE bus (§8); GET /v1/playout/sessions stays the truth. The payload is the count.
 		packagedHLS.OnChange(func() {
-			eventBus.Publish(events.Event{Type: "playout", Payload: api.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
+			eventBus.Publish(events.Event{Type: "playout", Payload: opsapi.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
 		})
 		playoutObserver = packagedHLS
 		owner.addStop(func(context.Context) error {

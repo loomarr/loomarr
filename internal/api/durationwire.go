@@ -6,21 +6,20 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // durationWire is how a schedule.Duration is described ON THE WIRE (§7.1, §14.1).
 //
-// ⚠ **This lives here, in the transport layer, because it is transport knowledge.** It used to be
-// a `Schema(huma.Registry) *huma.Schema` method on `schedule.Duration` itself, which made the
-// PURE DOMAIN package import the HTTP framework — `internal/channels/schedule` is 4,000-odd lines of
-// I/O-free scheduling logic, and it depended on huma/v2 to describe one field's JSON encoding.
-// The architecture gate bans `internal/api` from the domain but says nothing about the framework
-// the API happens to use, so nothing caught it.
+// ⚠ **This lives here, in the transport layer, because it is transport knowledge.** A
+// `Schema(huma.Registry) *huma.Schema` method on `schedule.Duration` itself would make the PURE
+// DOMAIN package import the HTTP framework — `internal/channels/schedule` is I/O-free scheduling
+// logic and must not depend on huma/v2 to describe one field's JSON encoding. The architecture
+// gate bans `internal/api` from the domain but says nothing about the framework the API happens
+// to use, so keeping the method out is a convention, not something the gate enforces.
 //
-// Huma discovers wire formats by interface (`SchemaProvider`), so the method could not simply be
-// moved — the domain type would stop being recognised. `Registry.RegisterTypeAlias` is the
+// Huma discovers wire formats by interface (`SchemaProvider`), so the domain type cannot simply
+// stay schema-less — it would be described by its Go shape. `Registry.RegisterTypeAlias` is the
 // supported way out: it is consulted BEFORE the SchemaProvider check, so aliasing Duration to a
 // type declared here routes generation through this schema instead.
 //
@@ -69,29 +68,6 @@ func (sizeConfidenceWire) Schema(r huma.Registry) *huma.Schema {
 		}
 	}
 	return &huma.Schema{Ref: "#/components/schemas/" + sizeConfidenceSchema}
-}
-
-// ratingWire is a content rating a client may send or be offered (#3012): one named component
-// listing rating.Ladder, so the generated client carries the ratings as an enum instead of each
-// screen keeping its own list. It is NOT aliased onto rating.Rating globally: a channel policy's
-// ceiling also travels as "" (no limit), which an enum would refuse.
-type ratingWire string
-
-const ratingSchema = "Rating"
-
-func (ratingWire) Schema(r huma.Registry) *huma.Schema {
-	if _, ok := r.Map()[ratingSchema]; !ok {
-		values := make([]any, 0, len(rating.Ladder()))
-		for _, value := range rating.Ladder() {
-			values = append(values, string(value))
-		}
-		r.Map()[ratingSchema] = &huma.Schema{
-			Type:        huma.TypeString,
-			Enum:        values,
-			Description: "A content rating on Loomarr's audience ladder, TV and film systems side by side, lowest first.",
-		}
-	}
-	return &huma.Schema{Ref: "#/components/schemas/" + ratingSchema}
 }
 
 // registerWireAliases points the schema generator at this package's wire descriptions for domain

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// These tests pin filler.SegmentScreeningEvidence's invariants. They build the aggregate through
+// These tests pin SegmentScreeningEvidence's invariants. They build the aggregate through
 // this package's axis-evidence fixtures, which internal/filler's tests cannot import.
 
 func segmentScreeningFixture(t *testing.T) SegmentScreeningEvidence {

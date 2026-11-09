@@ -177,7 +177,7 @@ func importersOf(pkgs map[string]*build.Package, set map[string]bool, target str
 //
 // The direct verification is manual, and recorded here so it can be repeated:
 //
-//	git mv internal/platform/store/conformance_titles_test.go internal/platform/store/conformance_titles.go
+//	git mv internal/platform/store/conformance_approval_quota_test.go internal/platform/store/conformance_approval_quota.go
 //	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
 //
 // Before #282's fix that returned `ok (cached)`. After it, it correctly FAILS on a warm cache.

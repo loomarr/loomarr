@@ -6,24 +6,14 @@ import (
 
 // The store conformance suite (AGENTS.md: ONE suite, TWO backends — never forked per dialect).
 //
-// ⚠ One SUITE, not one FILE. This was a single 2,650-line file whose function order was
-// historical — clip tests scattered across four non-contiguous regions, `ScheduledJobPaused`
-// ~900 lines from its two siblings, and a 300-line source-registry test wedged between them.
-// The rule the directives protect is that both dialects run the SAME assertions; nothing about
-// it requires one file, and splitting by domain costs the rule nothing:
+// ⚠ One SUITE, not one FILE. The rule the directives protect is that both dialects run the SAME
+// assertions; nothing about it requires one file, so the cases are split by domain into
+// `conformance_<domain>_test.go` files (titles, channels, jobs, ops, and so on), all in this
+// package. Both backend test files (sqlite in-package, Postgres behind a build tag) call
+// `RunConformance`, which runs every group.
 //
-//	conformance_titles.go    titles + provisioning
-//	conformance_channels.go  channels + the scheduling caches (episodes, airing history)
-//	conformance_jobs.go      suggester jobs, scheduled jobs, proposals
-//	conformance_filler.go    clips, sources, pulls, splits
-//	conformance_ops.go       settings, sessions, counts, activity, retention
-//
-// ⚠ These are NOT `_test.go` files, deliberately — the same reason they never were. Both
-// backend test files (sqlite in-package, Postgres behind a build tag) call `RunConformance`,
-// so the assertions have to be ordinary package code they can import.
-//
-// The groups below also make failure output navigable: a red run now reads
-// `TestPostgresConformance/Filler/ClipCounts` rather than one flat list of 41 names.
+// The groups also make failure output navigable: a red run reads
+// `TestPostgresConformance/Filler/ClipCounts` rather than one flat list of names.
 
 // NewStoreFunc builds a fresh, migrated, empty Store for one test. The SQLite
 // and Postgres test files each supply one; RunConformance runs the SAME
@@ -59,6 +49,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryReferences", func(t *testing.T) { testLibraryReferences(t, newStore) })
 		t.Run("LibraryAudioTracks", func(t *testing.T) { testLibraryAudioTracks(t, newStore) })
 		t.Run("LibraryNeeds", func(t *testing.T) { testLibraryNeeds(t, newStore) })
+		t.Run("LibraryEpisodeOrders", func(t *testing.T) { testLibraryEpisodeOrders(t, newStore) })
 		t.Run("LibraryProjection", func(t *testing.T) { testLibraryProjection(t, newStore) })
 		t.Run("LibraryTitleFacts", func(t *testing.T) { testLibraryTitleFacts(t, newStore) })
 		t.Run("LibraryFilesAndTracks", func(t *testing.T) { testLibraryFilesAndTracks(t, newStore) })
@@ -87,6 +78,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ApprovalSupersessionIsPerChannel", func(t *testing.T) { testApprovalSupersessionIsPerChannel(t, newStore) })
 		t.Run("PurgeKeepsJobsAwaitingADecision", func(t *testing.T) { testPurgeKeepsJobsAwaitingADecision(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
+		t.Run("ChannelLineupRows", func(t *testing.T) { testChannelLineupRows(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
 		t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
@@ -233,6 +225,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("CatalogRetention", func(t *testing.T) { testCatalogRetention(t, newStore) })
 		t.Run("ClientCrashReports", func(t *testing.T) { testClientCrashReports(t, newStore) })
 		t.Run("ClientCrashRetention", func(t *testing.T) { testClientCrashRetention(t, newStore) })
+		t.Run("TableRows", func(t *testing.T) { testTableRows(t, newStore) })
 	})
 
 	t.Run("Images", func(t *testing.T) {

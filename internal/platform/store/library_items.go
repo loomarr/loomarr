@@ -43,6 +43,9 @@ type LibraryItem struct {
 	RuntimeMs int64
 	// Season, Episode and EpisodeEnd number an episode (EpisodeEnd for a multi-episode file).
 	Season, Episode, EpisodeEnd int
+	// Unnumbered is an episode the scanner could not number by its show's catalog and nobody has
+	// said which order its show's files follow: it keeps its file's name and number (decision 53).
+	Unnumbered bool
 	// Series is an episode's series by its scan origin; the store fills SeriesID from it once the
 	// series is written.
 	Series   LibraryOrigin
@@ -203,7 +206,7 @@ type LibraryOrigin struct {
 	Key       string
 }
 
-// LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
+// LibraryItemImageOwner is the image owner kind of a library item's artwork (library_item_images). The ref is the
 // one record of which image is its poster: an adopted image changes hash when its bytes arrive,
 // and the image service moves the refs with it.
 const LibraryItemImageOwner = "library_item"
@@ -304,8 +307,8 @@ const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
 // countFiles is how many of title i's files hold also, a condition on f ("" for all).
 // itemImage is the image hash a title's ref in role names, or "".
 func itemImage(role string) string {
-	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+	return `COALESCE((SELECT MIN(r.image_hash) FROM library_item_images r
+			WHERE r.item_id = i.id AND r.role = '` + role + `'), '')`
 }
 
 func countFiles(also string) string {

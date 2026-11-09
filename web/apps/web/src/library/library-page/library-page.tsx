@@ -154,15 +154,18 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
         onLink={needs.answers.onLink}
         onOpenNeeds={openNeeds}
         onOpenTitle={openTitle}
+        orders={needs.orders}
         problems={needs.problems}
       />
     ) : needs.loaded ? (
       <LibraryNeedsCards
         needs={needs.needs}
+        onChooseOrder={needs.answers.onChooseOrder}
         onIgnore={needs.answers.onIgnore}
         onLink={needs.answers.onLink}
         onOpenTitle={openTitle}
         onSearch={needs.onSearch}
+        orders={needs.orders}
         problems={needs.problems}
       />
     ) : null;

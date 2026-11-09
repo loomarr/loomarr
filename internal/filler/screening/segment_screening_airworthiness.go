@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // NewSegmentAirworthinessEvaluator binds one audience profile to the exact
@@ -24,8 +24,8 @@ func NewSegmentAirworthinessEvaluator(profile AirworthinessProfile, profiles []S
 	return NewAirworthinessEvaluator(profile, axisProfiles)
 }
 
-func evaluateSegmentAirworthiness(subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *AirworthinessEvaluator) (AirworthinessDecision, error) {
-	if filler.ValidateSegmentScreeningSubject(subject) != nil || evaluator == nil {
+func evaluateSegmentAirworthiness(subject asset.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *AirworthinessEvaluator) (AirworthinessDecision, error) {
+	if asset.ValidateSegmentScreeningSubject(subject) != nil || evaluator == nil {
 		return AirworthinessDecision{}, fmt.Errorf("segment Airworthiness evaluator or subject is invalid")
 	}
 	document := AirworthinessDocument{
@@ -56,7 +56,7 @@ func evaluateSegmentAirworthiness(subject filler.SegmentScreeningSubject, record
 	return decision, nil
 }
 
-func segmentAirworthinessMatches(subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *AirworthinessEvaluator, want AirworthinessDecision) bool {
+func segmentAirworthinessMatches(subject asset.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *AirworthinessEvaluator, want AirworthinessDecision) bool {
 	decision, err := evaluateSegmentAirworthiness(subject, records, evaluator)
 	return err == nil && reflect.DeepEqual(decision, want)
 }

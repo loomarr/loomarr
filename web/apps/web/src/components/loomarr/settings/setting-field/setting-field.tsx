@@ -3,12 +3,10 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { Badge, CompactSelect, Field, FieldHint, Surface, Text, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { CronField } from "./cron-field";
@@ -44,6 +42,12 @@ const durationParts = (raw: string): { amount: number; unit: DurationUnit } => {
   if (seconds % 60 === 0) return { amount: seconds / 60, unit: "minutes" };
   return { amount: seconds, unit: "seconds" };
 };
+
+const DURATION_UNIT_OPTIONS = (["days", "hours", "minutes", "seconds"] as const).map((unit) => ({
+  label: unit,
+  value: unit,
+}));
+const SCHEDULE_UNIT_OPTIONS = DURATION_UNIT_OPTIONS.filter((option) => option.value !== "seconds");
 
 const durationRaw = (amount: number, unit: DurationUnit): string => {
   const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
@@ -91,9 +95,7 @@ const SettingField = ({
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
   // ⚠ A pinned VALUE is real, so it is shown read-only at full strength, never in the dimmed
-  // disabled look that reads as an empty placeholder (#2759). Text boxes take `readOnly`; a
-  // select stays disabled (it has no read-only state) but keeps body-strength text.
-  const pinnedSelect = pinned ? "disabled:opacity-100" : undefined;
+  // disabled look that reads as an empty placeholder (#2759): every control takes `readOnly`.
   const overriding = entry.envOverride === true;
   // Offer the affordance only where it can actually do something: the environment must set
   // the key, and the surface must have supplied a handler.
@@ -149,27 +151,21 @@ const SettingField = ({
     }
     if (entry.kind === SettingKind.enum) {
       return (
-        <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
-          <SelectTrigger
-            id={id}
-            className={pinnedSelect}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Prefer the registry-owned {value,label} options (config-design §5) so the
-                dropdown shows "OpenAI"/"Emby", not the raw stored value. Fall back to the
-                bare value list for any enum that ships no labels. */}
-            {(entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))).map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          // Prefer the registry-owned {value,label} options (config-design §5) so the dropdown
+          // shows "OpenAI"/"Emby", not the raw stored value. Fall back to the bare value list for
+          // any enum that ships no labels.
+          options={entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))}
+          readOnly={pinned}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.filler_download_schedule) {
@@ -180,9 +176,13 @@ const SettingField = ({
       const current = durationParts(value);
       return (
         <div className="flex flex-col gap-2">
-          <Select
-            value={preset}
-            disabled={pinned || disabledReason !== undefined}
+          <CompactSelect
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            disabled={disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            label={label}
             onValueChange={(next) => {
               if (next === CUSTOM_PRESET) {
                 setEditingCustomSchedule(true);
@@ -191,25 +191,10 @@ const SettingField = ({
               setEditingCustomSchedule(false);
               onChange(next);
             }}
-          >
-            <SelectTrigger
-              id={id}
-              className={pinnedSelect}
-              aria-describedby={describedBy}
-              aria-labelledby={labelledBy}
-              aria-invalid={invalid ? "true" : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_PRESET}>Custom</SelectItem>
-            </SelectContent>
-          </Select>
+            options={[...presets, { label: "Custom", value: CUSTOM_PRESET }]}
+            readOnly={pinned}
+            value={preset}
+          />
           {preset === CUSTOM_PRESET && (
             <div className="flex gap-2">
               <NumberField
@@ -219,25 +204,15 @@ const SettingField = ({
                 onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
                 readOnly={pinned}
               />
-              <Select
+              <CompactSelect
+                disabled={disabledReason !== undefined}
+                label="Custom check interval unit"
+                onValueChange={(unit) => onChange(durationRaw(current.amount, unit))}
+                options={SCHEDULE_UNIT_OPTIONS}
+                readOnly={pinned}
                 value={current.unit}
-                disabled={pinned || disabledReason !== undefined}
-                onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-              >
-                <SelectTrigger
-                  aria-label="Custom check interval unit"
-                  className={cn("w-32 shrink-0", pinnedSelect)}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["days", "hours", "minutes"] as const).map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                width={128}
+              />
             </div>
           )}
         </div>
@@ -251,7 +226,8 @@ const SettingField = ({
           value={value}
           presets={entry.presets ?? []}
           onChange={onChange}
-          disabled={pinned || disabledReason !== undefined}
+          disabled={disabledReason !== undefined}
+          readOnly={pinned}
           invalid={invalid}
           describedBy={describedBy}
           labelledBy={labelledBy}
@@ -272,22 +248,15 @@ const SettingField = ({
             onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
             readOnly={pinned}
           />
-          <Select
+          <CompactSelect
+            disabled={disabledReason !== undefined}
+            label={`${label} unit`}
+            onValueChange={(unit) => onChange(durationRaw(current.amount, unit))}
+            options={DURATION_UNIT_OPTIONS}
+            readOnly={pinned}
             value={current.unit}
-            disabled={pinned || disabledReason !== undefined}
-            onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-          >
-            <SelectTrigger aria-label={`${label} unit`} className={cn("w-32 shrink-0", pinnedSelect)}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["days", "hours", "minutes", "seconds"] as const).map((unit) => (
-                <SelectItem key={unit} value={unit}>
-                  {unit}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            width={128}
+          />
         </div>
       );
     }
@@ -359,7 +328,9 @@ const SettingField = ({
       )}
     >
       <div className="flex items-center gap-2">
-        <Label htmlFor={id}>{label}</Label>
+        <Text as="label" htmlFor={id} textRole="label">
+          {label}
+        </Text>
         {/* The registry's one plain sentence sits under the field; the rest of the help (trade-offs,
             units, edge cases) waits behind this (i), so the form reads at a glance (#2741). */}
         {entry.detail && <FieldHelp label={label}>{entry.detail}</FieldHelp>}

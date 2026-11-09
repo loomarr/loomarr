@@ -24,13 +24,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -80,12 +83,12 @@ type AiringRecorder interface {
 // forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
 // are reads, and neither path may mutate the channel it observes.
 type ChannelReader interface {
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 }
 
 // CodecWriter persists a channel's computed broadcast codec (§9.1 V50). Narrowed to the one
 // targeted column write — the resolver samples + probes the lineup, but has no other business
-// mutating a channel row (the binder owns the lineup, loomarr-one-lineup-writer).
+// mutating a channel row (the binder is the one lineup writer).
 type CodecWriter interface {
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 }
@@ -105,13 +108,12 @@ type Resolver struct {
 	clipPlays ClipPlayRecorder
 	// airings records that a PROGRAMME aired, feeding recency-aware placement
 	// (programming-design §3.1). Nil ⇒ no history, and placement degrades to the positional
-	// rotation it used before the signal existed.
+	// rotation.
 	airings AiringRecorder
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
-	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
-	// "the next program" is at most one program away — which makes hot-apply genuinely cheap
-	// here in a way it would not be for one long-lived encode.
+	// NEXT program rather than requiring a restart. Each programme item is its own encoder, so
+	// "the next program" is at most one program away — which makes hot-apply cheap.
 	tier    func() string
 	encoder func() string
 	// toneCurve is playout.tone_curve: the budget prices HDR by it and the probe measures it.
@@ -140,11 +142,11 @@ type Resolver struct {
 	// order, so an install without the wiring still detects an encoder, just without the native hint.
 	gpuName func() string
 	// audioLanguage is the operator's preferred audio track language (§9.1, `eng` by default),
-	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
-	// did before this existed — and is how a channel played a film in Russian.
+	// read live like every other setting. Empty ⇒ the file's first track, which is how a
+	// channel once played a film in Russian.
 	audioLanguage func() string
 	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
-	// break candidates) per source revision. Nil ⇒ playout probes as before and stores nothing.
+	// break candidates) per source revision. Nil ⇒ playout probes each time and stores nothing.
 	measurer sourceMeasurer
 	// analyses reads what the measurer stored: the keyframe index a still seeks with, the scene
 	// fades mid-roll placement uses (§10), and the active picture the channel watermark anchors to.
@@ -177,9 +179,8 @@ type Resolver struct {
 	processDiagnostics *diagnostics.ProcessManager
 	log                *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
-	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
-	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
-	// (merely slower) listings.
+	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, so tests and any
+	// install that skips the wiring still get correct (merely slower) listings.
 	channels ChannelReader
 	// codecs persists the computed broadcast codec after a bind samples the lineup (§9.1 V50).
 	// Nil ⇒ ComputeChannelCodec still returns the measured codec but skips the write — so a
@@ -223,7 +224,7 @@ type Resolver struct {
 // previewed (§10).
 type PodPreviewer interface {
 	// PreviewAt assembles the pod for the break starting at slot.Start, to the slot's own length.
-	PreviewAt(ctx context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error)
+	PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error)
 }
 
 // Config is what New wires a Resolver from. Every field is optional: an unset reader or setting
@@ -560,7 +561,7 @@ type airingCycle struct {
 // reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
 // applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
 // reads Desired again.
-func (r *Resolver) airingCycle(ctx context.Context, ch store.Channel, at time.Time) (airingCycle, error) {
+func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at time.Time) (airingCycle, error) {
 	epoch, err := effectivePlayoutAnchor(ch)
 	if err != nil {
 		return airingCycle{}, err
@@ -610,7 +611,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 		return r.measureChannelCodec(ctx, channelID), nil
 	}
 	if r.channels == nil {
-		return store.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
+		return channelstore.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
 	}
 
 	// Measuring spans cycle construction, library resolution, and several probes. A lineup can
@@ -618,7 +619,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 	// unchanged on both sides of the measurement. The targeted write uses that same revision and
 	// advances it, preventing either a stale probe or a full-row writer from overwriting the other.
 	const maxCodecWriteAttempts = 4
-	codec := store.BroadcastCodecH264
+	codec := channelstore.BroadcastCodecH264
 	for attempt := 0; attempt < maxCodecWriteAttempts; attempt++ {
 		before, err := r.channels.GetChannel(ctx, channelID)
 		if err != nil {
@@ -634,7 +635,7 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 		}
 		if _, err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, after.Revision, codec); err == nil {
 			return codec, nil
-		} else if !errors.Is(err, store.ErrChannelStale) {
+		} else if !errors.Is(err, channelstore.ErrChannelStale) {
 			return codec, fmt.Errorf("persist broadcast codec for %s: %w", channelID, err)
 		}
 		if err := ctx.Err(); err != nil {
@@ -654,17 +655,17 @@ func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (s
 // lookup failure degrades a channel to "plays everywhere", never to a black screen.
 func (r *Resolver) ChannelCodec(ctx context.Context, channelID string) string {
 	if r.channels == nil {
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("codec: channel read failed; defaulting h264", "channel", channelID, "err", err)
 		}
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	if ch.BroadcastCodec == "" {
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 	return ch.BroadcastCodec
 }
@@ -706,14 +707,14 @@ const maxCodecProbes = 12
 // (which slots, how many, tiebreak) lives in one place.
 func (r *Resolver) measureChannelCodec(ctx context.Context, channelID string) string {
 	if r.probeFormat == nil {
-		return store.BroadcastCodecH264 // cannot measure → safe default
+		return channelstore.BroadcastCodecH264 // cannot measure → safe default
 	}
 	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("codec: cycle preview failed; defaulting h264", "channel", channelID, "err", err)
 		}
-		return store.BroadcastCodecH264
+		return channelstore.BroadcastCodecH264
 	}
 
 	var codecs []string
@@ -762,9 +763,9 @@ func majorityBroadcastCodec(codecs []string) string {
 		}
 	}
 	if hevc > other {
-		return store.BroadcastCodecHEVC
+		return channelstore.BroadcastCodecHEVC
 	}
-	return store.BroadcastCodecH264
+	return channelstore.BroadcastCodecH264
 }
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
@@ -838,7 +839,7 @@ func (r *Resolver) cycleAt(
 // window, so 8 covers the whole picker with a segment to spare. The cap is a backstop against a
 // pathological window (a channel configured to a one-minute horizon must not turn one guide
 // request into thousands of arrangements), not an expected limit: past it the tail of the span
-// keeps the last segment's cycle, which is exactly today's behaviour for the whole span.
+// keeps the last segment's cycle.
 const maxGuideSegments = 8
 
 // segmentedBroadcasts walks [from, to) one ROLLING WINDOW at a time, re-resolving the channel's
@@ -871,7 +872,7 @@ const maxGuideSegments = 8
 // the identical shared walk.
 //
 // A window of 0 (WindowFull / unbounded) means the deck never rotates, so one segment is the
-// whole answer — the pre-existing behaviour, unchanged.
+// whole answer.
 func (r *Resolver) segmentedBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
@@ -1159,7 +1160,7 @@ func (r *Resolver) airingFiller(
 	//
 	// gap.Offset is how far into the break we are, so the break began that long ago, and a break is
 	// assembled to its own slot, never past it (a placeholder to the configured break length).
-	pod, err := r.pods.PreviewAt(ctx, channelID, filler.BreakSlot{
+	pod, err := r.pods.PreviewAt(ctx, channelID, pod.BreakSlot{
 		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.BreakLength(),
 	})
 	if err != nil || len(pod.Entries) == 0 {
@@ -1184,7 +1185,7 @@ func (r *Resolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir, e.Path, "")
+			full, perr := cliplibrary.ClipPath(r.fillerDir, e.Path, "")
 			if perr != nil {
 				return gap, "", nil
 			}
@@ -1199,7 +1200,7 @@ func (r *Resolver) airingFiller(
 			// The loudness measured at ingest rides the airing so the channel packager can apply a
 			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
 			var measured, truePeak *float64
-			if lufs, peak, ok := filler.PlaybackLoudness(full); ok {
+			if lufs, peak, ok := asset.PlaybackLoudness(full); ok {
 				measured, truePeak = &lufs, peak
 			}
 			return playout.Airing{
@@ -1228,17 +1229,10 @@ func (r *Resolver) airingFiller(
 	return gap, "", nil
 }
 
-// Profile is the encode profile for the next program, resolved against live load.
-//
-// Called once per program (each child is a fresh process), so the ladder adapts as channels come
-// and go: the first channel on an idle box gets the top rung, and a fifth channel starting up
-// steps everyone down as their next program begins. That is the "best picture the hardware
-// sustains, then adapt" policy §9.1 states, and it is only implementable because the child
-// processes are short-lived.
 // AudioTrackFor resolves which audio track a source should play (§9.1).
 //
 // Returns an index among AUDIO streams — the `N` in `-map 0:a:N`. Zero means "the file's first
-// track", which is both the historical behaviour and the safe answer for every failure below.
+// track", which is the safe answer for every failure below.
 //
 // ⚠ BEST-EFFORT, NEVER FATAL, and every branch here degrades the same way for the same reason:
 // a probe that fails must cost the viewer the language preference, never the programme. No
@@ -1247,7 +1241,7 @@ func (r *Resolver) airingFiller(
 // channel that goes dark because a metadata read timed out, which trades a small annoyance for a
 // total outage.
 //
-// One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
+// One probe per PROGRAMME, not per request: the channel packager asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
 func (r *Resolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
@@ -1336,7 +1330,7 @@ type LibraryVideoReader interface {
 
 // libraryFormat is a library item's video format as the scanner read its playing file's header
 // (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
-// other id, which the inventory answers as before.
+// other id, which the inventory answers.
 func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
 	if r.libraryVideo == nil {
 		return playout.MediaFormat{}, false
@@ -1651,6 +1645,9 @@ func (r *Resolver) probedFormat(ctx context.Context, input string) playout.Media
 	return f
 }
 
+// Profile is the encode profile at the ladder rung the ResourceBudget admitted a session at,
+// resolved against the measured encoder and the operator's quality tier (§9.1: "best picture the
+// hardware sustains, then adapt"). A new session takes the best rung that fits and keeps it.
 func (r *Resolver) Profile(ctx context.Context, rung int) playout.Profile {
 	enc := encode.Encoder(r.encoder())
 	if enc == "" {
@@ -1806,7 +1803,7 @@ func (r *Resolver) EncodeHostBytes() int64 {
 
 // effectivePlayoutAnchor enforces the persisted timeline origin. A live channel without
 // one is corrupt control-plane state; guessing would let the encoder and guide diverge.
-func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
+func effectivePlayoutAnchor(ch channelstore.Channel) (time.Time, error) {
 	if ch.PlayoutAnchor.IsZero() {
 		return time.Time{}, fmt.Errorf("channel %s has no playout anchor", ch.ID)
 	}
