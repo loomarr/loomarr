@@ -29,7 +29,7 @@ var (
 )
 
 // segmentSeconds is the length actually encoded per format. The full-length file is this segment
-// stream-copied end to end, so a 44-minute film costs a 30-second encode.
+// stream-copied end to end, so a 90-minute film costs a 30-second encode.
 const segmentSeconds = 30
 
 // Layout is where each generated file lives under the demo directory.
