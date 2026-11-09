@@ -68,7 +68,7 @@ const HomePage = () => {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Home" />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
         <div className="max-w-overview mx-auto flex flex-col gap-6 p-4 sm:gap-8 sm:p-6">

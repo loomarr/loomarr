@@ -62,6 +62,19 @@ describe("SettingField", () => {
     expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
   });
 
+  // `sr-only` is `position: absolute`. The info icon's hidden copy of the detail sits in an
+  // unpositioned button, so without a positioned field it lands against the page, below the
+  // viewport, and stretches the document so scroll chains out of main (#2724).
+  it("anchors the info icon's visually hidden detail to the field", () => {
+    const { container } = render(
+      <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
+    );
+    const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
+    const field = container.querySelector(".group");
+    expect(field).toHaveClass("relative");
+    expect(field).toContainElement(detail);
+  });
+
   it("uses the registry-owned label instead of deriving product copy from the key", () => {
     render(<SettingField entry={entry({ label: "Media server address" })} value="" onChange={vi.fn()} />);
     expect(screen.getByLabelText("Media server address")).toBeInTheDocument();
