@@ -137,37 +137,40 @@ const GuideCompact = ({
         role="toolbar"
         style={{ flexDirection: "row", gap: 8, paddingBottom: 4, paddingHorizontal: GUTTER }}
       >
-        {filters.map((option) => {
-          const { accessibilityLabel, text } = guideFilterText(option);
-          const selected = option.value === filter;
-          return (
-            <Pressable
-              accessibilityLabel={accessibilityLabel}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: option.disabled, selected }}
-              aria-pressed={selected}
-              disabled={option.disabled}
-              key={option.value}
-              onPress={() => onFilterChange(option.value)}
-              style={{ justifyContent: "center", minHeight: 44, opacity: option.disabled ? 0.55 : 1 }}
-            >
-              <Surface
-                alignItems="center"
-                backgroundColor={selected ? "contentPrimary" : "transparent"}
-                borderColor="borderDecorative"
-                borderRadius={8}
-                borderWidth={selected ? 0 : 1}
-                height={32}
-                justifyContent="center"
-                paddingHorizontal={12}
+        {/* An empty Favorites chip is not offered at all (#2751), as the channel drawer hides an empty group. */}
+        {filters
+          .filter((option) => !(option.value === "favourites" && option.count === 0))
+          .map((option) => {
+            const { accessibilityLabel, text } = guideFilterText(option);
+            const selected = option.value === filter;
+            return (
+              <Pressable
+                accessibilityLabel={accessibilityLabel}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: option.disabled, selected }}
+                aria-pressed={selected}
+                disabled={option.disabled}
+                key={option.value}
+                onPress={() => onFilterChange(option.value)}
+                style={{ justifyContent: "center", minHeight: 44, opacity: option.disabled ? 0.55 : 1 }}
               >
-                <Text density={density} textRole="cardLabel" tone={selected ? "inverse" : "secondary"}>
-                  {text}
-                </Text>
-              </Surface>
-            </Pressable>
-          );
-        })}
+                <Surface
+                  alignItems="center"
+                  backgroundColor={selected ? "contentPrimary" : "transparent"}
+                  borderColor="borderDecorative"
+                  borderRadius={8}
+                  borderWidth={selected ? 0 : 1}
+                  height={32}
+                  justifyContent="center"
+                  paddingHorizontal={12}
+                >
+                  <Text density={density} textRole="cardLabel" tone={selected ? "inverse" : "secondary"}>
+                    {text}
+                  </Text>
+                </Surface>
+              </Pressable>
+            );
+          })}
       </View>
 
       <View style={{ flexDirection: "row", height: RULER, paddingHorizontal: GUTTER }}>
