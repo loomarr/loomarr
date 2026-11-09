@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -52,7 +53,7 @@ func newTimelineServer(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.
 	return newTimelineServerWithImages(t, g, thumbs, nil)
 }
 
-func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, records.Store) {
+func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver, imageService imagesapi.ImageService) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/timeline.db")
 	t.Cleanup(func() { _ = st.Close() })

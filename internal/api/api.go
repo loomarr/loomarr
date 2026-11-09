@@ -18,7 +18,9 @@ import (
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/people"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
@@ -65,24 +67,18 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, metrics: recorder,
 		devices: opts.Devices, origin: httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy}, devLogin: opts.DevLogin, demo: opts.Demo,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect, arrDiscovery: opts.ArrDiscovery,
-		suggest: opts.Suggest, search: opts.Search, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown,
-		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
-		diagnosticCapture: opts.DiagnosticCapture,
-		clientDiagnostics: opts.ClientDiagnostics,
-		clientCrashes:     opts.ClientCrashes,
-		startupReports:    opts.StartupReports,
-		now:               opts.Now,
-		viewing:           viewing.New(),
-		systemLLM:         opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
+		suggest: opts.Suggest, search: opts.Search,
+		now:       opts.Now,
+		viewing:   viewing.New(),
+		systemLLM: opts.SystemLLM, activity: opts.Activity, sso: opts.SSO,
 		settings:                 opts.Settings,
 		notificationDestinations: opts.NotificationDestinations, backendTransition: opts.BackendTransition,
 		webPushPublicKey:  opts.WebPushPublicKey,
 		provision:         opts.Provision,
 		liveSettings:      opts.LiveSettings,
 		libraryConfigured: opts.LibraryConfigured,
-		ready:             ready,
-		playoutObserver:   opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
-		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
+		playoutCapability: opts.PlayoutCapability,
+		playoutSecret:     opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
 		playout:         opts.Playout,
 		playoutFont:     opts.PlayoutFont,
@@ -113,6 +109,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		SystemLLM: opts.SystemLLM, Restart: opts.Restart, RestartDrift: opts.RestartDrift,
 		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks,
 	}, false).Register(humaAPI)
+	imageRoutes := imagesapi.New(imagesapi.Deps{Log: log, Images: opts.Images})
 	channelDeps := channelsapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, BackendCheckpoint: opts.BackendCheckpoint,
 		Settings: opts.Settings, Suggest: opts.Suggest, Channels: opts.Channels, Binder: opts.Binder,
@@ -122,7 +119,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Calendar: func() schedule.Calendar { return srv.holidayCalendar() },
 	}
 	if opts.Images != nil {
-		channelDeps.ImageRecords = srv.imageDTOsByHash
+		channelDeps.ImageRecords = imageRoutes.ImageDTOsByHash
 	}
 	channelsapi.New(channelDeps).Register(humaAPI)
 	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
@@ -140,8 +137,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	if opts.Images != nil {
 		guideDeps.Images = opts.Images
-		guideDeps.ImageRecords = srv.imageDTOsByHash
-		guideDeps.LibraryImage = srv.libraryImage
+		guideDeps.ImageRecords = imageRoutes.ImageDTOsByHash
+		guideDeps.LibraryImage = imageRoutes.LibraryImage
 	}
 	guideapi.New(guideDeps).Register(humaAPI)
 	srv.registerSetup(humaAPI)
@@ -151,15 +148,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Activity: opts.Activity, DecisionQuality: opts.DecisionQuality, ProposalNotifications: opts.ProposalNotifications,
 		Holidays: func() holidayvocab.Vocabulary { return srv.holidayCalendar().Vocab() },
 	}).Register(humaAPI)
-	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerSearch(humaAPI)
 	libraryDeps := libraryapi.Deps{
 		Store: opts.Store, LiveSettings: opts.LiveSettings, LibraryRoots: opts.LibraryRoots,
 		LibraryHooks: opts.LibraryHooks, Collections: opts.Collections, MovieCollections: opts.MovieCollections,
 	}
 	if opts.Images != nil {
-		libraryDeps.LibraryImage = srv.libraryImage
-		libraryDeps.CandidatePoster = srv.candidatePoster
+		libraryDeps.LibraryImage = imageRoutes.LibraryImage
+		libraryDeps.CandidatePoster = imageRoutes.CandidatePoster
 	}
 	libraryapi.New(libraryDeps).Register(humaAPI)
 	fillerDeps := fillerapi.Deps{
@@ -170,7 +166,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Taxonomy: opts.Taxonomy, Origin: srv.origin,
 	}
 	if opts.Images != nil {
-		fillerDeps.ImageRecords = srv.imageDTOsByHash
+		fillerDeps.ImageRecords = imageRoutes.ImageDTOsByHash
 	}
 	if opts.Settings != nil {
 		fillerDeps.PatchSettings = func(ctx context.Context, edits map[string]string, updatedBy string) []string {
@@ -183,16 +179,22 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		}
 	}
 	fillerapi.New(fillerDeps).Register(humaAPI)
-	srv.registerImages(humaAPI)
-	srv.registerDashboard(humaAPI)
-	srv.registerDiagnostics(humaAPI)
-	srv.registerDiscoveryQuality(humaAPI)
-	srv.registerDashboardPanels(humaAPI)
+	imageRoutes.Register(humaAPI)
+	opsDeps := opsapi.Deps{
+		Log: log, Store: opts.Store, Ready: ready, Metrics: recorder, MetricsToken: opts.MetricsToken,
+		Pprof: opts.Pprof, Events: opts.Events, Shutdown: opts.Shutdown, StartupReports: opts.StartupReports,
+		DiagnosticEvents: opts.DiagnosticEvents, DiagnosticProcesses: opts.DiagnosticProcesses,
+		DiagnosticBundles: opts.DiagnosticBundles, DiagnosticCapture: opts.DiagnosticCapture,
+		ClientDiagnostics: opts.ClientDiagnostics, ClientCrashes: opts.ClientCrashes,
+		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: srv.runConnectionChecks, StoreFacts: storeFacts(opts.Store),
+	}
+	if opts.Devices != nil {
+		opsDeps.Devices = opts.Devices // a typed nil must stay a nil interface
+	}
+	opsapi.New(opsDeps, false).Register(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
-	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerProvisioning(humaAPI)
-	srv.registerOps(humaAPI, opts.Pprof, opts.MetricsToken) // §17 probes/metrics/profiler + the API reference
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp

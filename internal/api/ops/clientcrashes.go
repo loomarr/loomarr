@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type ClientCrashService interface {
 
 // registerClientCrashes mounts the crash-report write and its admin reads. Called from
 // registerDiagnostics, so the live API and the OpenAPI export cannot disagree about it.
-func (s *Server) registerClientCrashes(api huma.API) {
+func (s *Handlers) registerClientCrashes(api huma.API) {
 	// RoleMember: any signed-in caller, and a paired device's token is a session. Huma's schema
 	// validation is skipped so that contract violations, enums included, are the module's 400.
 	// Huma still decodes the body: malformed JSON, a wrong JSON type or an unknown field (the
@@ -82,7 +82,7 @@ type clientCrashOutput struct {
 	Body diagnostics.ClientCrashReport
 }
 
-func (s *Server) reportClientCrash(ctx context.Context, in *clientCrashReportInput) (*clientCrashReportOutput, error) {
+func (s *Handlers) reportClientCrash(ctx context.Context, in *clientCrashReportInput) (*clientCrashReportOutput, error) {
 	if s.clientCrashes == nil {
 		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}
@@ -111,7 +111,7 @@ func (s *Server) reportClientCrash(ctx context.Context, in *clientCrashReportInp
 }
 
 // clientCrashReporter is who sent the report, from the authenticated request only.
-func (s *Server) clientCrashReporter(ctx context.Context) diagnostics.ClientCrashReporter {
+func (s *Handlers) clientCrashReporter(ctx context.Context) diagnostics.ClientCrashReporter {
 	var reporter diagnostics.ClientCrashReporter
 	user, ok := httpcore.UserFrom(ctx)
 	if !ok {
@@ -137,7 +137,7 @@ func (s *Server) clientCrashReporter(ctx context.Context) diagnostics.ClientCras
 	return reporter
 }
 
-func (s *Server) listClientCrashes(ctx context.Context, in *clientCrashListInput) (*clientCrashListOutput, error) {
+func (s *Handlers) listClientCrashes(ctx context.Context, in *clientCrashListInput) (*clientCrashListOutput, error) {
 	if s.clientCrashes == nil {
 		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}
@@ -154,7 +154,7 @@ func (s *Server) listClientCrashes(ctx context.Context, in *clientCrashListInput
 	return &clientCrashListOutput{Body: page}, nil
 }
 
-func (s *Server) getClientCrash(ctx context.Context, in *clientCrashInput) (*clientCrashOutput, error) {
+func (s *Handlers) getClientCrash(ctx context.Context, in *clientCrashInput) (*clientCrashOutput, error) {
 	if s.clientCrashes == nil {
 		return nil, httpcore.NotImplemented("Crash reports unavailable", "Crash reporting isn't available on this Loomarr generation.")
 	}

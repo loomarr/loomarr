@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -98,7 +98,7 @@ func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(contex
 		}
 		// A persistence error can follow keys the batch already committed, so it announces too.
 		if (saved || err != nil) && bus != nil {
-			bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
+			bus.Publish(events.Event{Type: "settings", Payload: opsapi.SettingsEvent{}})
 		}
 		if err != nil {
 			return err
@@ -663,7 +663,7 @@ func (s *systemLLMService) publishPull(jobID, model, status string, percent int,
 	}
 	s.bus.Publish(events.Event{
 		Type: "llm_pull",
-		Payload: api.LLMPullEvent{
+		Payload: opsapi.LLMPullEvent{
 			JobID: jobID, Model: model, Status: status,
 			Percent: percent, Completed: completed, Total: total, Error: errMsg,
 		},

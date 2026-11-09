@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
-func (s *Server) registerDiscoveryQuality(api huma.API) {
+func (s *Handlers) registerDiscoveryQuality(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "export-discovery-quality", Method: http.MethodGet, Path: "/v1/system/discovery-quality/export",
 		Summary:     "Export local discovery-quality measurements",
@@ -25,7 +25,7 @@ type discoveryQualityExportOutput struct {
 	Body               quality.Export
 }
 
-func (s *Server) discoveryQualityExport(ctx context.Context, _ *struct{}) (*discoveryQualityExportOutput, error) {
+func (s *Handlers) discoveryQualityExport(ctx context.Context, _ *struct{}) (*discoveryQualityExportOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("discovery-quality export is unavailable")
 	}

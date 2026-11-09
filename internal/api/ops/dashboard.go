@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -51,7 +51,7 @@ type playoutTelemetryOutput struct {
 }
 
 // registerDashboard mounts the dashboard's data routes (§12).
-func (s *Server) registerDashboard(api huma.API) {
+func (s *Handlers) registerDashboard(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-playout-telemetry", Method: http.MethodGet, Path: "/v1/playout/sessions",
 		Summary: "Live internal-playout encoder telemetry (admin)",
@@ -67,7 +67,7 @@ func (s *Server) registerDashboard(api huma.API) {
 // ADMIN ONLY. This is operational detail about the machine — encoder families, realtime speed,
 // how close the box is to its channel ceiling — and §11 keeps machine internals to admins. The
 // member-facing dashboard shows a lockout explaining that, never a 403 wall (V16's gate).
-func (s *Server) getPlayoutTelemetry(ctx context.Context, _ *struct{}) (*playoutTelemetryOutput, error) {
+func (s *Handlers) getPlayoutTelemetry(ctx context.Context, _ *struct{}) (*playoutTelemetryOutput, error) {
 	out := &playoutTelemetryOutput{}
 	out.Body = s.playoutTelemetry(time.Now())
 	return out, nil
@@ -75,7 +75,7 @@ func (s *Server) getPlayoutTelemetry(ctx context.Context, _ *struct{}) (*playout
 
 // playoutTelemetry builds the snapshot. Shared by the GET and the SSE publisher so the two can
 // never disagree about what a session looks like.
-func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
+func (s *Handlers) playoutTelemetry(now time.Time) PlayoutTelemetry {
 	if s.playoutObserver == nil {
 		// Not wired: a Tunarr-only install, or playout disabled. `Running:false` with an empty
 		// list, so the panel can say "Tunarr streams these channels" instead of rendering an

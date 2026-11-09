@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -47,7 +48,7 @@ type podWire struct {
 // handler reads a store whose ListClips fails, while the harness's own Store stays the real one for
 // seeding.
 func startTimelinePodsHarness(
-	t *testing.T, g playoutapi.PlayoutGuide, pods guideapi.PodPreviewer, imageService api.ImageService, breakClips bool,
+	t *testing.T, g playoutapi.PlayoutGuide, pods guideapi.PodPreviewer, imageService imagesapi.ImageService, breakClips bool,
 ) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {

@@ -1,4 +1,4 @@
-package api
+package ops
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-func (s *Server) registerDiscoveryFeedback(api huma.API) {
+func (s *Handlers) registerDiscoveryFeedback(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "record-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback",
 		Summary: "Record explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
@@ -64,15 +64,15 @@ type discoveryFeedbackDTO struct {
 	CreatedAt time.Time                       `json:"createdAt"`
 }
 
-func (s *Server) recordDiscoveryFeedback(ctx context.Context, in *discoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
+func (s *Handlers) recordDiscoveryFeedback(ctx context.Context, in *discoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
 	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, in.Body.Action, in.Body.Reason)
 }
 
-func (s *Server) clearDiscoveryFeedback(ctx context.Context, in *clearDiscoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
+func (s *Handlers) clearDiscoveryFeedback(ctx context.Context, in *clearDiscoveryFeedbackInput) (*discoveryFeedbackOutput, error) {
 	return s.appendDiscoveryFeedback(ctx, in.Body.Scope, in.Body.ScopeID, in.Body.TargetKey, channeldatastore.FeedbackClear, "")
 }
 
-func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope channeldatastore.FeedbackScope, scopeID string,
+func (s *Handlers) appendDiscoveryFeedback(ctx context.Context, scope channeldatastore.FeedbackScope, scopeID string,
 	target provision.Key, action channeldatastore.FeedbackAction, reason string,
 ) (*discoveryFeedbackOutput, error) {
 	if s.store == nil {
@@ -97,7 +97,7 @@ func (s *Server) appendDiscoveryFeedback(ctx context.Context, scope channeldatas
 	return &discoveryFeedbackOutput{Body: feedbackDTO(feedback)}, nil
 }
 
-func (s *Server) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFeedbackInput) (*listDiscoveryFeedbackOutput, error) {
+func (s *Handlers) listDiscoveryFeedback(ctx context.Context, in *listDiscoveryFeedbackInput) (*listDiscoveryFeedbackOutput, error) {
 	if s.store == nil || !validFeedbackScope(in.Scope, in.ScopeID) {
 		return nil, httpcore.BadRequest("Invalid discovery feedback scope", "Choose household scope or a specific channel.")
 	}

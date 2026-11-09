@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -120,7 +121,7 @@ type guideHarnessConfig struct {
 	Guide          playoutapi.PlayoutGuide
 	Pods           guideapi.PodPreviewer
 	TimelineThumbs guideapi.TimelineThumbResolver
-	Images         api.ImageService
+	Images         imagesapi.ImageService
 	Timezone       string
 	RetentionHours int
 }

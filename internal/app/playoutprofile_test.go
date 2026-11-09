@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -58,7 +58,7 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/playout/sessions = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	var telemetry api.PlayoutTelemetry
+	var telemetry opsapi.PlayoutTelemetry
 	if err := json.NewDecoder(rec.Body).Decode(&telemetry); err != nil {
 		t.Fatal(err)
 	}

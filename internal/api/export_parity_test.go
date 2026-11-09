@@ -61,6 +61,26 @@ func registrarCalls(t *testing.T, path string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A handler may be kept in a variable (`h := area.New(…)`) when other routes need its methods;
+	// `h.Register(humaAPI)` then counts as the area's registration.
+	named := map[string]string{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+			return true
+		}
+		name, isIdent := assign.Lhs[0].(*ast.Ident)
+		ctor, isCall := assign.Rhs[0].(*ast.CallExpr)
+		if !isIdent || !isCall {
+			return true
+		}
+		if newSel, ok := ctor.Fun.(*ast.SelectorExpr); ok && newSel.Sel.Name == "New" {
+			if pkg, ok := newSel.X.(*ast.Ident); ok {
+				named[name.Name] = pkg.Name
+			}
+		}
+		return true
+	})
 	var out []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -76,6 +96,9 @@ func registrarCalls(t *testing.T, path string) []string {
 							out = append(out, pkg.Name+".Register")
 						}
 					}
+				}
+				if recv, ok := sel.X.(*ast.Ident); ok && named[recv.Name] != "" {
+					out = append(out, named[recv.Name]+".Register")
 				}
 			}
 			return true

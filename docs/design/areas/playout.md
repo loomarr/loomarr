@@ -15,7 +15,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`playout`** · 11 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/config`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `provision`
+- **`playout`** · 12 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/config`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `provision`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.

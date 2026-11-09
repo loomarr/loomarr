@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -80,7 +80,7 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 	}
 	e.bus.Publish(events.Event{
 		Type:    "title",
-		Payload: api.TitleEvent{Key: string(ev.Key), State: string(ev.State), Name: ev.Title.Name},
+		Payload: opsapi.TitleEvent{Key: string(ev.Key), State: string(ev.State), Name: ev.Title.Name},
 	})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.Provisioned(ctx, ev)
@@ -99,7 +99,7 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 func (e *eventEmitter) SuggestionPhase(jobID, phase string, round int) {
 	e.bus.Publish(events.Event{
 		Type:    "suggestion",
-		Payload: api.SuggestionEvent{JobID: jobID, Phase: phase, Round: round},
+		Payload: opsapi.SuggestionEvent{JobID: jobID, Phase: phase, Round: round},
 	})
 }
 
@@ -109,7 +109,7 @@ func (e *eventEmitter) SuggestionPhase(jobID, phase string, round int) {
 func (e *eventEmitter) ChannelChanged(channelID, previousStatus, status string) {
 	e.bus.Publish(events.Event{
 		Type:    "channel",
-		Payload: api.ChannelEvent{ChannelID: channelID, Status: status},
+		Payload: opsapi.ChannelEvent{ChannelID: channelID, Status: status},
 	})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ChannelChanged(channelID, previousStatus, status)
@@ -121,7 +121,7 @@ func (e *eventEmitter) ChannelChanged(channelID, previousStatus, status string) 
 // jobs.Notifier. The page refetches GET /v1/jobs on this frame — the BE stays the single
 // source of timing truth. Best-effort like the other frames.
 func (e *eventEmitter) JobChanged(name string) {
-	e.bus.Publish(events.Event{Type: "job", Payload: api.JobEvent{Name: name}})
+	e.bus.Publish(events.Event{Type: "job", Payload: opsapi.JobEvent{Name: name}})
 }
 
 // ActivityRecorded publishes an `activity` frame when a Dashboard feed row is written (§12,
@@ -138,19 +138,19 @@ func (e *eventEmitter) ActivityRecorded() {
 	// load-bearing), so a future change making that unparseable would disable this frame
 	// silently, with no error anywhere. It must also be a NAMED type: huma reads the event
 	// name off the payload's Go type, and a bare map has no name to read.
-	e.bus.Publish(events.Event{Type: "activity", Payload: api.ActivityEvent{}})
+	e.bus.Publish(events.Event{Type: "activity", Payload: opsapi.ActivityEvent{}})
 }
 
 // HealthChanged invalidates Current Health after a material check-state transition. It carries no
 // mutable report payload; GET /v1/diagnostics/health remains the source of truth.
 func (e *eventEmitter) HealthChanged() {
-	e.bus.Publish(events.Event{Type: "health", Payload: api.HealthEvent{}})
+	e.bus.Publish(events.Event{Type: "health", Payload: opsapi.HealthEvent{}})
 }
 
 // SettingsChanged invalidates every client read derived from settings after a committed write. It
 // carries no payload; the GETs (settings list, setup status, AI provider status) own the shapes.
 func (e *eventEmitter) SettingsChanged() {
-	e.bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
+	e.bus.Publish(events.Event{Type: "settings", Payload: opsapi.SettingsEvent{}})
 }
 
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
@@ -189,7 +189,7 @@ func (e *eventEmitter) FillerClipStage(p pipelinestate.ClipPipeline, c cliplibra
 	// runtime seam that can see a frame which has not fired yet — and matches an `events.Event`
 	// literal whose Payload is itself an `api.X{…}` literal. Hoisting the struct into a variable
 	// hides the frame from the guard, which then reports it as declared-but-never-published.
-	e.bus.Publish(events.Event{Type: "filler_clip", Payload: api.FillerClipEvent{
+	e.bus.Publish(events.Event{Type: "filler_clip", Payload: opsapi.FillerClipEvent{
 		Hash: p.ClipHash, Stage: string(p.Stage), Status: string(p.Status),
 		Progress: p.Progress, Disposition: string(p.Disposition),
 		Reason: string(p.RejectReason), Detail: p.RejectDetail, Name: c.Name,
