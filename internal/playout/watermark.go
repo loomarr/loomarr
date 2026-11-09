@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
-// The channel watermark ("bug"), #1512 phase 1d.
+// The channel watermark ("bug"), #1512.
 //
 // A programme item is encoded with the channel's bug burned in; breaks (commercials, bumpers, IDs)
 // are encoded without it. The bug is blended on the GPU and NEVER on the CPU (maintainer): a host

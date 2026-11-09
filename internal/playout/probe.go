@@ -16,12 +16,11 @@ import (
 
 // Shared source observations use one stream/packet model (§9.1).
 //
-// Playout asks three questions of a source, and they used to be three separate ffprobe calls with
-// three JSON shapes and three copies of the shell-out: which audio track to map (audio.go), the
-// tracks the Watch pickers list (tracks.go), and the codec the copy decision needs (format,
+// Playout asks three questions of a source: which audio track to map (audio.go), the tracks
+// the Watch pickers list (tracks.go), and the codec the copy decision needs (format,
 // mediaformat.go). They all read the SAME `ffprobe -show_streams` output — so this file runs
 // it once into one `probedStream` slice, and each consumer is a pure function over that. Fewer
-// execs, one JSON shape, no drift between three parsers of the same data.
+// execs, one JSON shape, no drift between parsers of the same data.
 
 // probedStream is one stream from `ffprobe -show_streams`, carrying every field any consumer needs
 // (the superset). Extend this — not a parallel struct — when a new consumer needs another field.
@@ -86,7 +85,7 @@ type probed struct {
 // runFFprobe shells out once and returns the source's streams + container format. The field
 // selection is the SUPERSET every consumer needs, so a single call feeds all of them — and captures
 // everything a probe can cheaply tell us (codecs, dimensions, framerate, HDR/bit-depth, channels,
-// container, duration, bitrate) so later features need no second probe. `-v error` keeps ffprobe's
+// container, duration, bitrate) so no consumer needs a second probe. `-v error` keeps ffprobe's
 // chatter off our stderr; a probe failure is returned, never fatal — callers degrade (audio →
 // track 0, format → transcode-required, tracks → empty list).
 func runFFprobeObserved(ctx context.Context, bin, input string, inspectPackets bool,
@@ -301,13 +300,13 @@ func parseProbeJSON(raw []byte) (probed, error) {
 	return parsed, nil
 }
 
+// FFprobeBeside is the ffprobe that ships beside the given ffmpeg.
+func FFprobeBeside(ffmpegPath string) string { return ffprobeBesideFFmpeg(ffmpegPath) }
+
 // ffprobeBesideFFmpeg maps an ffmpeg path to the ffprobe next to it.
 //
 // `playout.ffmpeg_path` is the only path setting operators have, and the two binaries ship
 // together — a second setting would be a knob whose only correct value is derivable from the first.
-// FFprobeBeside is the ffprobe that ships beside the given ffmpeg.
-func FFprobeBeside(ffmpegPath string) string { return ffprobeBesideFFmpeg(ffmpegPath) }
-
 func ffprobeBesideFFmpeg(ffmpegPath string) string {
 	if ffmpegPath == "" || ffmpegPath == "ffmpeg" {
 		return "ffprobe"
@@ -362,7 +361,7 @@ func tracksOf(streams []probedStream) MediaTracks {
 // --- Consumer 3: the source's class and geometry (mediaformat.go's MediaFormat) ----------------
 
 // FFprobeFormatNextTo returns a FormatProber built on the shared probe — the full MediaFormat for
-// ClassOf and any later feature that needs it.
+// ClassOf and any other consumer that needs it.
 func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	var observer *diagnostics.ProcessManager

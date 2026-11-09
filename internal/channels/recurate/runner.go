@@ -20,7 +20,7 @@ type Refiner interface {
 }
 
 // Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
-// nil ⇒ re-curation runs the LLM corpus alone, exactly as it did before adjacency existed.
+// nil ⇒ re-curation runs the LLM corpus alone.
 // Narrowed to the one method, like every other dependency here.
 type Adjacencer interface {
 	Adjacent(ctx context.Context, seeds []catalog.Candidate, exclude map[provision.Key]bool, limit int) ([]catalog.Adjacency, error)
@@ -46,7 +46,7 @@ type Runner struct {
 }
 
 // WithAdjacency wires the §8.3 adjacency corpus. Returns the runner for chaining, keeping
-// NewRunner's signature stable — the same pattern suggest.WithRatings uses.
+// NewRunner's signature stable — the same pattern Suggester.WithRatings uses.
 func (r *Runner) WithAdjacency(a Adjacencer) *Runner {
 	r.adj = a
 	return r

@@ -154,7 +154,7 @@ const minFlexMs = 30_000
 // (false); it is always true for a non-program slot (flex is the intended render, not a miss).
 func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, bool, error) {
 	dur := float64(s.DurationMs)
-	// Only a program is content. Filler is no longer inlined here (§10 redesign):
+	// Only a program is content. Filler is not inlined here (§10):
 	// commercials live in a Tunarr filler-list attached to the channel, which
 	// Tunarr plays into these flex gaps — so SlotFiller, SlotPending, SlotFlex all
 	// render as flex (never dead air, §9).

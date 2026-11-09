@@ -14,8 +14,8 @@ import (
 // makes backfill crash-safe and multi-replica correct: events only reduce latency; the sweep
 // is the guarantee for internal and Tunarr-backed channels alike.
 //
-// The loop that drove it is gone — the sweep is now a scheduler job (§18.1). This type keeps
-// the lease/batch config and the Sweep pass the scheduler calls.
+// The sweep runs as a scheduler job (§18.1). This type holds the lease/batch config and the
+// Sweep pass the scheduler calls.
 type Runner struct {
 	engine *Engine
 	store  claimer

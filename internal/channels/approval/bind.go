@@ -226,11 +226,10 @@ func channelIntentJSON(p proposals.Proposal) (string, error) {
 }
 
 // lineupEntries maps an approved proposal's picks — BOTH the in-library lineup
-// AND the acquisition list — to scheduler entries. This is the fix for the #9
-// seam: acquisitions previously never entered ch.Lineup, so once a title landed
-// `available` it had no entry to fill and was permanently unschedulable (the
-// backfill sweep re-derives desired slots from ch.Lineup, so an absent key can
-// never be recovered). Every approved pick is an entry; whether it renders as a
+// AND the acquisition list — to scheduler entries. Acquisitions must enter ch.Lineup:
+// once a title lands `available` it needs an entry to fill, and the backfill sweep
+// re-derives desired slots from ch.Lineup, so an absent key can never be recovered.
+// Every approved pick is an entry; whether it renders as a
 // program or a pending slot is decided at reconcile time by resolveEntry against
 // live availability (§9), NOT by the proposal's (possibly stale) InLibrary flag.
 //

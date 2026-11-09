@@ -45,7 +45,7 @@ type filterResult struct {
 	RetiredKey []provision.Key
 }
 
-// filterAcquisitions rewrites a re-curation proposal so its acquisition list contains ONLY the
+// filterAcquisitionsProtected rewrites a re-curation proposal so its acquisition list contains ONLY the
 // net-new titles that (a) clear the quality bar (per-title Confidence ≥ minScorePct/100) and
 // (b) fit within the growth cap (channel's current title count + kept acquisitions ≤ maxTitles).
 // The in-library lineup is left untouched (already available, no acquisition, no score gate).
@@ -160,9 +160,8 @@ func filterAcquisitionsProtected(p proposalstore.Proposal, ch channelstore.Chann
 
 	body.Acquisitions = kept
 	// ⚠ The retirements ride the PROPOSAL to the binder, which is the only writer of a
-	// channel's lineup (§8.2a). This subsystem used to trim `ch.Lineup` and persist the channel
-	// itself, which made it a second writer racing the binder's additive union — ordered against
-	// each other by a comment rather than by anything the compiler or a test could check.
+	// channel's lineup (§8.2a). Persisting a trimmed `ch.Lineup` from here would make this
+	// subsystem a second writer racing the binder's additive union.
 	body.Retired = res.RetiredKey
 	p.Body = body
 	res.Proposal = p
@@ -197,7 +196,7 @@ func effectiveMaxTitles(ctx context.Context, ac *schedule.AutoCurate, th Thresho
 // returned none for it (§8.3).
 //
 // The bar reads a confidence the MODEL assigns, and an omitted one unmarshals to 0 — which
-// filterAcquisitions deliberately treats as "never clears a positive bar", the right call for
+// filterAcquisitionsProtected deliberately treats as "never clears a positive bar", the right call for
 // a title the model searched for and then declined to stand behind. An adjacency pick is not
 // that: it was HANDED to the model with a consensus the model neither computed nor can see,
 // and a model that scores only what it found itself would silently zero out the entire second
@@ -272,7 +271,7 @@ func retirableByWeakest(ch channelstore.Channel, protected map[provision.Key]boo
 	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
 	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an
 	// entire lineup, which is the opposite of the guard's purpose. No schedule ⇒ nothing
-	// retires, and the channel simply behaves as it did before the turnstile existed.
+	// retires, and the channel only grows.
 	if len(ch.Desired) == 0 {
 		return &bench{}
 	}

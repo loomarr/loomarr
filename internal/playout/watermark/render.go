@@ -1,4 +1,4 @@
-// Package watermark renders a channel's bug (#1512 phase 1d): the small mark burned into a
+// Package watermark renders a channel's bug (#1512): the small mark burned into a
 // channel's programmes by the GPU overlay (internal/playout, watermark.go). internal/playout/channelbug
 // resolves a channel's policy to the bug rendered here.
 //

@@ -19,7 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
-// The watermark self-check (#1512 phase 1d): does THIS host's GPU overlay draw the bug AND keep
+// The watermark self-check (#1512): does THIS host's GPU overlay draw the bug AND keep
 // the programme?
 //
 // A speed or exit-code gate is worthless here. On ffmpeg n8.1.2 (the image's build until #1549), overlay_cuda after

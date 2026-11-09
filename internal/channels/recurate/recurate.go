@@ -50,11 +50,9 @@ type CuratorStore interface {
 	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
-	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
-	// and the resulting two-writer arrangement was held together by a comment explaining that
-	// this write had to land before the binder's additive union or the union would undo it.
-	// Leaving the method off the interface makes that ordering unexpressible rather than merely
-	// discouraged.
+	// channel's lineup — applies them through schedule.ApplyLineup. Leaving the method off the
+	// interface makes a write that must race the binder's additive union unexpressible rather
+	// than merely discouraged.
 }
 
 // Curator is the channel-scoped auto-curate grant (§8.2). It approves a re-curation proposal
@@ -125,13 +123,12 @@ func (c *Curator) Consider(ctx context.Context, p proposalstore.Proposal) (propo
 	res := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
 	filtered := res.Proposal
 
-	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitions` wrote them into the
-	// body), not applied to the channel here. This block used to trim `ch.Lineup` and call
-	// UpsertChannel, which made this package a second lineup writer: the binder's additive
-	// union (§8.2) runs moments later and would re-add whatever was removed, so the two were
-	// sequenced against each other by a comment rather than by any checkable contract. The
-	// binder now consumes `Retired` through the same `ApplyOpts.Drop` seam it already uses for
-	// off-intent titles — one writer, one primitive, and the retirement is an input to it.
+	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitionsProtected` wrote them into
+	// the body), not applied to the channel here. Trimming `ch.Lineup` and calling UpsertChannel
+	// would make this package a second lineup writer: the binder's additive union (§8.2) runs
+	// moments later and would re-add whatever was removed. The binder consumes `Retired` through
+	// the same `ApplyOpts.Drop` seam it uses for off-intent titles — one writer, one primitive,
+	// and the retirement is an input to it.
 	// Approve through the ONE gate (audit "auto-curate"). In-library adds land as `available`
 	// records; the surviving acquisitions land as `wanted` — the same code the admin's manual
 	// approve runs, so re-curation can never enqueue by a path the gate doesn't see.
