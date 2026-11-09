@@ -30,6 +30,8 @@ import type { FillerIngestEvent } from "@loomarr/api/models/fillerIngestEvent";
 import type { FillerSplitEvent } from "@loomarr/api/models/fillerSplitEvent";
 import type { HealthEvent } from "@loomarr/api/models/healthEvent";
 import type { JobEvent } from "@loomarr/api/models/jobEvent";
+import type { LibraryScanEvent } from "@loomarr/api/models/libraryScanEvent";
+import type { LibraryTitlesEvent } from "@loomarr/api/models/libraryTitlesEvent";
 import type { LLMPullEvent } from "@loomarr/api/models/lLMPullEvent";
 import type { PlayoutEvent } from "@loomarr/api/models/playoutEvent";
 import type { SuggestionEvent } from "@loomarr/api/models/suggestionEvent";
@@ -92,6 +94,8 @@ export type {
   FrameHandler,
   HealthEvent,
   JobEvent,
+  LibraryScanEvent,
+  LibraryTitlesEvent,
   LlmPullEvent,
   PlayoutEvent,
   SuggestionEvent,

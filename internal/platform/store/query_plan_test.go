@@ -72,6 +72,7 @@ var scannedWhole = map[string]string{
 	// Totals: the answer is an aggregate over every row.
 	"SELECT diagnostic_retained_bytes":      "total: diagnostics' retained bytes, summed",
 	"SELECT image_derivatives":              "total: derivative bytes, summed for the storage report",
+	"SELECT library_catalog":                "total: an import's progress counts every catalog record due as new, by a condition across columns",
 	"SELECT library_files":                  "total: the library status counts every present file",
 	"SELECT notification_delivery_attempts": "total: each destination's last delivery and failure, over retained attempts",
 }

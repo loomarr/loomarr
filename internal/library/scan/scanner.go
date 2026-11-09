@@ -166,8 +166,10 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 	return due, next
 }
 
-// Trigger asks for a pass soon. It never blocks.
+// Trigger asks for a pass soon. It never blocks. The pass is asked for, so it shows its progress
+// in full however little it finds.
 func (s *Scanner) Trigger() {
+	s.Importer.Tracker.Ask()
 	select {
 	case s.trigger <- struct{}{}:
 	default:
@@ -181,6 +183,10 @@ func (s *Scanner) Run(ctx context.Context) {
 	defer folders.Wait()
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
+	// The first pass of a library with no files yet is its first import, as good as asked for.
+	if counts, err := s.Importer.Store.LibraryFileCounts(ctx); err == nil && counts.Files == 0 {
+		s.Importer.Tracker.Ask()
+	}
 	for {
 		if err := s.Importer.Run(ctx); err != nil && ctx.Err() == nil {
 			s.Importer.log().Warn("library scan: pass failed", "err", err)
@@ -217,12 +223,20 @@ type Library struct {
 	Now      func() time.Time
 }
 
-// Progress is the scanner's current state; the zero Progress when no scanner runs.
+// Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.
 func (l *Library) Progress() Progress {
 	if l.Scanner == nil {
-		return Progress{Stage: StageIdle}
+		return Progress{}
 	}
 	return l.Scanner.Importer.Progress()
+}
+
+// Importing is how far a running import is now; the zero snapshot when none runs.
+func (l *Library) Importing() ProgressSnapshot {
+	if l.Scanner == nil {
+		return ProgressSnapshot{}
+	}
+	return l.Scanner.Importer.Tracker.Snapshot(l.now())
 }
 
 // Enabled reports whether the kill switch lets the scanner run.

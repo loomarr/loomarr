@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { LoomarrEventsProvider } from "@/events/events-provider";
 import { readyTitleOf } from "@/library/ready-title";
 import { useLibraryFolders } from "@/library/use-library-folders";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -24,7 +25,15 @@ import type { LibraryStepProps } from "./library-step.type";
 // Seerr knows them, and editable when the address Seerr uses isn't one Loomarr can reach. Their
 // webhooks need Loomarr's own address, asked here when nothing has set it yet.
 
-const LibraryStep = ({ backend }: LibraryStepProps) => {
+// The wizard sits outside the signed-in app frame and its one event stream, so this step, which
+// only an admin reaches, opens the stream itself: the import's progress arrives on it.
+const LibraryStep = (props: LibraryStepProps) => (
+  <LoomarrEventsProvider>
+    <LibraryStepBody {...props} />
+  </LoomarrEventsProvider>
+);
+
+const LibraryStepBody = ({ backend }: LibraryStepProps) => {
   const folders = useLibraryFolders();
   const entries = useSettingsEntries();
   const value = (key: SettingKey) => entries.find((e) => e.key === key)?.value ?? "";

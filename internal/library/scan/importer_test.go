@@ -101,9 +101,13 @@ func newHarness(t *testing.T, managers ...Manager) *harness {
 		Busy:    func() bool { return h.busy.Add(-1) >= 0 },
 		Enabled: h.enable.Load,
 		Poll:    time.Millisecond,
+		Tracker: NewTracker(nil, nil),
 	}
 	return h
 }
+
+// paused reports whether the import shows a pause for watching.
+func (h *harness) paused() bool { return h.im.Tracker.Snapshot(time.Now()).Paused }
 
 func (h *harness) file(rel string, size int) string {
 	h.t.Helper()
@@ -848,7 +852,7 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 	ctx := context.Background()
 	full := make(chan error, 1)
 	go func() { full <- h.im.Run(ctx) }()
-	for deadline := time.Now().Add(5 * time.Second); !h.im.Progress().Waiting; time.Sleep(time.Millisecond) {
+	for deadline := time.Now().Add(5 * time.Second); !h.paused(); time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the header stage never waited for playback")
 		}
@@ -939,7 +943,7 @@ func TestHeaderReadOfAReplacedFileIsDropped(t *testing.T) {
 	ctx := context.Background()
 	full := make(chan error, 1)
 	go func() { full <- h.im.Run(ctx) }()
-	for deadline := time.Now().Add(5 * time.Second); !h.im.Progress().Waiting; time.Sleep(time.Millisecond) {
+	for deadline := time.Now().Add(5 * time.Second); !h.paused(); time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the header stage never waited for playback")
 		}

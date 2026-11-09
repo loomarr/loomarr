@@ -6,9 +6,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
@@ -151,6 +153,19 @@ func (e *eventEmitter) HealthChanged() {
 // carries no payload; the GETs (settings list, setup status, AI provider status) own the shapes.
 func (e *eventEmitter) SettingsChanged() {
 	e.bus.Publish(events.Event{Type: "settings", Payload: opsapi.SettingsEvent{}})
+}
+
+// LibraryScanChanged publishes a `library_scan` frame: how far a running library import is, whole
+// (#2151). Satisfies libraryFrames, which paces it. Latest-wins: GET /v1/library/status is the
+// truth on load and reconnect.
+func (e *eventEmitter) LibraryScanChanged(p scan.ProgressSnapshot) {
+	e.bus.Publish(events.Event{Type: "library_scan", Payload: opsapi.LibraryScanEvent{ScanProgress: libraryapi.ScanProgressOf(p)}})
+}
+
+// LibraryTitlesChanged publishes an empty `library_titles` frame: the Library's titles changed,
+// and a page showing them refetches its list. Satisfies libraryFrames, which paces it.
+func (e *eventEmitter) LibraryTitlesChanged() {
+	e.bus.Publish(events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}})
 }
 
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
