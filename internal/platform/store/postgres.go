@@ -35,7 +35,7 @@ RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline
 //
 // ⚠ No `reconcile_deadline > 0` guard, for the reason spelled out on the SQLite statement:
 // a zero deadline means DUE NOW (§9 V54). One suite, two backends — the predicates must match.
-const postgresChannelClaimSQL = `
+var postgresChannelClaimSQL = `
 WITH due AS (
     SELECT id FROM channels
     WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= $2
@@ -46,7 +46,7 @@ WITH due AS (
 UPDATE channels c SET reconcile_deadline = $1, revision = c.revision + 1
 FROM due WHERE c.id = due.id
 RETURNING c.id, c.intent_ref, c.intent_json, c.requested_by, c.name, c.number, c.grp, c.logo, c.strategy,
-          c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
+          c.tunarr_id, c.status, c.shuffle_seed, ` + postgresLineup("c") + `, c.desired_json, c.policy_json,
           c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision, c.created_at` // channelColumns, aliased
 
 // Postgres pool sizing (#2446). database/sql's defaults are no ceiling and only 2 idle connections,
