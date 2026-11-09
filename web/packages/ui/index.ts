@@ -264,6 +264,7 @@ export {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PORTRAIT_PICTURE_TOP,
   pictureIn,
   playbarFromTimeline,
   rungFor,

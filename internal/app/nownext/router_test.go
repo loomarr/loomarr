@@ -1,4 +1,4 @@
-package app
+package nownext
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -27,7 +26,7 @@ func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
 	// Verified by sabotage: without this channel, reverting the fix leaves this test green.
 	onTunarr := channelstore.Channel{Channel: schedule.Channel{ID: "ch2", TunarrID: "tun-tun"}}
 
-	r := nowNextRouter{
+	r := Router{
 		tunarr:   stubGuide{now: "Tunarr Says This"},
 		internal: stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels: routerChannels{list: []channelstore.Channel{ch, onTunarr}},
@@ -59,7 +58,7 @@ func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
 
-	r := nowNextRouter{
+	r := Router{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels:    routerChannels{list: []channelstore.Channel{ch}},
@@ -77,7 +76,7 @@ func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	reads := 0
-	r := nowNextRouter{
+	r := Router{
 		internal: stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels: routerChannels{list: []channelstore.Channel{
 			{Channel: schedule.Channel{ID: "one", Status: schedule.StatusLive}},
@@ -101,7 +100,7 @@ func TestNowNextRouterReadsAppliedCheckpointOncePerOperation(t *testing.T) {
 func TestNowNextRouterFailsClosedOnCheckpointRead(t *testing.T) {
 	t.Parallel()
 	want := errors.New("checkpoint unavailable")
-	r := nowNextRouter{
+	r := Router{
 		channels:       routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "one"}}}},
 		appliedBackend: func(context.Context) (string, error) { return "", want },
 	}
@@ -124,7 +123,7 @@ func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "tunarr"}}},
 	}
 
-	r := nowNextRouter{
+	r := Router{
 		tunarr:   stubGuide{now: "From Tunarr"},
 		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels: routerChannels{list: []channelstore.Channel{internalCh, tunarrCh}},
@@ -150,7 +149,7 @@ func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
 func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	r := nowNextRouter{
+	r := Router{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    nil,
 		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
@@ -171,7 +170,7 @@ func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	guide := &countingGuide{}
-	r := nowNextRouter{
+	r := Router{
 		tunarr:      guide,
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
@@ -198,7 +197,7 @@ func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
 	}
 	tunarrCh := channelstore.Channel{Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"}}
 
-	r := nowNextRouter{
+	r := Router{
 		tunarr:   failingGuide{},
 		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels: routerChannels{list: []channelstore.Channel{internalCh, tunarrCh}},
@@ -225,7 +224,7 @@ func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
 func TestNowNextRouter_InternalChannelWithNoTunarrIDIsIncluded(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	r := nowNextRouter{
+	r := Router{
 		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
 		internalFor: func(channelstore.Channel) bool { return true },
@@ -244,7 +243,7 @@ func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	guide := &countingGuide{}
-	r := nowNextRouter{
+	r := Router{
 		tunarr: guide,
 		internal: stubBroadcasts{
 			title: "Must not air", start: now.Add(-time.Hour), stop: now.Add(time.Hour),
@@ -287,7 +286,7 @@ func TestNowNextRouter_OmitsPausedDetachedAndEmptyChannels(t *testing.T) {
 func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	r := nowNextRouter{
+	r := Router{
 		tunarr:      stubGuide{now: "Tunarr Says This"},
 		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
 		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
@@ -317,7 +316,7 @@ func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 			upcomingID = id
 		},
 	}
-	r := nowNextRouter{
+	r := Router{
 		tunarr:      guide,
 		channels:    routerChannels{list: []channelstore.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
 		internalFor: func(channelstore.Channel) bool { return false },
@@ -373,40 +372,40 @@ type stubGuide struct {
 	onUpcoming func(string)
 }
 
-func (s stubGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
-	return map[string]guideapi.ChannelNowNext{
-		"tun1":    {Now: &guideapi.NowNextEntry{Title: s.now}},
-		"tun-tun": {Now: &guideapi.NowNextEntry{Title: s.now}},
-		"tun-int": {Now: &guideapi.NowNextEntry{Title: s.now}},
+func (s stubGuide) NowNext(context.Context, time.Time) (map[string]ChannelNowNext, error) {
+	return map[string]ChannelNowNext{
+		"tun1":    {Now: &Entry{Title: s.now}},
+		"tun-tun": {Now: &Entry{Title: s.now}},
+		"tun-int": {Now: &Entry{Title: s.now}},
 	}, nil
 }
 
-func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]guideapi.NowNextEntry, error) {
+func (s stubGuide) Upcoming(_ context.Context, id string, _ time.Time, _ int) ([]Entry, error) {
 	if s.onUpcoming != nil {
 		s.onUpcoming(id)
 	}
-	return []guideapi.NowNextEntry{{Title: s.now}}, nil
+	return []Entry{{Title: s.now}}, nil
 }
 
 type countingGuide struct{ calls int }
 
-func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
+func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]ChannelNowNext, error) {
 	c.calls++
-	return map[string]guideapi.ChannelNowNext{}, nil
+	return map[string]ChannelNowNext{}, nil
 }
 
-func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]guideapi.NowNextEntry, error) {
+func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]Entry, error) {
 	c.calls++
 	return nil, nil
 }
 
 type failingGuide struct{}
 
-func (failingGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
+func (failingGuide) NowNext(context.Context, time.Time) (map[string]ChannelNowNext, error) {
 	return nil, errors.New("tunarr is down")
 }
 
-func (failingGuide) Upcoming(context.Context, string, time.Time, int) ([]guideapi.NowNextEntry, error) {
+func (failingGuide) Upcoming(context.Context, string, time.Time, int) ([]Entry, error) {
 	return nil, errors.New("tunarr is down")
 }
 
