@@ -1,12 +1,28 @@
-package store
+// Package channeldatastore persists what hangs off channels without being the channel itself: a
+// person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing
+// history placement ranks on (§5), and the household's and channels' discovery feedback.
+//
+// It is a cluster of the store, built on the storedb kernel and never importing the store: the
+// store embeds a Store in its aggregate and re-exports the types by alias, so every caller of
+// store.Store keeps working unchanged. The channels table itself stays in the store, because the
+// proposal-approval transaction and the claim statements use it; these tables reference it only by
+// foreign key. internal/architecture_test.go enforces the direction.
+package channeldatastore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
+
+// Store is the channel-data persistence over one storedb.Handle.
+type Store struct{ h storedb.Handle }
+
+// New returns the channel-data store for h.
+func New(h storedb.Handle) *Store { return &Store{h: h} }
 
 // RecentChannelsKept bounds each person's Recent list. The guide filter and the surf rail's
 // "RECENT" group show a handful; the bound keeps the table from growing with every tune.
@@ -31,56 +47,45 @@ type UserChannelLists struct {
 	Recent     []RecentChannel
 }
 
-// ChannelPreferenceStore keeps per-person channel lists (#1666). Every method is keyed by user id;
-// a paired device resolves to its user before it gets here, so the lists follow the person.
-type ChannelPreferenceStore interface {
-	// AddFavouriteChannel stars a channel. Idempotent: a repeat keeps the first added time.
-	// ErrNotFound when the channel doesn't exist.
-	AddFavouriteChannel(ctx context.Context, userID, channelID string, at time.Time) error
-	// RemoveFavouriteChannel un-stars a channel; removing one that isn't starred is not an error.
-	RemoveFavouriteChannel(ctx context.Context, userID, channelID string) error
-	// RecordChannelTune moves a channel to the front of the person's recents (never backwards, so
-	// a late report from a slow device can't reorder them) and drops all but the newest
-	// RecentChannelsKept. ErrNotFound when the channel doesn't exist.
-	RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error
-	// UserChannelLists reads both lists in one call, for the guide's first paint.
-	UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error)
-}
-
-func (s *sqlStore) AddFavouriteChannel(ctx context.Context, userID, channelID string, at time.Time) error {
+func (s *Store) AddFavouriteChannel(ctx context.Context, userID, channelID string, at time.Time) error {
 	if userID == "" || channelID == "" || at.IsZero() {
 		return fmt.Errorf("add favourite channel: user, channel and time are required")
 	}
-	return s.writeChannelPreference(ctx, "add favourite channel", channelID, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_favourite_channels (user_id, channel_id, added_at_ms)
-			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO NOTHING`), userID, channelID, at.UnixMilli())
+	return s.writeChannelPreference(ctx, "add favourite channel", channelID, func(tx storedb.Tx) error {
+		_, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO user_favourite_channels (user_id, channel_id, added_at_ms)
+			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO NOTHING`),
+			userID, channelID, at.UnixMilli())
 		return err
 	})
 }
 
-func (s *sqlStore) RemoveFavouriteChannel(ctx context.Context, userID, channelID string) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM user_favourite_channels
-		WHERE user_id = ? AND channel_id = ?`), userID, channelID); err != nil {
+func (s *Store) RemoveFavouriteChannel(ctx context.Context, userID, channelID string) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM user_favourite_channels
+		WHERE user_id = ? AND channel_id = ?`),
+		userID, channelID); err != nil {
 		return fmt.Errorf("remove favourite channel: %w", err)
 	}
 	return nil
 }
 
-func (s *sqlStore) RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error {
+func (s *Store) RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error {
 	if userID == "" || channelID == "" || at.IsZero() {
 		return fmt.Errorf("record channel tune: user, channel and time are required")
 	}
-	return s.writeChannelPreference(ctx, "record channel tune", channelID, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_recent_channels (user_id, channel_id, tuned_at_ms)
+	return s.writeChannelPreference(ctx, "record channel tune", channelID, func(tx storedb.Tx) error {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO user_recent_channels (user_id, channel_id, tuned_at_ms)
 			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO UPDATE SET tuned_at_ms =
 			CASE WHEN excluded.tuned_at_ms > user_recent_channels.tuned_at_ms
 			THEN excluded.tuned_at_ms ELSE user_recent_channels.tuned_at_ms END`),
+
 			userID, channelID, at.UnixMilli()); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, s.ph(`DELETE FROM user_recent_channels WHERE user_id = ?
+		_, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM user_recent_channels WHERE user_id = ?
 			AND channel_id NOT IN (SELECT channel_id FROM user_recent_channels WHERE user_id = ?
-			ORDER BY tuned_at_ms DESC, channel_id LIMIT ?)`), userID, userID, RecentChannelsKept)
+			ORDER BY tuned_at_ms DESC, channel_id LIMIT ?)`),
+
+			userID, userID, RecentChannelsKept)
 		return err
 	})
 }
@@ -89,13 +94,13 @@ func (s *sqlStore) RecordChannelTune(ctx context.Context, userID, channelID stri
 // takes: a no-op UPDATE holds the channel row against DeleteChannel until commit (Postgres) or
 // takes SQLite's writer lock, so a write either lands before the delete and cascades with it, or
 // sees the channel gone and reports ErrNotFound — never a foreign-key error from the race.
-func (s *sqlStore) writeChannelPreference(ctx context.Context, op, channelID string, write func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) writeChannelPreference(ctx context.Context, op, channelID string, write func(storedb.Tx) error) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: begin: %w", op, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, s.ph(`UPDATE channels SET id = id WHERE id = ?`), channelID)
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE channels SET id = id WHERE id = ?`), channelID)
 	if err != nil {
 		return fmt.Errorf("%s: lock channel: %w", op, err)
 	}
@@ -104,7 +109,7 @@ func (s *sqlStore) writeChannelPreference(ctx context.Context, op, channelID str
 		return fmt.Errorf("%s: lock channel affected rows: %w", op, err)
 	}
 	if matched == 0 {
-		return ErrNotFound
+		return storedb.ErrNotFound
 	}
 	if err := write(tx); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
@@ -115,10 +120,11 @@ func (s *sqlStore) writeChannelPreference(ctx context.Context, op, channelID str
 	return nil
 }
 
-func (s *sqlStore) UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error) {
+func (s *Store) UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error) {
 	var out UserChannelLists
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT channel_id, added_at_ms FROM user_favourite_channels
-		WHERE user_id = ? ORDER BY added_at_ms, channel_id`), userID)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT channel_id, added_at_ms FROM user_favourite_channels
+		WHERE user_id = ? ORDER BY added_at_ms, channel_id`),
+		userID)
 	if err != nil {
 		return out, fmt.Errorf("list favourite channels: %w", err)
 	}
@@ -135,8 +141,9 @@ func (s *sqlStore) UserChannelLists(ctx context.Context, userID string) (UserCha
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return out, fmt.Errorf("list favourite channels: %w", err)
 	}
-	rows, err = s.db.QueryContext(ctx, s.ph(`SELECT channel_id, tuned_at_ms FROM user_recent_channels
-		WHERE user_id = ? ORDER BY tuned_at_ms DESC, channel_id LIMIT ?`), userID, RecentChannelsKept)
+	rows, err = s.h.QueryContext(ctx, s.h.Rebind(`SELECT channel_id, tuned_at_ms FROM user_recent_channels
+		WHERE user_id = ? ORDER BY tuned_at_ms DESC, channel_id LIMIT ?`),
+		userID, RecentChannelsKept)
 	if err != nil {
 		return out, fmt.Errorf("list recent channels: %w", err)
 	}

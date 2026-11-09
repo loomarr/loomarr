@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
 	"github.com/riverqueue/river"
-
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // pausableJob is a job that counts its executions.
@@ -68,7 +67,7 @@ func TestPaused_SurvivesAStateWrite(t *testing.T) {
 
 	_ = s.SetPaused(ctx, "reconcile", true)
 	// A perfectly ordinary state write, the shape the scheduler makes after every run.
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{
 		Name: "reconcile", LastResult: "ok", LastRun: clk.now(), NextRun: clk.now().Add(time.Hour),
 	})
 
@@ -91,7 +90,7 @@ func TestPaused_ReportsNoNextRun(t *testing.T) {
 	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
 	ctx := context.Background()
 
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "reconcile", NextRun: clk.now().Add(time.Hour)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "reconcile", NextRun: clk.now().Add(time.Hour)})
 	_ = s.SetPaused(ctx, "reconcile", true)
 
 	got, err := s.List(ctx)

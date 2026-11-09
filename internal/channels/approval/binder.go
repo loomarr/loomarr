@@ -22,6 +22,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -243,7 +244,7 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 			}
 			// And durably, because the log line above is gone the moment the terminal scrolls.
 			if b.acts != nil {
-				b.acts.Error(ctx, store.ActivityKindChannel, channelID,
+				b.acts.Error(ctx, activitystore.ActivityKindChannel, channelID,
 					fmt.Sprintf("%q couldn't converge its playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
 			}
 		}

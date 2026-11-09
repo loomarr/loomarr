@@ -17,13 +17,13 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
 // Sink is the storage this package needs — accept-interfaces, so callers can pass a double
 // without the store.
 type Sink interface {
-	RecordActivity(ctx context.Context, a store.Activity) error
+	RecordActivity(ctx context.Context, a activitystore.Activity) error
 }
 
 // Notifier receives a signal after a row is written, for the SSE bus (optional).
@@ -62,7 +62,7 @@ func (r *Recorder) WithNotifier(n Notifier) *Recorder { r.notify = n; return r }
 // swallowed. Recording that something happened must never be able to stop it happening,
 // which is why this returns nothing at all: there is no error a caller should act on, and
 // returning one would invite a caller to treat telemetry as load-bearing.
-func (r *Recorder) Record(ctx context.Context, a store.Activity) {
+func (r *Recorder) Record(ctx context.Context, a activitystore.Activity) {
 	if r == nil || r.sink == nil {
 		return
 	}
@@ -81,13 +81,13 @@ func (r *Recorder) Record(ctx context.Context, a store.Activity) {
 // Record calls so a write point states its severity in one word and cannot invent a fourth
 // level the frontend has no colour for.
 func (r *Recorder) Info(ctx context.Context, kind, subjectID, text string) {
-	r.Record(ctx, store.Activity{Kind: kind, Level: store.ActivityInfo, Text: text, SubjectID: subjectID})
+	r.Record(ctx, activitystore.Activity{Kind: kind, Level: activitystore.ActivityInfo, Text: text, SubjectID: subjectID})
 }
 
 func (r *Recorder) Warn(ctx context.Context, kind, subjectID, text string) {
-	r.Record(ctx, store.Activity{Kind: kind, Level: store.ActivityWarn, Text: text, SubjectID: subjectID})
+	r.Record(ctx, activitystore.Activity{Kind: kind, Level: activitystore.ActivityWarn, Text: text, SubjectID: subjectID})
 }
 
 func (r *Recorder) Error(ctx context.Context, kind, subjectID, text string) {
-	r.Record(ctx, store.Activity{Kind: kind, Level: store.ActivityError, Text: text, SubjectID: subjectID})
+	r.Record(ctx, activitystore.Activity{Kind: kind, Level: activitystore.ActivityError, Text: text, SubjectID: subjectID})
 }
