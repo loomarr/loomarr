@@ -141,6 +141,8 @@ const VideoPlayer = ({
       case "L":
         if (!live || !liveTransport) return;
         e.preventDefault();
+        // The caller's own L comes first (Watch: the last channel, §9.3); Go live is the fallback.
+        if (onShortcut && !e.metaKey && !e.ctrlKey && !e.altKey && onShortcut(e.key)) break;
         goLive();
         break;
       case "m":

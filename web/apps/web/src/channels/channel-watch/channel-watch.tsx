@@ -5,15 +5,18 @@ import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
 import {
+  PlayerAudio,
   PlayerChrome,
   PlayerCover,
   PlayerInfo,
-  PlayerSettings,
+  PlayerMore,
+  PlayerOptions,
+  PlayerReadout,
   PlayerSheet,
   playbarFromTimeline,
   WatchingPanel,
 } from "@loomarr/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer } from "@/channels/channel-drawer";
@@ -33,12 +36,12 @@ import { useWatchTelemetry } from "../use-watch-telemetry";
 //
 // The player itself is the shared VideoPlayer primitive in `live` mode with the shared player
 // controller's browser transport bound through its `attach` seam (useWatchPlayer, owned by the route).
-// Its controls are the §9 player chrome from `@loomarr/ui` (PlayerChrome: the lower third, the preview
-// playbar and the transport), drawn through VideoPlayer's `renderChrome` so they share its auto-hide
-// and go fullscreen with it. This component owns what the chrome is fed: the channel's timeline, the
-// one right-hand sheet, and the ✕ that leaves.
+// Its controls are the §9 player chrome from `@loomarr/ui` (PlayerChrome, variant H: the band, the
+// keys and the top row), drawn through VideoPlayer's `renderChrome` so they share its auto-hide and
+// go fullscreen with it. This component owns what the chrome is fed: the channel's timeline, the one
+// right-hand sheet, and the Leave that exits.
 //
-// ⚠ Settings only SHOWS the channel's default audio language. An admin sets it on the channel's info
+// ⚠ Audio only SHOWS the channel's default audio language. An admin sets it on the channel's info
 // page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
 
 interface ChannelWatchProps {
@@ -51,9 +54,6 @@ interface ChannelWatchProps {
   /** The channels around this one: the drawer, the phone panel, and the recents record. */
   channels?: WatchChannels;
 }
-
-// The chrome's ⟲/⟳ step, the same as ←/→ (#2088 decision 2).
-const SEEK_STEP_MS = 10_000;
 
 // The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
 const IDENT_MS = 5_000;
@@ -252,68 +252,109 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     video: videoRef,
   });
 
+  // Last channel (§9.3): the newest recent that isn't this one, with its number for the key.
+  const previousId = phone?.previousId;
+  const previous = previousId ? drawer?.channels.find((c) => c.id === previousId) : undefined;
+  const last = previous ? { id: previous.id, number: String(previous.number) } : undefined;
+  const goLast = last ? () => player.tune(last.id) : undefined;
+
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
     hasInfo: info !== undefined,
     channels: drawer?.channels,
+    onLast: goLast,
+    onLeave,
     onTune: player.tune,
     viewerPaused: player.liveTransport.state.mode === "paused",
   });
-  // A preview card is open on the playbar: the controls stay shown under it.
-  const [previewOpen, setPreviewOpen] = useState(false);
 
-  // The number readout, top right of the frame (the console mock): the digits so far, dashed out
-  // to the longest channel number, over "ENTER CHANNEL" or, for a number no channel has, "NO SUCH
-  // CHANNEL".
+  // The number readout, top right of the frame: the digits so far, dashed out to the longest channel
+  // number, over "Enter channel" or, for a number no channel has, "No such channel". Over the
+  // picture it sits on a solid ink backing (§9.2), white, never amber.
   const numberReadout = entry.digits ? (
-    <div className="absolute top-14 right-7 text-right" role="status">
-      <div className="text-signal font-mono text-[52px] font-semibold tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
-        {entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
-      </div>
-      <div
-        className={cn(
-          "animate-pulse font-mono text-[11px] tracking-[.2em]",
-          entry.missed ? "text-onair-300" : "text-signal/65",
-        )}
-      >
-        {entry.missed ? "NO SUCH CHANNEL" : "ENTER CHANNEL"}
-      </div>
-    </div>
+    <ThemeScope theme="dark">
+      <PlayerReadout
+        density={density}
+        digits={entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
+        missed={entry.missed}
+      />
+    </ThemeScope>
   ) : undefined;
+
+  // The sheet's own name for the channel it is about.
+  const sheetChannel = { name: osdChannel.name, number: String(osdChannel.number) };
+  const sheetOf = (title: string, body: ReactNode) => (
+    <PlayerSheet channel={sheetChannel} density={density} key={title} onClose={closeSheet} title={title}>
+      {body}
+    </PlayerSheet>
+  );
+  const live = player.liveTransport.state;
 
   // The open sheet, over the dimmed picture. Channels is still the console drawer (#1659 W1) until it
   // is rebuilt on the sheet.
-  const openSheet =
-    sheet === "settings" ? (
-      <PlayerSheet
-        channelLabel={channelLabel}
-        density={density}
-        icon="settings"
-        onClose={closeSheet}
-        title="Settings"
-      >
-        <PlayerSettings
-          audio={audio}
+  const openSheetFor = (chrome: VideoPlayerChrome) =>
+    sheet === "audio" ? (
+      sheetOf(
+        "Audio",
+        <PlayerAudio
           density={density}
           onSwitchSound={setSwitchSoundOn}
-          quality={
-            qualityOptions && {
-              onSelect: (value) => player.setQuality(value === "auto" ? "auto" : Number(value)),
-              options: qualityOptions,
-            }
-          }
+          options={audio}
           switchSound={switchSoundOn}
-        />
-      </PlayerSheet>
+        />,
+      )
+    ) : sheet === "picture" ? (
+      sheetOf(
+        "Picture",
+        qualityOptions ? (
+          <PlayerOptions
+            density={density}
+            label="Picture quality"
+            onSelect={(value) => player.setQuality(value === "auto" ? "auto" : Number(value))}
+            options={qualityOptions}
+          />
+        ) : null,
+      )
+    ) : sheet === "more" ? (
+      sheetOf(
+        "More",
+        <PlayerMore
+          channels={drawer ? { onPress: () => toggleSheet("channels") } : undefined}
+          density={density}
+          formatTime={formatGuideTime}
+          goLive={
+            live.mode === "live"
+              ? undefined
+              : { detail: formatGuideTime(serverNowMs ?? Date.now()), onPress: chrome.goLive }
+          }
+          info={info ? { onPress: () => toggleSheet("info") } : undefined}
+          last={touch && last && goLast ? { number: last.number, onPress: goLast } : undefined}
+          picture={
+            qualityOptions
+              ? {
+                  detail: qualityOptions.find((o) => o.selected)?.label ?? "Auto",
+                  onPress: () => toggleSheet("picture"),
+                }
+              : undefined
+          }
+          schedule={
+            airings.length > 0
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
+              : undefined
+          }
+          startOver={
+            startOverMs === undefined || !info
+              ? undefined
+              : { detail: info.title, onPress: () => chrome.seekTo(startOverMs) }
+          }
+        />,
+      )
     ) : sheet === "info" && info ? (
-      <PlayerSheet
-        channelLabel={channelLabel}
-        density={density}
-        icon="info"
-        onClose={closeSheet}
-        title="Info"
-      >
-        <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />
-      </PlayerSheet>
+      sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
       <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
         <ChannelDrawer
@@ -349,7 +390,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The chrome over the picture (§9), or the error cover in its place.
   const renderChrome = (chrome: VideoPlayerChrome) => (
     <>
-      <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
+      <HoldWhile hold={chrome.hold} on={sheet !== undefined} />
       <HideForIdent hide={chrome.hide} ident={ident} />
       {errorCover ?? (
         <PlayerChrome
@@ -357,41 +398,31 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           density={density}
           formatTime={formatGuideTime}
           ident={ident}
-          onPreviewChange={setPreviewOpen}
-          playbar={
-            airings.length > 0
-              ? {
-                  onSeek: chrome.seekTo,
-                  playheadMs: viewerTimeMs,
-                  segments: chromeData.segments,
-                  window: chromeData.window,
-                }
-              : undefined
-          }
-          sheet={openSheet}
-          transport={{
-            channelsOpen: drawer ? sheet === "channels" : undefined,
+          keys={{
             density,
-            fullscreen: chrome.fullscreen,
-            infoOpen: sheet === "info",
-            live: player.liveTransport.state,
+            last: !touch && last && goLast ? { number: last.number, onPress: goLast } : undefined,
+            moreOpen: sheet === "more",
             muted: chrome.muted,
-            onChannels: drawer ? () => toggleSheet("channels") : undefined,
-            onFullscreen: chrome.toggleFullscreen,
-            onGoLive: chrome.goLive,
-            onInfo: info ? () => toggleSheet("info") : undefined,
-            onLeave,
-            onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
-            onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
-            onSettings: () => toggleSheet("settings"),
-            onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
-            onTogglePlay: chrome.toggle,
+            onChannelDown: player.canSurf ? () => player.step(-1) : undefined,
+            onChannelUp: player.canSurf ? () => player.step(1) : undefined,
+            onMore: () => toggleSheet("more"),
             onToggleMute: () => chrome.setMuted(!chrome.muted),
-            onVolume: chrome.setVolume,
+            onTogglePlay: chrome.toggle,
             playing: chrome.playing,
             pointer: !touch,
-            settingsOpen: sheet === "settings",
             volume: chrome.volume,
+          }}
+          live={live}
+          onGoLive={chrome.goLive}
+          sheet={openSheetFor(chrome)}
+          top={{
+            audioOpen: sheet === "audio",
+            density,
+            fullscreen: chrome.fullscreen,
+            onAudio: () => toggleSheet("audio"),
+            onFullscreen: chrome.toggleFullscreen,
+            onLeave,
+            pointer: !touch,
           }}
           visible={chrome.controlsShown && !tuning}
         />
