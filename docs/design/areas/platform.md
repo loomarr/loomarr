@@ -10,20 +10,20 @@ One area of the [package map](../package-map.md#start-here).
 
 - **people** · 9 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention
 - **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
+- **library** · 5 imports — the store persists inventory and provision values, and settings parses the media-server connection
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
-- **library** · 4 imports — the store persists inventory and provision values, and settings parses the media-server connection
 - **channels** · 2 imports — the store persists the `channels/schedule` channel, lineup and slot values
 - **proposals** · 2 imports — the store persists proposals and suggestion-quality runs
 
 ## Packages
 
-- **`platform/activity`** · 4 importers · → `platform/store`
+- **`platform/activity`** · 4 importers · → `platform/store/activitystore`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`platform/buildinfo`** · 5 importers
   Carries the version stamped into the binary at build time.
 - **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`platform/diagnostics`** · 8 importers · → `platform/storagegovernor`
+- **`platform/diagnostics`** · 10 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`platform/httpx`** · 13 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`platform/jobs`** · 6 importers · → `platform/store`
+- **`platform/jobs`** · 6 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 3 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
@@ -55,15 +55,25 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 24 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 22 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+- **`platform/store/activitystore`** · 8 importers · → `platform/store/storedb`
+  Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
+- **`platform/store/channeldatastore`** · 5 importers · → `platform/store/storedb`, `provision`
+  Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/clipstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
+- **`platform/store/crashstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
+  Persists the crash reports paired apps send (#1816).
+- **`platform/store/diagnosticsstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
+  Persists the diagnostic event log, the process runs behind it, and the running byte totals that bound them (the diagnostic_events, diagnostic_process_runs and diagnostic_retained_bytes tables).
 - **`platform/store/identitystore`** · 6 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
+- **`platform/store/jobstore`** · 2 importers · → `platform/store/storedb`
+  Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).
-- **`platform/store/storedb`** · 4 importers
+- **`platform/store/storedb`** · 9 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`platform/textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.

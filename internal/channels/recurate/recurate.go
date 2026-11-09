@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -170,7 +171,7 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (proposals.Aut
 }
 
 type discoveryFeedbackReader interface {
-	ListDiscoveryFeedback(context.Context, store.FeedbackFilter) ([]store.DiscoveryFeedback, error)
+	ListDiscoveryFeedback(context.Context, channeldatastore.FeedbackFilter) ([]channeldatastore.DiscoveryFeedback, error)
 }
 
 func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[provision.Key]bool, error) {
@@ -178,11 +179,11 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 	if !ok {
 		return nil, nil
 	}
-	household, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
+	household, err := reader.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		return nil, err
 	}
-	channel, err := reader.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackChannel, ScopeID: channelID})
+	channel, err := reader.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: channelID})
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +195,7 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 			continue
 		}
 		seen[event.Target] = true
-		protected[event.Target] = event.Action == store.FeedbackKeep
+		protected[event.Target] = event.Action == channeldatastore.FeedbackKeep
 	}
 	return protected, nil
 }
