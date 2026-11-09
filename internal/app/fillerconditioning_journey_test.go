@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -104,11 +105,11 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if err := os.WriteFile(sourceFull, []byte("reviewed child source bytes "+fixtureSuffix), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
-			sourceHash, err := filler.ClipID(sourceFull)
+			sourceHash, err := asset.ClipID(sourceFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -304,8 +305,8 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	transcode.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measured = append(measured, req)
 		if len(measured) == 1 {
-			parentID, parentErr := filler.ClipID(req.ParentPath)
-			beforeSourceHash, _ = filler.ClipID(req.Path)
+			parentID, parentErr := asset.ClipID(req.ParentPath)
+			beforeSourceHash, _ = asset.ClipID(req.Path)
 			measuredParentBound = parentErr == nil && parentID == compHash
 			measurement := journeyConditioningMeasurement(-28.4)
 			measurement.Cuts[0].Intended = req.IntendedCuts[0]

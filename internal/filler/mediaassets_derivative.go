@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -119,14 +120,14 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	if err != nil {
 		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
 	}
-	digest, size, err := FileSHA256(stagePath)
+	digest, size, err := asset.FileSHA256(stagePath)
 	if err != nil {
 		return MediaDerivativeLineage{}, err
 	}
 	if err := request.Storage.Record(ctx, size); err != nil {
 		return MediaDerivativeLineage{}, err
 	}
-	clipHash, err := ClipID(stagePath)
+	clipHash, err := asset.ClipID(stagePath)
 	if err != nil {
 		return MediaDerivativeLineage{}, err
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
@@ -743,7 +744,7 @@ func seedCompilation(st *splitMemStore, path string, durationMs int64) string {
 
 func bindCompilationIdentity(t *testing.T, st *splitMemStore, oldHash, fullPath string) string {
 	t.Helper()
-	hash, err := filler.ClipID(fullPath)
+	hash, err := asset.ClipID(fullPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -786,7 +787,7 @@ func splitFixtureBytes(path string) []byte {
 
 func splitFixtureIdentity(path string) string {
 	contents := splitFixtureBytes(path)
-	id, err := filler.ClipIDFromReaderAt(bytes.NewReader(contents), int64(len(contents)))
+	id, err := asset.ClipIDFromReaderAt(bytes.NewReader(contents), int64(len(contents)))
 	if err != nil {
 		panic(fmt.Sprintf("split fixture identity: %v", err))
 	}
@@ -2067,7 +2068,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		if err := os.WriteFile(expected, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		childHash, err := filler.ClipID(expected)
+		childHash, err := asset.ClipID(expected)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2111,7 +2112,7 @@ func TestConfirm_SourceReplacementAfterValidationPublishesNothing(t *testing.T) 
 	if err := os.WriteFile(parentFull, []byte("reviewed parent bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2167,7 +2168,7 @@ func TestConfirm_SparseIdentityCollisionCannotHideCompositeReplacement(t *testin
 	if err := os.WriteFile(parentFull, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2175,7 +2176,7 @@ func TestConfirm_SparseIdentityCollisionCannotHideCompositeReplacement(t *testin
 	if err := os.WriteFile(check, replacement, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if replacementHash, err := filler.ClipID(check); err != nil || replacementHash != parentHash {
+	if replacementHash, err := asset.ClipID(check); err != nil || replacementHash != parentHash {
 		t.Fatalf("fixture does not collide under ClipID: %q, %v", replacementHash, err)
 	}
 	st.clips[parentHash] = filler.StoreClip{Clip: filler.Clip{
@@ -2213,7 +2214,7 @@ func TestConfirm_ExistingChildReuseRejectsBytesThatDoNotMatchTheirAddress(t *tes
 	if err := os.WriteFile(parentFull, []byte("parent"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	honestParentHash, err := filler.ClipID(parentFull)
+	honestParentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2231,7 +2232,7 @@ func TestConfirm_ExistingChildReuseRejectsBytesThatDoNotMatchTheirAddress(t *tes
 	if err := os.WriteFile(expected, []byte("cut 0-30000"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(expected)
+	childHash, err := asset.ClipID(expected)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2266,7 +2267,7 @@ func TestConfirm_ExistingChildRequiresExactStagedBytesBeyondClipID(t *testing.T)
 	if err := os.WriteFile(parentFull, []byte("parent"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2287,7 +2288,7 @@ func TestConfirm_ExistingChildRequiresExactStagedBytesBeyondClipID(t *testing.T)
 	if err := os.WriteFile(expected, stagedBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(expected)
+	childHash, err := asset.ClipID(expected)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2322,7 +2323,7 @@ func TestConfirm_ConcurrentScanNeverObservesAnUnboundChild(t *testing.T) {
 	if err := os.WriteFile(parent, []byte("compilation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentFileHash, err := filler.ClipID(parent)
+	parentFileHash, err := asset.ClipID(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2397,7 +2398,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 			if err := os.WriteFile(parentFull, []byte("honest parent bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2469,7 +2470,7 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 	if err := os.WriteFile(parentFull, []byte("honest parent bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2540,7 +2541,7 @@ func TestConfirm_LaterCutFailurePublishesNoGeneration(t *testing.T) {
 	if err := os.WriteFile(parentFull, []byte("honest parent bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2584,7 +2585,7 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 	if err := os.WriteFile(parentFull, []byte("honest parent bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2604,7 +2605,7 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 	if err := os.WriteFile(expected, expectedBody, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(expected)
+	childHash, err := asset.ClipID(expected)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2788,7 +2789,7 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 			if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			parentHash, err := filler.ClipID(parentFull)
+			parentHash, err := asset.ClipID(parentFull)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2834,7 +2835,7 @@ func TestConfirm_ReSplitFailureKeepsTheSelectedGenerationAndPublishesNoReplaceme
 				if err := os.WriteFile(expected, []byte(fmt.Sprintf("cut %d-%d", segment.StartMs, segment.EndMs)), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				hash, err := filler.ClipID(expected)
+				hash, err := asset.ClipID(expected)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -2919,7 +2920,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2954,7 +2955,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if err := os.WriteFile(expected, []byte("cut 0-30000"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	childHash, err := filler.ClipID(expected)
+	childHash, err := asset.ClipID(expected)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2981,7 +2982,7 @@ func TestConfirm_StaleRollbackCannotDeleteRecoveredWinnersMedia(t *testing.T) {
 	if err := os.WriteFile(parentFull, []byte("retained compilation bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	parentHash, err := filler.ClipID(parentFull)
+	parentHash, err := asset.ClipID(parentFull)
 	if err != nil {
 		t.Fatal(err)
 	}

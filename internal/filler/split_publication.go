@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -32,10 +33,10 @@ type splitPublication struct {
 
 func snapshotSplitComposite(ctx context.Context, source, stageDir, extension, expectedHash string) (string, error) {
 	snapshot := filepath.Join(stageDir, "composite"+extension)
-	if err := snapshotOwnedFile(ctx, source, snapshot); err != nil {
+	if err := asset.SnapshotOwnedFile(ctx, source, snapshot); err != nil {
 		return "", fmt.Errorf("split confirm: snapshot composite: %w", err)
 	}
-	snapshotHash, err := ClipID(snapshot)
+	snapshotHash, err := asset.ClipID(snapshot)
 	if err != nil {
 		return "", fmt.Errorf("split confirm: identify composite snapshot: %w", err)
 	}
@@ -49,7 +50,7 @@ func snapshotSplitComposite(ctx context.Context, source, stageDir, extension, ex
 }
 
 func validateSplitCompositeOwnership(ctx context.Context, source, snapshot string) error {
-	equal, err := exactFileBytesEqual(ctx, source, snapshot, tools.ConditioningMaxSnapshotBytes)
+	equal, err := asset.ExactFileBytesEqual(ctx, source, snapshot, tools.ConditioningMaxSnapshotBytes)
 	if err != nil {
 		return fmt.Errorf("split confirm: compare composite snapshot: %w", err)
 	}

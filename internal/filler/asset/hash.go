@@ -1,4 +1,8 @@
-package filler
+// Package asset holds the byte-level identity and ownership primitives of retained media: the
+// sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two
+// ownership-boundary artifacts, and the bounded snapshot copy. It depends on nothing else in
+// filler, so the media-asset, sidecar and pipeline code above it can share it.
+package asset
 
 import (
 	"bytes"
@@ -39,9 +43,9 @@ import (
 // identity, but atomically moves the existing clip's metadata and references to it; it must never
 // rewrite bytes under the old hash.
 
-// hashWindow is how much is read from each end. 64 KB comfortably covers container headers
+// HashWindow is how much is read from each end. 64 KB comfortably covers container headers
 // (moov/ftyp boxes, Matroska headers) without making the read itself the cost.
-const hashWindow = 64 * 1024
+const HashWindow = 64 * 1024
 
 // ClipID computes a clip's identity from its contents.
 //
@@ -84,14 +88,14 @@ func ClipIDFromReaderAt(r io.ReaderAt, size int64) (string, error) {
 	h.Write(sizeBuf[:])
 
 	// Head.
-	if err := hashSection(h, r, 0, hashWindow, size); err != nil {
+	if err := hashSection(h, r, 0, HashWindow, size); err != nil {
 		return "", fmt.Errorf("hash clip head: %w", err)
 	}
 	// Tail. ⚠ Skipped when the file is smaller than one window: the head has already covered
 	// every byte, and re-hashing an overlapping region would make a small file's identity depend
 	// on how much of it happened to be read twice.
-	if size > hashWindow {
-		if err := hashSection(h, r, size-hashWindow, hashWindow, size); err != nil {
+	if size > HashWindow {
+		if err := hashSection(h, r, size-HashWindow, HashWindow, size); err != nil {
 			return "", fmt.Errorf("hash clip tail: %w", err)
 		}
 	}
@@ -138,15 +142,10 @@ func hashSection(h io.Writer, r io.ReaderAt, offset, n, size int64) error {
 	return err
 }
 
-// ExactFileBytesEqual is exactFileBytesEqual for packages above filler. It only reads both files.
-func ExactFileBytesEqual(ctx context.Context, leftPath, rightPath string, maxBytes int64) (bool, error) {
-	return exactFileBytesEqual(ctx, leftPath, rightPath, maxBytes)
-}
-
-// exactFileBytesEqual compares two ownership-boundary artifacts without changing ClipID's sparse
+// ExactFileBytesEqual compares two ownership-boundary artifacts without changing ClipID's sparse
 // catalog contract. Both objects stay open for the complete bounded comparison, and cancellation
 // is observed between every read.
-func exactFileBytesEqual(ctx context.Context, leftPath, rightPath string, maxBytes int64) (bool, error) {
+func ExactFileBytesEqual(ctx context.Context, leftPath, rightPath string, maxBytes int64) (bool, error) {
 	left, err := os.Open(leftPath)
 	if err != nil {
 		return false, err

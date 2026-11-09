@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
@@ -20,11 +21,11 @@ func recoveryBoundaryArtifact(t *testing.T, root, id string, state filler.Acquis
 	if err := filler.WriteSidecarTags(media, filler.SidecarTags{SourceID: "youtube:classic", AcquisitionID: "acq-boundary"}, true); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := filler.FileSHA256(media)
+	digest, size, err := asset.FileSHA256(media)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash, err := filler.ClipID(media)
+	hash, err := asset.ClipID(media)
 	if err != nil {
 		t.Fatal(err)
 	}

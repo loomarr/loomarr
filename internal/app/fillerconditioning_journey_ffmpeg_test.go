@@ -19,6 +19,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -76,7 +77,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	fixtures := testkit.FillerConditioningMedia(t, dir)
 	mediaTools := tools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
 
-	parentHash, err := filler.ClipID(fixtures.Compilation)
+	parentHash, err := asset.ClipID(fixtures.Compilation)
 	if err != nil {
 		t.Fatal(err)
 	}

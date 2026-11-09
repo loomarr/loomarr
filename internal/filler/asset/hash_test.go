@@ -1,4 +1,4 @@
-package filler_test
+package asset_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 // writeBytes writes a file with specific CONTENT — distinct from scan_test.go's `writeFile`,
@@ -35,11 +35,11 @@ func TestClipID_SameContentInTwoFoldersIsOneIdentity(t *testing.T) {
 	a := writeBytes(t, dir, "folder-one/ads/sparkra.mp4", content)
 	b := writeBytes(t, dir, "folder-two/ads/sparkra.mp4", content)
 
-	idA, err := filler.ClipID(a)
+	idA, err := asset.ClipID(a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idB, err := filler.ClipID(b)
+	idB, err := asset.ClipID(b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,8 @@ func TestClipID_DistinguishesFilesSharingAHead(t *testing.T) {
 	one := append(append([]byte{}, head...), body('1', 100_000)...)
 	two := append(append([]byte{}, head...), body('2', 100_000)...)
 
-	idOne, _ := filler.ClipID(writeBytes(t, dir, "one.mp4", one))
-	idTwo, _ := filler.ClipID(writeBytes(t, dir, "two.mp4", two))
+	idOne, _ := asset.ClipID(writeBytes(t, dir, "one.mp4", one))
+	idTwo, _ := asset.ClipID(writeBytes(t, dir, "two.mp4", two))
 	if idOne == idTwo {
 		t.Error("two files sharing a head collided — the TAIL window is not contributing")
 	}
@@ -71,8 +71,8 @@ func TestClipID_DistinguishesATruncatedCopy(t *testing.T) {
 	dir := t.TempDir()
 	full := body('x', 300_000)
 
-	idFull, _ := filler.ClipID(writeBytes(t, dir, "full.mp4", full))
-	idCut, _ := filler.ClipID(writeBytes(t, dir, "cut.mp4", full[:250_000]))
+	idFull, _ := asset.ClipID(writeBytes(t, dir, "full.mp4", full))
+	idCut, _ := asset.ClipID(writeBytes(t, dir, "cut.mp4", full[:250_000]))
 	if idFull == idCut {
 		t.Error("a truncated copy collided with its original — the SIZE is not contributing")
 	}
@@ -85,7 +85,7 @@ func TestClipID_HandlesFilesSmallerThanTheWindow(t *testing.T) {
 	dir := t.TempDir()
 	small := body('s', 512)
 
-	id, err := filler.ClipID(writeBytes(t, dir, "small.mp4", small))
+	id, err := asset.ClipID(writeBytes(t, dir, "small.mp4", small))
 	if err != nil {
 		t.Fatalf("a small file failed to hash: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestClipID_HandlesFilesSmallerThanTheWindow(t *testing.T) {
 		t.Error("empty id for a small but valid file")
 	}
 	// Same content, different name → same id. Identity is the bytes, not the filename.
-	again, _ := filler.ClipID(writeBytes(t, dir, "renamed.mp4", small))
+	again, _ := asset.ClipID(writeBytes(t, dir, "renamed.mp4", small))
 	if id != again {
 		t.Error("renaming a file changed its identity — identity must be the CONTENT")
 	}
@@ -103,7 +103,7 @@ func TestClipID_HandlesFilesSmallerThanTheWindow(t *testing.T) {
 // folder of them would collapse into a single clip.
 func TestClipID_RefusesAnEmptyFile(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := filler.ClipID(writeBytes(t, dir, "empty.mp4", nil)); err == nil {
+	if _, err := asset.ClipID(writeBytes(t, dir, "empty.mp4", nil)); err == nil {
 		t.Error("an empty file was given an identity — every empty file would share it")
 	}
 }

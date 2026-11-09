@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
 )
 
 func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
@@ -14,7 +16,7 @@ func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 	if err := os.WriteFile(source, bytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := ClipID(source)
+	hash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +61,7 @@ func TestPreserveSourceMasterRefusesSymlink(t *testing.T) {
 	if err := os.Symlink(realPath, link); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := ClipID(realPath)
+	hash, err := asset.ClipID(realPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func TestPreserveSourceMasterRefusesDifferentExistingBytes(t *testing.T) {
 	if err := os.WriteFile(source, []byte("source bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := ClipID(source)
+	hash, err := asset.ClipID(source)
 	if err != nil {
 		t.Fatal(err)
 	}

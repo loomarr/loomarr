@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
@@ -215,7 +216,7 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 		if err := os.WriteFile(src, []byte(name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		hash, err := filler.ClipID(src)
+		hash, err := asset.ClipID(src)
 		if err != nil {
 			t.Fatal(err)
 		}
