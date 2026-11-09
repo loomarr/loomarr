@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -21,7 +22,7 @@ import (
 type quotaStore struct {
 	users     map[string]identitystore.User
 	titles    map[provision.Key]provision.Record
-	proposals map[string]store.Proposal
+	proposals map[string]proposalstore.Proposal
 	channels  map[string]channelstore.Channel
 	titleErr  error
 	// listErr is what the store reports for a proposal list it cannot decode.
@@ -39,7 +40,7 @@ func newQuotaStore() *quotaStore {
 	return &quotaStore{
 		users:     map[string]identitystore.User{},
 		titles:    map[provision.Key]provision.Record{},
-		proposals: map[string]store.Proposal{},
+		proposals: map[string]proposalstore.Proposal{},
 		channels:  map[string]channelstore.Channel{},
 	}
 }
@@ -70,17 +71,17 @@ func (q *quotaStore) GetTitle(_ context.Context, key provision.Key) (provision.R
 	return r, nil
 }
 
-func (q *quotaStore) NewestProposalByStatusForJob(_ context.Context, jobID, status string) (store.Proposal, error) {
+func (q *quotaStore) NewestProposalByStatusForJob(_ context.Context, jobID, status string) (proposalstore.Proposal, error) {
 	q.dataMu.RLock()
 	defer q.dataMu.RUnlock()
-	var newest store.Proposal
+	var newest proposalstore.Proposal
 	for _, p := range q.proposals {
 		if p.JobID == jobID && p.Status == status && (newest.ID == "" || p.CreatedAt.After(newest.CreatedAt)) {
 			newest = p
 		}
 	}
 	if newest.ID == "" {
-		return store.Proposal{}, store.ErrNotFound
+		return proposalstore.Proposal{}, store.ErrNotFound
 	}
 	return newest, nil
 }
@@ -120,7 +121,7 @@ func (q *quotaStore) commitProposalApproval(commit store.ProposalApproval) (int,
 		return 0, store.ErrNotFound
 	}
 	if p.Status != "submitted" {
-		return 0, store.ErrProposalNotSubmitted
+		return 0, proposalstore.ErrProposalNotSubmitted
 	}
 	q.proposals[p.ID] = commit.Proposal
 	q.channels[commit.Channel.ID] = commit.Channel
@@ -137,7 +138,7 @@ func (q *quotaStore) commitProposalApproval(commit store.ProposalApproval) (int,
 	return enqueued, nil
 }
 
-func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([]store.Proposal, error) {
+func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([]proposalstore.Proposal, error) {
 	if err := q.requireHeldQuotaLock(); err != nil {
 		return nil, err
 	}
@@ -146,7 +147,7 @@ func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([
 	if q.listErr != nil {
 		return nil, q.listErr
 	}
-	var out []store.Proposal
+	var out []proposalstore.Proposal
 	for _, p := range q.proposals {
 		if p.CreatedBy == userID {
 			out = append(out, p)
@@ -189,19 +190,19 @@ func (q *quotaStore) quotaLockHeld() bool {
 }
 
 // proposalWith builds a stored proposal whose acquisitions are the given TMDB movie ids.
-func proposalWith(id, createdBy, status string, tmdbIDs ...int) store.Proposal {
+func proposalWith(id, createdBy, status string, tmdbIDs ...int) proposalstore.Proposal {
 	items := make([]proposals.ProposalItem, 0, len(tmdbIDs))
 	for _, n := range tmdbIDs {
 		items = append(items, proposals.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
 	}
-	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, Body: proposals.Proposal{Acquisitions: items}}
+	return proposalstore.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, Body: proposals.Proposal{Acquisitions: items}}
 }
 
 type quotaChannels struct {
 	after func()
 }
 
-func (quotaChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (channelstore.Channel, error) {
+func (quotaChannels) PlanApprovedChannel(_ context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	ch := channelstore.Channel{}
 	ch.ID = "ch-" + p.ID
 	ch.IntentRef = p.JobID
@@ -367,7 +368,7 @@ func TestAutoApprove_ConcurrentProposalsShareTheRemainingQuota(t *testing.T) {
 	st := newQuotaStore()
 	st.requireQuotaLock = true
 	st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}
-	for _, p := range []store.Proposal{
+	for _, p := range []proposalstore.Proposal{
 		proposalWith("race-a", "grace", "submitted", 401),
 		proposalWith("race-b", "grace", "submitted", 402),
 	} {

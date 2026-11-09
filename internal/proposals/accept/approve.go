@@ -14,19 +14,20 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
-var ErrNotSubmitted = store.ErrProposalNotSubmitted
+var ErrNotSubmitted = proposalstore.ErrProposalNotSubmitted
 
 // ErrSuperseded reports an older proposal for a job whose same-time-or-newer proposal has already
 // been approved. Spending the stale acquisitions and rolling the channel backward is not a valid
 // approval; equal persisted timestamps fail closed because their order is unknowable. The older
 // row remains submitted for an explicit deny/audit decision.
-var ErrSuperseded = store.ErrProposalSuperseded
+var ErrSuperseded = proposalstore.ErrProposalSuperseded
 
 // ErrProposalJobGone reports a proposal whose job no longer exists, so approving it cannot create
 // its channel: housekeeping once purged done jobs while their proposals were still submitted. It is
@@ -37,7 +38,7 @@ var ErrProposalJobGone = errors.New("suggest: the proposal's job no longer exist
 // ErrRevisionActive reports a proposal whose replacement generation currently
 // owns its stable Job. Approval resumes only if that revision fails; success
 // atomically publishes a new submitted proposal instead.
-var ErrRevisionActive = store.ErrProposalRevisionActive
+var ErrRevisionActive = proposalstore.ErrProposalRevisionActive
 
 // ErrEmptyApproval reports an edit that removes every effective title. Alternates are backups,
 // not a playable starting lineup, so they cannot make an otherwise empty edited approval valid.
@@ -171,7 +172,7 @@ type TitleReader interface {
 // ApproveStore is the slice of the store the approval transaction needs.
 type ApproveStore interface {
 	TitleReader
-	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (proposalstore.Proposal, error)
 	CommitProposalApproval(ctx context.Context, commit store.ProposalApproval) (int, error)
 }
 
@@ -184,7 +185,7 @@ type ChannelBinder interface {
 	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is
 	// about to commit, including edits and its approvedBy stamp, so it never has to discover
 	// the decision through a stale or not-yet-visible store read.
-	PlanApprovedChannel(ctx context.Context, p store.Proposal) (channelstore.Channel, error)
+	PlanApprovedChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error)
 	// AfterApprovalCommitted may probe codecs and reconcile with Tunarr. Those are remote or
 	// derived consequences, not part of the local transaction; failures are recorded and
 	// retried by the channel sweep rather than unwinding an approval that already committed.
@@ -230,7 +231,7 @@ type ProposalApprovalQuality interface {
 
 // Notifier is told when a proposal's approval has committed. suggest.ProposalNotifier satisfies it.
 type Notifier interface {
-	ProposalApproved(context.Context, store.Proposal, string)
+	ProposalApproved(context.Context, proposalstore.Proposal, string)
 }
 
 // WithProposalNotifier publishes the approval to the product's notification surface.
@@ -266,7 +267,7 @@ func NewApprover(st ApproveStore, channels ChannelBinder, now func() time.Time) 
 // so the trail distinguishes a machine decision from a human one.
 func (a *Approver) Approve(
 	ctx context.Context,
-	p store.Proposal,
+	p proposalstore.Proposal,
 	edit *ApprovalEdit,
 	approvedBy string,
 ) (ApprovalResult, error) {
@@ -283,7 +284,7 @@ func (a *Approver) Approve(
 // commit; both paths return only after requester ordering has been released.
 func (a *Approver) approveDurably(
 	ctx context.Context,
-	p store.Proposal,
+	p proposalstore.Proposal,
 	edit *ApprovalEdit,
 	approvedBy string,
 	commit approvalCommit,
@@ -419,9 +420,9 @@ func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string)
 // approval, changing status, or touching the store. The coordinator and pre-approval
 // outlook share this edit and trusted episode-selector boundary. holidays are the definitions a
 // named holiday in the Intent is read against.
-func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab.Vocabulary) (store.Proposal, error) {
+func PrepareApproval(p proposalstore.Proposal, edit *ApprovalEdit, holidays holidayvocab.Vocabulary) (proposalstore.Proposal, error) {
 	if p.Status != "submitted" {
-		return store.Proposal{}, ErrNotSubmitted
+		return proposalstore.Proposal{}, ErrNotSubmitted
 	}
 	// Work on private copies of the item lists: the edit and the selector stamp write into them,
 	// and the caller's proposal must stay exactly as it was read.
@@ -440,7 +441,7 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	// incoming delta is valid: it means "keep the existing channel" after its quality/cap filter
 	// admitted nothing new.
 	if edit != nil && len(body.Lineup) == 0 && len(body.Acquisitions) == 0 {
-		return store.Proposal{}, ErrEmptyApproval
+		return proposalstore.Proposal{}, ErrEmptyApproval
 	}
 	// The edit surface controls title membership, not scheduler semantics. Re-ground every
 	// series from the Proposal's original Intent after additions/drops, at this one approval
@@ -547,7 +548,7 @@ func applyEdit(body *proposals.Proposal, edit *ApprovalEdit) string {
 // NewAcquisitions counts the acquisitions in a proposal that do NOT already exist as
 // titles — the number that would actually be spent by approving it. Used by the quota
 // gate, which must not charge a user for a title someone else already caused.
-func NewAcquisitions(ctx context.Context, st TitleReader, p store.Proposal) (int, error) {
+func NewAcquisitions(ctx context.Context, st TitleReader, p proposalstore.Proposal) (int, error) {
 	count := 0
 	seen := map[string]bool{}
 	for _, a := range p.Body.Acquisitions {

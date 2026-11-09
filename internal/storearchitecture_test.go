@@ -132,6 +132,7 @@ var clusterPackages = map[string]bool{
 	modulePath + "/internal/platform/store/activitystore":    true,
 	modulePath + "/internal/platform/store/channeldatastore": true,
 	modulePath + "/internal/platform/store/channelstore":     true,
+	modulePath + "/internal/platform/store/proposalstore":    true,
 }
 
 // The store's cluster aliases are for the store itself. Everything else names the cluster type

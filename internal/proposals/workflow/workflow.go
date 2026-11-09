@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
@@ -22,7 +22,7 @@ const (
 var (
 	ErrForbidden    = errors.New("proposal workflow: forbidden")
 	ErrInvalidState = errors.New("proposal workflow: invalid state")
-	ErrNotRevisable = store.ErrProposalNotRevisable
+	ErrNotRevisable = proposalstore.ErrProposalNotRevisable
 )
 
 type JobStatus string

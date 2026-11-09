@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
@@ -39,10 +40,10 @@ func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) 
 		{MediaType: provision.Movie, TMDBID: 90000102, Name: "Pick B", Year: 1991, InLibrary: true, LibraryItemID: "lib-b"},
 		{MediaType: provision.Movie, TMDBID: 90000103, Name: "Pick C", Year: 1992, InLibrary: true, LibraryItemID: "lib-c"},
 	}
-	manual := store.Proposal{ID: "proposal-manual", JobID: "job-manual", Status: "submitted", Body: proposals.Proposal{
+	manual := proposalstore.Proposal{ID: "proposal-manual", JobID: "job-manual", Status: "submitted", Body: proposals.Proposal{
 		Intent: proposals.Intent{Description: "Movie night"}, ChannelName: "Movie night", Manual: true, Lineup: picks,
 	}}
-	if err := st.CreateJob(ctx, store.Job{ID: manual.JobID, Kind: "suggest", Status: "done"}); err != nil {
+	if err := st.CreateJob(ctx, proposalstore.Job{ID: manual.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 	resolver := &testkit.ApprovalAdditionResolver[proposals.ProposalItem]{}
@@ -70,7 +71,7 @@ func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) 
 		key, _ := pick.Key()
 		current = append(current, proposals.LineupContext{Name: pick.Name, Year: pick.Year, Key: string(key)})
 	}
-	revised := store.Proposal{ID: "proposal-revised", JobID: manual.JobID, Status: "submitted", Body: proposals.Proposal{
+	revised := proposalstore.Proposal{ID: "proposal-revised", JobID: manual.JobID, Status: "submitted", Body: proposals.Proposal{
 		Intent: proposals.Intent{
 			Description:   "Movie night",
 			CurrentLineup: current,
@@ -112,9 +113,9 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		},
 		Acquisitions: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200}},
 	}
-	p := store.Proposal{ID: "proposal-one", JobID: "job-one", Status: "submitted", Body: body}
+	p := proposalstore.Proposal{ID: "proposal-one", JobID: "job-one", Status: "submitted", Body: body}
 	// A proposal always has the job that produced it; the planner refuses one whose job is gone.
-	if err := st.CreateJob(ctx, store.Job{ID: p.JobID, Kind: "suggest", Status: "done"}); err != nil {
+	if err := st.CreateJob(ctx, proposalstore.Job{ID: p.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 	planner := approval.New(st, nil, nil, nil)

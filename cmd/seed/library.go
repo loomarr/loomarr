@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
@@ -60,11 +61,11 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 		// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
 		// pair left no proposal_job_attempts row, so the workflow's own invariant check
 		// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
-		if err := st.CreateSuggestionResult(ctx, store.Job{
+		if err := st.CreateSuggestionResult(ctx, proposalstore.Job{
 			ID: jobID, Kind: "suggest", Status: "done", IntentJSON: string(intentJSON),
 			IntentHash: fmt.Sprintf("seed-library-%d-%s", i, pick.LibraryItemID), CreatedBy: adminID,
 			CreatedAt: now, UpdatedAt: now,
-		}, store.Proposal{
+		}, proposalstore.Proposal{
 			ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
 			Body: proposals.Proposal{Intent: intent, Lineup: []proposals.ProposalItem{pick}}, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {

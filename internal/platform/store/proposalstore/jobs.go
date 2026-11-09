@@ -1,4 +1,14 @@
-package store
+// Package proposalstore persists the suggester's work: generation jobs and their attempts, the
+// proposals they produce, and the transactions that commit a result (the proposal_jobs,
+// proposal_job_attempts and proposals tables).
+//
+// It is a cluster of the store, built on the storedb kernel and never importing the store: the
+// store embeds a Store in its aggregate and re-exports the row types and errors by alias, so every
+// caller of store.Store keeps working unchanged. The proposal-approval transaction, which commits
+// proposals, titles and channels together, stays in the store; it reads and writes proposal rows
+// through ScanProposals, ProposalSelect and EncodeProposalBody. A job's channel comes from the
+// channelstore package. internal/architecture_test.go enforces the direction.
+package proposalstore
 
 import (
 	"context"
@@ -8,9 +18,54 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
+
+// ErrProposalNotSubmitted reports a terminal proposal decision that lost the
+// submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
+// the proposal exists, but another decision already won.
+var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
+
+// ErrProposalSuperseded reports an approval candidate whose job already has an
+// approved proposal created at the same time or later. Same-second ties fail closed:
+// proposal timestamps are stored at second resolution, so guessing an order could
+// roll a channel back to content the operator reviewed earlier.
+var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
+
+// ErrProposalNotRevisable reports a request to revise anything except the newest
+// submitted proposal on a terminal suggestion job. A revision is a compare-and-swap
+// over the review the operator actually saw; stale, decided, and active copies fail.
+var ErrProposalNotRevisable = errors.New("store: proposal is not revisable")
+
+// ErrProposalRevisionActive keeps the approval gate closed while a replacement is
+// generating. A failed replacement returns the job to a terminal state and the
+// prior submitted proposal becomes approvable again.
+var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
+
+// ErrJobNotRunning reports a generation completion that lost the running -> done
+// compare-and-swap. The proposal insert shares that transaction, so this error
+// guarantees that no orphan proposal was persisted.
+var ErrJobNotRunning = errors.New("store: suggestion job is not running")
+
+// ErrJobOwnershipMismatch reports a result whose proposal requester differs
+// from the requester persisted on its job. It prevents a worker/store wiring
+// mistake from moving generated content across user audit lifecycles.
+var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
+
+// Store is the suggester-work persistence over one storedb.Handle.
+type Store struct {
+	h storedb.Handle
+	// channels reads the channel a job names, with the lineup rebuilt for this engine (#2793).
+	channels *channelstore.Store
+}
+
+// New returns the suggester-work store for h; channels is the channel store a job's Journey read
+// asks for the channel its job names.
+func New(h storedb.Handle, channels *channelstore.Store) *Store {
+	return &Store{h: h, channels: channels}
+}
 
 // Job is a persisted suggester generation task (§8). The worker pool claims
 // queued jobs via ClaimDueJobs and runs them; the IntentJSON blob carries the
@@ -58,7 +113,7 @@ type ProposalJob struct {
 	Job      Job
 	Attempts []ProposalJobAttempt
 	Proposal *Proposal
-	Channel  *Channel
+	Channel  *channelstore.Channel
 }
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
@@ -92,14 +147,15 @@ type Proposal struct {
 
 // --- jobs ---
 
-func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) CreateJob(ctx context.Context, j Job) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+
 		j.ID, j.Kind, j.Status, jobIntent(j.IntentJSON), j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
-		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
-		epoch(j.CreatedAt), epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), j.ChannelID)
+		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, storedb.Epoch(j.Deadline), j.Attempts,
+		storedb.Epoch(j.CreatedAt), storedb.Epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), j.ChannelID)
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -109,19 +165,19 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id FROM proposal_jobs`
 
-func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
-	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
+func (s *Store) GetJob(ctx context.Context, id string) (Job, error) {
+	return scanJob(s.h.QueryRowContext(ctx, s.h.Rebind(jobSelect+` WHERE id = ?`), id))
 }
 
-func (s *sqlStore) ListProposalJobIDs(ctx context.Context, limit int) ([]string, error) {
+func (s *Store) ListProposalJobIDs(ctx context.Context, limit int) ([]string, error) {
 	return s.listProposalJobIDs(ctx, "", false, limit)
 }
 
-func (s *sqlStore) ListProposalJobIDsByCreator(ctx context.Context, createdBy string, limit int) ([]string, error) {
+func (s *Store) ListProposalJobIDsByCreator(ctx context.Context, createdBy string, limit int) ([]string, error) {
 	return s.listProposalJobIDs(ctx, createdBy, true, limit)
 }
 
-func (s *sqlStore) listProposalJobIDs(ctx context.Context, createdBy string, scoped bool, limit int) ([]string, error) {
+func (s *Store) listProposalJobIDs(ctx context.Context, createdBy string, scoped bool, limit int) ([]string, error) {
 	if limit <= 0 {
 		return []string{}, nil
 	}
@@ -133,7 +189,7 @@ func (s *sqlStore) listProposalJobIDs(ctx context.Context, createdBy string, sco
 	}
 	query += ` ORDER BY updated_at DESC, id DESC LIMIT ?`
 	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list Proposal Job ids: %w", err)
 	}
@@ -152,14 +208,14 @@ func (s *sqlStore) listProposalJobIDs(ctx context.Context, createdBy string, sco
 	return ids, nil
 }
 
-func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, error) {
+	tx, err := s.h.BeginReadOnly(ctx)
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: begin snapshot: %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	row := tx.QueryRowContext(ctx, s.ph(
+	row := tx.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
 		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
 		        j.channel_id,
@@ -175,7 +231,9 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		         ORDER BY p2.created_at DESC, p2.id DESC
 		         LIMIT 1
 		    )
-		  WHERE j.id = ?`), id)
+		  WHERE j.id = ?`),
+
+		id)
 
 	var (
 		out                                   ProposalJob
@@ -194,14 +252,14 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ProposalJob{}, ErrNotFound
+		return ProposalJob{}, storedb.ErrNotFound
 	}
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	out.Job.Deadline = fromEpoch(deadline)
-	out.Job.CreatedAt = fromEpoch(jobCreatedAt)
-	out.Job.UpdatedAt = fromEpoch(jobUpdatedAt)
+	out.Job.Deadline = storedb.FromEpoch(deadline)
+	out.Job.CreatedAt = storedb.FromEpoch(jobCreatedAt)
+	out.Job.UpdatedAt = storedb.FromEpoch(jobUpdatedAt)
 	if pID.Valid {
 		body, err := decodeProposalBody(pID.String, pJSON.String)
 		if err != nil {
@@ -211,18 +269,18 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: pCreatedBy.String,
 			ApprovedBy: pApprovedBy.String, DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
 			Note: pNote.String, Body: body,
-			ApprovedAt: fromEpoch(pApprovedAt.Int64), CreatedAt: fromEpoch(pCreatedAt.Int64),
-			UpdatedAt: fromEpoch(pUpdatedAt.Int64),
+			ApprovedAt: storedb.FromEpoch(pApprovedAt.Int64), CreatedAt: storedb.FromEpoch(pCreatedAt.Int64),
+			UpdatedAt: storedb.FromEpoch(pUpdatedAt.Int64),
 		}
 	}
-	out.Attempts, err = listProposalJobAttempts(ctx, tx, s.ph, id)
+	out.Attempts, err = listProposalJobAttempts(ctx, tx, s.h.Rebind, id)
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := s.ChannelForJobIn(ctx, tx, id)
+	channel, channelErr := s.channels.ChannelForJobIn(ctx, tx, id)
 	if channelErr == nil {
 		out.Channel = &channel
-	} else if !errors.Is(channelErr, ErrNotFound) && !errors.Is(channelErr, ErrJobChannelGone) {
+	} else if !errors.Is(channelErr, storedb.ErrNotFound) && !errors.Is(channelErr, channelstore.ErrJobChannelGone) {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s Channel: %w", id, channelErr)
 	}
 	if err := tx.Commit(); err != nil {
@@ -231,12 +289,13 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	return out, nil
 }
 
-func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) UpdateJob(ctx context.Context, j Job) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
 		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=?, failure_trace_json=? WHERE id=?`),
+
 		j.Kind, j.Status, jobIntent(j.IntentJSON), j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
-		j.WorkflowVersion, j.ReachedLive, epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), j.ID)
+		j.WorkflowVersion, j.ReachedLive, storedb.Epoch(j.Deadline), j.Attempts, storedb.Epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), j.ID)
 	if err != nil {
 		return fmt.Errorf("update job %s: %w", j.ID, err)
 	}
@@ -245,19 +304,19 @@ func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 
 // ClaimDueJobs atomically starts and leases due queued jobs (§8/§18).
 // Placeholders: 1=leaseUntil, 2=now, 3=limit.
-func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error) {
+func (s *Store) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error) {
 	if limit <= 0 || lease <= 0 {
 		return nil, nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("claim due jobs: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	query := storedb.LockRowsSkipLocked(s.dialect, jobSelect+` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
+	query := storedb.LockRowsSkipLocked(s.h.Dialect(), jobSelect+` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
 		ORDER BY deadline LIMIT ?`)
-	rows, err := tx.QueryContext(ctx, s.ph(query), epoch(now), limit)
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(query), storedb.Epoch(now), limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim due jobs: select: %w", err)
 	}
@@ -273,11 +332,12 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 	for i := range jobs {
 		job := &jobs[i]
 		if job.WorkflowVersion == ProposalWorkflowVersion && job.Status == "running" {
-			result, err := tx.ExecContext(ctx, s.ph(
+			result, err := tx.ExecContext(ctx, s.h.Rebind(
 				`UPDATE proposal_job_attempts
 				    SET status='interrupted', completed_at=?
 				  WHERE job_id=? AND attempt=? AND workflow_version=? AND status='running'`),
-				epoch(now), job.ID, job.Attempts, ProposalWorkflowVersion)
+
+				storedb.Epoch(now), job.ID, job.Attempts, ProposalWorkflowVersion)
 			if err != nil {
 				return nil, fmt.Errorf("claim due jobs: interrupt %s Attempt %d: %w", job.ID, job.Attempts, err)
 			}
@@ -291,11 +351,12 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 		if job.WorkflowVersion == 0 {
 			nextAttempt = 1
 		}
-		result, err := tx.ExecContext(ctx, s.ph(
+		result, err := tx.ExecContext(ctx, s.h.Rebind(
 			`UPDATE proposal_jobs
 			    SET status='running', workflow_version=?, attempts=?, deadline=?, updated_at=?
 			  WHERE id=? AND status IN ('queued', 'running') AND deadline <= ? AND deadline > 0`),
-			ProposalWorkflowVersion, nextAttempt, epoch(now.Add(lease)), epoch(now), job.ID, epoch(now))
+
+			ProposalWorkflowVersion, nextAttempt, storedb.Epoch(now.Add(lease)), storedb.Epoch(now), job.ID, storedb.Epoch(now))
 		if err != nil {
 			return nil, fmt.Errorf("claim due jobs: start %s: %w", job.ID, err)
 		}
@@ -303,11 +364,12 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 		if err != nil || affected != 1 {
 			return nil, fmt.Errorf("claim due jobs: lost locked Job %s", job.ID)
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(
 			`INSERT INTO proposal_job_attempts
 			    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
 			 VALUES (?, ?, ?, 'running', ?, 0, '')`),
-			job.ID, nextAttempt, ProposalWorkflowVersion, epoch(now)); err != nil {
+
+			job.ID, nextAttempt, ProposalWorkflowVersion, storedb.Epoch(now)); err != nil {
 			return nil, fmt.Errorf("claim due jobs: create %s Attempt %d: %w", job.ID, nextAttempt, err)
 		}
 		job.Status = "running"
@@ -325,8 +387,8 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 const proposalJobAttemptSelect = `SELECT job_id, attempt, workflow_version, status,
 	started_at, completed_at, failure_code FROM proposal_job_attempts`
 
-func (s *sqlStore) ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error) {
-	return listProposalJobAttempts(ctx, s.db, s.ph, jobID)
+func (s *Store) ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error) {
+	return listProposalJobAttempts(ctx, s.h, s.h.Rebind, jobID)
 }
 
 type attemptQueryer interface {
@@ -353,8 +415,8 @@ func listProposalJobAttempts(
 			&attempt.Status, &startedAt, &completedAt, &attempt.FailureCode); err != nil {
 			return nil, err
 		}
-		attempt.StartedAt = fromEpoch(startedAt)
-		attempt.CompletedAt = fromEpoch(completedAt)
+		attempt.StartedAt = storedb.FromEpoch(startedAt)
+		attempt.CompletedAt = storedb.FromEpoch(completedAt)
 		attempts = append(attempts, attempt)
 	}
 	return attempts, rows.Err()
@@ -364,14 +426,15 @@ func listProposalJobAttempts(
 // intent hash (§8 cache). `since` bounds the TTL: only jobs created at/after
 // `since` count. Queued, running, and failed attempts cannot shadow reusable
 // content from a completed job. Returns ErrNotFound when no success qualifies.
-func (s *sqlStore) FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(jobSelect+
+func (s *Store) FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(jobSelect+
 		` WHERE intent_hash = ? AND status = 'done' AND created_at >= ? ORDER BY created_at DESC LIMIT 1`),
-		hash, epoch(since))
+
+		hash, storedb.Epoch(since))
 	return scanJob(row)
 }
 
-func scanJob(sc scannable) (Job, error) {
+func scanJob(sc storedb.Scannable) (Job, error) {
 	var (
 		j                              Job
 		deadline, createdAt, updatedAt int64
@@ -379,14 +442,14 @@ func scanJob(sc scannable) (Job, error) {
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
 		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, (*storedb.OptionalJSON)(&j.FailureTraceJSON), &j.ChannelID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Job{}, ErrNotFound
+		return Job{}, storedb.ErrNotFound
 	}
 	if err != nil {
 		return Job{}, err
 	}
-	j.Deadline = fromEpoch(deadline)
-	j.CreatedAt = fromEpoch(createdAt)
-	j.UpdatedAt = fromEpoch(updatedAt)
+	j.Deadline = storedb.FromEpoch(deadline)
+	j.CreatedAt = storedb.FromEpoch(createdAt)
+	j.UpdatedAt = storedb.FromEpoch(updatedAt)
 	return j, nil
 }
 
@@ -411,16 +474,17 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 
 // --- proposals ---
 
-func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
-	body, err := encodeProposalBody(p)
+func (s *Store) CreateProposal(ctx context.Context, p Proposal) error {
+	body, err := EncodeProposalBody(p)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	_, err = s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, storedb.Epoch(p.ApprovedAt), storedb.Epoch(p.CreatedAt), storedb.Epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}
@@ -437,7 +501,7 @@ func jobIntent(intent string) string {
 }
 
 // encodeProposalBody is the one place a proposal becomes its stored JSON.
-func encodeProposalBody(p Proposal) (string, error) {
+func EncodeProposalBody(p Proposal) (string, error) {
 	raw, err := json.Marshal(p.Body)
 	if err != nil {
 		return "", fmt.Errorf("encode proposal %s: %w", p.ID, err)
@@ -456,20 +520,20 @@ func decodeProposalBody(id, raw string) (proposals.Proposal, error) {
 	return body, nil
 }
 
-const proposalSelect = `SELECT id, job_id, status, created_by, decided_by, deny_reason,
+const ProposalSelect = `SELECT id, job_id, status, created_by, decided_by, deny_reason,
 	mod_summary, note, proposal_json, approved_at, created_at, updated_at FROM proposals`
 
-func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error) {
-	return scanProposal(s.db.QueryRowContext(ctx, s.ph(proposalSelect+` WHERE id = ?`), id))
+func (s *Store) GetProposal(ctx context.Context, id string) (Proposal, error) {
+	return scanProposal(s.h.QueryRowContext(ctx, s.h.Rebind(ProposalSelect+` WHERE id = ?`), id))
 }
 
-func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(proposalSelect+` WHERE status = ? ORDER BY created_at DESC`), status)
+func (s *Store) ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(ProposalSelect+` WHERE status = ? ORDER BY created_at DESC`), status)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanProposals(rows)
+	return ScanProposals(rows)
 }
 
 // NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
@@ -486,22 +550,23 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 // APPROVED proposals — they are the audit trail — so the table this scanned grows monotonically
 // for the life of the install while denied ones are swept. Measured: 0.38ms at 100 rows, 3.45ms
 // at 1k, 19.4ms at 5k, linear, on every bind including every scheduled auto-curate cycle.
-func (s *sqlStore) NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
-		proposalSelect+` WHERE job_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT 1`), jobID, status)
+func (s *Store) NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
+		ProposalSelect+` WHERE job_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT 1`),
+		jobID, status)
 	return scanProposal(row)
 }
 
-func (s *sqlStore) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(proposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+func (s *Store) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(ProposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanProposals(rows)
+	return ScanProposals(rows)
 }
 
-func scanProposal(sc scannable) (Proposal, error) {
+func scanProposal(sc storedb.Scannable) (Proposal, error) {
 	var (
 		p                                Proposal
 		bodyJSON                         string
@@ -510,7 +575,7 @@ func scanProposal(sc scannable) (Proposal, error) {
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
 		&p.ModSummary, &p.Note, &bodyJSON, &approvedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Proposal{}, ErrNotFound
+		return Proposal{}, storedb.ErrNotFound
 	}
 	if err != nil {
 		return Proposal{}, err
@@ -518,13 +583,13 @@ func scanProposal(sc scannable) (Proposal, error) {
 	if p.Body, err = decodeProposalBody(p.ID, bodyJSON); err != nil {
 		return Proposal{}, err
 	}
-	p.ApprovedAt = fromEpoch(approvedAt)
-	p.CreatedAt = fromEpoch(createdAt)
-	p.UpdatedAt = fromEpoch(updatedAt)
+	p.ApprovedAt = storedb.FromEpoch(approvedAt)
+	p.CreatedAt = storedb.FromEpoch(createdAt)
+	p.UpdatedAt = storedb.FromEpoch(updatedAt)
 	return p, nil
 }
 
-func scanProposals(rows *sql.Rows) ([]Proposal, error) {
+func ScanProposals(rows *sql.Rows) ([]Proposal, error) {
 	var out []Proposal
 	for rows.Next() {
 		p, err := scanProposal(rows)

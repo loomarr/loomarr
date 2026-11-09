@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -166,7 +167,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	if err := st.UpdateJob(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "source-proposal", JobID: id1, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -221,7 +222,7 @@ func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "upper-reference-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Roster A"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -264,7 +265,7 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Grand Oak Hotel"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Grand Oak Hotel"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	newID, err := svc.Submit(ctx, proposals.Intent{Description: "KETTLE KIDS"}, "bob")
@@ -355,17 +356,19 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	}
 }
 
-type submittedNotifier struct{ submitted chan store.Proposal }
+type submittedNotifier struct{ submitted chan proposalstore.Proposal }
 
-func (n submittedNotifier) ProposalSubmitted(_ context.Context, p store.Proposal)  { n.submitted <- p }
-func (submittedNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (submittedNotifier) ProposalDenied(context.Context, store.Proposal)           {}
+func (n submittedNotifier) ProposalSubmitted(_ context.Context, p proposalstore.Proposal) {
+	n.submitted <- p
+}
+func (submittedNotifier) ProposalApproved(context.Context, proposalstore.Proposal, string) {}
+func (submittedNotifier) ProposalDenied(context.Context, proposalstore.Proposal)           {}
 
 // A generated proposal reaching the approval queue tells the approvers a request is waiting,
 // exactly as a built one does.
 func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 	st := newStore(t)
-	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
 	svc := buildService(t, st, testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -392,7 +395,7 @@ func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 1)}
 	svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier)
 	intent := proposals.Intent{Description: "90s action"}
 
@@ -405,7 +408,7 @@ func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	if err := st.UpdateJob(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{
 		ID: "source-proposal", JobID: source, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
@@ -465,13 +468,13 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			name: "requester over quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}, picks: onePick,
 			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
 				now := time.Now().UTC()
-				if err := st.CreateJob(ctx, store.Job{
+				if err := st.CreateJob(ctx, proposalstore.Job{
 					ID: "job-spent", Kind: "suggest", Status: "done", CreatedBy: "grace", IntentJSON: `{"description":"earlier"}`,
 					Deadline: now, CreatedAt: now, UpdatedAt: now,
 				}); err != nil {
 					return err
 				}
-				if err := st.CreateProposal(ctx, store.Proposal{
+				if err := st.CreateProposal(ctx, proposalstore.Proposal{
 					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
 					Body: proposals.Proposal{Acquisitions: []proposals.ProposalItem{
 						{MediaType: provision.Movie, TMDBID: 90091001, Name: "A"},
@@ -520,7 +523,7 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			if err := st.UpsertUser(ctx, tt.user); err != nil {
 				t.Fatal(err)
 			}
-			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 4)}
 			done := newDoneEmitter()
 			curator := tt.curator
 			if curator == nil {
@@ -567,7 +570,7 @@ func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 			if err := st.UpsertUser(ctx, tt.user); err != nil {
 				t.Fatal(err)
 			}
-			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			notifier := submittedNotifier{submitted: make(chan proposalstore.Proposal, 4)}
 			approver := accept.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
 			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
 				WithAutoApprove(accept.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
@@ -883,7 +886,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 				tt.configure(serviceStore)
 			}
 			now := time.Now().UTC()
-			if err := base.CreateJob(ctx, store.Job{
+			if err := base.CreateJob(ctx, proposalstore.Job{
 				ID: "job-unrelated", Kind: "suggest", Status: "done", CreatedBy: "admin",
 				IntentJSON: `{"description":"unrelated"}`, IntentHash: "unrelated",
 				WorkflowVersion: workflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
@@ -906,7 +909,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := base.CreateJob(ctx, store.Job{
+			if err := base.CreateJob(ctx, proposalstore.Job{
 				ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "admin",
 				IntentJSON: `{"description":"marigold"}`, IntentHash: "marigold",
 				WorkflowVersion: workflow.WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
@@ -1100,7 +1103,7 @@ func (s *lifecycleErrorStore) CommitSuggestionSuccess(
 	ctx context.Context,
 	jobID string,
 	expectedAttempt int,
-	p store.Proposal,
+	p proposalstore.Proposal,
 	updatedAt time.Time,
 ) error {
 	select {
@@ -1173,7 +1176,7 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	ctx := context.Background()
 	base := newStore(t)
 	st := newLifecycleErrorStore(base)
-	st.successErr = store.ErrJobNotRunning
+	st.successErr = proposalstore.ErrJobNotRunning
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
@@ -1262,7 +1265,7 @@ func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM())
 
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orig", Kind: "suggest", Status: "done",
 		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
 	}); err != nil {
@@ -1377,7 +1380,7 @@ func waitForDoneEvent(t *testing.T, e *doneEmitter) {
 	}
 }
 
-func (c *recordingCurator) Consider(context.Context, store.Proposal) (proposals.AutoDecision, error) {
+func (c *recordingCurator) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
 	c.calls++
 	return c.decision, c.err
 }
@@ -1474,7 +1477,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	// Even a re-curation job that somehow carries a requester with a grant stays out of that
 	// grant: the durable kind, not the owner, is the authorization discriminator.
 	now := time.Now().UTC()
-	if err := st.CreateJob(ctx, store.Job{
+	if err := st.CreateJob(ctx, proposalstore.Job{
 		ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "grace", ChannelID: "channel-recurate",
 		IntentJSON: `{"description":"sci-fi","currentLineup":[{"key":"movie:tmdb:90000603"}]}`,
 		Deadline:   now, CreatedAt: now, UpdatedAt: now,

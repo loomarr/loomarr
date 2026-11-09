@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -127,7 +128,7 @@ func (s *sqlStore) commitProposalApproval(
 	}
 
 	p := commit.Proposal
-	body, err := encodeProposalBody(p)
+	body, err := proposalstore.EncodeProposalBody(p)
 	if err != nil {
 		return 0, err
 	}
@@ -280,12 +281,16 @@ func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User,
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
-	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalstore.ProposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanProposals(rows)
+	out, err := proposalstore.ScanProposals(rows)
+	if err != nil {
+		return nil, err
+	}
+	return out, rows.Err() // ScanProposals checks it too; naming it here keeps the invariant visible to rowserrcheck
 }
 
 func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
