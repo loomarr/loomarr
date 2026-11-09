@@ -28,8 +28,7 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	if series.record == nil || !numberedLikeDisk(series.record.Descriptive, s.last) {
 		return res
 	}
-	// A series' catalog row is its TMDB record (catalogKey); its seasons are fetched from the same
-	// catalog.
+	// A series' seasons are fetched from the catalog its own row came from (CatalogKeys.For).
 	res.catalog = store.LibraryCatalogKey{
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),

@@ -124,6 +124,13 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		{Authority: "sonarr", Lister: sonarr, Fetcher: sonarr, Address: address(conns.Sonarr)},
 		{Authority: "radarr", Lister: radarr, Fetcher: radarr, Address: address(conns.Radarr)},
 	}
+	// The catalog the Library's details come from; its declared ids are the Library's catalog rows.
+	var provider *mptmdb.Provider
+	var keys scan.CatalogKeys
+	if deps.tmdb != nil {
+		provider = mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		keys = provider.Capabilities().Resolves
+	}
 	im := &scan.Importer{
 		Store:     st,
 		Inventory: inv,
@@ -137,6 +144,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Art:      localart.New(),
 		Artwork:  libraryArtworkOf(deps.images, st),
 		Catalog:  st,
+		Keys:     keys,
 		Answers:  st,
 		Resolver: resolver,
 		Header:   libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
@@ -184,9 +192,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		CollectionStore: st, SetRecords: st}
-	if deps.tmdb != nil {
-		provider := mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		CollectionStore: st, SetRecords: st, Keys: keys}
+	if provider != nil {
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {

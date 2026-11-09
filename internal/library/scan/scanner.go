@@ -205,9 +205,10 @@ type Library struct {
 	NeedStore store.LibraryNeedsStore
 	Search    Searcher
 	// CollectionStore keeps the household's collections; SetRecords reads the ready-made sets' own
-	// records (nil: none are listed).
+	// records (nil: none are listed), whose movies Keys places by their catalog rows.
 	CollectionStore store.LibraryCollectionStore
 	SetRecords      SetRecords
+	Keys            CatalogKeys
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
 	Enricher *Enricher
 	Now      func() time.Time

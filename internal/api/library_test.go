@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 )
 
 type libraryRootsBody struct {
@@ -84,9 +85,11 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 		Now:     time.Now,
 	}
 	inv := inventory.New(st)
-	return &scan.Library{Roots: roots, ItemStore: st, NeedStore: st, CollectionStore: st, SetRecords: st, Inventory: inv, Scanner: scan.NewScanner(&scan.Importer{
+	// The catalog the app wires; it is never asked anything here, only what it fetches by.
+	keys := mptmdb.New(nil, nil).Capabilities().Resolves
+	return &scan.Library{Roots: roots, ItemStore: st, NeedStore: st, CollectionStore: st, SetRecords: st, Keys: keys, Inventory: inv, Scanner: scan.NewScanner(&scan.Importer{
 		Store: st, Inventory: inv, Disk: roots.Disk,
-		Resolver: resolver, Enabled: func() bool { return true },
+		Resolver: resolver, Keys: keys, Enabled: func() bool { return true },
 	}, 0)}
 }
 
