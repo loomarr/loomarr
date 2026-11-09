@@ -20,11 +20,11 @@ import (
 // The image service's HTTP surface (§22, V52).
 //
 // Three operations: serve one rendition's bytes, read one image's record, upload one image. All
-// three are Huma operations — the byte route through `rawOp` (rawop.go), which is what keeps it
+// three are Huma operations — the byte route through `httpcore.RawOp`, which is what keeps it
 // behind the single authorization middleware and the CSRF check while still owning the
 // ResponseWriter that `http.ServeContent` needs for Range and conditional requests.
 
-// ImageService is the api package's view of internal/media/images. Narrow by design: the handlers need
+// ImageService is this package's view of internal/media/images. Narrow by design: the handlers need
 // to resolve a rendition, read a record, and accept an upload — nothing about disk layout,
 // encoders, or the ladder crosses this line.
 type ImageService interface {
@@ -45,10 +45,10 @@ type ImageService interface {
 
 // registerImages mounts the image operations.
 //
-// ⚠ Must be added to BOTH `api.go` and `export.go`. Two parallel register lists exist and a route
-// in one but not the other is invisible in the direction it was missed — live but undocumented
-// (orval cannot type it) or documented but unmounted (the generated client calls a 404).
-// `TestRegisterListsMatchBetweenRouterAndExporter` guards it.
+// ⚠ Mounted through `Handlers.Register`, which BOTH `api.go` and `export.go` call. Two parallel
+// register lists exist and a handler set in one but not the other is invisible in the direction
+// it was missed — live but undocumented (orval cannot type it) or documented but unmounted (the
+// generated client calls a 404). `TestRegisterListsMatchBetweenRouterAndExporter` guards it.
 func (s *Handlers) registerImages(api huma.API) {
 	// ⚠ **RolePublic at the MOUNT, per-row visibility in the HANDLER**, and this is the one place
 	// the image service departs from every other raw-byte route in §7.1.
@@ -302,7 +302,7 @@ func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *htt
 // ⚠ A failed lookup is recorded as a nil ENTRY rather than skipped, so a shared broken hash costs
 // one lookup instead of one per referencing row. And a miss is never an error: §22's Durability
 // section makes "the row is here, the file is not" an accepted state, so a surface must still
-// render — falling back to whatever it showed before the image service existed.
+// render with its own fallback artwork.
 func (s *Handlers) ImageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
 	if s.images == nil || len(hashes) == 0 {
 		return nil
@@ -368,8 +368,7 @@ func (s *Handlers) uploadImage(ctx context.Context, in *uploadImageInput) (*uplo
 			"Use a PNG, JPEG, WebP or GIF under the size limit. SVG isn't accepted.")
 	}
 
-	// ⚠ Through imageToDTO, NOT a second hand-written copy. This handler HAD one, and that is
-	// exactly how the AVIF bug survived: the projection existed twice, so gating one did nothing
-	// for the other. One constructor is the fix for the class, not just for this instance.
+	// ⚠ Through imageToDTO, NOT a second hand-written copy: with the projection in two places, a
+	// rule gated in one (the AVIF gate) does nothing for the other. One constructor covers the class.
 	return &uploadImageOutput{Body: s.imageToDTO(ctx, rec)}, nil
 }
