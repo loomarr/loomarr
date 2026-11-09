@@ -222,4 +222,28 @@ describe("LibrarySettings", () => {
     expect(input.value).toBe("/mnt/missing");
     cleanup();
   });
+
+  it("saves a path-map change once when Enter is followed by leaving the field", () => {
+    const { host, props, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    const input = host.querySelector('input[aria-label="Sonarr /tv maps to"]') as El;
+    const enter = () =>
+      act(() => {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+    type(input, "/srv/tv");
+    enter();
+    expect(props.onMapFolder).toHaveBeenCalledTimes(1);
+    expect(props.onMapFolder).toHaveBeenCalledWith({
+      authority: "sonarr",
+      authorityPath: "/tv",
+      localPath: "/srv/tv",
+    });
+    // A save that failed leaves the map as it was; typing the folder again sends it again.
+    type(input, "/srv/t");
+    type(input, "/srv/tv");
+    enter();
+    expect(props.onMapFolder).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
 });

@@ -10,7 +10,7 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
 import { LibraryPoster } from "../library-poster";
 import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
@@ -53,7 +53,8 @@ const foundThrough = (folder: LibraryFolder) => {
 const MOUNT_HINT =
   "Loomarr needs to open your media folders itself. Make them available to Loomarr (read-only is fine), then Check again.";
 
-// A calm warning with one way out.
+// A calm warning with one way out. It stands for as long as the state lasts, so it is a polite
+// status, not an alert that interrupts the reader each time the page draws it.
 const Callout = ({
   title,
   children,
@@ -63,7 +64,7 @@ const Callout = ({
   children?: ReactNode;
   actions?: ReactNode;
 }) => (
-  <Surface borderColor="stateWarning" borderRadius="control" gap="control" padding="section" role="alert">
+  <Surface borderColor="stateWarning" borderRadius="control" gap="control" padding="section" role="status">
     <Text textRole="headline" tone="warning">
       {title}
     </Text>
@@ -436,12 +437,21 @@ const PathMapRow = ({
   onMapFolder: LibrarySettingsProps["onMapFolder"];
 }) => {
   const [value, setValue] = useState(mapping.localPath);
+  // What this edit already sent. Enter then leaving the field would otherwise save twice: the
+  // second commit runs before the server's answer updates mapping.localPath. Typing clears it, so
+  // a save that failed can be sent again.
+  const sent = useRef<string | null>(null);
   const name = AUTHORITY_NAMES[mapping.authority];
   const commit = () => {
     const next = value.trim();
-    if (next !== mapping.localPath) {
+    if (next !== mapping.localPath && next !== sent.current) {
+      sent.current = next;
       onMapFolder({ authority: mapping.authority, authorityPath: mapping.authorityPath, localPath: next });
     }
+  };
+  const type = (text: string) => {
+    sent.current = null;
+    setValue(text);
   };
   return (
     <Line alignItems="flex-end" gap="control">
@@ -460,7 +470,7 @@ const PathMapRow = ({
         <Field
           accessibilityLabel={`${name} ${mapping.authorityPath} maps to`}
           onBlur={commit}
-          onChangeText={setValue}
+          onChangeText={type}
           onSubmitEditing={commit}
           placeholder="Not found here"
           value={value}
