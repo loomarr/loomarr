@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// LibraryAnswer is the answer for a title nothing grounds (#2151 step 11): the TMDB title it is
+// LibraryAnswer is the answer for a title nothing grounds (#2151 step 11): the catalog title it is
 // (a link), or that it is not a title at all.
 type LibraryAnswer struct {
 	Origin LibraryOrigin
 	// Kind is movie or series.
 	Kind string
-	// TMDBID is the linked title; "" when Ignored.
-	TMDBID     string
+	// ID is the linked title, by any catalog's id; zero when Ignored.
+	ID         LibraryID
 	Ignored    bool
 	AnsweredAt time.Time
 	// By is who answered; "" saves as the maintainer. Only the maintainer ignores a title.
@@ -36,8 +36,9 @@ const (
 // LibraryCandidate is one title a search found for a title nothing grounds, with whether its
 // name, year and length agree with what is on disk.
 type LibraryCandidate struct {
-	Kind     string
-	TMDBID   string
+	Kind string
+	// ID is the title by the id of the catalog that found it.
+	ID       LibraryID
 	Name     string
 	Year     int
 	Overview string
@@ -148,14 +149,14 @@ func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 func (s *sqlStore) LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error) {
 	out := map[string][]LibraryCandidate{}
 	for _, id := range itemIDs {
-		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, tmdb_id, name, year, overview, poster, name_match,
-			year_match, length_match FROM library_candidates WHERE inventory_item_id = ? ORDER BY rank`), id)
+		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, namespace, external_id, name, year, overview, poster,
+			name_match, year_match, length_match FROM library_candidates WHERE inventory_item_id = ? ORDER BY rank`), id)
 		if err != nil {
 			return nil, fmt.Errorf("library candidates: %w", err)
 		}
 		for rows.Next() {
 			var c LibraryCandidate
-			if err := rows.Scan(&c.Kind, &c.TMDBID, &c.Name, &c.Year, &c.Overview, &c.Poster, &c.NameMatch,
+			if err := rows.Scan(&c.Kind, &c.ID.Namespace, &c.ID.Value, &c.Name, &c.Year, &c.Overview, &c.Poster, &c.NameMatch,
 				&c.YearMatch, &c.LengthMatch); err != nil {
 				_ = rows.Close()
 				return nil, fmt.Errorf("library candidates: %w", err)
@@ -179,9 +180,10 @@ func (s *sqlStore) SaveLibraryCandidates(ctx context.Context, itemID, searched s
 		return fmt.Errorf("save library candidates: %w", err)
 	}
 	for rank, c := range candidates {
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_candidates (inventory_item_id, rank, kind, tmdb_id, name,
-			year, overview, poster, name_match, year_match, length_match) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-			itemID, rank, c.Kind, c.TMDBID, c.Name, c.Year, c.Overview, c.Poster, c.NameMatch, c.YearMatch,
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_candidates (inventory_item_id, rank, kind, namespace,
+			external_id, name, year, overview, poster, name_match, year_match, length_match)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			itemID, rank, c.Kind, c.ID.Namespace, c.ID.Value, c.Name, c.Year, c.Overview, c.Poster, c.NameMatch, c.YearMatch,
 			c.LengthMatch); err != nil {
 			return fmt.Errorf("save library candidate: %w", err)
 		}
@@ -212,8 +214,9 @@ func (s *sqlStore) LibraryItemOrigin(ctx context.Context, itemID string) (string
 func (s *sqlStore) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
 	a := LibraryAnswer{Origin: origin}
 	var at int64
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, tmdb_id, ignored, answered_at_ms, answered_by FROM library_answers
-		WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(&a.Kind, &a.TMDBID, &a.Ignored, &at, &a.By)
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, answered_at_ms, answered_by
+		FROM library_answers WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(
+		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &at, &a.By)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibraryAnswer{}, false, nil
 	}
@@ -228,8 +231,11 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 	if a.Origin.Authority == "" || a.Origin.Key == "" || a.Kind == "" || a.AnsweredAt.IsZero() {
 		return fmt.Errorf("save library answer: origin, kind and time are required")
 	}
-	if a.Ignored == (a.TMDBID != "") {
+	if a.Ignored == (a.ID != LibraryID{}) {
 		return fmt.Errorf("save library answer: an answer is either a link or ignored")
+	}
+	if !a.Ignored && (a.ID.Namespace == "" || a.ID.Value == "") {
+		return fmt.Errorf("save library answer: a link names a catalog and an id")
 	}
 	if a.By == "" {
 		a.By = AnsweredByYou
@@ -238,10 +244,12 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 		return fmt.Errorf("save library answer: %q cannot give this answer", a.By)
 	}
 	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-		(origin_authority, origin_key, kind, tmdb_id, ignored, answered_at_ms, answered_by) VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, tmdb_id = excluded.tmdb_id,
-		ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by`),
-		a.Origin.Authority, a.Origin.Key, a.Kind, a.TMDBID, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By)); err != nil {
+		(origin_authority, origin_key, kind, namespace, external_id, ignored, answered_at_ms, answered_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
+		external_id = excluded.external_id, ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms,
+		answered_by = excluded.answered_by`),
+		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By)); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
 	return nil

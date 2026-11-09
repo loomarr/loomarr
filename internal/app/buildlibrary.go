@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/media/images"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
@@ -276,7 +277,7 @@ func tmdbSearcher(client *tmdb.Client) scan.Searcher {
 				continue
 			}
 			hits = append(hits, scan.SearchHit{
-				Kind: string(c.MediaType), TMDBID: strconv.Itoa(c.TMDBID), Name: c.Name, Year: c.Year, Overview: c.Overview,
+				Kind: string(c.MediaType), ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(c.TMDBID)}, Name: c.Name, Year: c.Year, Overview: c.Overview,
 			})
 		}
 		return hits, nil

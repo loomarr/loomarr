@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LibraryNeedSearch } from "../library-needs/library-needs.type";
+import type { LibraryExternalId, LibraryNeedSearch } from "../library-needs/library-needs.type";
 import type { LibraryKind } from "../library-shelf/library-shelf.type";
 
 /** One of a movie's files, with what its header says once read. */
@@ -87,7 +87,7 @@ interface LibraryTitleProps {
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */
   onSearch: LibraryNeedSearch;
   /** Says which title it is; rejects when the answer couldn't be saved. */
-  onLink: (tmdbId: string) => Promise<void>;
+  onLink: (externalId: LibraryExternalId) => Promise<void>;
   /** Forget my answer: the title goes back to needing the household. */
   onForget: () => Promise<void>;
   /** Remove extra copy: moves the file at path to the trash; rejects when it couldn't. */
