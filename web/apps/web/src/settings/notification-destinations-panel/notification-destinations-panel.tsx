@@ -318,10 +318,7 @@ const ProviderForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={pending || submitting} type="submit" />}
-              >
+              <Action disabled={pending || submitting} submit>
                 Save provider
               </Action>
             )}
@@ -494,10 +491,7 @@ const WebPushForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={pending || enabling || submitting} type="submit" />}
-              >
+              <Action disabled={pending || enabling || submitting} submit>
                 {provider ? "Save provider" : "Enable this browser"}
               </Action>
             )}

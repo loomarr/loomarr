@@ -65,8 +65,7 @@ const PasswordRecoveryRequest = ({
         {(field) => <field.TextField autoComplete="username" id="recovery-username" label="Username" />}
       </form.AppField>
 
-      {/* A real submit button under Action's look, so Enter in a field still submits. */}
-      <Action disabled={isPending} render={<button disabled={isPending} type="submit" />}>
+      <Action disabled={isPending} submit>
         {isPending ? "Requesting…" : "Email reset link"}
       </Action>
 
@@ -176,8 +175,7 @@ const PasswordRecoveryReset = ({
         )}
       </form.AppField>
 
-      {/* A real submit button under Action's look, so Enter in a field still submits. */}
-      <Action disabled={isRedeeming} render={<button disabled={isRedeeming} type="submit" />}>
+      <Action disabled={isRedeeming} submit>
         {isRedeeming ? "Resetting…" : "Reset password"}
       </Action>
     </form>

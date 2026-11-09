@@ -136,11 +136,7 @@ const SourceSearch = ({
             value={query}
           />
         </Surface>
-        <Action
-          icon="search"
-          // A real submit button under Action's look, so Enter in a field still submits.
-          render={<button disabled={searching || query.trim().length < 2} type="submit" />}
-        >
+        <Action disabled={searching || query.trim().length < 2} icon="search" submit>
           {searching ? "Searching…" : "Search"}
         </Action>
       </form>

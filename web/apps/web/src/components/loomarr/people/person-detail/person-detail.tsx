@@ -202,10 +202,7 @@ const PersonDetail = ({
               </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={contactSaving} type="submit" />}
-              >
+              <Action disabled={contactSaving} submit>
                 Save email
               </Action>
               <Action
@@ -366,10 +363,7 @@ const PersonDetail = ({
                 </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Action
-                  // A real submit button under Action's look, so Enter in a field still submits.
-                  render={<button disabled={resetting} type="submit" />}
-                >
+                <Action disabled={resetting} submit>
                   Set new password
                 </Action>
                 <Action

@@ -133,8 +133,7 @@ const InvitationJoin = ({
         </form.AppField>
       ) : null}
 
-      {/* A real submit button under Action's look, so Enter in a field still submits. */}
-      <Action disabled={isRedeeming} render={<button disabled={isRedeeming} type="submit" />}>
+      <Action disabled={isRedeeming} submit>
         {isRedeeming ? "Activating…" : "Activate account"}
       </Action>
     </form>

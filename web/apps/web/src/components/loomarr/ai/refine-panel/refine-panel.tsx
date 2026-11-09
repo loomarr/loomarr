@@ -147,10 +147,7 @@ const RefinePanel = ({
                       value={field.state.value}
                     />
                   </Surface>
-                  <Action
-                    // A real submit button under Action's look, so Enter in a field still submits.
-                    render={<button disabled={field.state.value.trim().length === 0} type="submit" />}
-                  >
+                  <Action disabled={field.state.value.trim().length === 0} submit>
                     Suggest changes
                   </Action>
                 </>

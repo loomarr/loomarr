@@ -131,11 +131,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
         )}
       </form.AppField>
 
-      {/* A real submit button under Action's look, so Enter in a field still submits. */}
-      <Action
-        disabled={busy}
-        render={<button disabled={busy} style={{ alignSelf: "flex-start" }} type="submit" />}
-      >
+      <Action disabled={busy} style={{ alignSelf: "flex-start" }} submit>
         {busy ? "Creating…" : "Create admin"}
       </Action>
     </form>
