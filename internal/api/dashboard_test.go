@@ -9,10 +9,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-func newDashboardServer(t *testing.T, sessions api.PlayoutObserver) *httptest.Server {
+func newDashboardServer(t *testing.T, sessions playoutapi.PlayoutObserver) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/dash.db")
 	t.Cleanup(func() { _ = st.Close() })

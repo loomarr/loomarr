@@ -28,7 +28,7 @@ One area of the [package map](../package-map.md#start-here).
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 - **`channels/recurate`** · 1 importer · → `catalog`, `channels/schedule`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `proposals/suggest`, `provision`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`channels/schedule`** · 25 importers · → `inventory`, `platform/holidayvocab`, `platform/langcode`, `platform/rating`, `provision`
+- **`channels/schedule`** · 27 importers · → `inventory`, `platform/holidayvocab`, `platform/langcode`, `platform/rating`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
-- **`channels/viewing`** · 1 importer
+- **`channels/viewing`** · 3 importers
   Tracks who is watching which channel right now, from the players' own playlist polls (#1662).

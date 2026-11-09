@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"context"
@@ -51,7 +51,7 @@ const (
 )
 
 // guideHandler serves the XMLTV document.
-func (s *Server) guideHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) guideHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playoutGuide == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Guide unavailable",
 			"Internal playout isn't running on this instance.")

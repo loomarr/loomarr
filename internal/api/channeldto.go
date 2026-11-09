@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -164,9 +165,9 @@ func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryA
 
 // channelDTOAt is every handler's channel rendering. requesters comes from channelRequesters, so
 // each response that carries a channel names its requester the same way.
-func (s *Server) channelDTOAt(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint BackendCheckpoint) ChannelDTO {
+func (s *Server) channelDTOAt(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint httpcore.BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
-	out.InAppPlayable = inAppPlayableAt(ch, checkpoint)
+	out.InAppPlayable = httpcore.InAppPlayableAt(ch, checkpoint)
 	out.RequestedBy = requesters[ch.ID]
 	return out
 }
@@ -181,15 +182,7 @@ func (s *Server) channelRequesters(ctx context.Context) map[string]string {
 	return requesters
 }
 
-func inAppPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
-	if !playsInternallyAt(ch, checkpoint) {
-		return false
-	}
-	if !ch.Status.Reconcilable() || ch.Status == schedule.StatusEmpty {
-		return false
-	}
-	return true
-}
+// (inAppPlayableAt lives in httpcore as InAppPlayableAt, shared with the playout routes.)
 
 // entryStateResolver returns a per-key acquisition-state lookup for a SINGLE channel's DTO
 // (getChannel/createChannel/updateChannel/reconcileChannel). A channel has at most a few

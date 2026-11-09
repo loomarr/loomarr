@@ -25,7 +25,7 @@ func (s *Server) channelEdits() *edit.Service {
 	return svc
 }
 
-func (c BackendCheckpoint) editBackend() edit.Backend {
+func editBackend(c httpcore.BackendCheckpoint) edit.Backend {
 	return edit.Backend{Applied: c.Applied, PublishedInternal: c.PublishedInternal}
 }
 
@@ -59,7 +59,7 @@ func (s *Server) linkUploadToChannel(ctx context.Context, id, what string, chang
 	if err != nil {
 		return err
 	}
-	_, err = s.channelEdits().Edit(ctx, checkpoint.editBackend(), id, 0, change)
+	_, err = s.channelEdits().Edit(ctx, editBackend(checkpoint), id, 0, change)
 	switch {
 	case err == nil:
 		return nil

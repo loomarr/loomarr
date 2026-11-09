@@ -1,4 +1,8 @@
-package api
+// Package playout mounts the playout routes of the HTTP API: the streaming routes a channel is
+// watched through (HLS, the MPEG-TS tuner stream, still frames), the signed playout URLs, the guide
+// feed and the playout status projection. A Handlers holds only what those routes need;
+// internal/api builds one from its options and registers it beside every other area.
+package playout
 
 import (
 	"bytes"
@@ -16,11 +20,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -125,7 +127,7 @@ type PlayoutObserver interface {
 // "yes, that is a real channel, wrong password" tells an attacker where to aim. 404 is also
 // what a media server handles most gracefully — it retries rather than prompting for
 // credentials it does not have.
-func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
+func (s *Handlers) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
 	want, err := s.currentPlayoutToken(r.Context())
 	if err != nil || want == "" {
 		// No token configured means playout is not set up. Refusing is the safe default:
@@ -156,7 +158,7 @@ func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
 // uses a durable resolver so every replica observes rotation before accepting either
 // the raw device token or an HMAC signed with it. The legacy local resolver keeps unit
 // tests and single-process SQLite free from a database read per HLS request.
-func (s *Server) currentPlayoutToken(ctx context.Context) (string, error) {
+func (s *Handlers) currentPlayoutToken(ctx context.Context) (string, error) {
 	if s.playoutSecretCurrent != nil {
 		return s.playoutSecretCurrent(ctx)
 	}
@@ -164,7 +166,7 @@ func (s *Server) currentPlayoutToken(ctx context.Context) (string, error) {
 }
 
 // playoutToken reads the generated device secret (§15 `playout_token`).
-func (s *Server) playoutToken() string {
+func (s *Handlers) playoutToken() string {
 	if s.playoutSecret == nil {
 		return ""
 	}
@@ -182,7 +184,7 @@ func (s *Server) playoutToken() string {
 // URLs itself, with no notion of "the origin this came from", so a relative URL is not
 // fetchable at all. An unset public_url therefore means playout cannot serve, and the handlers
 // say so rather than emitting a URL that fails somewhere less obvious.
-func (s *Server) playoutBaseURL() string {
+func (s *Handlers) playoutBaseURL() string {
 	if s.liveSettings == nil {
 		return ""
 	}
@@ -190,7 +192,7 @@ func (s *Server) playoutBaseURL() string {
 }
 
 // playoutURL builds an absolute, token-bearing playout URL. Returns "" when the base is unset.
-func (s *Server) playoutURL(kind, channelID string) string {
+func (s *Handlers) playoutURL(kind, channelID string) string {
 	base := s.playoutBaseURL()
 	if base == "" {
 		return ""
@@ -212,7 +214,7 @@ func (s *Server) playoutURL(kind, channelID string) string {
 //     the buffer while the player times out waiting for a stream that is in fact flowing.
 //   - The request context IS the disconnect signal. Nothing else reports it: the tuner path
 //     never re-requests, so there is no next request whose absence we could notice.
-func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) streamHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
@@ -307,13 +309,13 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) tuneRaw(ctx context.Context, channelID string) (playout.Presentation, error) {
+func (s *Handlers) tuneRaw(ctx context.Context, channelID string) (playout.Presentation, error) {
 	return s.playout.Tune(ctx, playout.TuneRequest{
 		ChannelID: channelID, Delivery: playout.DeliveryMPEGTS,
 	})
 }
 
-func (s *Server) writeRawTuneError(w http.ResponseWriter, r *http.Request, channelID string, err error) {
+func (s *Handlers) writeRawTuneError(w http.ResponseWriter, r *http.Request, channelID string, err error) {
 	// At capacity is actionable. 503 + Retry-After makes a media server back off politely instead
 	// of hammering and preserves the measured safety boundary.
 	if errors.Is(err, playout.ErrAtCapacity) {
@@ -352,7 +354,7 @@ func firstTransportChunk(ctx context.Context, stream playout.Stream, timeout tim
 // entry: tvg-id must match the XMLTV channel id exactly, or the channel appears with no
 // listings. That is the most common Live TV wiring failure and it is SILENT — the channel
 // plays, the guide is just empty.
-func (s *Server) tunerHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) tunerHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playoutBaseURL() == "" {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout isn't configured",
 			"Set Loomarr's public address in Settings → Server so your media server can reach the streams.")
@@ -402,7 +404,7 @@ type playoutChannel struct {
 // but are deliberately off-air and therefore absent from both this M3U and its XMLTV document.
 // `playout.backend` is per-channel overridable via policy_json (§15), so this is a real filter
 // and not a global on/off.
-func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) {
+func (s *Handlers) playoutChannels(ctx context.Context) ([]playoutChannel, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -413,7 +415,7 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 	}
 	out := make([]playoutChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !transportPlayableAt(ch, checkpoint) {
+		if !httpcore.TransportPlayableAt(ch, checkpoint) {
 			continue
 		}
 		out = append(out, playoutChannel{
@@ -429,7 +431,7 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 // canTuneInternally applies the same effective-backend + lifecycle policy as the advertised
 // tuner list and the in-app surfable catalog. Returning 404 for an ineligible id keeps direct
 // token-bearing URLs from becoming a lifecycle/backend enumeration oracle.
-func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool, error) {
+func (s *Handlers) canTuneInternally(ctx context.Context, channelID string) (bool, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return false, err
@@ -441,13 +443,13 @@ func (s *Server) canTuneInternally(ctx context.Context, channelID string) (bool,
 	if err != nil {
 		return false, err
 	}
-	return transportPlayableAt(ch, checkpoint), nil
+	return httpcore.TransportPlayableAt(ch, checkpoint), nil
 }
 
 // canPlayInApp gates browser HLS and signed watch URLs on Applied, never merely prepared
 // transport. The media server needs to fetch an internal feed before cutover; a person should
 // not see that unpublished backend in ordinary UI routing.
-func (s *Server) canPlayInApp(ctx context.Context, channelID string) (bool, error) {
+func (s *Handlers) canPlayInApp(ctx context.Context, channelID string) (bool, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return false, err
@@ -459,45 +461,11 @@ func (s *Server) canPlayInApp(ctx context.Context, channelID string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return inAppPlayableAt(ch, checkpoint), nil
+	return httpcore.InAppPlayableAt(ch, checkpoint), nil
 }
 
-// BackendCheckpoint is the transport-layer projection of the durable transition state.
-type BackendCheckpoint struct {
-	Applied           string
-	Prepared          string
-	PublishedInternal bool
-}
-
-func (s *Server) checkpoint(ctx context.Context) (BackendCheckpoint, error) {
-	if s.backendCheckpoint != nil {
-		checkpoint, err := s.backendCheckpoint(ctx)
-		if err != nil {
-			return BackendCheckpoint{}, httpcore.ProblemWithCause(http.StatusServiceUnavailable,
-				"Playout state unavailable",
-				"Loomarr couldn't read the current playout state. Try again in a moment.", err)
-		}
-		return checkpoint, nil
-	}
-	return s.legacyBackendCheckpoint(), nil
-}
-
-func (s *Server) legacyBackendCheckpoint() BackendCheckpoint {
-	applied := ""
-	if s.liveSettings != nil {
-		applied = settings.PlayoutBackend.Get(s.liveSettings)
-	}
-	return BackendCheckpoint{
-		Applied: applied, PublishedInternal: applied == schedule.PlayoutBackendInternal,
-	}
-}
-
-func playsInternallyAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
-	return schedule.PlaysInternally(ch.Policy, checkpoint.Applied)
-}
-
-func transportPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
-	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
+func (s *Handlers) checkpoint(ctx context.Context) (httpcore.BackendCheckpoint, error) {
+	return s.backend.Checkpoint(ctx)
 }
 
 // hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
@@ -511,7 +479,7 @@ func transportPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) 
 // single stateless request can bracket. So the playlist fetch itself keeps the remux alive for a
 // grace window after the last fetch (the remux's own idle timer), and the refcount is taken-and-
 // released per fetch: each poll re-arms the grace timer, and when the polls stop, the timer fires.
-func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playout == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 			"Internal playout isn't running on this instance.")
@@ -543,7 +511,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	viewer, tagged := s.requestViewer(r.Context(), channelID, r.URL.Query())
-	presentation, err := s.playout.Tune(withPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
+	presentation, err := s.playout.Tune(httpcore.WithPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
 		ChannelID: channelID, Delivery: playout.DeliveryHLS,
 		Speculative: mode == "warm",
 	})
@@ -647,7 +615,7 @@ func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 // hlsAssetHandler serves an HLS asset under a channel: a packager's init segment, media segment or
 // media playlist. It uses the same dual auth as the master playlist. The asset
 // identifier is validated against traversal here and again by the owning Origin (defence in depth).
-func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playout == nil {
 		http.NotFound(w, r)
 		return
@@ -668,7 +636,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	speculative := strings.HasSuffix(rel, ".m3u8") && r.URL.Query().Get(playoutModeParam) == "warm"
 	if strings.HasSuffix(rel, ".m3u8") {
 		viewer, tagged = s.requestViewer(ctx, channelID, r.URL.Query())
-		ctx = withPlayoutViewer(ctx, viewer, tagged)
+		ctx = httpcore.WithPlayoutViewer(ctx, viewer, tagged)
 	}
 	asset, ok, err := s.playout.OpenAsset(ctx, channelID, rel, speculative)
 	if err != nil || !ok {
@@ -714,7 +682,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 // so this never transcodes per request.
 // Every failure — no provider, no segment, a failed decode — is the same 404: the client's answer
 // to all of them is "show the card on the plain background", and a broken image is worse.
-func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) stillHandler(w http.ResponseWriter, r *http.Request) {
 	provider, ok := s.playout.(StillProvider)
 	channelID := r.PathValue("id")
 	if !ok || channelID == "" {
@@ -756,7 +724,7 @@ func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
 //
 // The handler BODIES (streamHandler, hlsPlaylistHandler, …) are unchanged — they still take (w, r)
 // and stream; this only changes how they are mounted, guarded and described.
-func (s *Server) registerPlayout(api huma.API) {
+func (s *Handlers) registerPlayout(api huma.API) {
 	// The tuner list + XMLTV the media server registers.
 	streamOp[struct{}](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-tuner", Method: http.MethodGet, Path: "/v1/playout/tuner.m3u",
@@ -841,7 +809,7 @@ type playoutHLSInput struct {
 // A thin specialisation of rawOp (rawop.go) pinning the two things every playout route shares.
 // It is a package-level function rather than a method because it takes a type parameter for the
 // path params, and Go methods cannot.
-func streamOp[I any](s *Server, api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
+func streamOp[I any](s *Handlers, api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
 	// RolePublic tells the GLOBAL session-auth middleware (registerMiddleware) to skip these — they
 	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
 	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
@@ -853,7 +821,7 @@ func streamOp[I any](s *Server, api huma.API, op huma.Operation, body func(http.
 // token OR a signed URL, exactly what authorizePlayout checked inline, now shared across every route
 // instead of re-derived per handler. On failure it writes the 404 (see authorizePlayout for why
 // 404) and does NOT call next, so the stream handler never runs.
-func (s *Server) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context)) {
+func (s *Handlers) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context)) {
 	r, w := humago.Unwrap(hctx)
 	if !s.authorizePlayout(w, r) {
 		return // authorizePlayout already wrote the 404
