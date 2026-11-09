@@ -258,6 +258,13 @@ func TestCrashStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/crashstore")
 }
 
+// internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
+// retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
+// above, and store embeds it.
+func TestDiagnosticsStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/diagnosticsstore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the
