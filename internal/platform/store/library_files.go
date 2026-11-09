@@ -77,7 +77,9 @@ type LibraryFileStore interface {
 	LibraryPlayingVideo(ctx context.Context, itemID string) (video LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
-	// SaveLibraryFiles writes rows whole, in one transaction.
+	// SaveLibraryFiles writes rows whole, a chunk per transaction, so a root's first walk does not
+	// hold the write lock for its whole length. Every row is checked before any is written; a
+	// failure part-way leaves the earlier chunks written, which the next pass writes again.
 	SaveLibraryFiles(ctx context.Context, files []LibraryFile) error
 	// LibraryFileRoots lists every root that has file rows.
 	LibraryFileRoots(ctx context.Context) ([]string, error)
@@ -191,10 +193,25 @@ func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile
 	return out, nil
 }
 
+// libraryFilesChunk is how many file rows one transaction writes: small enough that playout's
+// writes wait milliseconds behind a walk, large enough that a first walk is not a commit per row.
+const libraryFilesChunk = 500
+
 func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) error {
-	if len(files) == 0 {
-		return nil
+	for _, f := range files {
+		if f.Path == "" || f.Root == "" || f.SeenAt.IsZero() {
+			return fmt.Errorf("save library files: path, root and seen time are required")
+		}
 	}
+	for start := 0; start < len(files); start += libraryFilesChunk {
+		if err := s.saveLibraryFiles(ctx, files[start:min(start+libraryFilesChunk, len(files))]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *sqlStore) saveLibraryFiles(ctx context.Context, files []LibraryFile) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save library files: %w", err)
@@ -214,9 +231,6 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 	}
 	defer func() { _ = stmt.Close() }()
 	for _, f := range files {
-		if f.Path == "" || f.Root == "" || f.SeenAt.IsZero() {
-			return fmt.Errorf("save library files: path, root and seen time are required")
-		}
 		header := f.Header
 		if header == "" {
 			header = LibraryHeaderPending
