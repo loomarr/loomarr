@@ -148,6 +148,10 @@ type TextTone =
   | "secondary"
   | "signal"
   | "success"
+  | "identOnair"
+  | "identSignal"
+  | "identSuggest"
+  | "identTune"
   | "suggest"
   | "warning";
 type TextProps = Omit<
@@ -241,6 +245,11 @@ const textTones = {
   signal: "actionPrimary",
   success: "stateSuccess",
   suggest: "accentSuggest",
+  // The monogram ident's letters on their own wash (#3011).
+  identOnair: "identLetterOnair",
+  identSignal: "identLetterSignal",
+  identSuggest: "identLetterSuggest",
+  identTune: "identLetterTune",
   warning: "stateWarning",
 } as const;
 
@@ -250,10 +259,10 @@ const textTones = {
 // each theme resolves its own stop. The keys are `@loomarr/core/guide`'s ident hues.
 const CHANNEL_IDENT_WASH_PERCENT = 14;
 const channelIdentHues = {
-  tune: { wash: brandChroma[3], tone: "info" },
-  suggest: { wash: brandChroma[4], tone: "suggest" },
-  signal: { wash: brandChroma[0], tone: "signal" },
-  onair: { wash: brandChroma[5], tone: "live" },
+  tune: { wash: brandChroma[3], tone: "identTune" },
+  suggest: { wash: brandChroma[4], tone: "identSuggest" },
+  signal: { wash: brandChroma[0], tone: "identSignal" },
+  onair: { wash: brandChroma[5], tone: "identOnair" },
 } as const satisfies Record<string, { wash: string; tone: TextTone }>;
 
 type ChannelIdentColorHue = keyof typeof channelIdentHues;
