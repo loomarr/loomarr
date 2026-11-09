@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
@@ -181,7 +181,7 @@ func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 // to the API's dependency-light shape).
 type searchAdapter struct{ cat *catalog.Catalog }
 
-func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([]httpcore.SearchCandidate, error) {
+func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequest) ([]httpcore.SearchCandidate, error) {
 	var cands []catalog.Candidate
 	var err error
 	if request.Discovery != nil {

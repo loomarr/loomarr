@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
@@ -73,7 +74,6 @@ type Server struct {
 	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
 	suggest SuggestService
-	search  SearchService
 	// The jobs, database, encryption, backups, restart and help routes are served by
 	// system.Handlers, built from the same Options in Router. A generation's start time
 	// (§16 uptime) is stamped there per build, never in a package-level var: the restart loop
@@ -314,44 +314,6 @@ type SuggestService interface {
 	SubmitBuilt(ctx context.Context, intent proposals.Intent, proposal proposals.Proposal, createdBy string) (jobID string, err error)
 }
 
-// SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
-// grounding tool. Returns candidates as generic maps so the API layer needn't
-// import the catalog types (kept dependency-light).
-type SearchService interface {
-	Search(ctx context.Context, request SearchRequest) ([]httpcore.SearchCandidate, error)
-}
-
-// SearchRequest selects exactly one Catalog operation. Query uses federated title
-// search; Discovery uses the provider-neutral structured discovery path. The API
-// handler rejects requests that provide both or neither.
-type SearchRequest struct {
-	Query     string
-	MediaType string
-	Scope     string
-	Limit     int
-	Discovery *SearchDiscovery
-}
-
-// SearchDiscovery is the dependency-light API representation of Catalog's
-// structured discovery request (§7.2). The composition-root adapter is the sole
-// conversion seam into catalog.DiscoveryQuery.
-type SearchDiscovery struct {
-	MediaType        string
-	Keywords         []string
-	Genres           []string
-	YearFrom         int
-	YearTo           int
-	OriginalLanguage string
-	OriginCountry    string
-	RuntimeMin       int
-	RuntimeMax       int
-	VoteAverageMin   float64
-	VoteCountMin     int
-	Network          string
-	Cast             []string
-	Creators         []string
-}
-
 // holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
 func (s *Server) holidayCalendar() schedule.Calendar {
 	if s.channels == nil {
@@ -461,7 +423,7 @@ type Options struct {
 	Suggest          SuggestService                    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
 	ProposalProgress proposalsapi.ProposalProgress     // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
 	ProposalWorkflow proposalsapi.ProposalWorkflow     // authoritative /v1/proposal-jobs Journey reads
-	Search           SearchService                     // /v1/search (Phase 11); nil ⇒ search route 501
+	Search           catalogapi.SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
 	MovieCollections libraryapi.MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
 	Collections      libraryapi.CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
 	LibraryRoots     libraryapi.LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409

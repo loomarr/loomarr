@@ -1,4 +1,4 @@
-package api
+package catalog
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 // (read-only); adding a missing result still routes through submit→approve, so
 // search adds no new privilege surface (§7.2). This is the SAME catalog impl as
 // the LLM grounding tool — humans and the model see identical results.
-func (s *Server) registerSearch(api huma.API) {
+func (s *Handlers) registerSearch(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "search", Method: http.MethodGet, Path: "/v1/search",
 		Summary: "Federated search (library + TMDB)", Tags: []string{"search"},
@@ -50,7 +50,7 @@ type searchOutput struct {
 	}
 }
 
-func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, error) {
+func (s *Handlers) doSearch(ctx context.Context, in *searchInput) (*searchOutput, error) {
 	if s.search == nil {
 		return nil, httpcore.NotImplemented("Search isn't set up", "Connect your media library or add a TMDB API key in Settings to search for titles.")
 	}
@@ -198,7 +198,7 @@ func normalizeSearchScope(scope string) string {
 // request. The Library is Loomarr's own and always searchable (#2151 step 15e): it
 // answers from its tables, and a media server only adds to it. TMDB needs its key,
 // read live so a saved key changes the next call without rebuilding the server.
-func (s *Server) configuredSearchScope(requested string) (string, bool) {
+func (s *Handlers) configuredSearchScope(requested string) (string, bool) {
 	scope := normalizeSearchScope(requested)
 	// A nil liveSettings is the established unit-test convention: an explicitly wired
 	// adapter is usable. Production always supplies it, so the current key gates TMDB.

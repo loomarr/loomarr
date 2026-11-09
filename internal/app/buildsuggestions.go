@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
@@ -42,7 +43,7 @@ type suggestionBuild struct {
 	progress         proposalsapi.ProposalProgress // the same *suggest.Service, read for live generation progress
 	workflow         proposalsapi.ProposalWorkflow
 	durableWorkflow  *workflow.Workflow
-	search           api.SearchService
+	search           catalogapi.SearchService
 	movieCollections libraryapi.MovieCollectionService
 	collections      libraryapi.CollectionService
 	ideaLibrary      channelsapi.IdeaLibrary

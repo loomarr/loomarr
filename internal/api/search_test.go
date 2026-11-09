@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -14,9 +15,9 @@ import (
 func newConfiguredSearchHandler(
 	t *testing.T,
 	cfg map[string]string,
-) (http.Handler, *testkit.SearchService[api.SearchRequest, httpcore.SearchCandidate]) {
+) (http.Handler, *testkit.SearchService[catalogapi.SearchRequest, httpcore.SearchCandidate]) {
 	t.Helper()
-	search := &testkit.SearchService[api.SearchRequest, httpcore.SearchCandidate]{Results: []httpcore.SearchCandidate{{
+	search := &testkit.SearchService[catalogapi.SearchRequest, httpcore.SearchCandidate]{Results: []httpcore.SearchCandidate{{
 		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	log := slog.New(slog.DiscardHandler)
