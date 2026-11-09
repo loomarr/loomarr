@@ -1,4 +1,20 @@
-package filler
+// Package language detects the spoken language of a filler clip for the quality gate (§10 V40).
+//
+// The question is narrow: "is this clip's SPEECH in the language filler is expected to be in?"
+// Not "transcribe it" — classification over a bounded representative sample is enough, which is why the
+// local backend can use a far smaller model than compilation splitting needs.
+//
+// ⚠ **Three answers, not two**, and collapsing any pair breaks the gate:
+//
+//	""      could not tell (backend unavailable, or it failed). NEVER a reason to reject —
+//	        the job retries, and a clip is not guilty of being foreign because whisper is missing.
+//	"none"  there is no speech to judge. A wordless visual spot. ALWAYS KEPT.
+//	"en"/…  this is what was heard.
+//
+// The middle one is the one people merge with the first, because both mean "we are not rejecting
+// this". They are different facts: one is a retry, the other is a final answer, and a silent
+// advert is often the best filler there is.
+package language
 
 import (
 	"context"
@@ -16,68 +32,51 @@ import (
 	"strings"
 )
 
-// Language detection for the quality gate (§10 V40).
-//
-// The question is narrow: "is this clip's SPEECH in the language filler is expected to be in?"
-// Not "transcribe it" — classification over a bounded representative sample is enough, which is why the
-// local backend can use a far smaller model than compilation splitting needs.
-//
-// ⚠ **Three answers, not two**, and collapsing any pair breaks the gate:
-//
-//	""      could not tell (backend unavailable, or it failed). NEVER a reason to reject —
-//	        the job retries, and a clip is not guilty of being foreign because whisper is missing.
-//	"none"  there is no speech to judge. A wordless visual spot. ALWAYS KEPT.
-//	"en"/…  this is what was heard.
-//
-// The middle one is the one people merge with the first, because both mean "we are not rejecting
-// this". They are different facts: one is a retry, the other is a final answer, and a silent
-// advert is often the best filler there is.
-
-// LangUndetermined and LangNone are the two non-language answers. Constants rather than bare
+// Undetermined and None are the two non-language answers. Constants rather than bare
 // strings so a caller cannot typo `"None"` into a language code that matches nothing.
 const (
-	LangUndetermined = ""
-	LangNone         = "none"
+	Undetermined = ""
+	None         = "none"
 )
 
-// LanguageDetector answers what language a clip's speech is in.
+// Detector answers what language a clip's speech is in.
 //
 // ONE method, and it returns a plain code (`en`, `es`, `none`, or `""`) rather than a transcript.
 // That is what lets the whisper backend and the hosted backend be interchangeable: they arrive at
 // the answer completely differently — one runs a local model and reads a field, the other asks a
 // multimodal model a question — but the job, the reject rule and every test see only the code.
-type LanguageDetector interface {
+type Detector interface {
 	// UnavailableReason reports a missing prerequisite without attempting inference. Empty means
 	// the detector is configured well enough to try. This keeps configuration absence distinct
 	// from a backend that ran and failed: the former skips immediately, while the latter earns the
 	// bounded retry ladder.
 	UnavailableReason() string
-	// DetectLanguage inspects [startMs,endMs) of file. It returns LangUndetermined with a nil
+	// DetectLanguage inspects [startMs,endMs) of file. It returns Undetermined with a nil
 	// error when it genuinely could not tell, so a caller can distinguish "unavailable" from
 	// "failed" only when it cares — most do not, because both mean "do not reject".
 	DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error)
 }
 
-// LanguageSampleMs is how much audio a detector inspects.
+// SampleMs is how much audio a detector inspects.
 //
 // Thirty seconds is the whole of an ordinary commercial and a bounded representative window for
 // a longer recording. Shorter excerpts proved too brittle on real mixed-brand speech: the same
 // Spanish Jersey Mike's spot alternated between English and Spanish for nearby ten-second cuts,
 // while its complete 30-second speech was correctly identified. This remains one inference call.
-const LanguageSampleMs int64 = 30_000
+const SampleMs int64 = 30_000
 
-// LanguageSpan returns the window a detector should inspect for a clip of the given length.
+// Span returns the window a detector should inspect for a clip of the given length.
 //
 // ⚠ Ordinary spots are inspected in full. Clips longer than the sample are inspected in their
 // MIDDLE, which avoids opening leader while retaining enough speech for a stable decision.
-func LanguageSpan(durationMs int64) (startMs, endMs int64) {
+func Span(durationMs int64) (startMs, endMs int64) {
 	const skipMs int64 = 1_000
 	if durationMs <= 0 {
 		// Unprobed: ask for the window anyway and let the backend take what exists. Guessing a
 		// proportion of an unknown length is meaningless.
-		return skipMs, skipMs + LanguageSampleMs
+		return skipMs, skipMs + SampleMs
 	}
-	if durationMs <= LanguageSampleMs {
+	if durationMs <= SampleMs {
 		// Shorter than the window — take all of it, including the sting. A 6s bumper has no
 		// spare second to skip, and taking nothing would report "none" for every short clip.
 		return 0, durationMs
@@ -89,16 +88,16 @@ func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 	// Found live: "USA Network Commercial Breaks (10-6-1994)", 978s, whose first 10s measure
 	// **-70 LUFS**. The model was asked what language the silence was in, answered `ar`, and the
 	// gate tombstoned a perfectly good American ad break.
-	start := (durationMs - LanguageSampleMs) / 2
-	return start, start + LanguageSampleMs
+	start := (durationMs - SampleMs) / 2
+	return start, start + SampleMs
 }
 
-// NormalizeLanguage reduces a code to the detector's base tag for comparison: `en-US`, `EN`,
+// Normalize reduces a code to the detector's base tag for comparison: `en-US`, `EN`,
 // `eng`, `English` all become `en` (langcode.Normalize). Any of those mismatching the others
 // means the gate rejects every English clip in the catalog — the loudest possible failure.
-func NormalizeLanguage(code string) string { return langcode.Normalize(code) }
+func Normalize(code string) string { return langcode.Normalize(code) }
 
-// LanguageRejects decides whether a detected code means "drop this clip".
+// Rejects decides whether a detected code means "drop this clip".
 //
 // ⚠ **The polarity is deliberately conservative: it rejects only on a POSITIVE mismatch.** Every
 // uncertain state — not yet checked, no speech, backend unavailable, an unparseable answer — keeps
@@ -106,16 +105,16 @@ func NormalizeLanguage(code string) string { return langcode.Normalize(code) }
 // two mistakes is not symmetric: a foreign advert that slips through plays once and annoys, while
 // a wrongly-rejected clip is deleted from the catalog and the operator is never told which.
 //
-// `want` is a set (IntakeLanguages): a clip in any of its languages is kept.
-func LanguageRejects(detected, want string) bool {
-	d, w := NormalizeLanguage(detected), LanguageSet(want)
-	if w == "" || d == "" || d == LangNone {
+// `want` is a set (IntakeSet): a clip in any of its languages is kept.
+func Rejects(detected, want string) bool {
+	d, w := Normalize(detected), NormalizeSet(want)
+	if w == "" || d == "" || d == None {
 		return false // gate off, not yet checked, or nothing to judge
 	}
 	return !slices.Contains(strings.Split(w, ","), d)
 }
 
-// IntakeLanguages is the set the intake gate admits (#2030 decision 13): the union of the
+// IntakeSet is the set the intake gate admits (#2030 decision 13): the union of the
 // channels' commercial languages, each the channel's own or else the household's. Adding a channel
 // in a new language opens the gate to it with no settings change; removing the last one closes it
 // to new clips and leaves catalogued ones alone.
@@ -124,15 +123,15 @@ func LanguageRejects(detected, want string) bool {
 // refuse one; with no channels yet, the household's language stands alone.
 //
 // ⚠ Comma-joined and sorted ("en,es"), not a slice, for the same reason as Geography.Fallback: a
-// split proposal snapshots it, and a single language persists exactly as it always did.
-func IntakeLanguages(household string, channels []string) string {
-	household = NormalizeLanguage(household)
+// split proposal snapshots it, and a single language persists as a plain code.
+func IntakeSet(household string, channels []string) string {
+	household = Normalize(household)
 	if len(channels) == 0 {
 		return household
 	}
 	set := make([]string, 0, len(channels))
 	for _, own := range channels {
-		lang := NormalizeLanguage(own)
+		lang := Normalize(own)
 		if lang == "" {
 			lang = household
 		}
@@ -141,14 +140,14 @@ func IntakeLanguages(household string, channels []string) string {
 		}
 		set = append(set, lang)
 	}
-	return LanguageSet(strings.Join(set, ","))
+	return NormalizeSet(strings.Join(set, ","))
 }
 
-// LanguageSet normalizes a comma-joined set of languages: each code mapped, once, sorted.
-func LanguageSet(raw string) string {
+// NormalizeSet normalizes a comma-joined set of languages: each code mapped, once, sorted.
+func NormalizeSet(raw string) string {
 	var set []string
 	for code := range strings.SplitSeq(raw, ",") {
-		if lang := NormalizeLanguage(code); lang != "" {
+		if lang := Normalize(code); lang != "" {
 			set = append(set, lang)
 		}
 	}
@@ -156,20 +155,20 @@ func LanguageSet(raw string) string {
 	return strings.Join(slices.Compact(set), ",")
 }
 
-// LanguageList splits a set into its codes; an empty set is an empty list.
-func LanguageList(set string) []string {
-	if set = LanguageSet(set); set == "" {
+// SplitSet splits a set into its codes; an empty set is an empty list.
+func SplitSet(set string) []string {
+	if set = NormalizeSet(set); set == "" {
 		return []string{}
 	}
 	return strings.Split(set, ",")
 }
 
-// languageNames renders a set for a reject detail: "en, es".
-func languageNames(set string) string { return strings.ReplaceAll(LanguageSet(set), ",", ", ") }
+// Names renders a set for a reject detail: "en, es".
+func Names(set string) string { return strings.ReplaceAll(NormalizeSet(set), ",", ", ") }
 
 // --- the local backend ---
 
-// WhisperLanguage detects with the vendored whisper-cli.
+// Whisper detects with the vendored whisper-cli.
 //
 // ⚠ **It needs a MULTILINGUAL model, and the shipped `ggml-small.en.bin` is not one.** An
 // English-only whisper build does not identify languages at all — it assumes English and
@@ -179,10 +178,10 @@ func languageNames(set string) string { return strings.ReplaceAll(LanguageSet(se
 //
 // `tiny` is adequate here in a way it was NOT for splitting (where `tiny.en` measurably dropped a
 // whole 20s advert): language ID is classification over a few seconds, not transcription.
-type WhisperLanguage struct {
+type Whisper struct {
 	// WhisperPath is the same binary compilation splitting uses.
 	WhisperPath string
-	// Model MUST be multilingual. Empty ⇒ every call returns LangUndetermined, which the gate
+	// Model MUST be multilingual. Empty ⇒ every call returns Undetermined, which the gate
 	// treats as "do not reject" — so a source build with no model configured is inert, not broken.
 	Model string
 	// FFmpegPath extracts the audio span; whisper.cpp wants 16kHz mono wav.
@@ -191,11 +190,11 @@ type WhisperLanguage struct {
 	tmpDir string
 }
 
-// NewWhisperLanguage builds the local detector. Any path may be empty — the result is a detector
-// that reports LangUndetermined rather than one that errors, because "we cannot tell" is a
+// NewWhisper builds the local detector. Any path may be empty — the result is a detector
+// that reports Undetermined rather than one that errors, because "we cannot tell" is a
 // legitimate answer this gate already knows how to handle.
-func NewWhisperLanguage(whisperPath, model, ffmpegPath, tmpDir string) *WhisperLanguage {
-	return &WhisperLanguage{
+func NewWhisper(whisperPath, model, ffmpegPath, tmpDir string) *Whisper {
+	return &Whisper{
 		WhisperPath: whisperPath, Model: model, FFmpegPath: ffmpegPath, tmpDir: tmpDir,
 	}
 }
@@ -217,7 +216,7 @@ type whisperLangJSON struct {
 // UnavailableReason distinguishes a detector that cannot possibly run from one that can run and
 // might fail. Retrying an empty model path cannot repair the configuration; it only delays every
 // clip before the non-fatal rung eventually skips.
-func (w *WhisperLanguage) UnavailableReason() string {
+func (w *Whisper) UnavailableReason() string {
 	switch {
 	case w.WhisperPath == "":
 		return "the local language engine is not configured (set ingest.whisper_path)"
@@ -230,16 +229,16 @@ func (w *WhisperLanguage) UnavailableReason() string {
 	}
 }
 
-func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {
+func (w *Whisper) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {
 	if w.WhisperPath == "" || w.Model == "" {
-		// Not configured. LangUndetermined + nil: the gate keeps the clip, and the job can retry
+		// Not configured. Undetermined + nil: the gate keeps the clip, and the job can retry
 		// once an operator wires a model. An error here would fill the log with a condition that
 		// is a configuration choice rather than a fault.
-		return LangUndetermined, nil
+		return Undetermined, nil
 	}
 	dir, err := os.MkdirTemp(w.tmpDir, "loomarr-lang-")
 	if err != nil {
-		return LangUndetermined, err
+		return Undetermined, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
@@ -247,7 +246,7 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
 	wav := tools.SpanWAVPath(dir)
 	if err := tools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
-		return LangUndetermined, err
+		return Undetermined, err
 	}
 
 	base := filepath.Join(dir, "out")
@@ -256,11 +255,11 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 	run := bgexec.Whisper(ctx, w.WhisperPath,
 		"-m", w.Model, "-f", wav, "-l", "auto", "-oj", "-of", base, "-np")
 	if out, runErr := run.CombinedOutput(); runErr != nil {
-		return LangUndetermined, fmt.Errorf("whisper-cli language: %w: %s", runErr, truncate(string(out), 200))
+		return Undetermined, fmt.Errorf("whisper-cli language: %w: %s", runErr, truncate(string(out), 200))
 	}
 	raw, err := os.ReadFile(base + ".json")
 	if err != nil {
-		return LangUndetermined, fmt.Errorf("whisper-cli wrote no JSON: %w", err)
+		return Undetermined, fmt.Errorf("whisper-cli wrote no JSON: %w", err)
 	}
 	return parseWhisperLanguage(raw)
 }
@@ -269,7 +268,7 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 func parseWhisperLanguage(raw []byte) (string, error) {
 	var w whisperLangJSON
 	if err := json.Unmarshal(raw, &w); err != nil {
-		return LangUndetermined, fmt.Errorf("whisper language output not JSON: %w", err)
+		return Undetermined, fmt.Errorf("whisper language output not JSON: %w", err)
 	}
 	// ⚠ NO transcribed text means NO speech — `none`, which always keeps the clip. Without this
 	// branch a silent visual spot inherits whatever `result.language` guessed from noise, and a
@@ -282,11 +281,11 @@ func parseWhisperLanguage(raw []byte) (string, error) {
 		}
 	}
 	if !spoke {
-		return LangNone, nil
+		return None, nil
 	}
-	lang := NormalizeLanguage(w.Result.Language)
+	lang := Normalize(w.Result.Language)
 	if lang == "" || lang == "auto" {
-		return LangUndetermined, nil
+		return Undetermined, nil
 	}
 	return lang, nil
 }
@@ -333,4 +332,13 @@ func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("no integrated loudness value in ffmpeg output")
+}
+
+// truncate keeps a backend's error output to n bytes so a failure message stays one readable line.
+func truncate(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

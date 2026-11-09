@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"path/filepath"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/language"
 )
 
 // The TRANSCRIBE stage (§10 V51b): what does the clip SAY?
@@ -19,7 +21,7 @@ import (
 // what two independent cron schedules produced. `StageOrder` states the dependency once.
 
 // TranscriptNone is the sentinel a wordless clip records (§10 V44) — the transcript column's
-// analogue of the language gate's LangNone.
+// analogue of the language gate's language.None.
 //
 // ⚠ **A NON-EMPTY marker is load-bearing.** The transcript column has the same two meanings
 // `language` does — "not yet transcribed" and "transcribed, wordless" — and the row default for
@@ -105,7 +107,7 @@ func (s *TranscribeStage) Applies(_ context.Context, c StoreClip) (bool, string)
 // Observe transcribes without persisting. Progressive catch-up uses this half so the transcript,
 // accepted facts, and completion identity can commit atomically in its own store transaction.
 func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult, string, error) {
-	start, end := LanguageSpan(c.DurationMs)
+	start, end := language.Span(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 
 	segs, err := s.tools.Transcribe(ctx, file, start, end)

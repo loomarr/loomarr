@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
@@ -1061,7 +1062,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
 		{0, 20_000}:      "en",
 		{20_000, 40_000}: "es",
-		{40_000, 60_000}: filler.LangNone,
+		{40_000, 60_000}: language.None,
 	}}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1089,7 +1090,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if proposal.Segments[0].Name != "English advert" || proposal.Segments[0].Language != "en" || !proposal.Segments[0].LanguageChecked {
 		t.Errorf("English segment = %+v", proposal.Segments[0])
 	}
-	if proposal.Segments[1].Name != "Wordless advert" || proposal.Segments[1].Language != filler.LangNone || !proposal.Segments[1].LanguageChecked {
+	if proposal.Segments[1].Name != "Wordless advert" || proposal.Segments[1].Language != language.None || !proposal.Segments[1].LanguageChecked {
 		t.Errorf("wordless segment = %+v", proposal.Segments[1])
 	}
 	wantSpans := [][2]int64{{0, 20_000}, {20_000, 40_000}, {40_000, 60_000}}
@@ -1241,7 +1242,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
 		{0, 20_000}:      "en",
 		{20_000, 40_000}: "es",
-		{40_000, 60_000}: filler.LangNone,
+		{40_000, 60_000}: language.None,
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1830,7 +1831,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
 		{0, 30_000}:      "en",
-		{30_500, 60_500}: filler.LangNone,
+		{30_500, 60_500}: language.None,
 		{61_000, 91_000}: "en",
 	}}
 	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
@@ -1913,7 +1914,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if st.observedEras[seg.Hash] != wantObserved {
 			t.Errorf("segment %q observed era = %d, want %d", seg.Name, st.observedEras[seg.Hash], wantObserved)
 		}
-		wantLanguage := map[string]string{"Burger Barn": "en", "Brickle": filler.LangNone, "Edited boundary": ""}[seg.Name]
+		wantLanguage := map[string]string{"Burger Barn": "en", "Brickle": language.None, "Edited boundary": ""}[seg.Name]
 		if seg.Language != wantLanguage {
 			t.Errorf("confirmed segment %q language = %q, want inherited %q", seg.Name, seg.Language, wantLanguage)
 		}

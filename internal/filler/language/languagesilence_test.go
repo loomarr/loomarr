@@ -1,4 +1,4 @@
-package filler
+package language
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 //
 // ⚠ **This is the regression from a live run, not a hypothetical.** "USA Network Commercial Breaks
 // (10-6-1994)" — a 978-second recorded ad break — was detected as ARABIC and tombstoned. The cause
-// was not the model: `LanguageSpan` handed it the first ten seconds, which on a long recording is
+// was not the model: `Span` handed it the first ten seconds, which on a long recording is
 // leader (tape run-up, dead air) measuring **-70 LUFS**. Asked what language silence is in, a model
 // does not decline — it guesses.
 //
@@ -21,7 +21,7 @@ import (
 //
 // Two fixes, and this covers the load-bearing one:
 //
-//   - `LanguageSpan` samples every longer clip from its MIDDLE. That fixes WHERE we look.
+//   - `Span` samples every longer clip from its MIDDLE. That fixes WHERE we look.
 //   - `spanIsSilent` refuses to ask at all below the floor. That holds WHEREVER we land, including
 //     on a clip that is genuinely silent throughout.
 //
@@ -38,7 +38,7 @@ func TestSpanIsSilent_TheLeaderThatDeletedAClip(t *testing.T) {
 		{"span_leader_silence.wav", "the -70 LUFS leader a model answered 'ar' about", true},
 		{"span_real_speech.wav", "the -25 LUFS middle of the same recording", false},
 	} {
-		path := filepath.Join("..", "testkit", "fixtures", "whisper", tc.file)
+		path := filepath.Join("..", "..", "testkit", "fixtures", "whisper", tc.file)
 		got, err := spanIsSilent(context.Background(), "ffmpeg", path)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.what, err)
@@ -61,18 +61,18 @@ func TestSilenceFloor_LeavesRoomForTheQuietestRealClip(t *testing.T) {
 }
 
 // The span rule itself: long recordings use their middle while ordinary adverts are read in full.
-func TestLanguageSpan_LongRecordingsAreSampledFromTheMiddle(t *testing.T) {
+func TestSpan_LongRecordingsAreSampledFromTheMiddle(t *testing.T) {
 	// The real clip: 978.767s.
-	start, end := LanguageSpan(978_767)
+	start, end := Span(978_767)
 	if start < 400_000 {
 		t.Errorf("span starts at %dms — still in the leader that caused the false positive", start)
 	}
-	if end-start != LanguageSampleMs {
-		t.Errorf("span is %dms, want %dms", end-start, LanguageSampleMs)
+	if end-start != SampleMs {
+		t.Errorf("span is %dms, want %dms", end-start, SampleMs)
 	}
 
 	// Ten-second excerpts of a real Spanish commercial were unstable; the complete spot was not.
-	if s, e := LanguageSpan(30_000); s != 0 || e != 30_000 {
+	if s, e := Span(30_000); s != 0 || e != 30_000 {
 		t.Errorf("30s advert span = [%d,%d), want the complete spot [0,30000)", s, e)
 	}
 }
