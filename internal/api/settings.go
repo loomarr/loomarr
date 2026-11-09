@@ -18,19 +18,19 @@ func (s *Server) registerSettings(api huma.API) {
 		OperationID: "settings-list", Method: http.MethodGet, Path: "/v1/settings",
 		Summary: "List settings", Description: "Admin only. Every operator-managed setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.settingsList)
+	}, httpcore.RoleAdmin), s.settingsList)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-patch", Method: http.MethodPatch, Path: "/v1/settings",
 		Summary: "Update settings", Description: "Admin only. Per-key results (saved | invalid | pinned). A saved value follows that setting's apply contract: live on the next owning operation, or restart in the next app generation (config-design §3/§8).",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.settingsPatch)
+	}, httpcore.RoleAdmin), s.settingsPatch)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "settings-clear", Method: http.MethodDelete, Path: "/v1/settings/{key}",
 		Summary: "Clear a setting", Description: "Admin only. Drops the stored override so the key reverts to env/default — the explicit clear, and the only way to unset a secret (config-design §8/§9).",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.settingsClear)
+	}, httpcore.RoleAdmin), s.settingsClear)
 
 	// The unlock (config-design §3.1). A separate operation rather than a field on PATCH:
 	// taking a key from the deploy config is a deliberate act, not something that should
@@ -39,25 +39,25 @@ func (s *Server) registerSettings(api huma.API) {
 		OperationID: "settings-env-override", Method: http.MethodPut, Path: "/v1/settings/{key}/env-override",
 		Summary: "Take a setting back from the environment", Description: "Admin only. Sets or clears the durable claim that this key is app-managed even though its environment variable is set (config-design §3.1). Unlocking seeds the stored value from the env value it takes over, so nothing changes until the operator saves; a secret never seeds. 404 unknown key (bootstrap keys are not in the registry), 409 when the environment does not pin the key.",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.settingsEnvOverride)
+	}, httpcore.RoleAdmin), s.settingsEnvOverride)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setup-test", Method: http.MethodPost, Path: "/v1/setup/test",
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.settingsTest)
+	}, httpcore.RoleAdmin), s.settingsTest)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
 		Summary: "Reveal a generated token", Description: "Admin only. Returns API_TOKEN or PLAYOUT_TOKEN for config-design §4's eye toggle. Reading never rotates.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.secretReveal)
+	}, httpcore.RoleAdmin), s.secretReveal)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
 		Summary: "Regenerate a generated token", Description: "Admin only. Rotates API_TOKEN or PLAYOUT_TOKEN with the §4 side-effects and returns the new value.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.secretRegenerate)
+	}, httpcore.RoleAdmin), s.secretRegenerate)
 }
 
 type settingsListOutput struct {

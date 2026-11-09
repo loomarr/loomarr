@@ -25,14 +25,14 @@ func (s *Server) registerHelp(api huma.API) {
 		Summary:     "List the embedded help pages",
 		Description: "The Help section's table of contents (§13). Pages ship inside the binary, so Help works air-gapped.",
 		Tags:        []string{"help"},
-	}, RoleMember), s.listDocs)
+	}, httpcore.RoleMember), s.listDocs)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-doc", Method: http.MethodGet, Path: "/v1/docs/{slug}",
 		Summary:     "Read one help page as markdown",
 		Description: "Returns raw markdown, not HTML: the frontend renders it and searches it client-side (§7.2), which needs the source rather than a rendered blob.",
 		Tags:        []string{"help"},
-	}, RoleMember), s.getDoc)
+	}, httpcore.RoleMember), s.getDoc)
 
 	httpcore.RawOp[diagramInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "get-doc-diagram", Method: http.MethodGet, Path: "/v1/docs/diagrams/{name}",
@@ -40,7 +40,7 @@ func (s *Server) registerHelp(api huma.API) {
 		Description: "A diagram a help page shows, as SVG. It ships inside the binary, so Help's " +
 			"diagrams work air-gapped. Load it only as an image: it is served sandboxed.",
 		Tags: []string{"help"},
-	}, "The diagram.", "image/svg+xml"), RoleMember, serveDiagram)
+	}, "The diagram.", "image/svg+xml"), httpcore.RoleMember, serveDiagram)
 
 	httpcore.RawOp[screenshotInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "get-doc-screenshot", Method: http.MethodGet, Path: "/v1/docs/screenshots/{name}",
@@ -48,14 +48,14 @@ func (s *Server) registerHelp(api huma.API) {
 		Description: "A screenshot a help page shows, as WebP. It ships inside the binary, so Help's " +
 			"screenshots work air-gapped.",
 		Tags: []string{"help"},
-	}, "The screenshot.", "image/webp"), RoleMember, serveScreenshot)
+	}, "The screenshot.", "image/webp"), httpcore.RoleMember, serveScreenshot)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-version", Method: http.MethodGet, Path: "/v1/system/version",
 		Summary:     "Version and readiness of this instance",
 		Description: "What the operator quotes in a bug report, plus the readiness /v1/readyz reports. The probes stay unauthenticated for orchestrators (RolePublic); this is their authenticated twin, carrying the build and schema detail a probe has no business returning.",
 		Tags:        []string{"system"},
-	}, RolePublic), s.systemVersion)
+	}, httpcore.RolePublic), s.systemVersion)
 }
 
 // DocSummary is one entry in the Help table of contents.

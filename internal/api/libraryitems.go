@@ -24,32 +24,32 @@ func (s *Server) registerLibraryItems(api huma.API) {
 		Summary:     "List the library's titles",
 		Description: "Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryItems)
+	}, httpcore.RoleAdmin), s.listLibraryItems)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getLibraryItem", Method: http.MethodGet, Path: "/v1/library/items/{id}",
 		Summary:     "One title",
 		Description: "A movie with its files, or a series with its episodes by season. 404 when no file of it is present.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.getLibraryItem)
+	}, httpcore.RoleAdmin), s.getLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "updateLibraryItemDetails", Method: http.MethodPost, Path: "/v1/library/items/{id}/refresh",
 		Summary:     "Update a title's details",
 		Description: "Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.updateLibraryItemDetails)
+	}, httpcore.RoleAdmin), s.updateLibraryItemDetails)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "checkLibraryItemFiles", Method: http.MethodPost, Path: "/v1/library/items/{id}/check",
 		Summary:     "Check a title's files again",
 		Description: "Opens the title's files and reads their details again, such as after a file was replaced.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.checkLibraryItemFiles)
+	}, httpcore.RoleAdmin), s.checkLibraryItemFiles)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "removeLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/remove-copy",
 		Summary: "Remove a title's extra copy",
 		Description: "Moves one of the title's files that never plays into its media folder's trash " +
 			"(.loomarr-trash), which empties after 30 days.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.removeLibraryExtraCopy)
+	}, httpcore.RoleAdmin), s.removeLibraryExtraCopy)
 }
 
 type removeLibraryExtraCopyInput struct {

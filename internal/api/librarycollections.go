@@ -28,36 +28,36 @@ func (s *Server) registerLibraryCollections(api huma.API) {
 		Summary:     "Your collections",
 		Description: "The household's collections, by name, each with its titles in order.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listCollections)
+	}, httpcore.RoleAdmin), s.listCollections)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getCollection", Method: http.MethodGet, Path: "/v1/collections/{id}",
 		Summary: "One collection",
 		Tags:    []string{"library"},
-	}, RoleAdmin), s.getCollection)
+	}, httpcore.RoleAdmin), s.getCollection)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "createCollection", Method: http.MethodPost, Path: "/v1/collections",
 		Summary:     "Make a collection",
 		Description: "Titles are library title ids, in the order the collection lists them.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusCreated,
-	}, RoleAdmin), s.createCollection)
+	}, httpcore.RoleAdmin), s.createCollection)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "updateCollection", Method: http.MethodPut, Path: "/v1/collections/{id}",
 		Summary:     "Change a collection",
 		Description: "Replaces its name, description and titles.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.updateCollection)
+	}, httpcore.RoleAdmin), s.updateCollection)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "deleteCollection", Method: http.MethodDelete, Path: "/v1/collections/{id}",
 		Summary:     "Delete a collection",
 		Description: "409 while a channel uses it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteCollection)
+	}, httpcore.RoleAdmin), s.deleteCollection)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "copySet", Method: http.MethodPost, Path: "/v1/collections/sets/{id}/copy",
 		Summary:     "Make my own copy of a ready-made set",
 		Description: "Makes a collection of the household's own with the set's name and the library's movies of it, in its order.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusCreated,
-	}, RoleAdmin), s.copySet)
+	}, httpcore.RoleAdmin), s.copySet)
 }
 
 // collectionChannelDTO is a channel that uses a collection.

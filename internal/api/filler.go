@@ -38,7 +38,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"without the two disagreeing. " +
 			"Held clips and composites are excluded unless asked for, because neither is in the playable catalog.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.listFiller)
+	}, httpcore.RoleMember), s.listFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-pool", Method: http.MethodGet, Path: "/v1/filler/pool",
@@ -49,46 +49,46 @@ func (s *Server) registerFiller(api huma.API) {
 			"so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. " +
 			"Read-only, so any authenticated user may call it.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.fillerPool)
+	}, httpcore.RoleMember), s.fillerPool)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-readiness", Method: http.MethodGet, Path: "/v1/filler/readiness",
 		Summary:     "Filler readiness and next action",
 		Description: "One server-owned operational projection across acquisition limits, durable runs, pipeline ownership, playable inventory, and worst-first channel coverage (§10 V59). Clients render the typed next action rather than reconstructing priorities from counters.",
 		Tags:        []string{"filler"},
-	}, RoleMember), s.fillerReadiness)
+	}, httpcore.RoleMember), s.fillerReadiness)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-filler-storage-cleanup", Method: http.MethodGet, Path: "/v1/filler/storage/cleanup",
 		Summary:     "Preview disposable filler staging",
 		Description: "Admin only. Counts terminal private download staging older than the safety grace that no recovery evidence still needs. It never selects catalog clips, repair evidence, symlinks, or unknown files.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.previewFillerStorageCleanup)
+	}, httpcore.RoleAdmin), s.previewFillerStorageCleanup)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "cleanup-filler-storage", Method: http.MethodPost, Path: "/v1/filler/storage/cleanup",
 		Summary:     "Remove disposable filler staging",
 		Description: "Admin only. Revalidates and removes only the private terminal download staging returned by the preview contract, then reports a fresh remaining preview.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.cleanupFillerStorage)
+	}, httpcore.RoleAdmin), s.cleanupFillerStorage)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-filler-acquisition", Method: http.MethodGet, Path: "/v1/filler/acquisitions/{jobId}",
 		Summary:     "Read one clip download",
 		Description: "Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.getFillerAcquisition)
+	}, httpcore.RoleAdmin), s.getFillerAcquisition)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
 		Summary: "Edit a clip's classification", Description: "Admin only. Corrects name, kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a). A name is the operator's curated name for viewers (#1990).", Tags: []string{"filler"},
-	}, RoleAdmin), s.patchFillerClip)
+	}, httpcore.RoleAdmin), s.patchFillerClip)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "sync-filler", Method: http.MethodPost, Path: "/v1/filler/sync",
 		Summary: "Sync the clip catalog from the media server", Description: "Admin only (§10).",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.syncFiller)
+	}, httpcore.RoleAdmin), s.syncFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "rewind-filler-clip", Method: http.MethodPost, Path: "/v1/filler/rewind",
@@ -96,14 +96,14 @@ func (s *Server) registerFiller(api huma.API) {
 		Description: "Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. " +
 			"Re-running transcode requires force because the original bytes are no longer available and another encode loses quality.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.rewindFillerClip)
+	}, httpcore.RoleAdmin), s.rewindFillerClip)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
 		Summary:     "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
 		Description: httpcore.OperatorAPI,
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.ingestFiller)
+	}, httpcore.RoleAdmin), s.ingestFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discover-filler", Method: http.MethodGet, Path: "/v1/filler/discover",
@@ -116,7 +116,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream " +
 			"request, no job to poll.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.discoverFiller)
+	}, httpcore.RoleAdmin), s.discoverFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discover-filler-stats", Method: http.MethodGet, Path: "/v1/filler/discover/stats",
@@ -127,7 +127,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"full page of 25 measured 22.6s. An id archive.org cannot answer for is ABSENT from the " +
 			"response rather than zero: 0 would be indistinguishable from a genuinely empty clip.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.discoverFillerStats)
+	}, httpcore.RoleAdmin), s.discoverFillerStats)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		// ⚠ The clip is a QUERY parameter, not a path segment, and that is forced rather than
@@ -147,7 +147,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"channel is listed, including paused ones — pinning to a paused channel is a decision that " +
 			"takes effect when it resumes.",
 		Tags: []string{"filler", "channels"},
-	}, RoleMember), s.clipChannelFit)
+	}, httpcore.RoleMember), s.clipChannelFit)
 
 	// Compilation splitting (§10, V34). Propose is a job (detection runs minutes
 	// per file); the proposal read and the confirm are synchronous. All admin:
@@ -161,7 +161,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"split proposal. Nothing enters the catalog: review is not optional, because detection quality " +
 			"is a property of the source.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.splitFiller)
+	}, httpcore.RoleAdmin), s.splitFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
@@ -169,7 +169,7 @@ func (s *Server) registerFiller(api huma.API) {
 		Description: "Admin only (§10, V34). The review surface's source of truth on SSE reconnect — " +
 			"the same pattern as /v1/proposals/{id}.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.getFillerSplit)
+	}, httpcore.RoleAdmin), s.getFillerSplit)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirm-filler-split", Method: http.MethodPost, Path: "/v1/filler/splits/{proposalId}/confirm",
@@ -180,7 +180,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"clips: cut with ffmpeg stream copy, and the original compilation row removed — its identity " +
 			"is a path that now means twenty clips, not one.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.confirmFillerSplit)
+	}, httpcore.RoleAdmin), s.confirmFillerSplit)
 
 	// The three clip byte routes (V30/V35/V39). Member-visible, matching `list-filler`: the
 	// catalog listing is visible to any authenticated user, and an asset is strictly less
@@ -210,7 +210,7 @@ func (s *Server) registerFiller(api huma.API) {
 			"deciding about it. Range-capable, so a <video> element can seek. The exact media type " +
 			"comes from a short server-side allowlist keyed by extension.",
 		Tags: []string{"filler"},
-	}, "The clip's own bytes.", "video/*", "audio/*"), RoleMember, s.serveFillerMedia)
+	}, "The clip's own bytes.", "video/*", "audio/*"), httpcore.RoleMember, s.serveFillerMedia)
 }
 
 type rewindFillerClipInput struct {

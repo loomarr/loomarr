@@ -109,19 +109,19 @@ func (s *Server) registerFillerDefects(api huma.API) {
 			"and how the floor and its vision judge score against the maintainer's labels, per era band. " +
 			"Labels stay in this install's database; nothing here leaves the machine.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.fillerDefectReport)
+	}, httpcore.RoleAdmin), s.fillerDefectReport)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "label-filler-defect", Method: http.MethodPut, Path: "/v1/filler/defects/{clipId}/label",
 		Summary:     "Label a clip for the defect floor",
 		Description: "Admin only (#2034). Labels a measured clip pass or fail against a good copy of the era its record was judged for.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.labelFillerDefect)
+	}, httpcore.RoleAdmin), s.labelFillerDefect)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "clear-filler-defect-label", Method: http.MethodDelete, Path: "/v1/filler/defects/{clipId}/label",
 		Summary:     "Clear a clip's defect floor label",
 		Description: "Admin only (#2034).",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.clearFillerDefectLabel)
+	}, httpcore.RoleAdmin), s.clearFillerDefectLabel)
 }
 
 func (s *Server) fillerDefectReport(ctx context.Context, in *fillerDefectReportInput) (*fillerDefectReportOutput, error) {

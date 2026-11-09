@@ -489,6 +489,6 @@ func (s *Server) registerGuide(api huma.API) {
 			"NOT the XMLTV guide a media server reads — that is /playout/guide.xml. " +
 			"Read-only: any authenticated user (§8.1 viewer-facing).",
 		Tags: []string{"channels"},
-	}, RoleMember), s.channelGuide)
+	}, httpcore.RoleMember), s.channelGuide)
 	s.registerGuideHighlights(api)
 }

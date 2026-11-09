@@ -134,7 +134,7 @@ func (s *Server) registerFillerPulls(api huma.API) {
 		Description: "Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. " +
 			"Decided pulls are KEPT — the queue's History answers what was agreed to and who said so.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerPulls)
+	}, httpcore.RoleAdmin), s.listFillerPulls)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "approve-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/approve",
@@ -144,21 +144,21 @@ func (s *Server) registerFillerPulls(api huma.API) {
 			"operator's edits — exact candidates dropped, and a note narrowing what to fetch. Dropped rows are recorded, not " +
 			"erased. Approving an already-decided pull returns 409.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.approveFillerPull)
+	}, httpcore.RoleAdmin), s.approveFillerPull)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "dismiss-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls/{id}/dismiss",
 		Summary:     "Decline a pull",
 		Description: "Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.dismissFillerPull)
+	}, httpcore.RoleAdmin), s.dismissFillerPull)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-approve-filler-pulls", Method: http.MethodPost, Path: "/v1/filler/pulls/approve",
 		Summary:     "Approve several pulls (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a " + "per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659).",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.bulkApproveFillerPulls)
+	}, httpcore.RoleAdmin), s.bulkApproveFillerPulls)
 }
 
 type pullOutput struct {

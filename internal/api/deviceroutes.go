@@ -30,38 +30,38 @@ func (s *Server) registerDeviceAuth(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-start", Method: http.MethodPost, Path: "/v1/auth/device/start",
 		Summary: "Begin pairing a device", Tags: []string{"auth"},
-	}, RolePublic), s.handleDeviceStart)
+	}, httpcore.RolePublic), s.handleDeviceStart)
 
 	// Also public, and also grants nothing on its own: the caller must already hold the 256-bit
 	// device code minted above, and the pairing must have been approved by a human.
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-poll", Method: http.MethodPost, Path: "/v1/auth/device/poll",
 		Summary: "Exchange an approved pairing for a device token", Tags: []string{"auth"},
-	}, RolePublic), s.handleDevicePoll)
+	}, httpcore.RolePublic), s.handleDevicePoll)
 
 	// The human half. RoleMember, and the approving user's identity is what the device inherits —
 	// which is why this cannot be public: approval is the moment authority is delegated.
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-pair-approve", Method: http.MethodPost, Path: "/v1/auth/device/approve",
 		Summary: "Approve a device's pairing code", Tags: []string{"auth"},
-	}, RoleMember), s.handleDeviceApprove)
+	}, httpcore.RoleMember), s.handleDeviceApprove)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-list", Method: http.MethodGet, Path: "/v1/auth/devices",
 		Summary: "List this user's paired devices", Tags: []string{"auth"},
-	}, RoleMember), s.handleDeviceList)
+	}, httpcore.RoleMember), s.handleDeviceList)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-revoke", Method: http.MethodDelete, Path: "/v1/auth/devices/{id}",
 		Summary: "Revoke one paired device", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.handleDeviceRevoke)
+	}, httpcore.RoleMember), s.handleDeviceRevoke)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "device-revoke-current", Method: http.MethodDelete, Path: "/v1/auth/device",
 		Summary: "Revoke the paired device making this request", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.handleCurrentDeviceRevoke)
+	}, httpcore.RoleMember), s.handleCurrentDeviceRevoke)
 }
 
 type deviceStartInput struct {

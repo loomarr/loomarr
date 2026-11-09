@@ -48,14 +48,14 @@ func (s *Server) registerFillerResearch(api huma.API) {
 		Summary:     "Clip-detail research status",
 		Description: "Admin only. Reports trusted-source and optional web-search availability and bounded monthly usage. Provider secrets are never returned.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerResearchStatus)
+	}, httpcore.RoleAdmin), s.fillerResearchStatus)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "filler-research-test", Method: http.MethodPost, Path: "/v1/filler/research/test",
 		Summary:     "Test a clip-detail web-search provider",
 		Description: "Admin only. Validates proposed Brave Search or SearXNG details before they are saved. The check consumes one bounded monthly request and never returns the credential.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerResearchTest)
+	}, httpcore.RoleAdmin), s.fillerResearchTest)
 }
 
 func (s *Server) fillerResearchStatus(ctx context.Context, _ *struct{}) (*fillerResearchStatusOutput, error) {

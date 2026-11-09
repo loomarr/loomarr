@@ -81,7 +81,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 			"yet is an empty list, not an error — nothing written yet is the normal state of a " +
 			"fresh install.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemBackupsList)
+	}, httpcore.RoleAdmin), s.systemBackupsList)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-backups-run", Method: http.MethodPost, Path: "/v1/system/backups",
@@ -89,7 +89,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 		Description: "Admin only. Writes one snapshot into the configured directory and prunes to " +
 			"the retention policy — the same work the scheduled job does, without waiting for it.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemBackupsRun)
+	}, httpcore.RoleAdmin), s.systemBackupsRun)
 
 	httpcore.RawOp[backupNameInput](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "system-backups-download", Method: http.MethodGet,
@@ -98,7 +98,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 		Description: "Admin only. Streams one file from the backup directory, honouring Range so a " +
 			"large download can resume. See `system-database-backup` to write a new one.",
 		Tags: []string{"system"},
-	}, "The backup file.", "application/octet-stream"), RoleAdmin, s.downloadBackupHandler)
+	}, "The backup file.", "application/octet-stream"), httpcore.RoleAdmin, s.downloadBackupHandler)
 
 	httpcore.RawOp[struct{}](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "backup-now", Method: http.MethodGet, Path: "/v1/backup",
@@ -107,7 +107,7 @@ func (s *Server) registerSystemBackups(api huma.API) {
 			"backup directory — SQLite installs only (Postgres answers 501; use your usual " +
 			"Postgres tooling).",
 		Tags: []string{"system"},
-	}, "A SQLite database snapshot.", "application/octet-stream"), RoleAdmin, s.backupHandler)
+	}, "A SQLite database snapshot.", "application/octet-stream"), httpcore.RoleAdmin, s.backupHandler)
 }
 
 // backupNameInput names a file in the backup directory. Declared for the spec; the handler

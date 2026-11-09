@@ -106,7 +106,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 		Description: "Admin only. Which backend is live, whether a migration is offered, and " +
 			"how far one has got — including per-table row counts and the parity verdict.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.databaseStatus)
+	}, httpcore.RoleAdmin), s.databaseStatus)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-preflight", Method: http.MethodPost, Path: "/v1/system/database/preflight",
@@ -115,7 +115,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 			"that ran and failed comes back with ok:false rather than as an error, so the operator " +
 			"sees which one. Nothing is written to either database.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.databasePreflight)
+	}, httpcore.RoleAdmin), s.databasePreflight)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-backup", Method: http.MethodPost, Path: "/v1/system/database/backup",
@@ -124,7 +124,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 			"This is the gate the migrate call enforces — a backup is required, not suggested, because " +
 			"it is the only thing that makes the move reversible.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.databaseBackup)
+	}, httpcore.RoleAdmin), s.databaseBackup)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-database-migrate", Method: http.MethodPost, Path: "/v1/system/database/migrate",
@@ -133,7 +133,7 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 			"ever read: on any failure the install is still running on SQLite and nothing was lost. " +
 			"Progress streams over /v1/events as `database` frames.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.databaseMigrate)
+	}, httpcore.RoleAdmin), s.databaseMigrate)
 }
 
 type databaseStatusOutput struct {

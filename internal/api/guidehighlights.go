@@ -208,7 +208,7 @@ func (s *Server) registerGuideHighlights(api huma.API) {
 			"marathons and every channel gets one before any gets a second; the result is in airtime order. " +
 			"The client words the reason; never rank airings client-side.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.guideHighlights)
+	}, httpcore.RoleMember), s.guideHighlights)
 }
 
 type guideHighlightsInput struct {

@@ -63,7 +63,7 @@ func (s *Server) registerFillerBulk(api huma.API) {
 			"one leaves it alone, so setting only the audience never blanks the era. Selected clips that no longer " +
 			"exist are counted as `missing` rather than failing the batch, because a selection races a re-scan.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.bulkTagFiller)
+	}, httpcore.RoleAdmin), s.bulkTagFiller)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "bulk-remove-filler", Method: http.MethodPost, Path: "/v1/filler/bulk/remove",
@@ -73,7 +73,7 @@ func (s *Server) registerFillerBulk(api huma.API) {
 			"Loomarr deletes an operator's media. It survives re-scans, which a row delete could not — the next " +
 			"scan would find the file and put it back. Pass `restore:true` to undo.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.bulkRemoveFiller)
+	}, httpcore.RoleAdmin), s.bulkRemoveFiller)
 }
 
 func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bulkResultOutput, error) {

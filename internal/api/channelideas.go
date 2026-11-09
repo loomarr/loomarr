@@ -41,7 +41,7 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 			"then the ideas that would put the most titles on air. The caller's hidden ideas are left out. Clients page " +
 			"through the list for \"Different ideas\".",
 		Tags: []string{"discovery"},
-	}, RoleMember), s.listChannelIdeas)
+	}, httpcore.RoleMember), s.listChannelIdeas)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "request-channel-idea", Method: http.MethodPost, Path: "/v1/discovery/ideas/{ideaId}/request",
 		Summary: "Request a channel from an idea",
@@ -51,7 +51,7 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 			"this idea waits for approval, asking again returns that request rather than a second one.",
 		DefaultStatus: http.StatusAccepted,
 		Tags:          []string{"discovery"},
-	}, RoleMember), s.requestChannelIdea)
+	}, httpcore.RoleMember), s.requestChannelIdea)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "submit-manual-channel", Method: http.MethodPost, Path: "/v1/discovery/manual-channel",
 		Summary: "Submit a hand-built channel",
@@ -61,19 +61,19 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 			"the library the same way an approver's own additions are — a client can't claim a title is already owned.",
 		DefaultStatus: http.StatusAccepted,
 		Tags:          []string{"discovery"},
-	}, RoleMember), s.submitManualChannel)
+	}, httpcore.RoleMember), s.submitManualChannel)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "hide-channel-idea", Method: http.MethodPut, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Hide a channel idea",
 		Description: "Hides the idea for the caller only. Idempotent. DELETE is the undo.",
 		Tags:        []string{"discovery"},
-	}, RoleMember), s.hideChannelIdea)
+	}, httpcore.RoleMember), s.hideChannelIdea)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unhide-channel-idea", Method: http.MethodDelete, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Undo hiding a channel idea",
 		Description: "Brings a hidden idea back for the caller; unhiding one that isn't hidden is not an error.",
 		Tags:        []string{"discovery"},
-	}, RoleMember), s.unhideChannelIdea)
+	}, httpcore.RoleMember), s.unhideChannelIdea)
 }
 
 type channelIdeaReasonDTO struct {

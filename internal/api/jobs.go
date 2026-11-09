@@ -82,7 +82,7 @@ func (s *Server) registerJobs(api huma.API) {
 		Summary:     "List background jobs",
 		Description: "Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.",
 		Tags:        []string{"jobs"},
-	}, RoleAdmin), s.jobsList)
+	}, httpcore.RoleAdmin), s.jobsList)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-run", Method: http.MethodPost, Path: "/v1/jobs/{name}/run",
@@ -90,14 +90,14 @@ func (s *Server) registerJobs(api huma.API) {
 		Description:   "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it). A job this backend cannot run (a non-empty disabledReason) returns 409.",
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.jobsRun)
+	}, httpcore.RoleAdmin), s.jobsRun)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-history", Method: http.MethodGet, Path: "/v1/jobs/{name}/history",
 		Summary:     "Get recent job executions",
 		Description: "Admin only. Returns the past 24 hours of execution counts and durations plus the five latest runs. Loaded lazily when a task is expanded (§18.1).",
 		Tags:        []string{"jobs"},
-	}, RoleAdmin), s.jobsHistory)
+	}, httpcore.RoleAdmin), s.jobsHistory)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "jobs-pause", Method: http.MethodPost, Path: "/v1/jobs/{name}/pause",
@@ -106,7 +106,7 @@ func (s *Server) registerJobs(api huma.API) {
 			"Run now still works on a paused job — pause stops the schedule, not the task. " +
 			"A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference.",
 		Tags: []string{"jobs"},
-	}, RoleAdmin), s.jobsPause)
+	}, httpcore.RoleAdmin), s.jobsPause)
 }
 
 type jobsPauseInput struct {

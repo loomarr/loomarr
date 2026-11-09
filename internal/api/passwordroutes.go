@@ -38,18 +38,18 @@ func (s *Server) registerPasswords(api huma.API) {
 		OperationID: "change-password", Method: http.MethodPost, Path: "/v1/auth/password",
 		Summary: "Change your own password", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleMember), s.changePassword)
+	}, httpcore.RoleMember), s.changePassword)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-local-user", Method: http.MethodPost, Path: "/v1/users",
 		Summary: "Create a local account (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.createLocalUser)
+	}, httpcore.RoleAdmin), s.createLocalUser)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "reset-user-password", Method: http.MethodPost, Path: "/v1/users/{id}/password",
 		Summary: "Reset a local user's password (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.resetUserPassword)
+	}, httpcore.RoleAdmin), s.resetUserPassword)
 }
 
 // errPasswordTooShort is the one refusal every password-setting route returns for a password

@@ -23,18 +23,18 @@ func (s *Server) registerAuth(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "login", Method: http.MethodPost, Path: "/v1/auth/login",
 		Summary: "Sign in with media-server credentials", Tags: []string{"auth"},
-	}, RolePublic), s.handleLogin)
+	}, httpcore.RolePublic), s.handleLogin)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "logout", Method: http.MethodPost, Path: "/v1/auth/logout",
 		Summary: "End the current session", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, RolePublic), s.handleLogout)
+	}, httpcore.RolePublic), s.handleLogout)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "me", Method: http.MethodGet, Path: "/v1/auth/me",
 		Summary: "Current user, role, and quotas", Tags: []string{"auth"},
-	}, RoleMember), s.handleMe)
+	}, httpcore.RoleMember), s.handleMe)
 
 	// Dev login (§11) — mounted ONLY when the server was started with
 	// LOOMARR_DEV_LOGIN=1. Not registering is the gate: an install without the flag
@@ -52,7 +52,7 @@ func (s *Server) registerAuth(api huma.API) {
 		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "dev-login", Method: http.MethodPost, Path: "/v1/auth/dev-login",
 			Summary: "Sign in as an admin without a credential (development only)", Tags: []string{"auth"},
-		}, RolePublic), s.handleDevLogin)
+		}, httpcore.RolePublic), s.handleDevLogin)
 	}
 }
 

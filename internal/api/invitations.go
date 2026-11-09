@@ -25,31 +25,31 @@ func (s *Server) registerInvitations(api huma.API) {
 		OperationID: "create-invitation", Method: http.MethodPost, Path: "/v1/invitations",
 		Summary: "Invite a person (admin)", Tags: []string{"invitations"},
 		DefaultStatus: http.StatusCreated,
-	}, RoleAdmin), s.createInvitation)
+	}, httpcore.RoleAdmin), s.createInvitation)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-invitations", Method: http.MethodGet, Path: "/v1/invitations",
 		Summary: "List person invitations (admin)", Tags: []string{"invitations"},
-	}, RoleAdmin), s.listInvitations)
+	}, httpcore.RoleAdmin), s.listInvitations)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-invitation", Method: http.MethodGet, Path: "/v1/invitations/{id}",
 		Summary: "Inspect a person invitation (admin)", Description: httpcore.OperatorAPI, Tags: []string{"invitations"},
-	}, RoleAdmin), s.getInvitation)
+	}, httpcore.RoleAdmin), s.getInvitation)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "issue-invitation-grant", Method: http.MethodPost, Path: "/v1/invitations/{id}/grant",
 		Summary: "Regenerate a copied or QR invitation link (admin)", Tags: []string{"invitations"},
-	}, RoleAdmin), s.issueInvitationGrant)
+	}, httpcore.RoleAdmin), s.issueInvitationGrant)
 	if s.invitationDelivery != nil || s.schemaOnly {
 		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "send-invitation-email", Method: http.MethodPost, Path: "/v1/invitations/{id}/email",
 			Summary: "Send or resend an invitation email (admin)", Tags: []string{"invitations"},
 			DefaultStatus: http.StatusAccepted,
-		}, RoleAdmin), s.sendInvitationEmail)
+		}, httpcore.RoleAdmin), s.sendInvitationEmail)
 	}
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revoke-invitation", Method: http.MethodDelete, Path: "/v1/invitations/{id}",
 		Summary: "Revoke a person invitation (admin)", Tags: []string{"invitations"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.revokeInvitation)
+	}, httpcore.RoleAdmin), s.revokeInvitation)
 }
 
 type invitationBody struct {

@@ -17,7 +17,7 @@ func (s *Server) registerDiscoveryQuality(api huma.API) {
 		Summary:     "Export local discovery-quality measurements",
 		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. " + httpcore.OperatorAPI,
 		Tags:        []string{"system"},
-	}, RoleAdmin), s.discoveryQualityExport)
+	}, httpcore.RoleAdmin), s.discoveryQualityExport)
 }
 
 type discoveryQualityExportOutput struct {

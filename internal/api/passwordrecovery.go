@@ -20,17 +20,17 @@ func (s *Server) registerPasswordRecovery(api huma.API) {
 		OperationID: "request-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/request", Summary: "Request local password recovery",
 		Tags: []string{"auth"}, DefaultStatus: http.StatusAccepted,
-	}, RolePublic), s.requestPasswordRecovery)
+	}, httpcore.RolePublic), s.requestPasswordRecovery)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/preview", Summary: "Preview a password recovery grant",
 		Tags: []string{"auth"},
-	}, RolePublic), s.previewPasswordRecovery)
+	}, httpcore.RolePublic), s.previewPasswordRecovery)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "redeem-password-recovery", Method: http.MethodPost,
 		Path: "/v1/auth/password-recovery/redeem", Summary: "Set a new local password",
 		Tags: []string{"auth"}, DefaultStatus: http.StatusNoContent,
-	}, RolePublic), s.redeemPasswordRecovery)
+	}, httpcore.RolePublic), s.redeemPasswordRecovery)
 }
 
 type requestPasswordRecoveryInput struct {

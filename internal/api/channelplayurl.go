@@ -34,7 +34,7 @@ func (s *Server) registerChannelPlayURL(api huma.API) {
 			"this channel and expires; request a fresh one when it lapses. `quality` picks a per-viewer tier " +
 			"(auto/720p/480p) — the only per-viewer control, since one encoder serves every viewer of a channel.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.channelPlayURL)
+	}, httpcore.RoleMember), s.channelPlayURL)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-tracks", Method: http.MethodGet, Path: "/v1/channels/{id}/tracks",
@@ -44,7 +44,7 @@ func (s *Server) registerChannelPlayURL(api huma.API) {
 			"airing file), not a fixed list and not a setting, so the choices are real. Best-effort: an empty list when " +
 			"nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.channelTracks)
+	}, httpcore.RoleMember), s.channelTracks)
 }
 
 type playURLInput struct {

@@ -18,7 +18,7 @@ func (s *Server) registerHolidays(api huma.API) {
 		Summary:     "The holiday definitions and this year's dates",
 		Description: "Every holiday definition in display order — its words, each country's date rules, its broadcast air window and, for a group, its members — with this year's season for the household's country (`season`, absent when that country does not keep it). `calendarCountry` is the country whose calendar applies: the household's own when some holiday names it, else the US. Read-only; any authenticated user.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.listHolidays)
+	}, httpcore.RoleMember), s.listHolidays)
 }
 
 type holidaysOutput struct {

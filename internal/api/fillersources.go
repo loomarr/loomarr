@@ -493,7 +493,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"per-source clip counts — there is no sources table (§10). A source the install could use " +
 			"but has not configured is returned with configured:false rather than omitted.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerSources)
+	}, httpcore.RoleAdmin), s.listFillerSources)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "fetch-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources/fetch",
@@ -502,7 +502,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"source, then scans configured local sources. It retains provider/source enablement, geography, " +
 			"deduplication and safety limits; only timing is bypassed.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.fetchFillerSource)
+	}, httpcore.RoleAdmin), s.fetchFillerSource)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "queue-filler-source-item", Method: http.MethodPost, Path: "/v1/filler/sources/{id}/items",
@@ -510,7 +510,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 		Description: "Admin only (§10). Queues one exact discovered item under its registered parent source. " +
 			"The server derives provider policy from the source; this never registers the item as another source.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.queueFillerSourceItem)
+	}, httpcore.RoleAdmin), s.queueFillerSourceItem)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "add-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources",
@@ -519,7 +519,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"acquisition. Registration itself only records the source; enabled remote sources are downloaded " +
 			"on their configured schedule, while composed multi-source pulls retain their approval gate.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.addFillerSource)
+	}, httpcore.RoleAdmin), s.addFillerSource)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-filler-providers", Method: http.MethodGet, Path: "/v1/filler/providers",
@@ -528,7 +528,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"them, with what each can do. The registry is the source of truth: a provider added to the " +
 			"server appears here with no client change.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.listFillerProviders)
+	}, httpcore.RoleAdmin), s.listFillerProviders)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "set-filler-provider-enabled", Method: http.MethodPatch, Path: "/v1/filler/providers/{kind}",
@@ -536,7 +536,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 		Description: "Admin only (§10 V51c). Changes provider policy without rewriting child source " +
 			"switches or removing clips already in the catalog.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.setFillerProviderEnabled)
+	}, httpcore.RoleAdmin), s.setFillerProviderEnabled)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "suggest-filler-sources", Method: http.MethodGet, Path: "/v1/filler/providers/{kind}/suggestions",
@@ -544,7 +544,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 		Description: "Admin only (§10 V67). Searches one provider for source candidates without " +
 			"registering a source, downloading media, or granting background-work authority.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.suggestFillerSources)
+	}, httpcore.RoleAdmin), s.suggestFillerSources)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "resolve-filler-source", Method: http.MethodPost, Path: "/v1/filler/providers/{kind}/resolve",
@@ -552,7 +552,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 		Description: "Admin only (§10 V67). Validates one exact provider URL or identifier and returns " +
 			"its canonical target without registering or downloading it.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.resolveFillerSource)
+	}, httpcore.RoleAdmin), s.resolveFillerSource)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "set-filler-source-enabled", Method: http.MethodPatch, Path: "/v1/filler/sources/{id}",
@@ -566,7 +566,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"accidentally reset the policy. Library sources became switchable in " +
 			"V38c, when §10 restored them to being scanned.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.setFillerSourceEnabled)
+	}, httpcore.RoleAdmin), s.setFillerSourceEnabled)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-filler-source", Method: http.MethodDelete, Path: "/v1/filler/sources/{id}",
@@ -576,7 +576,7 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"from is not a reason to throw it away. Only the registered remotes can be deleted; the derived " +
 			"folder and library rows describe configuration, which is changed in Settings.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.deleteFillerSource)
+	}, httpcore.RoleAdmin), s.deleteFillerSource)
 }
 
 func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSuggestionsInput) (*fillerSourceSuggestionsOutput, error) {

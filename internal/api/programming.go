@@ -23,21 +23,21 @@ func (s *Server) registerProgramming(api huma.API) {
 		Summary:     "The closed rule authoring vocabulary",
 		Description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.getProgrammingVocabulary)
+	}, httpcore.RoleMember), s.getProgrammingVocabulary)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-channel-programming", Method: http.MethodPost, Path: "/v1/channels/{id}/programming/preview",
 		Summary:     "Preview an unsaved programming draft",
 		Description: "Previews what a DRAFT {lineup?, policy?} would air — the cycle slots (which rule wins at `at`, the rolling window) AND the assembled break pool — WITHOUT saving or touching Tunarr. Runs the same ComputeDesiredAt + pod assembler as reconcile, so the preview cannot drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool).",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.previewChannelProgramming)
+	}, httpcore.RoleMember), s.previewChannelProgramming)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-channel-programming-changes", Method: http.MethodPost, Path: "/v1/channels/{id}/programming/changes",
 		Summary:     "List the upcoming slots an unsaved programming draft changes",
 		Description: "Compares the SAVED channel with a DRAFT {lineup?, policy?} (the same body and validation as programming/preview) over the next `horizonHours`, and returns only the slots where they air something different: when, what airs before → after, and which rule wins on each side. Both sides are forecast by the same engine calls from the same instant, so a slot the draft does not touch compares equal. Read-only; nothing is saved and no backend is called.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.previewChannelProgrammingChanges)
+	}, httpcore.RoleMember), s.previewChannelProgrammingChanges)
 }
 
 type programmingVocabularyOutput struct {

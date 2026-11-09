@@ -122,7 +122,7 @@ func (s *Server) registerFillerIncoming(api huma.API) {
 		Summary:     "Filler clips being prepared, needing help, or recently ready",
 		Description: "Admin-only hands-off Incoming projection (§10). Each disjoint group is bounded, newest first, and carries its full server-counted total plus an opaque next-page cursor. Needs help contains only a current durable choice; operational and audit history are excluded.",
 		Tags:        []string{"filler"},
-	}, RoleAdmin), s.fillerIncoming)
+	}, httpcore.RoleAdmin), s.fillerIncoming)
 }
 
 func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*fillerIncomingOutput, error) {

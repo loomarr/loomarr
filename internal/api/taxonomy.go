@@ -134,31 +134,31 @@ func (s *Server) registerTaxonomy(api huma.API) {
 		Description: "The operator-editable tag graph the filler tagger grounds against and curation matches over (§10 V45a). " +
 			"Ordered by axis then slug. Read-only, so any authenticated user may call it.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.listTaxonomy)
+	}, httpcore.RoleMember), s.listTaxonomy)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-taxonomy-edit", Method: http.MethodPost, Path: "/v1/taxonomy/impact",
 		Summary: "Preview a vocabulary edit", Description: "Admin only. Validates the prospective graph and reports stored clips, descendants, saved channel selections, and classifier terms affected without mutating anything.",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.previewTaxonomyEdit)
+	}, httpcore.RoleAdmin), s.previewTaxonomyEdit)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "create-taxon", Method: http.MethodPost, Path: "/v1/taxonomy",
 		Summary: "Add a taxon", Description: "Admin only. Updates the graph and catalog tags atomically (§10 V45a).",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.createTaxon)
+	}, httpcore.RoleAdmin), s.createTaxon)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "update-taxon", Method: http.MethodPut, Path: "/v1/taxonomy/{slug}",
 		Summary: "Edit a taxon", Description: "Admin only. Updates the graph and catalog tags atomically (§10 V45a).",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.updateTaxon)
+	}, httpcore.RoleAdmin), s.updateTaxon)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-taxon", Method: http.MethodDelete, Path: "/v1/taxonomy/{slug}",
 		Summary: "Remove a taxon", Description: "Admin only. Children are reparented and catalog tags update atomically (§10 V45a).",
 		Tags: []string{"filler"},
-	}, RoleAdmin), s.deleteTaxon)
+	}, httpcore.RoleAdmin), s.deleteTaxon)
 }
 
 type listTaxonomyInput struct{}

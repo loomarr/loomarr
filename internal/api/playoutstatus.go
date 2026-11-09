@@ -118,7 +118,7 @@ func (s *Server) registerPlayoutStatus(api huma.API) {
 			"encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM " +
 			"contention picture that a black-frame diagnosis needs. Admin only. Changes nothing.",
 		Tags: []string{"dashboard"},
-	}, RoleAdmin), s.getPlayoutStatus)
+	}, httpcore.RoleAdmin), s.getPlayoutStatus)
 }
 
 func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutStatusOutput, error) {

@@ -58,7 +58,7 @@ func (s *Server) registerSystemRestart(api huma.API) {
 			"seconds; Tunarr-backed channels keep playing), plus any restart-scoped setting waiting on a " +
 			"restart. Read-only — this does not restart anything.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemRestartCost)
+	}, httpcore.RoleAdmin), s.systemRestartCost)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-restart", Method: http.MethodPost, Path: "/v1/system/restart",
@@ -68,7 +68,7 @@ func (s *Server) registerSystemRestart(api huma.API) {
 			"a client that never gets a reply cannot tell 'restarting' from 'crashed'.",
 		Tags:          []string{"system"},
 		DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.systemRestart)
+	}, httpcore.RoleAdmin), s.systemRestart)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-reload", Method: http.MethodPost, Path: "/v1/system/reload",
@@ -77,7 +77,7 @@ func (s *Server) registerSystemRestart(api huma.API) {
 			"down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two " +
 			"can never disagree. " + httpcore.OperatorAPI,
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemReload)
+	}, httpcore.RoleAdmin), s.systemReload)
 }
 
 type systemRestartCostOutput struct {

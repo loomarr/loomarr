@@ -21,11 +21,11 @@ func (s *Server) registerInvitationRedemption(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-invitation", Method: http.MethodPost, Path: "/v1/invitations/preview",
 		Summary: "Preview an invitation without redeeming it", Tags: []string{"invitations"},
-	}, RolePublic), s.previewInvitation)
+	}, httpcore.RolePublic), s.previewInvitation)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "redeem-invitation", Method: http.MethodPost, Path: "/v1/invitations/redeem",
 		Summary: "Prove the invited credential and activate the account", Tags: []string{"invitations"},
-	}, RolePublic), s.redeemInvitation)
+	}, httpcore.RolePublic), s.redeemInvitation)
 }
 
 type invitationBearerInput struct {

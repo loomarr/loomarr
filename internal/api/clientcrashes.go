@@ -38,21 +38,21 @@ func (s *Server) registerClientCrashes(api huma.API) {
 			"per device (429).",
 		Tags: []string{"diagnostics"}, DefaultStatus: http.StatusAccepted,
 		MaxBodyBytes: diagnostics.ClientCrashMaxBodyBytes, SkipValidateBody: true,
-	}, RoleMember), s.reportClientCrash)
+	}, httpcore.RoleMember), s.reportClientCrash)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-client-crashes", Method: http.MethodGet, Path: "/v1/diagnostics/client-crashes",
 		Summary:     "List app crash reports",
 		Description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. " + httpcore.OperatorAPI,
 		Tags:        []string{"diagnostics"},
-	}, RoleAdmin), s.listClientCrashes)
+	}, httpcore.RoleAdmin), s.listClientCrashes)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-client-crash", Method: http.MethodGet, Path: "/v1/diagnostics/client-crashes/{id}",
 		Summary:     "Get one app crash report",
 		Description: "Admin only. The full report, including stack, breadcrumbs and native payload.",
 		Tags:        []string{"diagnostics"},
-	}, RoleAdmin), s.getClientCrash)
+	}, httpcore.RoleAdmin), s.getClientCrash)
 }
 
 type clientCrashReportInput struct {

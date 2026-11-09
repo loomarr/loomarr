@@ -236,7 +236,7 @@ func (s *Server) registerEvents(api huma.API) {
 			"also readable from a GET, which stays the source of truth on reconnect, so a dropped " +
 			"frame costs freshness and never correctness.",
 		Tags: []string{"events"},
-	}, RoleMember), eventTypeMap(), s.streamEvents)
+	}, httpcore.RoleMember), eventTypeMap(), s.streamEvents)
 }
 
 // streamEvents fans the bus out to one subscriber until they disconnect.

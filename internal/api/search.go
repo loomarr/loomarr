@@ -20,7 +20,7 @@ func (s *Server) registerSearch(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "search", Method: http.MethodGet, Path: "/v1/search",
 		Summary: "Federated search (library + TMDB)", Tags: []string{"search"},
-	}, RoleMember), s.doSearch)
+	}, httpcore.RoleMember), s.doSearch)
 }
 
 type searchInput struct {

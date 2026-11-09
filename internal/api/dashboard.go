@@ -59,7 +59,7 @@ func (s *Server) registerDashboard(api huma.API) {
 			"realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the " +
 			"same snapshot for liveness; this endpoint is the source of truth on reconnect.",
 		Tags: []string{"dashboard"},
-	}, RoleAdmin), s.getPlayoutTelemetry)
+	}, httpcore.RoleAdmin), s.getPlayoutTelemetry)
 }
 
 // getPlayoutTelemetry snapshots the live encoders.

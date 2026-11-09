@@ -22,45 +22,45 @@ func (s *Server) registerUsers(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-users", Method: http.MethodGet, Path: "/v1/users",
 		Summary: "List users (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.listUsers)
+	}, httpcore.RoleAdmin), s.listUsers)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "patch-user", Method: http.MethodPatch, Path: "/v1/users/{id}",
 		Summary: "Update a user's role/quota/disabled (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.patchUser)
+	}, httpcore.RoleAdmin), s.patchUser)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
 		Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.syncUsers)
+	}, httpcore.RoleAdmin), s.syncUsers)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-user-sessions", Method: http.MethodGet, Path: "/v1/users/{id}/sessions",
 		Summary: "List a user's live sessions (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.listUserSessions)
+	}, httpcore.RoleAdmin), s.listUserSessions)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revoke-session", Method: http.MethodDelete, Path: "/v1/sessions/{hash}",
 		Summary: "Revoke one session (admin)", Tags: []string{"users"},
-	}, RoleAdmin), s.revokeSession)
+	}, httpcore.RoleAdmin), s.revokeSession)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "put-user-contact-address", Method: http.MethodPut, Path: "/v1/users/{id}/contact-address",
 		Summary: "Add or replace a user's contact email (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.putUserContactAddress)
+	}, httpcore.RoleAdmin), s.putUserContactAddress)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-user-contact-address", Method: http.MethodDelete, Path: "/v1/users/{id}/contact-address",
 		Summary: "Remove a user's contact email (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteUserContactAddress)
+	}, httpcore.RoleAdmin), s.deleteUserContactAddress)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "delete-user-contact-replacement", Method: http.MethodDelete, Path: "/v1/users/{id}/contact-address/replacement",
 		Summary: "Cancel a pending contact-email replacement (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteUserContactReplacement)
+	}, httpcore.RoleAdmin), s.deleteUserContactReplacement)
 }
 
 type syncOutput struct {

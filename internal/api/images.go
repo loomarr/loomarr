@@ -67,7 +67,7 @@ func (s *Server) registerImages(api huma.API) {
 			"Content-addressed, so the response is immutable and cacheable forever.",
 		Tags: []string{"Images"},
 	}, "The image bytes", "image/avif", "image/webp", "image/jpeg"),
-		RolePublic, s.serveImage)
+		httpcore.RolePublic, s.serveImage)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-image",
@@ -77,7 +77,7 @@ func (s *Server) registerImages(api huma.API) {
 		Description: "Dimensions, placeholder and per-format srcset strings for one image — " +
 			"everything an <img> needs to render without layout shift.",
 		Tags: []string{"Images"},
-	}, RoleMember), s.getImage)
+	}, httpcore.RoleMember), s.getImage)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "upload-image",
@@ -86,7 +86,7 @@ func (s *Server) registerImages(api huma.API) {
 		Summary:     "Upload an image",
 		Description: "Stores an image and returns its record. Raster only — SVG is refused.",
 		Tags:        []string{"Images"},
-	}, RoleAdmin), s.uploadImage)
+	}, httpcore.RoleAdmin), s.uploadImage)
 }
 
 type serveImageInput struct {
@@ -126,7 +126,7 @@ func (s *Server) serveImage(w http.ResponseWriter, r *http.Request) {
 	// operation sees — not a second auth implementation.
 	//
 	// A member-visible image without a session is a 404 for the same reason as above, never a 403.
-	if rec.Visibility != images.VisibilityPublic && httpcore.RoleFrom(r.Context()) == RoleAnonymous {
+	if rec.Visibility != images.VisibilityPublic && httpcore.RoleFrom(r.Context()) == httpcore.RoleAnonymous {
 		http.NotFound(w, r)
 		return
 	}

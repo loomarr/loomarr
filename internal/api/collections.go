@@ -18,7 +18,7 @@ func (s *Server) registerCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryCollections", Method: http.MethodGet, Path: "/v1/library/collections",
 		Summary: "List media-server collections", Tags: []string{"library"},
-	}, RoleMember), s.doListCollections)
+	}, httpcore.RoleMember), s.doListCollections)
 }
 
 type collectionsOutput struct {

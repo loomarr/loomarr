@@ -64,53 +64,53 @@ func (s *Server) registerLibrary(api huma.API) {
 		Summary:     "List media folders",
 		Description: "The folders Loomarr reads media from, where each was found, its last readability check, and the path map.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryRoots)
+	}, httpcore.RoleAdmin), s.listLibraryRoots)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "discoverLibraryRoots", Method: http.MethodPost, Path: "/v1/library/roots/discover",
 		Summary: "Look for media folders again",
 		Description: "Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder " +
 			"can be opened. A source that fails keeps the folders it reported last time.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.discoverLibraryRoots)
+	}, httpcore.RoleAdmin), s.discoverLibraryRoots)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "addLibraryRoot", Method: http.MethodPost, Path: "/v1/library/roots",
 		Summary:     "Add a media folder by hand",
 		Description: "Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.addLibraryRoot)
+	}, httpcore.RoleAdmin), s.addLibraryRoot)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setLibraryRootInUse", Method: http.MethodPut, Path: "/v1/library/roots/in-use",
 		Summary:     "Use or stop using a media folder",
 		Description: "Confirms a folder for scanning, or releases it. Releasing a folder added by hand removes it.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.setLibraryRootInUse)
+	}, httpcore.RoleAdmin), s.setLibraryRootInUse)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setLibraryPathMapping", Method: http.MethodPut, Path: "/v1/library/path-map",
 		Summary: "Map another app's folder to a folder here",
 		Description: "Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. " +
 			"An empty localPath hands the row back to discovery.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.setLibraryPathMapping)
+	}, httpcore.RoleAdmin), s.setLibraryPathMapping)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "libraryStatus", Method: http.MethodGet, Path: "/v1/library/status",
 		Summary: "Library status",
 		Description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, " +
 			"what the scanner is doing, and any removal waiting for the maintainer.",
 		Tags: []string{"library"},
-	}, RoleAdmin), s.libraryStatus)
+	}, httpcore.RoleAdmin), s.libraryStatus)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "rescanLibrary", Method: http.MethodPost, Path: "/v1/library/scan",
 		Summary:     "Check the media folders again",
 		Description: "Starts a scan of every folder in use now. 409 when the scanner is turned off.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.rescanLibrary)
+	}, httpcore.RoleAdmin), s.rescanLibrary)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirmLibraryRemoval", Method: http.MethodPost, Path: "/v1/library/roots/confirm-removal",
 		Summary: "Remove the titles a scan no longer found",
 		Description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. " +
 			"404 when nothing is waiting for that folder; 409 when the scanner is turned off.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
-	}, RoleAdmin), s.confirmLibraryRemoval)
+	}, httpcore.RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
 	s.registerLibraryItems(api)
 	s.registerLibraryNeeds(api)

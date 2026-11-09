@@ -28,37 +28,37 @@ func (s *Server) registerLibraryNeeds(api huma.API) {
 		Summary:     "Titles that need you",
 		Description: "Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.listLibraryNeeds)
+	}, httpcore.RoleAdmin), s.listLibraryNeeds)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "linkLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/link",
 		Summary:     "Say which title this is",
 		Description: "Links a title to a TMDB title. Its files are read again with it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.linkLibraryItem)
+	}, httpcore.RoleAdmin), s.linkLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "ignoreLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/ignore",
 		Summary:     "Ignore a title",
 		Description: "Says a title isn't one: it leaves the library and Needs you.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.ignoreLibraryItem)
+	}, httpcore.RoleAdmin), s.ignoreLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unanswerLibraryItem", Method: http.MethodDelete, Path: "/v1/library/items/{id}/answer",
 		Summary:     "Take back an answer",
 		Description: "Undoes a link or an ignore. A title nothing else identifies needs you again.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.unanswerLibraryItem)
+	}, httpcore.RoleAdmin), s.unanswerLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "chooseLibraryEpisodeOrder", Method: http.MethodPost, Path: "/v1/library/items/{id}/episode-order",
 		Summary:     "Say which order a show's episodes are in",
 		Description: "TMDB's own seasons, one of its other orders, or the names and numbers in the files. Its episodes are read again with it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.chooseLibraryEpisodeOrder)
+	}, httpcore.RoleAdmin), s.chooseLibraryEpisodeOrder)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "searchLibraryTitles", Method: http.MethodGet, Path: "/v1/library/search",
 		Summary:     "Search TMDB for a title",
 		Description: "For picking a different title. 503 when TMDB isn't set up.",
 		Tags:        []string{"library"},
-	}, RoleAdmin), s.searchLibraryTitles)
+	}, httpcore.RoleAdmin), s.searchLibraryTitles)
 }
 
 // externalIDDTO is a title by one catalog's id.

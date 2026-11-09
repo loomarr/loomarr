@@ -63,7 +63,7 @@ func (s *Server) registerDashboardPanels(api huma.API) {
 			"/v1/system/reload — one probe implementation, so the three surfaces cannot disagree " +
 			"about whether the media server is reachable. Polled by the Dashboard every 30s.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemServices)
+	}, httpcore.RoleAdmin), s.systemServices)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-activity", Method: http.MethodGet, Path: "/v1/activity",
@@ -72,7 +72,7 @@ func (s *Server) registerDashboardPanels(api huma.API) {
 			"is deliberately lossy, so a feed built on it would drop entries exactly when the install " +
 			"is busiest. Survives a restart.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.listActivity)
+	}, httpcore.RoleAdmin), s.listActivity)
 }
 
 type systemServicesOutput struct {

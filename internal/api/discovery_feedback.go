@@ -18,15 +18,15 @@ func (s *Server) registerDiscoveryFeedback(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "record-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback",
 		Summary: "Record explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
-	}, RoleAdmin), s.recordDiscoveryFeedback)
+	}, httpcore.RoleAdmin), s.recordDiscoveryFeedback)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-discovery-feedback", Method: http.MethodGet, Path: "/v1/discovery/feedback",
 		Summary: "List effective explicit discovery feedback", Tags: []string{"discovery"},
-	}, RoleMember), s.listDiscoveryFeedback)
+	}, httpcore.RoleMember), s.listDiscoveryFeedback)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "clear-discovery-feedback", Method: http.MethodPost, Path: "/v1/discovery/feedback/clear",
 		Summary: "Clear explicit household or Channel discovery feedback (admin)", Tags: []string{"discovery"},
-	}, RoleAdmin), s.clearDiscoveryFeedback)
+	}, httpcore.RoleAdmin), s.clearDiscoveryFeedback)
 }
 
 type discoveryFeedbackBody struct {

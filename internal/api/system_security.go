@@ -27,13 +27,13 @@ func (s *Server) registerSystemSecurity(api huma.API) {
 		Summary:     "Database secret-encryption status",
 		Description: "Admin only. Reports the non-secret installation-key fingerprint and retained data-key count.",
 		Tags:        []string{"system"},
-	}, RoleAdmin), s.systemEncryptionStatus)
+	}, httpcore.RoleAdmin), s.systemEncryptionStatus)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-encryption-rotate-data-key", Method: http.MethodPost, Path: "/v1/system/security/encryption/rotate",
 		Summary:     "Rotate the active data-encryption key",
 		Description: "Admin only. New secret writes immediately use a fresh data key; prior keys remain readable.",
 		Tags:        []string{"system"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.systemEncryptionRotate)
+	}, httpcore.RoleAdmin), s.systemEncryptionRotate)
 }
 
 type encryptionStatusOutput struct{ Body EncryptionStatus }

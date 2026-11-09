@@ -21,7 +21,7 @@ import (
 func (s *Server) registerMiddleware(api huma.API) {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		r, _ := humago.Unwrap(ctx)
-		role := RoleAnonymous
+		role := httpcore.RoleAnonymous
 		var user *identitystore.User
 		var deviceID string
 		if s.auth != nil {
@@ -61,7 +61,7 @@ func (s *Server) registerMiddleware(api huma.API) {
 			// Goes through WriteErr so the request-id stamping and cause logging in
 			// installUserFacingErrors applies here too — a refusal an operator cannot
 			// correlate to a request is a refusal they cannot debug.
-			if role == RoleAnonymous {
+			if role == httpcore.RoleAnonymous {
 				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "You need to sign in to do this.")
 			} else {
 				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "This action needs an admin account.")
@@ -143,17 +143,17 @@ func (s *Server) registerTitles(api huma.API) {
 		OperationID: "enqueue-title", Method: http.MethodPost, Path: "/v1/titles",
 		Summary: "Enqueue/ensure a title", Description: "Idempotent by external id (§4). Admin only.",
 		Tags: []string{"titles"},
-	}, RoleAdmin), s.enqueueTitle)
+	}, httpcore.RoleAdmin), s.enqueueTitle)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-title", Method: http.MethodGet, Path: "/v1/titles/{key}",
 		Summary: "Get a title's provisioning state", Description: httpcore.OperatorAPI, Tags: []string{"titles"},
-	}, RoleMember), s.getTitle)
+	}, httpcore.RoleMember), s.getTitle)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-titles", Method: http.MethodGet, Path: "/v1/titles",
 		Summary: "List titles, optionally filtered by state", Tags: []string{"titles"},
-	}, RoleMember), s.listTitles)
+	}, httpcore.RoleMember), s.listTitles)
 
 }
 

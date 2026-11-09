@@ -34,14 +34,14 @@ func (s *Server) registerLibraryHooks(api huma.API) {
 		Description: "Where Sonarr and Radarr send file events once Loomarr has registered itself with them. " +
 			"Authenticated by the generated secret as the basic-auth password, not by a session.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
-	}, RolePublic), s.receiveLibraryHook)
+	}, httpcore.RolePublic), s.receiveLibraryHook)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "testLibraryHook", Method: http.MethodPost, Path: "/v1/library/hooks/{app}/test",
 		Summary: "Test an arr's webhook",
 		Description: "Registers Loomarr with the arr again and asks it to send its test event. " +
 			"502 with the arr's answer when it cannot save or reach Loomarr's connection.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.testLibraryHook)
+	}, httpcore.RoleAdmin), s.testLibraryHook)
 }
 
 type libraryHookInput struct {

@@ -118,7 +118,7 @@ func (s *Server) registerFillerWatch(api huma.API) {
 			"permanently grey indicator, since the sources listing is admin-only. " +
 			"Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict.",
 		Tags: []string{"filler"},
-	}, RoleMember), s.fillerWatch)
+	}, httpcore.RoleMember), s.fillerWatch)
 }
 
 func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutput, error) {

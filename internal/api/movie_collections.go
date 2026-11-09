@@ -16,7 +16,7 @@ func (s *Server) registerMovieCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "resolveMovieCollections", Method: http.MethodGet, Path: "/v1/movie-collections",
 		Summary: "Resolve grounded movie collections", Tags: []string{"search"},
-	}, RoleMember), s.doResolveMovieCollections)
+	}, httpcore.RoleMember), s.doResolveMovieCollections)
 }
 
 type movieCollectionsInput struct {

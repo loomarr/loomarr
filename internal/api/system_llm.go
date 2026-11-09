@@ -147,7 +147,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"detected VRAM/version, fit verdicts, recommended default, pulled flags); and the hosted-" +
 			"provider catalog (base URLs, live model lists, keyConfigured). API keys are never returned (§8.1).",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemLLMStatus)
+	}, httpcore.RoleAdmin), s.systemLLMStatus)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-select", Method: http.MethodPost, Path: "/v1/system/llm/select",
@@ -156,7 +156,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"Local model must be pulled (409 else). Hosted: an optional apiKey is validated live before committing " +
 			"(401 on a bad key) and stored as a secret, never echoed.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemLLMSelect)
+	}, httpcore.RoleAdmin), s.systemLLMSelect)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-test", Method: http.MethodPost, Path: "/v1/system/llm/test",
@@ -164,7 +164,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Description: "Admin only. Validates a hosted provider + API key WITHOUT swapping (§8.1). " +
 			"Returns ok + an error hint; a bad key is ok=false (not a 5xx).",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemLLMTest)
+	}, httpcore.RoleAdmin), s.systemLLMTest)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-pull", Method: http.MethodPost, Path: "/v1/system/llm/pull",
@@ -172,14 +172,14 @@ func (s *Server) registerSystemLLM(api huma.API) {
 		Description: "Admin only. Local Ollama only (409 on a hosted provider). Starts a pull as a " +
 			"background job; percent-complete streams over /v1/events (§8.1). Idempotent.",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemLLMPull)
+	}, httpcore.RoleAdmin), s.systemLLMPull)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-pull-operation", Method: http.MethodGet, Path: "/v1/system/llm/pull-operations/{jobId}",
 		Summary:     "Read local-model download progress and outcome",
 		Description: "Admin only. Authoritative reconnect state for the jobId returned by POST /v1/system/llm/pull. SSE llm_pull frames only accelerate progress display.",
 		Tags:        []string{"system"},
-	}, RoleAdmin), s.systemLLMPullOperation)
+	}, httpcore.RoleAdmin), s.systemLLMPullOperation)
 
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "system-llm-discover", Method: http.MethodGet, Path: "/v1/system/llm/discover",
@@ -190,7 +190,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"pullRef to hand to POST /pull. Tool-capability is confirmed only AFTER the model is pulled and " +
 			"probed. Best-effort: if the source is unreachable the list is empty (browse on huggingface.co).",
 		Tags: []string{"system"},
-	}, RoleAdmin), s.systemLLMDiscover)
+	}, httpcore.RoleAdmin), s.systemLLMDiscover)
 }
 
 func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {

@@ -152,13 +152,13 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			Summary:     "Get current health",
 			Description: "Returns the freshness-aware health of the running Loomarr generation from the same required checks used by readiness.",
 			Tags:        []string{"diagnostics"},
-		}, RoleAdmin), s.getCurrentHealth)
+		}, httpcore.RoleAdmin), s.getCurrentHealth)
 		huma.Register(api, httpcore.WithRole(huma.Operation{
 			OperationID: "list-startup-reports", Method: http.MethodGet, Path: "/v1/diagnostics/startup-reports",
 			Summary:     "List startup reports",
 			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. " + httpcore.OperatorAPI,
 			Tags:        []string{"diagnostics"},
-		}, RoleAdmin), s.listStartupReports)
+		}, httpcore.RoleAdmin), s.listStartupReports)
 	}
 	if s.clientDiagnostics != nil || s.schemaOnly {
 		huma.Register(api, httpcore.WithRole(huma.Operation{
@@ -166,7 +166,7 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			Summary:     "Report curated client diagnostics",
 			Description: "Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.",
 			Tags:        []string{"diagnostics"}, DefaultStatus: http.StatusAccepted,
-		}, RoleMember), s.ingestClientDiagnostics)
+		}, httpcore.RoleMember), s.ingestClientDiagnostics)
 	}
 	if s.clientCrashes != nil || s.schemaOnly {
 		s.registerClientCrashes(api)
@@ -198,17 +198,17 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			},
 		},
 	}
-	httpcore.RawInputOp(api, op, RoleAdmin, s.diagnosticEventsHandler)
+	httpcore.RawInputOp(api, op, httpcore.RoleAdmin, s.diagnosticEventsHandler)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-diagnostic-processes", Method: http.MethodGet, Path: "/v1/diagnostics/processes",
 		Summary: "List diagnostic Process runs", Description: "Returns one bounded newest-first page of active and recent external media Process runs.",
 		Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.listDiagnosticProcesses)
+	}, httpcore.RoleAdmin), s.listDiagnosticProcesses)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-diagnostic-process", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}",
 		Summary: "Get a diagnostic Process run", Description: "Returns bounded lifecycle metadata and downsampled progress for one Process run.",
 		Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.getDiagnosticProcess)
+	}, httpcore.RoleAdmin), s.getDiagnosticProcess)
 	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "get-diagnostic-process-output", Method: http.MethodGet, Path: "/v1/diagnostics/processes/{id}/output",
 		Summary: "Read diagnostic Process output", Description: "Streams one Process run's bounded redacted diagnostic output as readable text.",
@@ -218,29 +218,29 @@ func (s *Server) registerDiagnostics(api huma.API) {
 				"X-Diagnostic-Truncated":       {Description: "Whether earlier output was discarded", Schema: &huma.Schema{Type: huma.TypeBoolean}},
 			}, Content: map[string]*huma.MediaType{"text/plain": {Schema: &huma.Schema{Type: huma.TypeString}}}},
 		},
-	}, RoleAdmin, s.diagnosticProcessOutputHandler)
+	}, httpcore.RoleAdmin, s.diagnosticProcessOutputHandler)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "preview-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle/preview",
 		Summary: "Preview a Support bundle", Description: "Returns the entries, counts, estimated size, truncation, versions, drops, and redactions selected for a bounded Support bundle without creating the archive.",
 		Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.previewDiagnosticBundle)
+	}, httpcore.RoleAdmin), s.previewDiagnosticBundle)
 	httpcore.RawInputOp(api, huma.Operation{
 		OperationID: "download-diagnostic-support-bundle", Method: http.MethodPost, Path: "/v1/diagnostics/support-bundle",
 		Summary: "Download a Support bundle", Description: "Builds and downloads one bounded redacted ZIP from the same explicit selection accepted by preview.",
 		Tags: []string{"diagnostics"}, Responses: map[string]*huma.Response{"200": {Description: "Redacted Support bundle ZIP", Content: map[string]*huma.MediaType{"application/zip": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}}},
-	}, RoleAdmin, s.diagnosticBundleHandler)
+	}, httpcore.RoleAdmin, s.diagnosticBundleHandler)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-diagnostic-verbose-capture", Method: http.MethodGet, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Get verbose capture", Description: "Returns the current process-local bounded debug-capture window.", Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.getVerboseCapture)
+	}, httpcore.RoleAdmin), s.getVerboseCapture)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "start-diagnostic-verbose-capture", Method: http.MethodPost, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Start verbose capture", Description: "Temporarily retains scoped debug evidence through the ordinary bounded and redacted recorder.", Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.startVerboseCapture)
+	}, httpcore.RoleAdmin), s.startVerboseCapture)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "stop-diagnostic-verbose-capture", Method: http.MethodDelete, Path: "/v1/diagnostics/verbose-capture",
 		Summary: "Stop verbose capture", Description: "Immediately restores the default diagnostic retention threshold.", Tags: []string{"diagnostics"},
-	}, RoleAdmin), s.stopVerboseCapture)
+	}, httpcore.RoleAdmin), s.stopVerboseCapture)
 }
 
 func (s *Server) previewDiagnosticBundle(ctx context.Context, input *diagnosticBundleInput) (*diagnosticBundlePreviewOutput, error) {

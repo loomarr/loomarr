@@ -46,7 +46,7 @@ type Server struct {
 	// stations is the broadcast station directory, read once from the store (it changes only
 	// with a seed revision at boot).
 	stations stationCache
-	auth     Authorizer
+	auth     httpcore.Authorizer
 	log      *slog.Logger
 	metrics  *metrics.Recorder
 	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
@@ -1056,7 +1056,7 @@ type BackupStreamer interface {
 // Options configures the API server.
 type Options struct {
 	Store                records.Store
-	Auth                 Authorizer
+	Auth                 httpcore.Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder
 	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)

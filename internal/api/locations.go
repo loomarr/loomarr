@@ -64,22 +64,22 @@ func (s *Server) registerLocations(api huma.API) {
 		OperationID: "locations-search", Method: http.MethodGet, Path: "/v1/locations",
 		Summary: "Search installation locations", Description: "Admin only. Searches Loomarr's embedded city, populated-municipality, and country index; no runtime geocoder is called.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.locationsSearch)
+	}, httpcore.RoleAdmin), s.locationsSearch)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-resolve", Method: http.MethodPost, Path: "/v1/locations/resolve",
 		Summary: "Resolve device coordinates", Description: "Admin only. Resolves transient browser coordinates against Loomarr's embedded place index. Coordinates are not stored.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.locationResolve)
+	}, httpcore.RoleAdmin), s.locationResolve)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-get", Method: http.MethodGet, Path: "/v1/locations/{id}",
 		Summary: "Get a saved place", Description: "Admin only. Returns the embedded index entry for a saved city place id, so a form can show the place it holds.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.locationGet)
+	}, httpcore.RoleAdmin), s.locationGet)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "locations-suggestion", Method: http.MethodGet, Path: "/v1/locations/suggestion",
 		Summary: "Suggest an approximate installation location", Description: "Admin only. Uses trusted CDN geography or the effective public client IP against Loomarr's embedded index. Never saves the suggestion.",
 		Tags: []string{"settings"},
-	}, RoleAdmin), s.locationSuggestion)
+	}, httpcore.RoleAdmin), s.locationSuggestion)
 }
 
 func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput) (*locationsSearchOutput, error) {

@@ -42,7 +42,7 @@ func (s *Server) registerHouseholdViewing(api huma.API) {
 			"only (`scope: self`). Both get their own continue-watching channel. Counts only in-app playback; " +
 			"watching through the media server's Live TV isn't attributed to a person.",
 		Tags: []string{"dashboard"},
-	}, RoleMember), s.householdViewing)
+	}, httpcore.RoleMember), s.householdViewing)
 }
 
 type channelViewersDTO struct {
@@ -89,7 +89,7 @@ func (s *Server) householdViewing(ctx context.Context, _ *struct{}) (*householdV
 		watches = s.viewing.Watching(s.clock())
 	}
 	me, hasMe := userFrom(ctx)
-	admin := httpcore.RoleFrom(ctx) == RoleAdmin
+	admin := httpcore.RoleFrom(ctx) == httpcore.RoleAdmin
 	out.Body.Scope = viewingScopeSelf
 	if admin {
 		out.Body.Scope = viewingScopeHousehold

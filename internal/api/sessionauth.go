@@ -20,7 +20,7 @@ type sessionAuthorizer struct {
 }
 
 // NewSessionAuthorizer builds the session+token authorizer.
-func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
+func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) httpcore.Authorizer {
 	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
 }
 
@@ -37,24 +37,24 @@ func NewSessionAuthorizerCurrent(
 	mgr *auth.Manager,
 	devices *auth.DeviceManager,
 	apiToken func(context.Context) (string, error),
-) Authorizer {
+) httpcore.Authorizer {
 	return &sessionAuthorizer{mgr: mgr, devices: devices, apiTokenCurrent: apiToken}
 }
 
-func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
+func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Role {
 	return a.authorizeIdentity(r).role
 }
 
 // AuthorizeUser resolves the role AND the authenticated user (when a session
 // cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
-func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *identitystore.User) {
+func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User) {
 	identity := a.authorizeIdentity(r)
 	return identity.role, identity.user
 }
 
 type requestIdentity struct {
 	deviceID string
-	role     Role
+	role     httpcore.Role
 	user     *identitystore.User
 }
 
@@ -106,10 +106,10 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 			}
 		}
 		if apiToken != "" && httpcore.ConstantEq(h[len(prefix):], apiToken) {
-			return requestIdentity{role: RoleAdmin}
+			return requestIdentity{role: httpcore.RoleAdmin}
 		}
 	}
-	return requestIdentity{role: RoleAnonymous}
+	return requestIdentity{role: httpcore.RoleAnonymous}
 }
 
 // hasBearer reports whether a request carries an Authorization: Bearer credential.
@@ -128,15 +128,15 @@ func hasBearer(r *http.Request) bool {
 // authenticated user (the session authorizer). The middleware uses it to thread
 // identity for /v1/auth/me etc.
 type UserAuthorizer interface {
-	Authorizer
-	AuthorizeUser(r *http.Request) (Role, *identitystore.User)
+	httpcore.Authorizer
+	AuthorizeUser(r *http.Request) (httpcore.Role, *identitystore.User)
 }
 
-func roleOf(u identitystore.User) Role {
+func roleOf(u identitystore.User) httpcore.Role {
 	if u.Role == identitystore.RoleAdmin {
-		return RoleAdmin
+		return httpcore.RoleAdmin
 	}
-	return RoleMember
+	return httpcore.RoleMember
 }
 
 // userCtxKey threads the authenticated store.User for handlers that need

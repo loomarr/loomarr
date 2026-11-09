@@ -845,7 +845,7 @@ func streamOp[I any](s *Server, api huma.API, op huma.Operation, body func(http.
 	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
 	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
 	// session layer, guarded by the playout layer — the correct two-layer split (§11).
-	httpcore.RawOp[I](api, op, RolePublic, body, s.playoutAuthMiddleware)
+	httpcore.RawOp[I](api, op, httpcore.RolePublic, body, s.playoutAuthMiddleware)
 }
 
 // playoutAuthMiddleware is the ONE authorization point for playout streaming routes — the device

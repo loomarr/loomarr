@@ -18,37 +18,37 @@ func (s *Server) registerNotificationDestinations(api huma.API) {
 		Path: "/v1/notifications/provider-types", Summary: "List notification provider types",
 		Description: "Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationProviderTypesList)
+	}, httpcore.RoleMember), s.notificationProviderTypesList)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-list", Method: http.MethodGet,
 		Path: "/v1/notifications/providers", Summary: "List notification providers",
 		Description: "Returns the configured provider list with safe field values, write-only secret status, selected events, and delivery health.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationsList)
+	}, httpcore.RoleMember), s.notificationDestinationsList)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-create", Method: http.MethodPost,
 		Path: "/v1/notifications/providers", Summary: "Add a notification provider",
 		Description: "Adds one provider from its server-defined settings and selected events. Sensitive fields are classified and stored by the server and remain write-only.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusCreated,
-	}, RoleMember), s.notificationDestinationCreate)
+	}, httpcore.RoleMember), s.notificationDestinationCreate)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-update", Method: http.MethodPut,
 		Path: "/v1/notifications/providers/{id}", Summary: "Update a notification provider",
 		Description: "Omitting a sensitive setting preserves it; sending that field with an empty value clears it.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationUpdate)
+	}, httpcore.RoleMember), s.notificationDestinationUpdate)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-delete", Method: http.MethodDelete,
 		Path: "/v1/notifications/providers/{id}", Summary: "Delete a notification provider",
 		Description: "Queued attempts suppress at execution when their destination no longer exists. Browser Push may include this browser's endpoint in the request body; the response says whether the client should unsubscribe that local subscription.",
 		Tags:        []string{"notifications"},
-	}, RoleMember), s.notificationDestinationDelete)
+	}, httpcore.RoleMember), s.notificationDestinationDelete)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "notification-providers-test", Method: http.MethodPost,
 		Path: "/v1/notifications/providers/{id}/test", Summary: "Queue a notification provider test",
 		Description: "Queues a distinct test-delivery intent. Acceptance means Loomarr durably accepted the handoff, not that the provider confirmed final delivery.",
 		Tags:        []string{"notifications"}, DefaultStatus: http.StatusAccepted,
-	}, RoleMember), s.notificationDestinationTest)
+	}, httpcore.RoleMember), s.notificationDestinationTest)
 }
 
 type NotificationProviderFieldOptionDTO struct {
@@ -91,7 +91,7 @@ func (s *Server) notificationProviderTypesList(
 	definitions := notifications.ProviderDefinitions()
 	out.Body.Providers = make([]NotificationProviderTypeDTO, 0, len(definitions))
 	for _, definition := range definitions {
-		if httpcore.RoleFrom(ctx) != RoleAdmin && !definition.MemberOwned {
+		if httpcore.RoleFrom(ctx) != httpcore.RoleAdmin && !definition.MemberOwned {
 			continue
 		}
 		provider := NotificationProviderTypeDTO{
@@ -305,7 +305,7 @@ func (s *Server) notificationDestinationTest(
 }
 
 func notificationPrincipal(ctx context.Context) notifications.Principal {
-	principal := notifications.Principal{Administrator: httpcore.RoleFrom(ctx) == RoleAdmin}
+	principal := notifications.Principal{Administrator: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		principal.PersonID = user.ID
 	}

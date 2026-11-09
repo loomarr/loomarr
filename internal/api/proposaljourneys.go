@@ -109,19 +109,19 @@ func (s *Server) registerProposalJourneys(api huma.API) {
 		Summary:     "List authoritative First-channel Journeys",
 		Description: "Lists bounded Proposal Job journeys newest-first, including queued, running, and failed requests with no Proposal. Members are always caller-scoped; admins may inspect all or request mine=true.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleMember), s.listProposalJourneys)
+	}, httpcore.RoleMember), s.listProposalJourneys)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "get-proposal-job", Method: http.MethodGet, Path: "/v1/proposal-jobs/{jobId}",
 		Summary:     "Get the authoritative First-channel Journey",
 		Description: "Restores one versioned Proposal Job, bounded Attempt history, safe failure, Proposal, intent-bound Channel, milestone, and server-authorized actions. Members may read only their own Job; admins may read any.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleMember), s.getProposalJourney)
+	}, httpcore.RoleMember), s.getProposalJourney)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "revise-proposal-job", Method: http.MethodPost, Path: "/v1/proposal-jobs/{jobId}/revise",
 		Summary:     "Revise the pending proposal for a First-channel Journey",
 		Description: "Admin only. Keeps the current submitted proposal visible while its replacement runs; success supersedes it atomically and failure leaves it approvable.",
 		Tags:        []string{"proposal-jobs"},
-	}, RoleAdmin), s.reviseProposalJourney)
+	}, httpcore.RoleAdmin), s.reviseProposalJourney)
 }
 
 type proposalJourneyListInput struct {
@@ -139,7 +139,7 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
@@ -201,7 +201,7 @@ func (s *Server) reviseProposalJourney(
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err
 	}
-	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
@@ -230,7 +230,7 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: httpcore.RoleFrom(ctx) == httpcore.RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}

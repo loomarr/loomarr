@@ -28,26 +28,26 @@ func (s *Server) registerMyChannels(api huma.API) {
 		Summary:     "Your favourite and recent channels",
 		Description: "Any signed-in person, or a TV they paired. Both of the caller's channel lists in one read: favourites in the order they were starred, and up to 20 recents, newest first. The filter counts are the list lengths.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.myChannels)
+	}, httpcore.RoleMember), s.myChannels)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "add-favourite-channel", Method: http.MethodPut, Path: "/v1/me/favourites/{channelId}",
 		Summary:     "Star a channel",
 		Description: "Adds the channel to the caller's favourites. Idempotent. Returns both lists.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.addFavouriteChannel)
+	}, httpcore.RoleMember), s.addFavouriteChannel)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "remove-favourite-channel", Method: http.MethodDelete, Path: "/v1/me/favourites/{channelId}",
 		Summary:     "Unstar a channel",
 		Description: "Removes the channel from the caller's favourites; removing one that isn't starred is not an error. Returns both lists.",
 		Tags:        []string{"channels"},
-	}, RoleMember), s.removeFavouriteChannel)
+	}, httpcore.RoleMember), s.removeFavouriteChannel)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "record-channel-tune", Method: http.MethodPut, Path: "/v1/me/recent-channels/{channelId}",
 		Summary: "Record that you tuned a channel",
 		Description: "Moves the channel to the front of the caller's recents. Call it once a tune settles (the first decoded frame), " +
 			"never when warming or prefetching a neighbour. Returns both lists.",
 		Tags: []string{"channels"},
-	}, RoleMember), s.recordChannelTune)
+	}, httpcore.RoleMember), s.recordChannelTune)
 }
 
 type myChannelInput struct {
