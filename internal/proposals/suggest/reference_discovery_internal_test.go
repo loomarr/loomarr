@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -54,7 +54,7 @@ func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
 }
 
 func TestReferenceCandidatePoolKeepsLibraryAndStrongExternalMembersVisible(t *testing.T) {
-	got := prioritizeReferenceCandidatePool([]catalog.Candidate{
+	got := prioritizeReferenceCandidatePool([]titlesearch.Candidate{
 		{MediaType: provision.Series, TMDBID: 90000001, Name: "Obscure external", VoteCount: 5},
 		{MediaType: provision.Series, TMDBID: 90000002, Name: "Owned classic", InLibrary: true},
 		{MediaType: provision.Series, TMDBID: 90000003, Name: "Defining external", VoteCount: 5000},

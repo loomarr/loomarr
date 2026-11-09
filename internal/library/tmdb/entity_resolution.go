@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -38,7 +38,7 @@ type resolvedDiscoveryEntities struct {
 	creatorNames []string
 }
 
-func validateEntityQuery(query catalog.DiscoveryQuery) error {
+func validateEntityQuery(query titlesearch.DiscoveryQuery) error {
 	if query.EditorialEpochEnd != 0 && (query.MediaType != provision.Series || strings.TrimSpace(query.Network) == "" || query.EditorialEpochEnd < 1900 || query.EditorialEpochEnd > 2099) {
 		return fmt.Errorf("editorial network epoch requires series, a network identity, and an end year between 1900 and 2099")
 	}
@@ -55,7 +55,7 @@ func validateEntityQuery(query catalog.DiscoveryQuery) error {
 	return nil
 }
 
-func (c *Client) resolveDiscoveryEntities(ctx context.Context, query catalog.DiscoveryQuery) (resolvedDiscoveryEntities, error) {
+func (c *Client) resolveDiscoveryEntities(ctx context.Context, query titlesearch.DiscoveryQuery) (resolvedDiscoveryEntities, error) {
 	var out resolvedDiscoveryEntities
 	var err error
 	if query.Network != "" {
@@ -265,7 +265,7 @@ func (c *Client) fetchNetworkExport(ctx context.Context, filename string) ([]nam
 	return identities, nil
 }
 
-func attachEntityEvidence(candidates []catalog.Candidate, entities resolvedDiscoveryEntities) {
+func attachEntityEvidence(candidates []titlesearch.Candidate, entities resolvedDiscoveryEntities) {
 	for i := range candidates {
 		if entities.networkName != "" {
 			candidates[i].Networks = []string{entities.networkName}

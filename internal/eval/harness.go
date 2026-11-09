@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/rating"
@@ -70,8 +70,8 @@ func buildEvalClients() (evalClients, error) {
 }
 
 func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
-	cat := catalog.New(catalog.LibrarySearch{Titles: clients.library, Facts: clients.library}, clients.tmdb).
-		WithPresence(catalog.LibraryOwnership{Titles: clients.library})
+	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: clients.library, Facts: clients.library}, clients.tmdb).
+		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library})
 	provider, err := buildProvider()
 	if err != nil {
 		return nil, nil, err

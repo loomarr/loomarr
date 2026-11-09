@@ -1,4 +1,4 @@
-package catalog
+package titlesearch
 
 // Property tests for the identity-stability invariants that protect grounding
 // (§8): dedupeKey / mergeCandidate / dedupeAndOrderWithPolicy must treat only

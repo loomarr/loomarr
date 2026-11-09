@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -281,7 +281,7 @@ func searchTerms(args map[string]any) []string {
 // Cheap by construction (a byte scan plus a map lookup per finished pick), because it runs on
 // the stream-reading goroutine. surfaced is read only from that goroutine while Chat blocks
 // the tool loop that mutates it.
-func (s *Suggester) streamPicks(t *ProgressTracker, intent Intent, surfaced map[provision.Key]catalog.Candidate) func(string) {
+func (s *Suggester) streamPicks(t *ProgressTracker, intent Intent, surfaced map[provision.Key]titlesearch.Candidate) func(string) {
 	if t == nil {
 		return nil
 	}

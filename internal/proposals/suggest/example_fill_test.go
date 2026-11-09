@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -43,19 +43,19 @@ func exampleFillCorpus() *catalogfixture.Corpus {
 // exampleFillCorpusOf builds the #1499 library from rows, in order, with ids from
 // 90003000. Search is a title-word search; discovery honours genre and year filters.
 func exampleFillCorpusOf(rows []titleRow) *catalogfixture.Corpus {
-	cands := make([]catalog.Candidate, 0, len(rows))
+	cands := make([]titlesearch.Candidate, 0, len(rows))
 	for i, r := range rows {
-		cands = append(cands, catalog.Candidate{
+		cands = append(cands, titlesearch.Candidate{
 			MediaType: "movie", TMDBID: 90_003_000 + i, Name: r.name, Year: r.year, InLibrary: true, Genres: r.genres,
 			VoteCount: 5000 - i*100, Overview: "A film in the library.",
 		})
 	}
 	corpus := &catalogfixture.Corpus{Candidates: cands}
-	corpus.SearchFunc = func(_ context.Context, query string, limit int) ([]catalog.Candidate, error) {
+	corpus.SearchFunc = func(_ context.Context, query string, limit int) ([]titlesearch.Candidate, error) {
 		norm := func(s string) string {
 			return strings.ToLower(strings.NewReplacer(":", " ", "-", " ", "&", " ", ",", " ").Replace(s))
 		}
-		var out []catalog.Candidate
+		var out []titlesearch.Candidate
 	next:
 		for _, c := range cands {
 			for _, w := range strings.Fields(norm(query)) {
@@ -72,8 +72,8 @@ func exampleFillCorpusOf(rows []titleRow) *catalogfixture.Corpus {
 	}
 	// Discovery honours the structured filters the way TMDB does: genres AND
 	// together and the year range bounds the release.
-	corpus.DiscoverFunc = func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
-		var out []catalog.Candidate
+	corpus.DiscoverFunc = func(_ context.Context, q titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
+		var out []titlesearch.Candidate
 	next:
 		for _, c := range cands {
 			if q.YearFrom > 0 && c.Year < q.YearFrom || q.YearTo > 0 && c.Year > q.YearTo {
@@ -122,7 +122,7 @@ func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "back", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
@@ -148,12 +148,12 @@ func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 	corpus := exampleFillCorpus()
 	corpus.Candidates = append(corpus.Candidates,
-		catalog.Candidate{MediaType: "movie", TMDBID: 90003900, Name: "Tessaline", Year: 1942, InLibrary: true, Genres: []string{"Drama", "Romance"}, VoteCount: 900},
-		catalog.Candidate{MediaType: "movie", TMDBID: 90003901, Name: "Aetherion", Year: 2009, InLibrary: true, Genres: []string{"Science Fiction", "Adventure"}, VoteCount: 900},
+		titlesearch.Candidate{MediaType: "movie", TMDBID: 90003900, Name: "Tessaline", Year: 1942, InLibrary: true, Genres: []string{"Drama", "Romance"}, VoteCount: 900},
+		titlesearch.Candidate{MediaType: "movie", TMDBID: 90003901, Name: "Aetherion", Year: 2009, InLibrary: true, Genres: []string{"Science Fiction", "Adventure"}, VoteCount: 900},
 	)
 	search := corpus.SearchFunc
-	corpus.SearchFunc = func(ctx context.Context, q string, limit int) ([]catalog.Candidate, error) {
-		var out []catalog.Candidate
+	corpus.SearchFunc = func(ctx context.Context, q string, limit int) ([]titlesearch.Candidate, error) {
+		var out []titlesearch.Candidate
 		for _, c := range corpus.Candidates {
 			if strings.EqualFold(c.Name, q) {
 				out = append(out, c)
@@ -169,7 +169,7 @@ func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "Tessaline", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Tessaline", "Aetherion"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Tessaline and Aetherion"})
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
 		llm.Response{Content: leaked},
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(`{"picks":[]}`, none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Fogcatchers", "Gusto"), none),
 				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 			)
-			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+			s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 			proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies " + phrase + " Back to the Lighthouse and Gloomwings for a family night"})
 			if err != nil {
 				t.Fatal(err)
@@ -271,7 +271,7 @@ func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) 
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
@@ -299,7 +299,7 @@ func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	if _, err := s.Suggest(context.Background(), proposals.Intent{Description: "A channel of the Back to the Lighthouse and Gloomwings movies"}); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestSuggest_TitlesWithoutModeAreACollectionLookupNotADeadEnd(t *testing.T) 
 		call, call, call, call, call, call, call,
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers"), none),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), proposals.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatalf("titles without mode exhausted the rounds: %v", err)

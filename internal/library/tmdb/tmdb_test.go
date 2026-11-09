@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -46,7 +46,7 @@ func TestDiscoverKeywordsCarriesResolvedKeywordEvidence(t *testing.T) {
 	mock.AddKeywordMovie(90_077_001, "Winter Story", 2020, []int{10_751}, "A family reunion.", "Christmas")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Keywords: []string{"christmas"},
 	}, 20)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestDiscoverKeywordsDoesNotOverclaimORKeywordEvidence(t *testing.T) {
 	mock.AddKeywordMovie(90_077_002, "October Story", 2021, nil, "A masked visitor.", "Halloween")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Keywords: []string{"christmas", "halloween"},
 	}, 20)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestDiscover_MapsScienceFictionToTVGenreID(t *testing.T) {
 	mock.AddSeries(90_052_001, "Midnight Orbit", 2022, []int{10765}, "Atmospheric science fiction after dark.")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Series, Genres: []string{"science fiction"},
 	}, 20)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestDiscover_AppliesAuthoritativeScalarQualifiersToMovieAndTV(t *testing.T)
 	mock := testkit.NewTMDB(t)
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	_, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	_, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		Genres:           []string{"Drama"},
 		OriginalLanguage: "en",
 		OriginCountry:    "GB",
@@ -148,7 +148,7 @@ func TestDiscover_ResolvesMovieCastAndCreatorsToGroundedPeople(t *testing.T) {
 	mock.SetMoviePeople(90000100, []int{90000031}, []int{90000560})
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Movie, Cast: []string{"Ansel Brightwater"}, Creators: []string{"Odile Marchbank"},
 	}, 20)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestDiscover_ResolvesAmbiguousNetworkByCountryWithoutLeakingCredentialToExp
 	mock.SetSeriesNetwork(90_020_001, 90000049)
 	c := tmdb.NewWithBase(mock.URL, "secret-key")
 
-	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Series, Network: "Harbor Nine", OriginCountry: "US",
 	}, 20)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 	tests := []struct {
 		name  string
 		setup func(*testkit.TMDB)
-		query catalog.DiscoveryQuery
+		query titlesearch.DiscoveryQuery
 		want  string
 	}{
 		{
@@ -238,19 +238,19 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 				mock.AddPerson(90000001, "Alex Smith")
 				mock.AddPerson(90000002, "Alex Smith")
 			},
-			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Alex Smith"}},
+			query: titlesearch.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Alex Smith"}},
 			want:  "2 exact identities",
 		},
 		{
 			name:  "person interior whitespace is not normalized",
 			setup: func(mock *testkit.TMDB) { mock.AddPerson(90000031, "Ansel Brightwater") },
-			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Ansel  Brightwater"}},
+			query: titlesearch.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Ansel  Brightwater"}},
 			want:  "0 exact identities",
 		},
 		{
 			name:  "unresolved network",
 			setup: func(mock *testkit.TMDB) { mock.AddNetwork(90000049, "Harbor Nine", "US") },
-			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Imaginary Network"},
+			query: titlesearch.DiscoveryQuery{MediaType: provision.Series, Network: "Imaginary Network"},
 			want:  "no exact identity",
 		},
 		{
@@ -259,7 +259,7 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 				mock.AddNetwork(90000049, "Harbor Nine", "US")
 				mock.AddNetwork(90001590, "Harbor Nine", "DE")
 			},
-			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Harbor Nine"},
+			query: titlesearch.DiscoveryQuery{MediaType: provision.Series, Network: "Harbor Nine"},
 			want:  "include origin_country",
 		},
 	}
@@ -282,7 +282,7 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 
 func TestDiscover_RejectsUnsupportedEntityMediaTypeBeforeHTTP(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), catalog.DiscoveryQuery{
+	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), titlesearch.DiscoveryQuery{
 		MediaType: provision.Series, Cast: []string{"Tobias Fenwright"},
 	}, 20)
 	if err == nil || !strings.Contains(err.Error(), "movie media type") {

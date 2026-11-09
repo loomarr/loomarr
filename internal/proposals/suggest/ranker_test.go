@@ -6,13 +6,13 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testing.T) {
-	candidates := []catalog.Candidate{
+	candidates := []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Obvious Space Adventure", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}, InLibrary: true},
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Quiet Space Discovery", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Forbidden Space Film", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
@@ -25,7 +25,7 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	}
 	first := RankGroundedCandidates("space discoveries", candidates, signals)
 	second := RankGroundedCandidates("space discoveries", candidates, signals)
-	if !slices.EqualFunc(first, second, func(a, b catalog.Candidate) bool { return a.TMDBID == b.TMDBID }) {
+	if !slices.EqualFunc(first, second, func(a, b titlesearch.Candidate) bool { return a.TMDBID == b.TMDBID }) {
 		t.Fatalf("identical inputs produced different ranking: %+v / %+v", first, second)
 	}
 	var ids []int
@@ -51,7 +51,7 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 }
 
 func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing.T) {
-	candidates := []catalog.Candidate{
+	candidates := []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}, InLibrary: true},
 		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Familiar", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
 		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Western", Genres: []string{"Western"}, Keywords: []string{"space"}},
@@ -80,7 +80,7 @@ func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing
 }
 
 func TestRankGroundedCandidatesLessDemotesGroundedGenreNeighbors(t *testing.T) {
-	candidates := []catalog.Candidate{
+	candidates := []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Night Anchor", Genres: []string{"Science Fiction"}, Keywords: []string{"night"}},
 		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}, Keywords: []string{"night"}},
 		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Night Mystery", Genres: []string{"Mystery"}, Keywords: []string{"night"}},
@@ -93,7 +93,7 @@ func TestRankGroundedCandidatesLessDemotesGroundedGenreNeighbors(t *testing.T) {
 }
 
 func TestRankGroundedCandidatesProducesByteIdenticalResult(t *testing.T) {
-	candidates := []catalog.Candidate{
+	candidates := []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
 		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Western", Genres: []string{"Western"}},
 		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Mystery", Genres: []string{"Mystery"}},
@@ -104,7 +104,7 @@ func TestRankGroundedCandidatesProducesByteIdenticalResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		input := append([]catalog.Candidate(nil), candidates...)
+		input := append([]titlesearch.Candidate(nil), candidates...)
 		if i%2 == 1 {
 			slices.Reverse(input)
 		}
@@ -118,7 +118,7 @@ func TestRankGroundedCandidatesProducesByteIdenticalResult(t *testing.T) {
 	}
 }
 
-func candidateIDs(candidates []catalog.Candidate) []int {
+func candidateIDs(candidates []titlesearch.Candidate) []int {
 	ids := make([]int, 0, len(candidates))
 	for _, candidate := range candidates {
 		ids = append(ids, candidate.TMDBID)
@@ -127,9 +127,9 @@ func candidateIDs(candidates []catalog.Candidate) []int {
 }
 
 func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {
-	candidates := make([]catalog.Candidate, 0, proposals.DecisionTraceMaxCandidates+1)
+	candidates := make([]titlesearch.Candidate, 0, proposals.DecisionTraceMaxCandidates+1)
 	for i := 0; i < proposals.DecisionTraceMaxCandidates+1; i++ {
-		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: 90_000_001 + i, Name: "same", Genres: []string{"same"}})
+		candidates = append(candidates, titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90_000_001 + i, Name: "same", Genres: []string{"same"}})
 	}
 	got := RankGroundedCandidatesWithTrace("same", candidates, nil)
 	if !got.Trace.Truncated || got.Trace.SurfacedTotal != proposals.DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != proposals.DecisionTraceMaxCandidates {
@@ -160,11 +160,11 @@ func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *t
 		Description: "science fiction", Tone: "energetic", Era: "1990s",
 		MustInclude: []string{"marigold"}, MustExclude: []string{"comedy"}, RefineText: "more sequels"}}
 
-	candidate := catalog.Candidate{
+	candidate := titlesearch.Candidate{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol sequel",
 		Overview: "An energetic 1990s science fiction story with more sequels",
 	}
-	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, nil).Trace.Candidates[0]
+	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []titlesearch.Candidate{candidate}, nil).Trace.Candidates[0]
 	want := proposals.ConstraintMatches{Request: true, Tone: true, Era: true, MustInclude: true, Refine: true}
 	if got.Constraints != want || got.Rank.Relevance != 7 {
 		t.Fatalf("constraint evidence = %+v relevance=%d, want %+v relevance=7", got.Constraints, got.Rank.Relevance, want)
@@ -173,12 +173,12 @@ func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *t
 
 func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T) {
 	intent := Intent{Intent: proposals.Intent{Description: "Please build a channel like this reference"}}
-	candidate := catalog.Candidate{
+	candidate := titlesearch.Candidate{
 		MediaType: provision.Movie, TMDBID: 90000604, Name: "Unrelated Mechanics",
 		Overview: "They build this machine for a difficult job.",
 	}
 
-	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, nil).Trace.Candidates[0]
+	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []titlesearch.Candidate{candidate}, nil).Trace.Candidates[0]
 	if got.Rank.Relevance != 0 || got.Constraints.Request {
 		t.Fatalf("request scaffolding became relevance evidence: terms=%v decision=%+v", decisionRankQuery(intent).request, got)
 	}
@@ -253,17 +253,17 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 
 func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t *testing.T) {
 	dst := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAdjacent)}}}
+		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(titlesearch.ScopeAdjacent)}}}
 	src := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
 		Candidates: []proposals.DecisionCandidate{
-			{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAll)},
-			{Key: "movie:tmdb:90000604", Source: string(catalog.ScopeAll)},
+			{Key: "movie:tmdb:90000603", Source: string(titlesearch.ScopeAll)},
+			{Key: "movie:tmdb:90000604", Source: string(titlesearch.ScopeAll)},
 		}}
 	mergeDecisionTrace(&dst, &src)
 	if dst.SurfacedTotal != 71 || dst.RecordedTotal != 71 || !dst.Truncated || len(dst.Candidates) != 2 {
 		t.Fatalf("merged bounds = %+v", dst)
 	}
-	if dst.Candidates[0].Source != string(catalog.ScopeAll) {
+	if dst.Candidates[0].Source != string(titlesearch.ScopeAll) {
 		t.Fatalf("latest decision facts did not replace adjacency facts: %+v", dst.Candidates[0])
 	}
 
@@ -277,10 +277,10 @@ func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t
 
 func TestRelevanceNeedsMetadataEvidenceBeyondTitleWords(t *testing.T) {
 	query := rankQuery{request: intentWordSet("Halloween channel with ghosts, witches and haunted houses")}
-	ghostProtocol := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000501, Name: "Mission: Impossible - Ghost Protocol", Genres: []string{"Action", "Thriller"}}
-	ghostWorld := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000502, Name: "Ghost World", Genres: []string{"Comedy", "Drama"}}
-	hocusPocus := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000503, Name: "Hocus Pocus", Genres: []string{"Family", "Fantasy"}, Keywords: []string{"witch", "halloween"}}
-	for _, title := range []catalog.Candidate{ghostProtocol, ghostWorld} {
+	ghostProtocol := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000501, Name: "Mission: Impossible - Ghost Protocol", Genres: []string{"Action", "Thriller"}}
+	ghostWorld := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000502, Name: "Ghost World", Genres: []string{"Comedy", "Drama"}}
+	hocusPocus := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000503, Name: "Hocus Pocus", Genres: []string{"Family", "Fantasy"}, Keywords: []string{"witch", "halloween"}}
+	for _, title := range []titlesearch.Candidate{ghostProtocol, ghostWorld} {
 		if got, _ := relevanceForCandidate(query, title); got != 0 {
 			t.Errorf("%s relevance = %d, want 0: a title word alone is not evidence", title.Name, got)
 		}
@@ -288,7 +288,7 @@ func TestRelevanceNeedsMetadataEvidenceBeyondTitleWords(t *testing.T) {
 	if got, _ := relevanceForCandidate(query, hocusPocus); got == 0 {
 		t.Fatalf("Hocus Pocus relevance = 0, want keyword evidence to count")
 	}
-	ranked := RankGroundedCandidates("Halloween channel with ghosts, witches and haunted houses", []catalog.Candidate{ghostProtocol, ghostWorld, hocusPocus}, nil)
+	ranked := RankGroundedCandidates("Halloween channel with ghosts, witches and haunted houses", []titlesearch.Candidate{ghostProtocol, ghostWorld, hocusPocus}, nil)
 	if len(ranked) == 0 || ranked[0].TMDBID != hocusPocus.TMDBID {
 		t.Fatalf("ranked first = %+v, want Hocus Pocus above title-word matches", ranked)
 	}
@@ -296,8 +296,8 @@ func TestRelevanceNeedsMetadataEvidenceBeyondTitleWords(t *testing.T) {
 
 func TestRelevanceCountsTitleWordsOnceMetadataAgrees(t *testing.T) {
 	query := rankQuery{request: intentWordSet("space adventure")}
-	both := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000504, Name: "Space Anchor", Keywords: []string{"adventure"}}
-	metaOnly := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000505, Name: "Anchor", Keywords: []string{"adventure"}}
+	both := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000504, Name: "Space Anchor", Keywords: []string{"adventure"}}
+	metaOnly := titlesearch.Candidate{MediaType: provision.Movie, TMDBID: 90000505, Name: "Anchor", Keywords: []string{"adventure"}}
 	a, _ := relevanceForCandidate(query, both)
 	b, _ := relevanceForCandidate(query, metaOnly)
 	if a <= b || b == 0 {

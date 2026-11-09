@@ -6,16 +6,16 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Corpus is a deterministic search/discovery corpus.
 type Corpus struct {
-	Candidates   []catalog.Candidate
-	SearchFunc   func(context.Context, string, int) ([]catalog.Candidate, error)
-	DiscoverFunc func(context.Context, catalog.DiscoveryQuery, int) ([]catalog.Candidate, error)
+	Candidates   []titlesearch.Candidate
+	SearchFunc   func(context.Context, string, int) ([]titlesearch.Candidate, error)
+	DiscoverFunc func(context.Context, titlesearch.DiscoveryQuery, int) ([]titlesearch.Candidate, error)
 	mu           sync.Mutex
 	searches     []SearchRequest
 	discoveries  []DiscoveryRequest
@@ -27,28 +27,28 @@ type SearchRequest struct {
 }
 
 type DiscoveryRequest struct {
-	Query catalog.DiscoveryQuery
+	Query titlesearch.DiscoveryQuery
 	Limit int
 }
 
-func (c *Corpus) Search(ctx context.Context, query string, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Search(ctx context.Context, query string, limit int) ([]titlesearch.Candidate, error) {
 	c.mu.Lock()
 	c.searches = append(c.searches, SearchRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
 	if c.SearchFunc != nil {
 		return c.SearchFunc(ctx, query, limit)
 	}
-	return append([]catalog.Candidate(nil), c.Candidates...), nil
+	return append([]titlesearch.Candidate(nil), c.Candidates...), nil
 }
 
-func (c *Corpus) Discover(ctx context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Discover(ctx context.Context, query titlesearch.DiscoveryQuery, limit int) ([]titlesearch.Candidate, error) {
 	c.mu.Lock()
 	c.discoveries = append(c.discoveries, DiscoveryRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
 	if c.DiscoverFunc != nil {
 		return c.DiscoverFunc(ctx, query, limit)
 	}
-	return append([]catalog.Candidate(nil), c.Candidates...), nil
+	return append([]titlesearch.Candidate(nil), c.Candidates...), nil
 }
 
 // ErrDiscover is a shared deterministic discovery-source failure for catalog
@@ -80,7 +80,7 @@ func (l *Library) Search(context.Context, string, int) ([]library.SearchResult, 
 // Presence is a deterministic library-ownership adapter.
 type Presence struct {
 	mu    sync.Mutex
-	Hits  map[int]catalog.Presence
+	Hits  map[int]titlesearch.Presence
 	calls []int
 }
 
@@ -88,7 +88,7 @@ func (p *Presence) Present(
 	_ context.Context,
 	_ provision.MediaType,
 	tmdbID, _ int,
-) (catalog.Presence, bool, error) {
+) (titlesearch.Presence, bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.calls = append(p.calls, tmdbID)

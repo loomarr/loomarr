@@ -250,7 +250,7 @@ var migratedGo = []string{
 	"internal/proposals/suggest/tools_internal_test.go",
 	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
 	// (slice 9).
-	"internal/catalog/", "internal/integration/", "internal/library/",
+	"internal/integration/", "internal/library/",
 	"internal/proposals/suggest/date_meaning_test.go",
 	"internal/proposals/suggest/intent_policy_test.go",
 	"internal/proposals/suggest/scopenarrows_test.go",

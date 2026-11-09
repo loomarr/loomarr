@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -61,7 +61,7 @@ func buildServiceWith(t *testing.T, st suggest.ProposalStore, workflow suggest.D
 	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm)
+	cat := titlesearch.New(lib, tm)
 	sug := suggest.New(llmMock, cat, tm, 10)
 	return suggest.NewService(st, workflow, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
 		time.Now, testkit.Logger())
@@ -759,7 +759,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
-			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
+			sug := suggest.New(testkit.NewLLM(), titlesearch.New(lib, tm), tm, 10).
 				WithFeedback(failingFeedbackSource{err: cause})
 			terminal := newDoneEmitter()
 			svc := suggest.NewService(st, flow, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -811,7 +811,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	suggester := suggest.New(llmMock,
-		catalog.New(lib, tm), tm, 10).
+		titlesearch.New(lib, tm), tm, 10).
 		WithFeedback(feedback)
 	svc := suggest.NewService(st, flow, suggester,
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -925,7 +925,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(lib, tm), tm, 10).
+				titlesearch.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(base, idGen(), time.Now, suggest.IntentHash)
 			terminal := newDoneEmitter()
@@ -996,7 +996,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(lib, tm), tm, 10).
+				titlesearch.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(st, func() string { return "job-fresh" }, time.Now, suggest.IntentHash)
 			terminal := newDoneEmitter()
@@ -1052,7 +1052,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm)
+	cat := titlesearch.New(lib, tm)
 	sug := suggest.New(slow, cat, tm, 10)
 	terminal := newDoneEmitter()
 	svc := suggest.NewService(st, workflow.New(st, idGen(), time.Now, suggest.IntentHash), sug,

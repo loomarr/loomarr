@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -218,7 +218,7 @@ const adjacencyUnscoredFloor = 0.60
 // Identity for everything except an adjacency pick the model left unscored — see
 // adjacencyUnscoredFloor for why that one case is not the same as a zero.
 func effectiveConfidence(a proposals.ProposalItem) float64 {
-	if a.Confidence == 0 && a.Source == string(catalog.ScopeAdjacent) {
+	if a.Confidence == 0 && a.Source == string(titlesearch.ScopeAdjacent) {
 		return adjacencyUnscoredFloor
 	}
 	return a.Confidence
