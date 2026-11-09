@@ -3,7 +3,7 @@ import type { GuideChannelLayout } from "@loomarr/core/guide";
 import {
   formatGuideEpisode,
   formatGuideTimeRange,
-  guideAiringLabel,
+  formatProgrammeTitle,
   guideBreakProgramme,
   guideChannelState,
   guideWaitingForTitles,
@@ -106,7 +106,7 @@ const wallEntry = (channel: GuideChannelLayout, nowMs: number, timezone?: string
     return {
       ...identity,
       airing: programme,
-      title: programme.series ?? guideAiringLabel(programme),
+      title: programme.series ?? formatProgrammeTitle(programme),
       detail: ["Ad break", episode, formatGuideTimeRange(programme.startMs, programme.stopMs, timezone)]
         .filter(Boolean)
         .join(" · "),

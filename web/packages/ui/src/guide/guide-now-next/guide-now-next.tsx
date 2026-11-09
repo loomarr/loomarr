@@ -1,8 +1,8 @@
 import {
   formatGuideTime,
+  formatProgrammeTitle,
   type GuideAiringLayout,
   type GuideChannelLayout,
-  guideAiringLabel,
   guideChannelState,
 } from "@loomarr/core/guide";
 import { Action, ProgressTrack, Surface, semanticRadius, Text } from "@loomarr/design-system";
@@ -70,9 +70,16 @@ const rowOf = (channel: GuideChannelLayout, nowMs: number, timezone?: string): N
   const percent = ((nowMs - now.startMs) / (now.stopMs - now.startMs)) * 100;
   const minutesLeft = Math.max(1, Math.ceil((now.stopMs - nowMs) / 60_000));
   if (now.kind === "program") {
-    return { kind: "show", minutesLeft, next, percent, title: guideAiringLabel(now), untilMs: now.stopMs };
+    return {
+      kind: "show",
+      minutesLeft,
+      next,
+      percent,
+      title: formatProgrammeTitle(now),
+      untilMs: now.stopMs,
+    };
   }
-  const title = now.kind === "pending" ? guideAiringLabel(now) : "Commercial break";
+  const title = now.kind === "pending" ? formatProgrammeTitle(now) : "Commercial break";
   return { kind: "break", minutesLeft, next, percent, title, untilMs: now.stopMs };
 };
 
@@ -106,7 +113,7 @@ const itemText = (channel: GuideChannelLayout, nowMs: number, timezone?: string)
     row.kind === "downloading"
       ? "When its first show arrives"
       : row.next
-        ? guideAiringLabel(row.next)
+        ? formatProgrammeTitle(row.next)
         : "Later tonight";
   return { nextLine, nextTime, row };
 };
