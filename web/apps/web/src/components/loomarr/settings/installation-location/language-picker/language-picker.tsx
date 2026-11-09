@@ -1,7 +1,6 @@
-import { Field, Icon, icons } from "@loomarr/design-system";
+import { Field, Icon, icons, PressableRow } from "@loomarr/design-system";
 import { useEffect, useId, useMemo, useState } from "react";
 import { languageName } from "@/lib/languages";
-import { cn } from "@/lib/utils";
 import type { LanguagePickerProps } from "./language-picker.type";
 
 // One friendly installation-language control. Provider and model choices stay in Advanced;
@@ -87,23 +86,19 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
             className="border-border bg-popover text-popover-foreground relative z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border p-1 shadow-lg sm:absolute"
           >
             {choices.map(({ code, label }, index) => (
-              <button
-                type="button"
+              <PressableRow
+                accessibilityRole="option"
+                aria-selected={code === value}
                 id={`${listID}-${index}`}
                 key={code || "any"}
-                role="option"
-                aria-selected={code === value}
-                tabIndex={-1}
-                className={cn(
-                  "flex w-full cursor-pointer items-center justify-between rounded-sm px-3 py-2 text-left text-sm",
-                  index === active ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
-                )}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(code, label)}
+                onPress={() => choose(code, label)}
+                selected={index === active}
+                tabIndex={-1}
               >
-                <span>{label}</span>
+                <span className="flex-1 text-left text-sm">{label}</span>
                 {code === value && <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />}
-              </button>
+              </PressableRow>
             ))}
             {choices.length === 0 && (
               <p className="text-muted-foreground px-3 py-3 text-sm">No languages found.</p>
