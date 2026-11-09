@@ -151,7 +151,7 @@ func (s *Server) registerWatermarkOptions(api huma.API) {
 		Summary:     "On-screen logo options for a channel",
 		Description: "Admin only. The name the logo shows when none is set, the channel's era and its colours, and the holidays the logo follows: each one's dates, whether it is in effect today and its pictures.",
 		Tags:        []string{"channels"},
-	}, httpcore.RoleAdmin), func(ctx context.Context, in *channelIDInput) (*watermarkOptionsOutput, error) {
+	}, httpcore.RoleAdmin), func(ctx context.Context, in *httpcore.ChannelIDInput) (*watermarkOptionsOutput, error) {
 		if s.watermarkPreview == nil {
 			return nil, httpcore.NotImplemented("Logo options unavailable", "This server has no logo renderer.")
 		}

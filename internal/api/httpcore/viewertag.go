@@ -1,4 +1,4 @@
-package api
+package httpcore
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -28,12 +27,14 @@ import (
 // device key is a paired device's non-secret revocation id or the browser label, and the label is
 // the device's name as the household sees it.
 
-const viewerQueryParam = "viewer"
+// ViewerQueryParam is the query parameter a play URL carries its viewer tag in.
+const ViewerQueryParam = "viewer"
 
 // viewerLabelMax bounds the label a URL carries.
 const viewerLabelMax = 64
 
-func signViewerTag(key, channelID string, v viewing.Viewer) string {
+// SignViewerTag signs v for channelID under key; it is "" when there is no key or no person.
+func SignViewerTag(key, channelID string, v viewing.Viewer) string {
 	if key == "" || v.UserID == "" {
 		return ""
 	}
@@ -45,7 +46,8 @@ func signViewerTag(key, channelID string, v viewing.Viewer) string {
 	return payload + "." + viewerTagMAC(key, channelID, payload)
 }
 
-func verifyViewerTag(key, channelID, raw string) (viewing.Viewer, bool) {
+// VerifyViewerTag reads the viewer a tag names, if its signature holds for channelID under key.
+func VerifyViewerTag(key, channelID, raw string) (viewing.Viewer, bool) {
 	payload, mac, ok := strings.Cut(raw, ".")
 	if key == "" || !ok {
 		return viewing.Viewer{}, false
@@ -72,60 +74,18 @@ func viewerTagMAC(key, channelID, payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// withViewerTag appends the tag to a minted play URL (which always has a query: its `sig`).
-func withViewerTag(u, tag string) string {
+// WithViewerTag appends the tag to a minted play URL (which always has a query: its `sig`).
+func WithViewerTag(u, tag string) string {
 	if u == "" || tag == "" {
 		return u
 	}
-	return u + "&" + viewerQueryParam + "=" + url.QueryEscape(tag)
+	return u + "&" + ViewerQueryParam + "=" + url.QueryEscape(tag)
 }
 
-// viewerOf is the person and device minting a play URL. A paired device is keyed by its revocation
-// id and named as it was paired; a browser is keyed and named by its browser family and system.
-// A break-glass API_TOKEN caller has no person, so it is never attributed.
-func (s *Server) viewerOf(ctx context.Context) (viewing.Viewer, bool) {
-	user, ok := httpcore.UserFrom(ctx)
-	if !ok {
-		return viewing.Viewer{}, false
-	}
-	if deviceID, ok := httpcore.DeviceIDFrom(ctx); ok {
-		label := "Paired device"
-		if s.store != nil {
-			if dt, err := s.store.GetDeviceToken(ctx, deviceID); err == nil && strings.TrimSpace(dt.DeviceName) != "" {
-				label = strings.TrimSpace(dt.DeviceName)
-			}
-		}
-		key := deviceID
-		if len(key) > 16 {
-			key = key[:16]
-		}
-		return viewing.Viewer{UserID: user.ID, DeviceKey: "device:" + key, DeviceLabel: label}, true
-	}
-	label := "Browser"
-	if r := httpcore.RequestFrom(ctx); r != nil {
-		label = httpcore.ClientLabel(r.UserAgent())
-	}
-	return viewing.Viewer{UserID: user.ID, DeviceKey: "browser:" + label, DeviceLabel: label}, true
-}
-
-// requestViewer is the viewer a playout request's URL was minted for, from its signed tag.
-// Best-effort by design: no key or a bad tag names nobody, and the request is served all the same.
-func (s *Server) requestViewer(ctx context.Context, channelID string, query url.Values) (viewing.Viewer, bool) {
-	raw := query.Get(viewerQueryParam)
-	if raw == "" {
-		return viewing.Viewer{}, false
-	}
-	key, err := s.currentPlayoutToken(ctx)
-	if err != nil {
-		return viewing.Viewer{}, false
-	}
-	return verifyViewerTag(key, channelID, raw)
-}
-
-// withPlayoutViewer names the request's viewer to playout (playout.WithViewer), which learns from it
+// WithPlayoutViewer names the request's viewer to playout (playout.WithViewer), which learns from it
 // whether that viewer's client takes the premium (#1037). The key is the person and the device,
 // never the label, which the household may rename.
-func withPlayoutViewer(ctx context.Context, v viewing.Viewer, ok bool) context.Context {
+func WithPlayoutViewer(ctx context.Context, v viewing.Viewer, ok bool) context.Context {
 	if !ok {
 		return ctx
 	}

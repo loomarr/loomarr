@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -175,9 +176,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 		FillerLayout:      fillerLayout,
 		LiveSettings:      liveSettings,
 		LibraryConfigured: libraryConfigured,
-		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
+		BackendCheckpoint: func(ctx context.Context) (httpcore.BackendCheckpoint, error) {
 			snapshot, err := checkpointSnapshot(ctx)
-			return api.BackendCheckpoint{
+			return httpcore.BackendCheckpoint{
 				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
 				PublishedInternal: snapshot.PublishedInternal,
 			}, err

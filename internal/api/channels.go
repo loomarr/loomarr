@@ -156,15 +156,9 @@ func (s *Server) registerChannels(api huma.API) {
 		Summary: "Remove a channel", Description: "Admin only. Detaches by default (§7).",
 		Tags: []string{"channels"}, DefaultStatus: http.StatusNoContent,
 	}, httpcore.RoleAdmin), s.deleteChannel)
-
-	// The Watch surface's play-url op (§9.1). Mounted here so both the live router and the
-	// OpenAPI-export parity path (export.go) pick it up from one call, never a hand-kept list.
-	s.registerChannelPlayURL(api)
+	// The Watch surface's play-url op (§9.1) is mounted by the playout routes.
 }
 
-type channelIDInput struct {
-	ID string `path:"id" example:"ch_abc123"`
-}
 type channelOutput struct{ Body ChannelDTO }
 
 type listChannelsOutput struct {
@@ -200,7 +194,7 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	return out, nil
 }
 
-func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOutput, error) {
+func (s *Server) getChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*channelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -224,7 +218,7 @@ type iconSuggestionsOutput struct {
 // channelIconSuggestions offers candidate icons drawn from the channel's OWN lineup
 // (§icon P2): a Star Trek channel's five series posters, rather than a generic
 // placeholder. Read-only — any authenticated user may call it, matching get-channel.
-func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
+func (s *Server) channelIconSuggestions(ctx context.Context, in *httpcore.ChannelIDInput) (*iconSuggestionsOutput, error) {
 	if s.icons == nil || s.unconfigured(settings.TMDBAPIKey) {
 		return nil, httpcore.NotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
 	}
@@ -343,7 +337,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	fresh, err := s.channelEdits().Edit(ctx, checkpoint.editBackend(), in.ID, in.Body.Revision, func(ch *store.Channel) error {
+	fresh, err := s.channelEdits().Edit(ctx, editBackend(checkpoint), in.ID, in.Body.Revision, func(ch *store.Channel) error {
 		return applyChannelPatch(ch, in)
 	})
 	if err != nil {
@@ -502,7 +496,7 @@ func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
 
 type reconcileOutput struct{ Body ChannelDTO }
 
-func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
+func (s *Server) reconcileChannel(ctx context.Context, in *httpcore.ChannelIDInput) (*reconcileOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -544,7 +538,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
+	wasTransportPlayable := httpcore.TransportPlayableAt(ch, checkpoint)
 	// Purge (?purge=true): hard-delete Loomarr's local state and any retained managed
 	// Tunarr projection through the channel service. This includes a historical projection
 	// preserved after switching the channel to internal playout.

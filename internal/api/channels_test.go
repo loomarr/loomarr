@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -1471,8 +1472,8 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
 		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (api.BackendCheckpoint, error) {
-			return api.BackendCheckpoint{
+		BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil

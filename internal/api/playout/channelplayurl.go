@@ -1,4 +1,4 @@
-package api
+package playout
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 
 // registerChannelPlayURL mounts the play-url op. Split from registerChannels only so the Watch
 // surface's routes live beside their handler; it is called from the same Register sweep.
-func (s *Server) registerChannelPlayURL(api huma.API) {
+func (s *Handlers) registerChannelPlayURL(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-play-url", Method: http.MethodPost, Path: "/v1/channels/{id}/play-url",
 		Summary: "Mint a signed URL to watch this channel in the browser",
@@ -83,11 +83,11 @@ type playURLOutput struct {
 // ⚠ Only a channel Tunarr streams may get the Tunarr copy. #1630: an internal channel that was
 // still `empty` shared it, so an internal-only install told its viewer to watch in the media
 // server through a Tunarr the install does not run.
-func playRefusal(ch store.Channel, checkpoint BackendCheckpoint) error {
-	if inAppPlayableAt(ch, checkpoint) {
+func playRefusal(ch store.Channel, checkpoint httpcore.BackendCheckpoint) error {
+	if httpcore.InAppPlayableAt(ch, checkpoint) {
 		return nil
 	}
-	if !playsInternallyAt(ch, checkpoint) {
+	if !httpcore.PlaysInternallyAt(ch, checkpoint) {
 		// That stream lives in Tunarr, reached through the media server, not here. Say so rather
 		// than mint a URL whose segments would 404, so the UI can point at the right client.
 		return httpcore.Conflict(
@@ -111,7 +111,7 @@ func playRefusal(ch store.Channel, checkpoint BackendCheckpoint) error {
 	}
 }
 
-func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURLOutput, error) {
+func (s *Handlers) channelPlayURL(ctx context.Context, in *playURLInput) (*playURLOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
 		return nil, err
@@ -153,14 +153,14 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	// Who this URL is for, so household viewing can attribute its playlist polls (#1662).
 	var viewerTag string
 	if viewer, ok := s.viewerOf(ctx); ok {
-		viewerTag = signViewerTag(playoutToken, ch.ID, viewer)
+		viewerTag = httpcore.SignViewerTag(playoutToken, ch.ID, viewer)
 	}
 
 	out := &playURLOutput{}
 	// Absolute may be empty (public_url unset) — that only strands NATIVE clients, and the message
 	// for them is different (set the public address), so it is not an error for the web player.
-	out.Body.URL = withViewerTag(s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, exp), viewerTag)
-	out.Body.RelativeURL = withViewerTag(rel, viewerTag)
+	out.Body.URL = httpcore.WithViewerTag(s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, exp), viewerTag)
+	out.Body.RelativeURL = httpcore.WithViewerTag(rel, viewerTag)
 	out.Body.RelativeStillURL = s.playoutStillPathURLWithKey(playoutToken, ch.ID, exp)
 	if base := s.playoutBaseURL(); base != "" && out.Body.RelativeStillURL != "" {
 		out.Body.StillURL = base + out.Body.RelativeStillURL
@@ -198,7 +198,7 @@ type channelTracksOutput struct {
 	}
 }
 
-func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channelTracksOutput, error) {
+func (s *Handlers) channelTracks(ctx context.Context, in *httpcore.ChannelIDInput) (*channelTracksOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {

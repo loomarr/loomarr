@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/api/people"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
 )
 
@@ -41,7 +42,9 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	people.New(people.Deps{Log: log}, true).Register(humaAPI)
 	system.New(system.Deps{Log: log}, true).Register(humaAPI)
 	srv.registerChannels(humaAPI)
-	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)
+	// Hidden ops — present for register-list parity, absent from the spec (§9.1) — plus the play-url
+	// op and the status projection.
+	playoutapi.New(playoutapi.Deps{Log: log}, true).Register(humaAPI)
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerHolidays(humaAPI)
@@ -80,7 +83,6 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerOps(humaAPI, false, "")
 	srv.registerDashboard(humaAPI)
 	srv.registerDiagnostics(humaAPI)
-	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
 	// spec, matching how /v1/auth/* is handled. Documented via §11.
