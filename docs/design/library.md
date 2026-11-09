@@ -237,6 +237,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
   and wait while any playout session is live. A file whose header does not parse is marked failed
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
+  The wait never holds up a pass (decision 11): one header stage runs at a time, outside the pass
+  lock, a pass that finds it running hands its files over, and a read whose file a later pass
+  wrote meanwhile is dropped.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the

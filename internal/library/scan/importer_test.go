@@ -141,6 +141,22 @@ func (h *harness) origin(item inventory.Item, key inventory.OriginKey) inventory
 	return inventory.ItemOrigin{}
 }
 
+// fileRow is the library_files row the last pass left for path.
+func (h *harness) fileRow(path string) store.LibraryFile {
+	h.t.Helper()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.Path == path {
+			return r
+		}
+	}
+	h.t.Fatalf("no file row for %s", path)
+	return store.LibraryFile{}
+}
+
 func hasID(ids []inventory.ExternalID, ns, value string) bool {
 	for _, id := range ids {
 		if id.Namespace == ns && id.Value == value {
@@ -604,6 +620,11 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	if o := h.origin(h.item(delta), delta); !o.MissingAt.IsZero() {
 		t.Fatal("a file was marked missing while the arr was down")
 	}
+	// Its file row too: playout reads only present files, so a missing row would take the title
+	// off the air.
+	if r := h.fileRow(gone); !r.MissingAt.IsZero() {
+		t.Fatal("a file row was marked missing while the arr was down")
+	}
 
 	radarr.err = nil
 	radarr.records = []mp.Record{{
@@ -617,6 +638,9 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	}
 	if o := h.origin(h.item(delta), delta); o.MissingAt.IsZero() {
 		t.Error("the removal was not applied once the arr answered")
+	}
+	if r := h.fileRow(gone); r.MissingAt.IsZero() {
+		t.Error("the file row's removal was not applied once the arr answered")
 	}
 }
 
@@ -771,6 +795,86 @@ func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
 	h.run()
 	if h.reads.Load() != 1 {
 		t.Errorf("reads after the share recovered = %d, want 1", h.reads.Load())
+	}
+}
+
+// Header reads wait while someone watches, but the walk never does (decision 11): a folder pass
+// made while the header stage waits writes its new file at once, and the waiting stage reads its
+// header once playback ends.
+func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
+	h := newHarness(t)
+	var live atomic.Bool
+	live.Store(true)
+	h.im.Busy = live.Load
+	h.file("Whiskey (2001)/Whiskey.mkv", 10)
+	ctx := context.Background()
+	full := make(chan error, 1)
+	go func() { full <- h.im.Run(ctx) }()
+	for deadline := time.Now().Add(5 * time.Second); !h.im.Progress().Waiting; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the header stage never waited for playback")
+		}
+	}
+
+	added := h.file("Xray (2002)/Xray.mkv", 10)
+	folders := make(chan error, 1)
+	go func() { folders <- h.im.RunFolders(ctx, h.root, []string{filepath.Dir(added)}) }()
+	select {
+	case err := <-folders:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a folder pass waited for playback to end")
+	}
+	h.item(fileOrigin(h.root, "Xray (2002)/Xray.mkv"))
+	if r := h.fileRow(added); r.Header != store.LibraryHeaderPending {
+		t.Errorf("new file's header = %q while playback runs, want pending", r.Header)
+	}
+
+	live.Store(false)
+	if err := <-full; err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{added, filepath.Join(h.root, "Whiskey (2001)", "Whiskey.mkv")} {
+		if r := h.fileRow(path); r.Header != store.LibraryHeaderRead {
+			t.Errorf("%s header = %q after playback, want read", filepath.Base(path), r.Header)
+		}
+	}
+	if n := h.reads.Load(); n != 2 {
+		t.Errorf("header reads = %d, want 2", n)
+	}
+}
+
+// A file replaced while the header stage waits is read once, as the newer import wrote it: the
+// read the older import queued is dropped rather than written over it.
+func TestHeaderReadOfAReplacedFileIsDropped(t *testing.T) {
+	h := newHarness(t)
+	var live atomic.Bool
+	live.Store(true)
+	h.im.Busy = live.Load
+	path := h.file("Yankee (2004)/Yankee.mkv", 10)
+	ctx := context.Background()
+	full := make(chan error, 1)
+	go func() { full <- h.im.Run(ctx) }()
+	for deadline := time.Now().Add(5 * time.Second); !h.im.Progress().Waiting; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the header stage never waited for playback")
+		}
+	}
+	h.file("Yankee (2004)/Yankee.mkv", 20)
+	if err := h.im.RunFolders(ctx, h.root, []string{filepath.Dir(path)}); err != nil {
+		t.Fatal(err)
+	}
+	live.Store(false)
+	if err := <-full; err != nil {
+		t.Fatal(err)
+	}
+	if r := h.fileRow(path); r.Size != 20 || r.Header != store.LibraryHeaderRead {
+		t.Errorf("row = size %d header %q, want 20 read", r.Size, r.Header)
+	}
+	if n := h.reads.Load(); n != 1 {
+		t.Errorf("header reads = %d, want 1", n)
 	}
 }
 

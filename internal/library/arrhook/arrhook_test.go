@@ -48,6 +48,18 @@ func TestParse(t *testing.T) {
 			typ:  "MovieDelete", folders: []string{"/movies/Oscar (1999)"},
 		},
 		{
+			// A delete's deletedFiles says whether the files went too: a bool, where an upgrade's is
+			// a list (Sonarr's WebhookSeriesDeletePayload, Radarr's WebhookMovieDeletePayload).
+			name: "a series delete that took its files names its folder",
+			body: `{"eventType":"SeriesDelete","series":{"path":"/tv/Romeo","tvdbId":90081202},"deletedFiles":true}`,
+			typ:  "SeriesDelete", folders: []string{"/tv/Romeo"},
+		},
+		{
+			name: "a movie delete that kept its files names its folder",
+			body: `{"eventType":"MovieDelete","movie":{"folderPath":"/movies/Sierra (2003)"},"deletedFiles":false}`,
+			typ:  "MovieDelete", folders: []string{"/movies/Sierra (2003)"},
+		},
+		{
 			name: "a Windows arr's backslashes become slashes",
 			body: `{"eventType":"EpisodeFileDelete","series":{"path":"D:\\tv\\Papa"},"episodeFile":{"path":"D:\\tv\\Papa\\Season 01\\Papa S01E01.mkv"}}`,
 			typ:  "EpisodeFileDelete", folders: []string{"D:/tv/Papa/Season 01"},

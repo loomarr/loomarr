@@ -243,13 +243,17 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 	if a.By != AnsweredByYou && (a.By != AnsweredBySearch || a.Ignored) {
 		return fmt.Errorf("save library answer: %q cannot give this answer", a.By)
 	}
+	// A search never replaces the maintainer's answer (decision 58), even one given between the
+	// Matcher's look and this write.
 	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO library_answers
 		(origin_authority, origin_key, kind, namespace, external_id, ignored, answered_at_ms, answered_by)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
 		external_id = excluded.external_id, ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms,
-		answered_by = excluded.answered_by`),
-		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By)); err != nil {
+		answered_by = excluded.answered_by
+		WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
+		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By),
+		string(AnsweredByYou), string(AnsweredByYou)); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
 	return nil
