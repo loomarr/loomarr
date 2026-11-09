@@ -6,13 +6,13 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // libraryTitleScanner answers the availability scan from the Library's own titles, so a title
 // confirms with its library item id (#2151 step 16). The media server is never asked.
 type libraryTitleScanner struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (s libraryTitleScanner) RecentlyAdded(ctx context.Context, since time.Time) ([]library.SearchResult, error) {
@@ -39,7 +39,7 @@ func (s libraryTitleScanner) scan(ctx context.Context, since time.Time) ([]libra
 // (provisionbackstop.LibraryLookup): a title the Library holds is confirmed with its library item
 // id (#2151 step 16).
 type libraryLookup struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (l libraryLookup) Lookup(

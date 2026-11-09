@@ -9,6 +9,18 @@ interface ChannelWallProps {
   nowMs: number;
   /** An admin's "Needs you" counts above zero (#2785): one quiet line under the header. */
   needs?: NeedsLineItem[];
+  /**
+   * Who is watching each channel now, by name (#2785). Given to an admin only: a member's view is never
+   * handed names (#3010), so leaving it out is what keeps them off the tiles. Absent also hides the count.
+   */
+  viewers?: ChannelViewer[];
+}
+
+/** One person watching one channel (a person on two devices is one name). */
+interface ChannelViewer {
+  channelId: string;
+  name: string;
+  userId: string;
 }
 
 interface AiringArtworkProps {
@@ -19,4 +31,4 @@ interface AiringArtworkProps {
   sizes: string;
 }
 
-export type { AiringArtworkProps, ChannelWallProps };
+export type { AiringArtworkProps, ChannelViewer, ChannelWallProps };

@@ -22,6 +22,7 @@ const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
   name: "Late Night Noir",
   number: 1,
   inAppPlayable: true,
+  fromRequest: false,
   status: "live",
   strategy: "shuffle",
   lineup: [],

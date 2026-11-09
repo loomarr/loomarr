@@ -1,0 +1,63 @@
+package capability
+
+import (
+	"testing"
+	"testing/fstest"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/testkit"
+)
+
+// This test pins the production brand dictionary (phraseMappings in filler/enrichment's
+// deterministic.go: "hp sauce", "tootsie pop") and its "on Five" network rule end to end, so it
+// keeps their real names. A dictionary phrase is the only text that fires a trusted product mapping.
+
+func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_000, 0).UTC()
+	for _, clip := range []clipstore.Clip{
+		{Clip: clips.Clip{Hash: "hp", Path: "hp.mp4", Name: "HP Sauce Advert", Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at},
+		{Clip: clips.Clip{Hash: "tootsie", Path: "tootsie.mp4", Name: "Tootsie Pop Classic Commercial", Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at.Add(time.Second)},
+	} {
+		if err := st.UpsertClip(t.Context(), clip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := fstest.MapFS{
+		"hp.info.json":      {Data: []byte(`{"title":"HP Sauce Advert","description":"An advert for HP Sauce broadcast 1999 on Five.","upload_date":"20250107","loomarr":{"originalName":"hp-sauce-advert.mp4","sourceId":"classic"}}`)},
+		"tootsie.info.json": {Data: []byte(`{"title":"Tootsie Pop Classic Commercial","description":"The classic Tootsie Pop commercial. There are 3 versions.","upload_date":"20240215","loomarr":{"originalName":"tootsie-pop.mp4","sourceId":"classic"}}`)},
+	}
+	runner := enrichment.NewRunner(
+		storeadapter.NewEnrichment(st), NewEnrichmentSignals(st, files, nil).Load,
+		func() int { return 10 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	result, err := runner.Run(t.Context())
+	// Every axis for both clips: Tootsie's source declares no country, so its geography is an
+	// explicit unsupported withdrawal rather than an absent row (#1670).
+	if err != nil || result.Considered != 2 || result.Updated != 2*len(enrichment.DeterministicAxes) {
+		t.Fatalf("Run() = %+v, err %v", result, err)
+	}
+	hp, err := st.GetClip(t.Context(), "hp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hp.Era != 1999 || hp.Brand != "HP Sauce" || hp.Category != "condiments" || hp.Country != "GB" || hp.Network != "Five" {
+		t.Fatalf("HP projection = %+v", hp)
+	}
+	tootsie, err := st.GetClip(t.Context(), "tootsie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tootsie.Era != 0 || tootsie.Brand != "Tootsie Pop" || tootsie.Category != "candy" {
+		t.Fatalf("Tootsie projection = %+v", tootsie)
+	}
+	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), enrichment.DeterministicProducer,
+		enrichment.DeterministicProducerVersion, enrichment.ControlledTaxonomyVersion, 10)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("completed clips remained candidates: %+v, err %v", candidates, err)
+	}
+}

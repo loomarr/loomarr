@@ -14,7 +14,8 @@ import { DEFAULT_APPLICATION_FILTERS } from "../application-filters";
 import { ApplicationDiagnostics } from "./application-diagnostics";
 
 describe("ApplicationDiagnostics", () => {
-  it("renders bounded events, expands structured correlation, and edits reproducible filters", async () => {
+  // One error and one warning, a further page, and two dropped events: the log each test below opens.
+  const renderLog = async () => {
     const dropState = { dropped: 2 };
     server.use(
       getGetDiagnosticVerboseCaptureMockHandler({ active: false }),
@@ -78,6 +79,11 @@ describe("ApplicationDiagnostics", () => {
     );
 
     const errors = await screen.findByRole("button", { name: "1 error" });
+    return { errors, onFiltersChange, onOpenProcess, onOpenRelated };
+  };
+
+  it("renders bounded events with level counts and the retained-window controls", async () => {
+    const { errors } = await renderLog();
     expect(errors).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Playback failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 warning" })).toHaveAttribute("aria-pressed", "false");
@@ -90,7 +96,10 @@ describe("ApplicationDiagnostics", () => {
     expect(screen.getByRole("combobox", { name: "Time range" })).toHaveDisplayValue("All retained");
     expect(screen.getByRole("combobox", { name: "Log order" })).toHaveDisplayValue("Newest first");
     expect(screen.queryByRole("button", { name: /pause|resume|refresh now/i })).not.toBeInTheDocument();
+  });
 
+  it("filters to a level, and choosing it again keeps it chosen", async () => {
+    const { errors, onFiltersChange } = await renderLog();
     await userEvent.click(errors);
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ level: "error" }));
     expect(screen.getByRole("button", { name: "1 error" })).toHaveAttribute("aria-pressed", "true");
@@ -98,7 +107,10 @@ describe("ApplicationDiagnostics", () => {
     await userEvent.click(errors);
     expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ level: "error" }));
     expect(screen.getByRole("button", { name: "1 error" })).toHaveAttribute("aria-pressed", "true");
+  });
 
+  it("expands a row's structured correlation, copies it, and opens what it relates to", async () => {
+    const { onOpenProcess, onOpenRelated } = await renderLog();
     await userEvent.click(screen.getByRole("button", { name: "Hide details" }));
     expect(screen.getByRole("button", { name: "Show details" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Playback failed/ }));
@@ -115,12 +127,14 @@ describe("ApplicationDiagnostics", () => {
     expect(onOpenProcess).toHaveBeenCalledWith("process-1");
     await userEvent.click(screen.getAllByRole("button", { name: "Open related Channel" })[0]!);
     expect(onOpenRelated).toHaveBeenCalledWith("channel", "channel-1");
+  });
 
+  it("edits reproducible filters and the log order", async () => {
+    const { onFiltersChange } = await renderLog();
     await userEvent.click(screen.getByRole("button", { name: "More filters" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Subsystem" }), "api");
     expect(onFiltersChange).toHaveBeenLastCalledWith({
       ...DEFAULT_APPLICATION_FILTERS,
-      level: "error",
       subsystem: "api",
     });
 

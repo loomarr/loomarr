@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/header"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A file renamed or moved keeps the header read at its old path and is not opened again; the old
@@ -43,7 +43,7 @@ func TestImportMovedFileKeepsItsHeader(t *testing.T) {
 	for _, r := range rows {
 		switch r.Path {
 		case moved:
-			if r.Header != store.LibraryHeaderRead {
+			if r.Header != librarystore.LibraryHeaderRead {
 				t.Errorf("moved row header = %q", r.Header)
 			}
 		case old:

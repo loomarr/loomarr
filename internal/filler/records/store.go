@@ -24,7 +24,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -219,7 +218,7 @@ type FillerPipelineStore interface {
 	ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error)
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]clipstore.Clip, error)
 	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
 	// row, and appends the effective Ready event. It is the only non-composite publication path.
 	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error

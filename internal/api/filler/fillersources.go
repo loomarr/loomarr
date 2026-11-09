@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -714,7 +715,7 @@ func (s *Handlers) queueFillerSourceItem(ctx context.Context, in *queueFillerSou
 	if errors.Is(err, acquisition.ErrProviderPaused) {
 		return nil, httpcore.Conflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
-	if errors.Is(err, ErrIngestUnavailable) {
+	if errors.Is(err, operator.ErrIngestUnavailable) {
 		return nil, httpcore.Conflict("Downloads aren't available here",
 			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
@@ -1528,7 +1529,7 @@ func (s *Handlers) fetchFillerSource(ctx context.Context, in *fetchFillerSourceI
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {
-		if errors.Is(err, ErrIngestUnavailable) {
+		if errors.Is(err, operator.ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}

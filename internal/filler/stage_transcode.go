@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The TRANSCODE stage (§10 V66): retains the source and independently produces evidence and
@@ -31,15 +32,15 @@ import (
 
 // TranscodeClipStore is the slice of the store the transcode stage writes through.
 type TranscodeClipStore interface {
-	GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error)
+	GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error)
 	// ReplaceClipIdentity atomically re-keys the clip and everything that refers to it. A
 	// transcode changes bytes, so keeping the intake hash would make the next scan discover a
 	// second, metadata-empty clip under the transformed bytes' real identity.
-	ReplaceClipIdentity(ctx context.Context, oldHash string, c cliplibrary.StoreClip) error
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c clipstore.Clip) error
 	// CommitConditioningPublication atomically classifies and commits the exact owner-bound
 	// source/target catalog transition. It may adopt a held target reconstructed by Sync or
 	// recognize an already committed target after process loss; every other state fails closed.
-	CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target cliplibrary.StoreClip) error
+	CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target clipstore.Clip) error
 }
 
 // TranscodeStage owns retained-source resolution and verified derivative publication.
@@ -172,7 +173,7 @@ func (s *TranscodeStage) Cost() StageCost           { return CostTranscode }
 //
 // It records the profile ID rather than a bare flag, so a future profile change re-encodes from
 // the operator's own file rather than being silently skipped as "already done".
-func (s *TranscodeStage) Applies(ctx context.Context, c cliplibrary.StoreClip) (bool, string) {
+func (s *TranscodeStage) Applies(ctx context.Context, c clipstore.Clip) (bool, string) {
 	if c.Path == "" {
 		return false, "the clip has no file"
 	}
@@ -203,14 +204,14 @@ const transcodeStagingDir = ".transcode"
 // Run re-encodes the clip, hashes the transformed bytes, files them at that identity's canonical
 // path, and atomically re-keys the catalog metadata. The original remains intact until the new
 // file, sidecar and database references are all durable.
-func (s *TranscodeStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
+func (s *TranscodeStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, error) {
 	return s.run(ctx, c, nil)
 }
 
 // run is Run, and with swap set the re-encode of a clip that keeps airing (ReplaceAiring): the
 // staged bytes must pass swap's checks before they publish, a refusal is ErrReplacementRefused,
 // and the switch commits their defect record.
-func (s *TranscodeStage) run(ctx context.Context, c cliplibrary.StoreClip, swap *airingSwap) (StageResult, error) {
+func (s *TranscodeStage) run(ctx context.Context, c clipstore.Clip, swap *airingSwap) (StageResult, error) {
 	if s.store == nil {
 		return StageResult{}, fmt.Errorf("transcode %s: no clip store is configured", c.Path)
 	}
@@ -574,7 +575,7 @@ func (s *TranscodeStage) run(ctx context.Context, c cliplibrary.StoreClip, swap 
 
 // reserveStorage leases the run's complete peak working set before anything is written. Both are
 // nil without a governor; otherwise the caller releases the lease.
-func (s *TranscodeStage) reserveStorage(ctx context.Context, c cliplibrary.StoreClip, oldFull string) (*storagegovernor.Lease, *storagegovernor.WriteTracker, error) {
+func (s *TranscodeStage) reserveStorage(ctx context.Context, c clipstore.Clip, oldFull string) (*storagegovernor.Lease, *storagegovernor.WriteTracker, error) {
 	if s.storage == nil {
 		return nil, nil, nil
 	}
@@ -609,7 +610,7 @@ func (s *TranscodeStage) reserveStorage(ctx context.Context, c cliplibrary.Store
 
 // reemitPersistedQuality answers for a clip this profile already encoded, from its inspection
 // report, building only an evidence derivative the clip predates.
-func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c cliplibrary.StoreClip, oldFull, inputFull string, sourceMaster asset.Identity, tags asset.SidecarTags, enc encodeTarget, storageWrites *storagegovernor.WriteTracker) (StageResult, error) {
+func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c clipstore.Clip, oldFull, inputFull string, sourceMaster asset.Identity, tags asset.SidecarTags, enc encodeTarget, storageWrites *storagegovernor.WriteTracker) (StageResult, error) {
 	if s.evidenceTranscode == nil {
 		return mediaQualityResult(c, *tags.MediaQuality), nil
 	}
@@ -708,7 +709,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster asset.Identity, p stagedPlayba
 // clip's catalog facts so a rescan restores them, and this encode's evidence. Split children
 // historically had no sidecar; seeding OriginalName from the durable display name is what
 // prevents their next scan from presenting the old hash as the title.
-func (s *TranscodeStage) replacementSidecar(tags asset.SidecarTags, c cliplibrary.StoreClip, mezzanine string, assets *asset.Manifest, quality tools.MediaQuality, publication *asset.ConditioningPublication, conditioning *asset.ConditioningEvidence) asset.SidecarTags {
+func (s *TranscodeStage) replacementSidecar(tags asset.SidecarTags, c clipstore.Clip, mezzanine string, assets *asset.Manifest, quality tools.MediaQuality, publication *asset.ConditioningPublication, conditioning *asset.ConditioningEvidence) asset.SidecarTags {
 	// A viewer-visible name the sidecar cannot rebuild goes beside the new bytes with its
 	// provenance, so the next scan does not demote it to the filename (#1988). A seeded
 	// originalName of unrecorded origin is marked so; an arrival filename is left as one.
@@ -793,11 +794,11 @@ func clearConditioningPublication(targetFull string, publication *asset.Conditio
 	return nil
 }
 
-func conditioningReview(c cliplibrary.StoreClip, note string) StageResult {
+func conditioningReview(c clipstore.Clip, note string) StageResult {
 	return StageResult{Clip: c, Verdict: pipelinestate.VerdictReview, Note: note}
 }
 
-func conditioningCommitOutcome(c cliplibrary.StoreClip, err error) (StageResult, error) {
+func conditioningCommitOutcome(c clipstore.Clip, err error) (StageResult, error) {
 	if errors.Is(err, ErrConditioningOwnershipMismatch) {
 		return conditioningReview(c, "conditioned replacement could not be committed"), nil
 	}
@@ -808,7 +809,7 @@ func isConditioningCancellation(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func mediaQualityResult(c cliplibrary.StoreClip, quality tools.MediaQuality) StageResult {
+func mediaQualityResult(c clipstore.Clip, quality tools.MediaQuality) StageResult {
 	verdict, reason, detail := EvaluateMediaQuality(quality)
 	result := StageResult{Clip: c, Verdict: verdict}
 	switch verdict {

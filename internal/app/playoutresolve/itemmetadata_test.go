@@ -5,19 +5,19 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
 type fakeItemFacts struct {
-	facts map[string]store.LibraryItemFacts
+	facts map[string]librarystore.LibraryItemFacts
 	err   error
 	asked []string
 }
 
-func (f *fakeItemFacts) LibraryItemFacts(_ context.Context, ids []string) (map[string]store.LibraryItemFacts, error) {
+func (f *fakeItemFacts) LibraryItemFacts(_ context.Context, ids []string) (map[string]librarystore.LibraryItemFacts, error) {
 	f.asked = ids
-	out := map[string]store.LibraryItemFacts{}
+	out := map[string]librarystore.LibraryItemFacts{}
 	for _, id := range ids {
 		if got, ok := f.facts[id]; ok {
 			out[id] = got
@@ -29,7 +29,7 @@ func (f *fakeItemFacts) LibraryItemFacts(_ context.Context, ids []string) (map[s
 // A library item id is answered from the Library's tables; any other id is simply absent, as the
 // media server's own contract has it.
 func TestItemMetadataAnswersLibraryIDsFromTheTables(t *testing.T) {
-	facts := &fakeItemFacts{facts: map[string]store.LibraryItemFacts{
+	facts := &fakeItemFacts{facts: map[string]librarystore.LibraryItemFacts{
 		"lib-1": {Overview: "A film.", Genres: []string{"Drama"}, Year: 1999, Rating: "PG", RuntimeMs: 5_400_000},
 	}}
 	m := ItemMetadata{Facts: facts}

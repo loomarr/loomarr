@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -86,10 +86,10 @@ func episodeEvidencePrograms(e []ScheduleEpisodeEvidence) []schedule.ResolvedPro
 // LibraryReader is the Library the live eval reads: Loomarr's own record of what the household
 // owns, through the same store reads production uses (#2151 step 16).
 type LibraryReader interface {
-	store.LibraryTitleSearcher
-	store.LibraryTitleReader
-	store.LibraryItemFactsReader
-	store.LibraryEpisodeReader
+	librarystore.LibraryTitleSearcher
+	librarystore.LibraryTitleReader
+	librarystore.LibraryItemFactsReader
+	librarystore.LibraryEpisodeReader
 }
 
 // libraryEpisodes is a Library series' episodes as production expands them.

@@ -156,7 +156,7 @@ var areas = []area{
 			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
 			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate", "filler/cliplibrary", "filler/acquisition", "filler/identity",
-			"filler/storeadapter",
+			"filler/storeadapter", "filler/capability", "filler/routine", "filler/operator",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -193,12 +193,12 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
-			"platform/llm", "platform/openroutercatalog", "platform/openroutermedia",
+			"platform/llm", "platform/llm/picker", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",
 			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
 		MayImport: map[string]string{

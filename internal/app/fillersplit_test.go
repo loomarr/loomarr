@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -325,10 +325,10 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 	t.Parallel()
 	a, _ := newSplitAdapter(t, events.NewBus(), false)
-	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, fillerapi.ErrSplitUnavailable) {
+	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, operator.ErrSplitUnavailable) {
 		t.Errorf("Split without a splitter = %v, want ErrSplitUnavailable", err)
 	}
-	if err := a.ConfirmSplit(context.Background(), "sp_1", nil); !errors.Is(err, fillerapi.ErrSplitUnavailable) {
+	if err := a.ConfirmSplit(context.Background(), "sp_1", nil); !errors.Is(err, operator.ErrSplitUnavailable) {
 		t.Errorf("ConfirmSplit without a splitter = %v, want ErrSplitUnavailable", err)
 	}
 }

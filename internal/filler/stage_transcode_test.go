@@ -19,14 +19,15 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type transcodeStore struct {
 	oldHash       string
-	clip          cliplibrary.StoreClip
+	clip          clipstore.Clip
 	err           error
-	clips         map[string]cliplibrary.StoreClip
-	beforeReplace func(string, cliplibrary.StoreClip)
+	clips         map[string]clipstore.Clip
+	beforeReplace func(string, clipstore.Clip)
 }
 
 func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *testing.T) {
@@ -42,7 +43,7 @@ func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *t
 		WithMediaDerivatives().
 		WithStorageGovernor(governor)
 
-	_, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	_, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: rel, DurationMs: 30_000,
 	}})
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
@@ -90,7 +91,7 @@ func TestTranscodeStage_StopsOversizedPrivateOutputBeforePublication(t *testing.
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	}))
 
-	_, err = stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	_, err = stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: rel, Name: "oversized", DurationMs: 30_000,
 	}})
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
@@ -122,14 +123,14 @@ func (s cleanupSyncSource) ListLocalClips(ctx context.Context) ([]cliplibrary.Ra
 }
 
 type cleanupSyncStore struct {
-	clips map[string]cliplibrary.StoreClip
+	clips map[string]clipstore.Clip
 }
 
-func (s *cleanupSyncStore) UpsertClip(_ context.Context, clip cliplibrary.StoreClip) error {
+func (s *cleanupSyncStore) UpsertClip(_ context.Context, clip clipstore.Clip) error {
 	s.clips[clip.Hash] = clip
 	return nil
 }
-func (s *cleanupSyncStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (s *cleanupSyncStore) GetClip(_ context.Context, id string) (clipstore.Clip, bool, error) {
 	clip, ok := s.clips[id]
 	return clip, ok, nil
 }
@@ -138,7 +139,7 @@ func (s *cleanupSyncStore) LiveClipPaths(context.Context) (map[string]string, er
 }
 func (s *cleanupSyncStore) DeleteClipsNotIn(context.Context, []string) (int, error) { return 0, nil }
 
-func (s *transcodeStore) ReplaceClipIdentity(_ context.Context, oldHash string, c cliplibrary.StoreClip) error {
+func (s *transcodeStore) ReplaceClipIdentity(_ context.Context, oldHash string, c clipstore.Clip) error {
 	if s.beforeReplace != nil {
 		s.beforeReplace(oldHash, c)
 	}
@@ -148,7 +149,7 @@ func (s *transcodeStore) ReplaceClipIdentity(_ context.Context, oldHash string, 
 	return err
 }
 
-func (s *transcodeStore) CommitConditioningPublication(_ context.Context, publication asset.ConditioningPublication, c cliplibrary.StoreClip) error {
+func (s *transcodeStore) CommitConditioningPublication(_ context.Context, publication asset.ConditioningPublication, c clipstore.Clip) error {
 	return s.ReplaceClipIdentity(context.Background(), publication.SourceHash, c)
 }
 
@@ -171,12 +172,12 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
 		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
-	published := make(chan cliplibrary.StoreClip, 1)
+	published := make(chan clipstore.Clip, 1)
 	resumeRekey := make(chan struct{})
-	stageStore := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stageStore := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
-	stageStore.beforeReplace = func(_ string, target cliplibrary.StoreClip) {
+	stageStore.beforeReplace = func(_ string, target clipstore.Clip) {
 		published <- target
 		<-resumeRekey
 	}
@@ -201,14 +202,14 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	}
 	runDone := make(chan runResult, 1)
 	go func() {
-		result, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+		result, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 			Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Role: clips.Commercial, ParentHash: parentHash,
 		}})
 		runDone <- runResult{result: result, err: err}
 	}()
 	target := <-published
 
-	syncStore := &cleanupSyncStore{clips: map[string]cliplibrary.StoreClip{
+	syncStore := &cleanupSyncStore{clips: map[string]clipstore.Clip{
 		sourceHash: {Clip: clips.Clip{Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Role: clips.Commercial, ParentHash: parentHash}},
 		parentHash: {Clip: clips.Clip{Hash: parentHash, Path: parentRel, Name: "Composite", IsComposite: true}},
 	}}
@@ -233,7 +234,7 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	}
 }
 
-func (s *transcodeStore) GetClip(_ context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
+func (s *transcodeStore) GetClip(_ context.Context, hash string) (clipstore.Clip, bool, error) {
 	c, ok := s.clips[hash]
 	return c, ok, nil
 }
@@ -279,7 +280,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -316,7 +317,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				return measurement, nil
 			})
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: childHash, Path: childRel, Name: "Child", Role: clips.Commercial, ParentHash: parentHash,
 			}})
 			if err != nil {
@@ -355,7 +356,7 @@ func TestTranscodeStage_HoldsWhenConditioningSourceOrParentBytesDoNotMatchCatalo
 			} else if err := os.WriteFile(parentFull, []byte("replaced parent bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 				Hash: parentHash, Path: parentRel, IsComposite: true,
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -370,7 +371,7 @@ func TestTranscodeStage_HoldsWhenConditioningSourceOrParentBytesDoNotMatchCatalo
 				return tools.MediaQuality{}, nil
 			}
 
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
 			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -392,7 +393,7 @@ func TestTranscodeStage_PathReplacementDuringConditioningPublishesNothing(t *tes
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -420,7 +421,7 @@ func TestTranscodeStage_PathReplacementDuringConditioningPublishesNothing(t *tes
 		return measurement.Quality, os.WriteFile(req.Out, []byte("would-be output"), 0o600)
 	}
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -449,7 +450,7 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 			}}, false); err != nil {
 				t.Fatal(err)
 			}
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 				Hash: parentHash, Path: parentRel, IsComposite: true,
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -482,7 +483,7 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 				return measurement.Quality, os.WriteFile(req.Out, []byte("would-be output"), 0o600)
 			}
 
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
 			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -516,7 +517,7 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	}, false); err != nil {
 		t.Fatal(err)
 	}
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -532,7 +533,7 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 		return tools.ConditioningMeasurement{}, nil
 	})
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, Name: "Completed child", Role: clips.Commercial, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash != childHash {
@@ -543,32 +544,32 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *testing.T) {
 	cases := []struct {
 		name   string
-		mutate func(*asset.ConditioningLineage, *asset.ConditioningEvidence, *tools.MediaQuality, *cliplibrary.StoreClip)
+		mutate func(*asset.ConditioningLineage, *asset.ConditioningEvidence, *tools.MediaQuality, *clipstore.Clip)
 	}{
-		{name: "empty intended interval", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "empty intended interval", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			lineage.IntendedEndMs = lineage.IntendedStartMs
 		}},
-		{name: "invalid structure decision identity", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "invalid structure decision identity", mutate: func(lineage *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			lineage.StructureDecisionSHA256 = "not-a-digest"
 		}},
-		{name: "parent is airable", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, parent *cliplibrary.StoreClip) {
+		{name: "parent is airable", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, _ *tools.MediaQuality, parent *clipstore.Clip) {
 			parent.IsComposite = false
 		}},
-		{name: "media quality provenance missing", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, quality *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "media quality provenance missing", mutate: func(_ *asset.ConditioningLineage, _ *asset.ConditioningEvidence, quality *tools.MediaQuality, _ *clipstore.Clip) {
 			quality.Provenance = ""
 		}},
-		{name: "detector intervals are not normalized", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "detector intervals are not normalized", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			evidence.BeforeRewrite.Quality.Black = []tools.Interval{{StartMs: 2_000, EndMs: 3_000}, {StartMs: 1_000, EndMs: 1_500}}
 		}},
-		{name: "stream index is reused across kinds", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "stream index is reused across kinds", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			evidence.BeforeRewrite.Streams[1].Index = 0
 			evidence.BeforeRewrite.Cuts[0].Streams[1].Index = 0
 		}},
-		{name: "before after identities differ", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "before after identities differ", mutate: func(_ *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			evidence.AfterRewrite.Streams[1].Index = 2
 			evidence.AfterRewrite.Cuts[0].Streams[1].Index = 2
 		}},
-		{name: "before and after agree on interval different from lineage", mutate: func(lineage *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *cliplibrary.StoreClip) {
+		{name: "before and after agree on interval different from lineage", mutate: func(lineage *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, _ *tools.MediaQuality, _ *clipstore.Clip) {
 			lineage.IntendedStartMs, lineage.IntendedEndMs = 2_000, 32_000
 			evidence.BeforeRewrite.Cuts[0].Intended = tools.Interval{StartMs: 1_000, EndMs: 31_000}
 			evidence.AfterRewrite.Cuts[0].Intended = tools.Interval{StartMs: 1_000, EndMs: 31_000}
@@ -594,7 +595,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 				DerivedParentEdgesAfterRewrite: before.Cuts[0],
 			}
 			quality := after.Quality
-			parent := cliplibrary.StoreClip{Clip: clips.Clip{Hash: parentHash, Path: parentRel, IsComposite: true}}
+			parent := clipstore.Clip{Clip: clips.Clip{Hash: parentHash, Path: parentRel, IsComposite: true}}
 			tc.mutate(&lineage, &evidence, &quality, &parent)
 			if err := asset.WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), asset.SidecarTags{
 				Mezzanine:    tools.DefaultMezzanine().ID(),
@@ -602,7 +603,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			}, false); err != nil {
 				t.Fatal(err)
 			}
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: parent}}
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: parent}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
 				t.Fatal("invalid restart evidence must hold before probing")
 				return tools.Probed{}, nil
@@ -611,7 +612,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 				t.Fatal("invalid restart evidence must hold before measuring")
 				return tools.ConditioningMeasurement{}, nil
 			})
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
 			}})
 			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -666,10 +667,10 @@ func TestTranscodeStage_MezzanineMarkerAloneCannotCertifyAChildRestart(t *testin
 	}, false); err != nil {
 		t.Fatal(err)
 	}
-	stage := NewTranscodeStage(&transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stage := NewTranscodeStage(&transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}, nil, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictReview {
@@ -690,7 +691,7 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -708,7 +709,7 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 		return completeConditioningMeasurement(-27), nil
 	})
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, Name: "Child", Role: clips.Commercial, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -744,7 +745,7 @@ func TestTranscodeStage_MissingParentHoldsBeforeMeasurement(t *testing.T) {
 		t.Fatal("missing parent must stop before transcode")
 		return tools.MediaQuality{}, nil
 	}
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, Name: "Child", Role: clips.Commercial, ParentHash: "missing-parent",
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictReview || out.Clip.Hash != childHash {
@@ -774,7 +775,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 				Hash: parentHash, Path: parentRel, IsComposite: true,
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -820,7 +821,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 				err error
 			}, 1)
 			go func() {
-				out, runErr := stage.Run(ctx, cliplibrary.StoreClip{Clip: clips.Clip{
+				out, runErr := stage.Run(ctx, clipstore.Clip{Clip: clips.Clip{
 					Hash: childHash, Path: childRel, Name: "Child", Role: clips.Commercial, ParentHash: parentHash,
 				}})
 				result <- struct {
@@ -859,7 +860,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 		t.Fatal(err)
 	}
 
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, Name: "Compilation", IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -885,7 +886,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 		return after, nil
 	})
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: childHash, Path: childRel, Name: "Reviewed advert", Role: clips.Commercial,
 		ParentHash: parentHash,
 	}})
@@ -951,7 +952,7 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			}, false); err != nil {
 				t.Fatal(err)
 			}
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 				Hash: parentHash, Path: parentRel, Name: "Compilation", IsComposite: true,
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -979,7 +980,7 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 				return after, nil
 			})
 
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: childHash, Path: childRel, Name: "Reviewed advert", Role: clips.Commercial, ParentHash: parentHash,
 			}})
 			if err != nil {
@@ -1013,7 +1014,7 @@ func TestTranscodeStage_RecoversAPublishedPairAfterStoreFailure(t *testing.T) {
 	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (tools.MediaQuality, error) {
 		return tools.MediaQuality{}, os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: oldHash, Path: oldRel, Name: "Named advert", Role: clips.Commercial}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: oldHash, Path: oldRel, Name: "Named advert", Role: clips.Commercial}}
 
 	if _, err := stage.Run(context.Background(), clip); err == nil {
 		t.Fatal("first run succeeded despite the simulated store failure")
@@ -1126,7 +1127,7 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 				t.Fatal(err)
 			}
 
-			stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+			stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 				Hash: parentHash, Path: parentRel, IsComposite: true,
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -1143,7 +1144,7 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 				}
 				return after, nil
 			})
-			out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 				Hash: sourceHash, Path: sourceRel, ParentHash: parentHash,
 			}})
 			if err != nil || out.Verdict != pipelinestate.VerdictReview || stored.oldHash != "" {
@@ -1176,7 +1177,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	outputBytes := []byte("recoverable conditioned output")
-	stored := &transcodeStore{err: errors.New("catalog replacement failed"), clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{err: errors.New("catalog replacement failed"), clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -1193,7 +1194,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 		}
 		return after, nil
 	})
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
 
 	first, err := stage.Run(context.Background(), clip)
 	if err == nil || first.Verdict != pipelinestate.VerdictContinue {
@@ -1241,7 +1242,7 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	outputBytes := []byte("duration-shift output")
-	stored := &transcodeStore{err: errors.New("first replacement failed"), clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{err: errors.New("first replacement failed"), clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(_ context.Context, path string) (tools.Probed, error) {
@@ -1261,7 +1262,7 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 		}
 		return after, nil
 	})
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: sourceHash, Path: sourceRel, ParentHash: parentHash}}
 	first, err := stage.Run(context.Background(), clip)
 	if err == nil || first.Verdict != pipelinestate.VerdictContinue {
 		t.Fatalf("first interrupted publication = %+v, %v; want retryable error", first, err)
@@ -1290,7 +1291,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
 		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
-	stored := &transcodeStore{clips: map[string]cliplibrary.StoreClip{parentHash: {Clip: clips.Clip{
+	stored := &transcodeStore{clips: map[string]clipstore.Clip{parentHash: {Clip: clips.Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (tools.Probed, error) {
@@ -1309,7 +1310,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	})
 	stage.removeSource = func(string) error { return errors.New("injected source cleanup failure") }
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: sourceHash, Path: sourceRel, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Clip.Hash == sourceHash {
@@ -1328,7 +1329,7 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	scanStore := &cleanupSyncStore{clips: map[string]cliplibrary.StoreClip{}}
+	scanStore := &cleanupSyncStore{clips: map[string]clipstore.Clip{}}
 	if _, err := NewSyncer(cleanupSyncSource{dir: dir}, scanStore, layout, time.Now, nil).Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -1356,7 +1357,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 		return tools.MediaQuality{}, os.WriteFile(req.Out, newBytes, 0o644)
 	}
 
-	in := cliplibrary.StoreClip{Clip: clips.Clip{
+	in := clipstore.Clip{Clip: clips.Clip{
 		Hash: oldHash, Path: oldRel, Name: "Burger Barn 1993", Role: clips.Commercial,
 		Era: 1993, Audience: clips.Kids, Category: "fast_food", Source: "archive:wktl",
 		Held: true,
@@ -1436,7 +1437,7 @@ func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 		return tools.MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
 	}
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: rel, Name: "Already normalized", Role: clips.Commercial,
 	}})
 	if err != nil {
@@ -1472,7 +1473,7 @@ func TestTranscodeStage_IdenticalOutputMovesToCanonicalPath(t *testing.T) {
 		return tools.MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
 	}
 
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: oldRel, Name: "Move without re-key", Role: clips.Commercial,
 	}})
 	if err != nil {
@@ -1523,7 +1524,7 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 		return tools.MediaQuality{DurationMs: 30_000, Black: []tools.Interval{{StartMs: 0, EndMs: 28_000}}},
 			os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
-	out, err := stage.Run(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{
+	out, err := stage.Run(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: oldHash, Path: oldRel, Name: "Named advert", Role: clips.Commercial,
 	}})
 	if err != nil {
@@ -1558,7 +1559,7 @@ func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testi
 		t.Fatal("a persisted verdict must not be re-encoded")
 		return tools.MediaQuality{}, nil
 	}
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Hash: hash, Path: rel, Name: "Silent advert", Role: clips.Commercial}}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: hash, Path: rel, Name: "Silent advert", Role: clips.Commercial}}
 	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
 	}
