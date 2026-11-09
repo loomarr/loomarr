@@ -76,7 +76,7 @@ LIMIT 10;
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -298,7 +298,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | `tunarr_id` | The id of the channel's copy in Tunarr, an outside playout server, kept from the first time Loomarr pushed the channel there. Empty for a channel that never went to Tunarr. | `TEXT` |
 | `status` | The channel's state. `building` (being set up), `live` (ready to play), `drifted` (a scheduled programme left the library and was replaced), `empty` (every lineup entry was filtered out, so nothing can air), `paused` (taken off air by an admin but kept), or `detached` (no longer managed by Loomarr). | `TEXT` |
 | `shuffle_seed` | The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it is worked out from the channel id. | `BIGINT` |
-| `lineup_json` | The approved lineup, a list of entries. Each names a title by its key (such as `movie:tmdb:603`), with its display name, known runtime, any season range or episode selection, and the rating, genres and year the channel rules filter on. | `TEXT` |
 | `desired_json` | The last computed schedule, a list of slots. Each slot is a programme, a pending title not yet in the library, a filler break, or flexible padding, with its title, length and episode numbers. | `TEXT` |
 | `reconcile_deadline` | When the channel is next due to be checked and brought up to date, in Unix seconds. Moved forward while one check holds it. 0 means due now. | `BIGINT` |
 | `updated_at` | When the row last changed, in Unix seconds. | `BIGINT` |
@@ -309,6 +308,19 @@ One row per channel. A channel is created by approving a channel request or by h
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
 | `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
+
+### channel_lineup
+
+A channel's approved lineup, one row per title in order: what should play on it. Whether each title becomes a programme or waits as "coming soon" is decided when the channel is checked.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `position` | Where the title sits in the lineup, from 0. | `INTEGER` · key |
+| `title_key` | The title, by its key (such as `movie:tmdb:603`). A title added by hand may have no titles row yet, until something asks for it. | `TEXT` |
+| `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
 
 ### airings
 

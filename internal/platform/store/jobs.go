@@ -219,7 +219,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := channelForJob(ctx, tx, s.ph, id)
+	channel, channelErr := s.channelForJob(ctx, tx, id)
 	if channelErr == nil {
 		out.Channel = &channel
 	} else if !errors.Is(channelErr, ErrNotFound) && !errors.Is(channelErr, ErrJobChannelGone) {
