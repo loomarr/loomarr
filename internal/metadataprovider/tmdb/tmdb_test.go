@@ -301,8 +301,9 @@ func TestFetchSeries(t *testing.T) {
 	if len(rec.Children) != 0 {
 		t.Error("TMDB's season layout differs from TVDB's, so a series carries no episodes; they are fetched by their own ids")
 	}
-	if d.Orderings == nil || *d.Orderings != 1 {
-		t.Errorf("orderings = %v, want the one episode group", d.Orderings)
+	wantOrders := []mp.EpisodeOrder{{ID: "90000799a", Name: "DVD Order", Kind: mp.OrderDVD, Seasons: 3, Episodes: 26}}
+	if !reflect.DeepEqual(d.Orders, wantOrders) {
+		t.Errorf("orders = %+v, want the one episode group, named and sized", d.Orders)
 	}
 }
 
