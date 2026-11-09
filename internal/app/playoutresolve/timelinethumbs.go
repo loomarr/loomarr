@@ -147,8 +147,7 @@ const (
 	// timelineThumbMaxPending bounds queued background warms. A Guide window asks for ~50 keys, so
 	// this is several windows deep; past it a key is simply asked for again on the next request.
 	timelineThumbMaxPending = 256
-	// timelineThumbWarmers bounds concurrent TMDB/image work, kinder to the provider than the old
-	// per-request fan-out of eight.
+	// timelineThumbWarmers bounds concurrent TMDB/image work, kind to the provider.
 	timelineThumbWarmers = 4
 )
 

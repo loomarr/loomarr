@@ -420,8 +420,8 @@ type ownCollections interface {
 
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
 // picker (programming-design §2.2): the household's collections (#2151 step 16). The media
-// server's hand-made collections were imported by the cutover rewrite, and its TMDB ones are the
-// Library's ready-made sets, so it is never asked.
+// server's own collections are not consulted: its hand-made ones live in the Library, and its
+// TMDB ones are the Library's ready-made sets.
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an

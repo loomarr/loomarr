@@ -59,8 +59,8 @@ type tunarrFillerClient interface {
 
 // available is resolved per call so an internal-only process can gain Tunarr filler
 // annotation after the connection is saved, without turning an empty Tunarr URL into a
-// warning on every ordinary local scan. A nil resolver preserves the adapter's historical
-// always-on behavior for direct construction in tests.
+// warning on every ordinary local scan. A nil resolver is always on, for direct construction
+// in tests.
 func (a fillerSourceAdapter) available() bool {
 	return a.configured == nil || a.configured()
 }
@@ -221,7 +221,7 @@ func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string)
 
 // fillerSweepStoreAdapter bridges the store → filler.SweepStore (§10 V54).
 //
-// ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
+// ⚠ It exists for ONE translation: `records.SweepableProposal` → `filler.SweepableProposal`. The
 // domain must not import the store (Tier 3), and the store's row type is a query result rather
 // than a domain concept, so the two are deliberately separate structs with the same shape.
 type fillerSweepStoreAdapter struct{ st records.Store }
@@ -454,7 +454,7 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []clips.Clip) {
 	}
 }
 
-// fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
+// fillerLanguageStoreAdapter bridges the store → filler.LanguageClipStore (the language gate, V40).
 type fillerLanguageStoreAdapter struct{ st store.Store }
 
 // ListClips is the job's work list: held candidates in, removed clips out (listWorkClips).
@@ -470,7 +470,7 @@ func (a fillerLanguageStoreAdapter) SetClipsRemoved(ctx context.Context, paths [
 	return a.st.SetClipsRemoved(ctx, paths, at)
 }
 
-// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeStore (§10 V44). Its work list
+// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeClipStore (§10 V44). Its work list
 // has the language gate's polarity (listWorkClips).
 type fillerTranscribeStoreAdapter struct{ st store.Store }
 
@@ -482,7 +482,7 @@ func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, pat
 	return a.st.SetClipTranscript(ctx, path, transcript, at)
 }
 
-// fillerVisionStoreAdapter bridges the store → filler.VisionStore (§10 V44). Same list polarity as
+// fillerVisionStoreAdapter bridges the store → filler.VisionClipStore (§10 V44). Same list polarity as
 // the transcribe adapter — held candidates in, removed clips out.
 type fillerVisionStoreAdapter struct{ st records.Store }
 
@@ -1218,7 +1218,7 @@ func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string,
 		// the same reel concurrently. A failed detection (above) returns before reaching here, so
 		// the row keeps its original state.
 		//
-		// ⚠ The error is DROPPED, per this adapter's convention (see `registerSources` below): it
+		// ⚠ The error is DROPPED, per this adapter's convention: it
 		// has no logger and reports through the event bus, whose `filler_split` frames describe
 		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
 		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
@@ -1275,9 +1275,8 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 
 // publishSplit emits one split-detection frame (§7, type=filler_split). The
 // terminal "success" frame is what hands the review UI its proposal id.
-// ⚠ The clip field is a HASH and is now named like one. Every caller already passed `clipID`;
-// only the parameter and the wire key said "path", which is the same naming drift that let the
-// proposal store a path in a field the lookup needed a hash for (§10 V51a).
+// ⚠ The clip field is a HASH and is named like one: calling it a path invites storing a path
+// in a field the proposal lookup needs a hash for (§10 V51a).
 func (a fillerServiceAdapter) publishSplit(jobID, clipHash, status, proposalID string, segments int, errMsg string) {
 	if a.bus == nil {
 		return
@@ -1356,7 +1355,7 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (pod.
 // CoverageDraft is Coverage for an UNSAVED selection (§10 V51f).
 //
 // ⚠ It takes the selection already resolved by the caller — `channels.SelectionFrom` at the API
-// boundary — for the same reason `PreviewDraft` stopped re-applying the scope era: the era's
+// boundary — for the same reason `PreviewDraft` does not re-apply the scope era: the era's
 // inherit-vs-explicitly-any decision has exactly one writer, and a second application here could
 // not tell an operator who chose "any era" from one who left the field alone.
 func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error) {
@@ -1431,20 +1430,19 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (pod.PoolReport, error) {
 	}
 
 	// Counted in SQL rather than recomputed here — "untagged" is the AI-tagging job's own
-	// predicate (store/clips.go), and a second Go definition of the word would be free to
+	// predicate (clipstore's `UntaggedOnly`), and a second Go definition of the word would be free to
 	// disagree with the job that acts on it.
 	//
-	// ⚠ **The predicate is shared; the SCOPE is not.** `ListUntaggedCommercials` sets
-	// `IncludeHeld: true` on purpose, because held clips are exactly what the tagger must tag.
-	// Reusing it here inherited that as a silent side effect, and every OTHER number in this
-	// report counts the catalog alone — so an install with 1 Ready clip and 12 held ones rendered
-	// "CLIPS 1 / 12 clips still need tagging", a headline its own subtext contradicts.
+	// ⚠ **The predicate is shared; the SCOPE is not.** The tagging job sets `IncludeHeld: true`
+	// on purpose, because held clips are exactly what the tagger must tag. Reusing that scope
+	// here would count held clips while every OTHER number in this report counts the catalog
+	// alone — an install with 1 Ready clip and 12 held ones would render "CLIPS 1 / 12 clips
+	// still need tagging", a headline its own subtext contradicts.
 	//
 	// Counting held clips here is not merely inconsistent, it is unactionable: the strip's advice
 	// is to go and tag them, and they are not in the Catalog to tag. Incoming carries its own
 	// count for that queue.
-	// Counted in SQL, not materialised: this loaded every column of every untagged row purely
-	// to take len() of the slice.
+	// Counted in SQL, not materialised.
 	report.Untagged, err = a.store.CountClips(ctx, clipstore.ClipFilter{UntaggedOnly: true})
 	if err != nil {
 		return pod.PoolReport{}, err
@@ -1456,15 +1454,11 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (pod.PoolReport, error) {
 // sandbox) — the same seed as the saved preview (so only the selection differs), but the
 // caller's unsaved selection in place of the persisted one.
 //
-// ⚠ **It no longer re-applies the scope era, and removing that is a correctness fix rather than
-// tidying (V51f).** The rule lived in THREE places: `channels.SelectionForChannel` (applied it),
-// `api.fillerSelectionToDomain` (did not), and here (applied it) — so the API's omission was
-// silently rescued one layer down, which is why nothing looked broken. With the era a real range
-// and "explicitly any" a reachable state, this copy becomes actively wrong: it keyed off
-// `sel.Era == 0`, which cannot tell *unset* from an operator who chose ANY, so it would re-inherit
-// the channel's era over the top of an explicit choice — the exact bug §10 V51f exists to fix.
-// `channels.SelectionFrom` is now the single writer, applied at the API boundary where the draft
-// policy (and therefore the DRAFT's scope, not the saved channel's) is known.
+// ⚠ **It does not re-apply the scope era, and that is a correctness rule (V51f).** With the era a
+// real range and "explicitly any" a reachable state, a copy keyed off `sel.Era == 0` cannot tell
+// *unset* from an operator who chose ANY, so it would re-inherit the channel's era over the top of
+// an explicit choice. `channels.SelectionFrom` is the single writer, applied at the API boundary
+// where the draft policy (and therefore the DRAFT's scope, not the saved channel's) is known.
 func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
@@ -1498,10 +1492,8 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // difference is which archive.org query gets asked, which is why both live here rather than
 // the pack growing an acquisition path of its own.
 //
-// ⚠ This gives clipfetch.DiscoverCollection its first non-test caller. It shipped with V33
-// complete and conformant and reachable by nothing — the same built-but-unimported shape as
-// `filler_sources` (V33) and the eight instances before it. Worth naming, because the
-// function looking finished is exactly what made it easy to leave unwired.
+// ⚠ This is the only production caller of fetch.ArchiveDownloader.DiscoverCollection: the
+// starter pack reaches archive.org through here, not through an acquisition path of its own.
 func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
 	discoverer := fetch.NewArchiveDownloader()
 	var (
@@ -1538,8 +1530,7 @@ func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string
 //
 // ⚠ Split out from EnrichDiscovered so the omit-vs-zero rule is TESTABLE: the caller builds its
 // own ArchiveDownloader (there is no seam to stub), so a test through the adapter would have to
-// reach archive.org. Without this the rule was covered only by the API's fake, which implements
-// the rule itself — a test that proves the fake works, not the code.
+// reach archive.org.
 func discoveredStats(items []fetch.DiscoveredItem) map[string]api.DiscoveredClipStats {
 	out := make(map[string]api.DiscoveredClipStats, len(items))
 	for _, it := range items {
@@ -1551,7 +1542,7 @@ func discoveredStats(items []fetch.DiscoveredItem) map[string]api.DiscoveredClip
 	return out
 }
 
-// discoveredClips maps a clipfetch result to the DTO. Shared by both discovery modes so a
+// discoveredClips maps a fetch.DiscoveryResult to the DTO. Shared by both discovery modes so a
 // field added for one cannot silently go missing from the other.
 func discoveredClips(res fetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
 	out := make([]api.DiscoveredClip, 0, len(res.Items))
@@ -1564,7 +1555,7 @@ func discoveredClips(res fetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
 			DurationMS: it.DurationMS,
 			Height:     it.Height,
 			// The item's own page, so an operator can look before adding. Built here
-			// rather than in clipfetch because it is a presentation concern.
+			// rather than in the fetch package because it is a presentation concern.
 			URL: "https://archive.org/details/" + it.ID,
 			// Archive's own thumbnail service: a stable URL pattern, no API call and no
 			// per-item cost, which is why the row gets an image for free while duration and
@@ -1630,7 +1621,7 @@ func archiveIDFrom(raw string) string {
 
 // resolveTool turns a configured tool path into a usable one, falling back to a PATH lookup.
 //
-// ⚠ **The fallback is what makes §15's documented behaviour true.** §15 has always described the
+// ⚠ **The fallback is what makes §15's documented behaviour true.** §15 describes the
 // ingest binaries as "defaulted to the vendored binaries", but the registry defaults are the empty
 // string and only the Docker image sets them — so a source build had ingest off even with the
 // tools installed. `settings.toolRunnable` does the same lookup for the FEATURE GATE; this is the
@@ -1778,8 +1769,3 @@ func (a fillerDefectStoreAdapter) SetClipDefectLabel(ctx context.Context, clipHa
 	}
 	return err
 }
-
-// (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its
-// candidate-list half is gone with the sweep — the split RUNG acts on the `is_composite` mark the
-// probe rung sets, so nothing lists the catalog looking for long files any more. Its
-// pending-proposal read moved onto `fillerSplitStoreAdapter`, which the rung already used.)

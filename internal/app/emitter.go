@@ -93,10 +93,8 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 // title sink: a dropped frame is a latency bug, never a correctness bug — GET
 // /v1/proposals/{id} is the source of truth on reconnect.
 // round carries the tool-loop iteration so the UI can show a long run progressing. It is a
-// real int now: it was stringified only because the payload used to be a flat
-// map[string]string, and the frontend mirror carried a warning that declaring it a number
-// there "would typecheck and then compare wrong at runtime". A typed frame removes the
-// hazard instead of documenting it. 0 (outside the loop) is still sent rather than omitted,
+// real int on a typed frame (a flat map[string]string payload would force stringifying it, which
+// a client would then compare wrong). 0 (outside the loop) is still sent rather than omitted,
 // so the frame shape never varies.
 func (e *eventEmitter) SuggestionPhase(jobID, phase string, round int) {
 	e.bus.Publish(events.Event{

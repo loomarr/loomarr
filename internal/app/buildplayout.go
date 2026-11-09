@@ -60,8 +60,7 @@ type playoutDeps struct {
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
 	// programmer is the SAME Tunarr adapter instance buildChannels built (not an override-aware
-	// one: the Live TV URL fallback always reads the live tunarr.url setting, same as before
-	// this seam existed — see liveTVURLsFor).
+	// one: the Live TV URL fallback always reads the live tunarr.url setting — see liveTVURLsFor).
 	programmer         tunarr.Adapter
 	log                *slog.Logger
 	processDiagnostics *diagnostics.ProcessManager
@@ -71,7 +70,7 @@ type playoutDeps struct {
 	// tone-map self-check.
 	capacityProbe bool
 	startup       *diagnostics.Startup
-	// watermarks draws the channel's bug on programme items (#1512 phase 1d).
+	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
 }
 
@@ -310,7 +309,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	if store.PublishesInvalidations(store.DialectOf(st)) {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
-	// Live playout is the channel packager (#1512 phase 2): one encoder per scheduled item,
+	// Live playout is the channel packager (#1512): one encoder per scheduled item,
 	// stitched in-process into gapless fMP4 HLS for browsers and one continuous MPEG-TS per
 	// media-server tuner. One packager per watched channel, admitted against the transcode
 	// budget; viewers of a running channel join it.
