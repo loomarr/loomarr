@@ -27,6 +27,23 @@ describe("Chip", () => {
     expect(on).not.toEqual(off);
   });
 
+  it("keeps a status tone on the label while the chip is on", () => {
+    const off = markupOf(
+      <Chip selected={false} tone="danger">
+        3 errors
+      </Chip>,
+    );
+    const on = markupOf(
+      <Chip selected tone="danger">
+        3 errors
+      </Chip>,
+    );
+    const plain = markupOf(<Chip selected={false}>3 errors</Chip>);
+    expect(off).not.toEqual(plain);
+    const colourOf = (markup: string) => markup.match(/color:([^;"]+)/g)?.at(-1);
+    expect(colourOf(on)).toEqual(colourOf(off));
+  });
+
   it("names a chip with its accessibilityLabel", () => {
     expect(markupOf(<Chip accessibilityLabel="Show 2 hours">2H</Chip>)).toContain(
       'aria-label="Show 2 hours"',

@@ -7,7 +7,7 @@ import { useFocusLook } from "../focus-look";
 import { Text, type TextTone } from "../primitives";
 import { semanticRadius, semanticSpace } from "../tokens";
 
-type ChipTone = Extract<TextTone, "info" | "muted">;
+type ChipTone = Extract<TextTone, "danger" | "info" | "muted" | "success" | "warning">;
 
 type ChipProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
   /** The label. It names the chip to a screen reader unless `accessibilityLabel` says more. */
@@ -21,7 +21,10 @@ type ChipProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & 
   mono?: boolean;
   /** `pill` rounds the ends fully, for a suggestion the reader taps to fill a field. */
   shape?: "box" | "pill";
-  /** The label colour while the chip is off. */
+  /**
+   * The label colour: a status the chip filters by (danger, warning, success) or a link-like info.
+   * A muted chip takes the body colour while it is on.
+   */
   tone?: ChipTone;
 };
 
@@ -77,7 +80,11 @@ const Chip: ForwardRefExoticComponent<ChipProps & RefAttributes<ChipRef>> = forw
           paddingHorizontal={semanticSpace.inline + 2}
           paddingVertical={semanticSpace.inline / 2}
         >
-          <Text strong={on} textRole={mono ? "captionMono" : "caption"} tone={on ? "primary" : tone}>
+          <Text
+            strong={on}
+            textRole={mono ? "captionMono" : "caption"}
+            tone={on && tone === "muted" ? "primary" : tone}
+          >
             {children}
           </Text>
         </View>

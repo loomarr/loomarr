@@ -49,6 +49,12 @@ const ChipWorkshop = () => (
         <Chip mono onPress={() => undefined} selected>
           Play order
         </Chip>
+        <Chip onPress={() => undefined} selected={false} shape="pill" tone="danger">
+          2 errors
+        </Chip>
+        <Chip onPress={() => undefined} selected shape="pill" tone="warning">
+          5 warnings
+        </Chip>
       </Surface>
     </Surface>
     <Surface gap="control" padding="section">
