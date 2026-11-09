@@ -1,6 +1,6 @@
-import type { LibraryStatusOutputBody } from "@loomarr/api";
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibraryScanDTOStage } from "@loomarr/api/models/libraryScanDTOStage";
+import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
 import { ListLibraryItemsSort } from "@loomarr/api/models/listLibraryItemsSort";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
