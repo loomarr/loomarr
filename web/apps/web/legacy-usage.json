@@ -237,8 +237,13 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
+<<<<<<< HEAD
       "tailwindClasses": 131,
       "legacyUi": 2
+=======
+      "tailwindClasses": 126,
+      "legacyUi": 1
+>>>>>>> origin/ds-select-sweep-3
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 14

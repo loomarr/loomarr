@@ -28,12 +28,11 @@ test("automatic downloads expose simple defaults with optional per-source contro
   ).toBeVisible({ timeout: 10_000 });
   const globalSchedule = page.getByRole("combobox", { name: "Look for new clips" });
   const globalLimit = page.getByRole("textbox", { name: "Add up to" });
-  await expect(globalSchedule).toContainText("Every 6 hours");
+  await expect(globalSchedule.locator("option:checked")).toHaveText("Every 6 hours");
   await expect(globalLimit).toHaveValue("10");
   await expect(page.getByRole("link", { name: "Storage limits", exact: true })).toBeVisible();
 
-  await globalSchedule.click();
-  await page.getByRole("option", { name: "Every 12 hours" }).click();
+  await globalSchedule.selectOption({ label: "Every 12 hours" });
   await globalLimit.fill("4");
   await expect(
     page.getByText(
