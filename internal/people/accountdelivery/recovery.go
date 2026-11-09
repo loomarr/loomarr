@@ -1,4 +1,4 @@
-package app
+package accountdelivery
 
 import (
 	"context"
@@ -11,7 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
-type passwordRecoveryCoordinator struct {
+// PasswordRecovery runs the public password-recovery flow: it rate-limits each step, queues the
+// recovery email, and keeps every response uniform so it never reveals which accounts exist.
+type PasswordRecovery struct {
 	recovery       *auth.PasswordRecoveryService
 	notifications  passwordRecoveryNotifier
 	requestLimiter *auth.RateLimiter
@@ -23,7 +25,7 @@ type passwordRecoveryNotifier interface {
 	Publish(context.Context, notifications.PublishCommand) (notifications.Intent, bool, error)
 }
 
-func (c *passwordRecoveryCoordinator) Request(ctx context.Context, username, rateKey string) error {
+func (c *PasswordRecovery) Request(ctx context.Context, username, rateKey string) error {
 	if c == nil || c.recovery == nil || c.notifications == nil {
 		return fmt.Errorf("password recovery is unavailable")
 	}
@@ -52,7 +54,7 @@ func (c *passwordRecoveryCoordinator) Request(ctx context.Context, username, rat
 	return nil
 }
 
-func (c *passwordRecoveryCoordinator) Preview(
+func (c *PasswordRecovery) Preview(
 	ctx context.Context,
 	grant string,
 	rateKey string,
@@ -66,7 +68,7 @@ func (c *passwordRecoveryCoordinator) Preview(
 	return c.recovery.Preview(ctx, grant)
 }
 
-func (c *passwordRecoveryCoordinator) Redeem(
+func (c *PasswordRecovery) Redeem(
 	ctx context.Context,
 	grant string,
 	password string,

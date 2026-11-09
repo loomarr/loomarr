@@ -39,7 +39,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`platform/httpx`** · 14 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`platform/jobs`** · 8 importers · → `platform/store`, `platform/store/jobstore`
+- **`platform/jobs`** · 9 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
@@ -61,11 +61,11 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 24 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
+- **`platform/settings`** · 25 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 9 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 35 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 36 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 9 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.

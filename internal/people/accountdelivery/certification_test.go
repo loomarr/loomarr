@@ -1,4 +1,4 @@
-package app
+package accountdelivery
 
 import (
 	"context"
@@ -64,10 +64,10 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		sequence++
 		return fmt.Sprintf("certification-notification-%d", sequence)
 	}, func() time.Time { return now })
-	delivery := &invitationDeliveryCoordinator{
+	delivery := &InvitationDelivery{
 		invitations: invitationService, notifications: notificationService,
 	}
-	recoveryCoordinator := &passwordRecoveryCoordinator{
+	recoveryCoordinator := &PasswordRecovery{
 		recovery: recoveryService, notifications: notificationService,
 	}
 

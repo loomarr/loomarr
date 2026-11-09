@@ -175,7 +175,7 @@ var areas = []area{
 			"Loomarr keeps in its database.",
 		Packages: []string{
 			"people/auth", "people/access", "people/contact",
-			"people/secretprotection", "people/protectedsettings", "people/keyrotation", "people/notifications",
+			"people/secretprotection", "people/protectedsettings", "people/keyrotation", "people/notifications", "people/accountdelivery",
 		},
 		MayImport: map[string]string{
 			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
