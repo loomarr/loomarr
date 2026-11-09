@@ -70,6 +70,19 @@ const IconographyGallery = () => (
           <Icon accessibilityLabel="Warning" glyph={icons.warning} size="control" tone="warning" />
           <Icon accessibilityLabel="Unavailable" glyph={icons.close} size="control" tone="danger" />
           <Icon accessibilityLabel="Disabled" glyph={icons.settings} size="control" tone="disabled" />
+          <Icon accessibilityLabel="Quiet" glyph={icons.info} size="control" tone="muted" />
+          <Icon accessibilityLabel="Suggestion" glyph={icons.suggest} size="control" tone="suggest" />
+          <span
+            style={{
+              alignItems: "center",
+              color: semanticColors.state.success,
+              display: "inline-flex",
+              gap: 8,
+            }}
+          >
+            <Icon decorative glyph={icons.passed} size="control" tone="inherit" />
+            Follows the text colour
+          </span>
         </div>
       </section>
     </div>
