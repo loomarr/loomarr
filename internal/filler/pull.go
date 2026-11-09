@@ -1,6 +1,10 @@
 package filler
 
-import "time"
+import (
+	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/pod"
+)
 
 // A PULL is filler acquisition's approval gate (§10 V35).
 //
@@ -36,13 +40,13 @@ type PullPlanRow struct {
 	RemoteID string `json:"remoteId,omitempty"`
 	// URL is the exact item payload approved for ingest. Collection URLs exist only on legacy
 	// pre-V66 pulls and are resolved by the approval compatibility path.
-	URL          string    `json:"url,omitempty"`
-	License      string    `json:"license,omitempty"`
-	ObservedYear int       `json:"observedYear,omitempty"`
-	PublishedAt  string    `json:"publishedAt,omitempty"`
-	DurationMS   int       `json:"durationMs,omitempty"`
-	Height       int       `json:"height,omitempty"`
-	Geography    Geography `json:"geography,omitempty"`
+	URL          string        `json:"url,omitempty"`
+	License      string        `json:"license,omitempty"`
+	ObservedYear int           `json:"observedYear,omitempty"`
+	PublishedAt  string        `json:"publishedAt,omitempty"`
+	DurationMS   int           `json:"durationMs,omitempty"`
+	Height       int           `json:"height,omitempty"`
+	Geography    pod.Geography `json:"geography,omitempty"`
 	// Tag is a short label for the row's coloured chip ("1990s", "kids").
 	Tag string `json:"tag"`
 	// Name is the collection's operator-facing name.

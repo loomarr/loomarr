@@ -414,25 +414,8 @@ func (s *sqlStore) DeleteChannel(ctx context.Context, id string, expectedRevisio
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete channel %s: commit: %w", id, err)
 	}
-	// Best-effort: drop the channel's image refs so its icon becomes collectable.
-	//
-	// ⚠ **This replaced `DELETE FROM channel_icons` in V52 phase 8, and the swap fixed a LEAK retired-ok
-	// rather than merely renaming a cleanup.** Phase 5 moved icon bytes to the image service but
-	// left this line deleting the old blob table, so a deleted channel's `image_refs` row survived
-	// it — and a ref is exactly what tells the GC an image is still in use (§22). The icon was
-	// therefore never orphaned and never collected: bytes on disk, referenced by a channel that no
-	// longer exists, for the life of the install. `DeleteImageRefs` had no caller at all until now.
-	//
-	// A failure here shouldn't fail the delete (the channel row is already gone), so it is
-	// logged by the caller path, not surfaced — mirror the delete's fire-and-forget shape. The
-	// cost of a miss is a retained image, which the GC's orphan sweep collects on a later pass
-	// once the ref does go; the cost of failing the delete would be a channel that cannot be
-	// removed.
-	//
-	// The literal "channel" matches api.ownerKindChannel. It is spelled out rather than imported
-	// because internal/platform/store imports no domain package — the same rule every other adapter here
-	// follows.
-	_ = s.DeleteImageRefs(ctx, "channel", id)
+	// The channel's icon and watermark refs went with the row (channel_images cascades, #2793), so
+	// the GC can collect them; a deleted channel can no longer pin its images.
 	return nil
 }
 

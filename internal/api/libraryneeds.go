@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -45,6 +46,12 @@ func (s *Server) registerLibraryNeeds(api huma.API) {
 		Description: "Undoes a link or an ignore. A title nothing else identifies needs you again.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.unanswerLibraryItem)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "chooseLibraryEpisodeOrder", Method: http.MethodPost, Path: "/v1/library/items/{id}/episode-order",
+		Summary:     "Say which order a show's episodes are in",
+		Description: "TMDB's own seasons, one of its other orders, or the names and numbers in the files. Its episodes are read again with it.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, RoleAdmin), s.chooseLibraryEpisodeOrder)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "searchLibraryTitles", Method: http.MethodGet, Path: "/v1/library/search",
 		Summary:     "Search TMDB for a title",
@@ -95,10 +102,43 @@ type libraryProblemDTO struct {
 	ExtraBytes int64          `json:"extraBytes" doc:"What a movie's extra copies take, in bytes; 0 for none"`
 }
 
+// librarySeasonSizeDTO is how many episodes one season has.
+type librarySeasonSizeDTO struct {
+	Season   int `json:"season" doc:"0 is specials"`
+	Episodes int `json:"episodes"`
+}
+
+// libraryOrderNeedDTO is a show whose episodes keep their files' names and numbers until the
+// household says which order its files follow.
+type libraryOrderNeedDTO struct {
+	Item    libraryItemDTO          `json:"item"`
+	Disk    []librarySeasonSizeDTO  `json:"disk" doc:"How far each season runs on disk: its highest episode, by season"`
+	Files   []libraryOrderFileDTO   `json:"files" doc:"The files of the episodes that wait, in path order"`
+	Choices []libraryOrderChoiceDTO `json:"choices" doc:"TMDB's own seasons, then its other orders; empty while the show's details are fetched"`
+}
+
+type libraryOrderFileDTO struct {
+	Path    string `json:"path" doc:"The file on this machine"`
+	Season  int    `json:"season" doc:"As the file numbers it"`
+	Episode int    `json:"episode" doc:"As the file numbers it"`
+}
+
+// libraryOrderChoiceDTO is one order a show's files may follow.
+type libraryOrderChoiceDTO struct {
+	Choice   string                 `json:"choice" enum:"catalog,order" doc:"catalog is TMDB's own seasons; order is one of its other orders"`
+	OrderID  string                 `json:"orderId,omitempty" doc:"The order to send back; only with choice order"`
+	Kind     string                 `json:"kind,omitempty" enum:"aired,absolute,dvd,digital,story,production,tv" doc:"What kind of order it is; only with choice order"`
+	Name     string                 `json:"name,omitempty" doc:"TMDB's name for it; only with choice order"`
+	Seasons  []librarySeasonSizeDTO `json:"seasons" doc:"Its layout; empty while an order's layout is fetched"`
+	Episodes int                    `json:"episodes" doc:"How many episodes it has in all"`
+	Fits     bool                   `json:"fits" doc:"Every season on disk ends where its season does"`
+}
+
 type listLibraryNeedsOutput struct {
 	Body struct {
-		Needs    []libraryNeedDTO    `json:"needs"`
-		Problems []libraryProblemDTO `json:"problems" doc:"Titles that need a look, by name"`
+		Needs    []libraryNeedDTO      `json:"needs"`
+		Orders   []libraryOrderNeedDTO `json:"orders" doc:"Shows whose episode order to say, by name"`
+		Problems []libraryProblemDTO   `json:"problems" doc:"Titles that need a look, by name"`
 	}
 }
 
@@ -115,13 +155,24 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
-	summaries := make([]store.LibraryItemSummary, 0, len(needs)+len(problems))
+	orders, err := svc.OrderNeeds(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
+	}
+	summaries := make([]store.LibraryItemSummary, 0, len(needs)+len(orders)+len(problems))
 	for _, n := range needs {
 		summaries = append(summaries, n.LibraryItemSummary)
+	}
+	for _, o := range orders {
+		summaries = append(summaries, o.LibraryItemSummary)
 	}
 	summaries = append(summaries, problems...)
 	posters := s.libraryPosters(ctx, summaries)
 	out := &listLibraryNeedsOutput{}
+	out.Body.Orders = make([]libraryOrderNeedDTO, 0, len(orders))
+	for _, o := range orders {
+		out.Body.Orders = append(out.Body.Orders, libraryOrderNeedOf(o, posters))
+	}
 	out.Body.Problems = make([]libraryProblemDTO, 0, len(problems))
 	for _, p := range problems {
 		out.Body.Problems = append(out.Body.Problems, libraryProblemDTO{
@@ -206,6 +257,54 @@ func (s *Server) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInput
 	return nil, libraryAnswerErr(svc.Unanswer(ctx, in.ID))
 }
 
+// libraryOrderNeedOf is an order need as Needs you shows it: the disk's seasons by number.
+func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*ImageDTO) libraryOrderNeedDTO {
+	dto := libraryOrderNeedDTO{
+		Item:    libraryItemOf(o.LibraryItemSummary, posters),
+		Disk:    make([]librarySeasonSizeDTO, 0, len(o.Last)),
+		Files:   make([]libraryOrderFileDTO, 0, len(o.Waiting)),
+		Choices: make([]libraryOrderChoiceDTO, 0, len(o.Choices)),
+	}
+	for season, last := range o.Last {
+		dto.Disk = append(dto.Disk, librarySeasonSizeDTO{Season: season, Episodes: last})
+	}
+	slices.SortFunc(dto.Disk, func(a, b librarySeasonSizeDTO) int { return a.Season - b.Season })
+	for _, f := range o.Waiting {
+		dto.Files = append(dto.Files, libraryOrderFileDTO{Path: f.Path, Season: f.Season, Episode: f.Episode})
+	}
+	for _, c := range o.Choices {
+		choice := libraryOrderChoiceDTO{
+			Choice: string(c.Choice), Seasons: make([]librarySeasonSizeDTO, 0, len(c.Seasons)), Fits: c.Fits,
+		}
+		for _, s := range c.Seasons {
+			choice.Seasons = append(choice.Seasons, librarySeasonSizeDTO{Season: s.Number, Episodes: s.Episodes})
+			choice.Episodes += s.Episodes
+		}
+		if c.Choice == store.OrderByOrder {
+			choice.OrderID, choice.Kind, choice.Name = c.Order.ID, string(c.Order.Kind), c.Order.Name
+			choice.Episodes = max(choice.Episodes, c.Order.Episodes)
+		}
+		dto.Choices = append(dto.Choices, choice)
+	}
+	return dto
+}
+
+type chooseLibraryEpisodeOrderInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Choice  string `json:"choice" enum:"catalog,order,files" doc:"files keeps the name and number in each file"`
+		OrderID string `json:"orderId,omitempty" maxLength:"64" doc:"The order a choice names; only with choice order"`
+	}
+}
+
+func (s *Server) chooseLibraryEpisodeOrder(ctx context.Context, in *chooseLibraryEpisodeOrderInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	return nil, libraryAnswerErr(svc.ChooseOrder(ctx, in.ID, store.LibraryOrderChoice(in.Body.Choice), in.Body.OrderID))
+}
+
 func libraryAnswerErr(err error) error {
 	switch {
 	case err == nil:
@@ -215,6 +314,10 @@ func libraryAnswerErr(err error) error {
 	case errors.Is(err, scan.ErrNotAnswerable):
 		return apiErr(http.StatusConflict, "Loomarr didn't find this title itself",
 			"Only titles Loomarr found in your media folders can be answered here.")
+	case errors.Is(err, store.ErrBadEpisodeOrder):
+		return apiErr(http.StatusBadRequest, "Pick one order", "Name an order only when you choose one of TMDB's other orders.")
+	case errors.Is(err, scan.ErrUnknownOrder):
+		return apiErr(http.StatusConflict, "TMDB no longer lists that order", "Reload Needs you and choose again.")
 	default:
 		return apiErrWithCause(http.StatusInternalServerError, "Couldn't save your answer", "Try again in a moment.", err)
 	}

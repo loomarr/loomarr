@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -46,7 +47,7 @@ func (s *sqlStore) ListSettledGeographyClips(ctx context.Context) ([]SettledGeog
 		WHERE c.removed_at = 0 AND c.is_composite = false AND c.geographic_scope IN (?, ?)
 		  AND e.state = ? AND e.evidence_kind <> ?
 		ORDER BY c.hash`),
-		string(enrichment.AxisGeography), string(filler.GeographicNational), string(filler.GeographicLocal),
+		string(enrichment.AxisGeography), string(pod.GeographicNational), string(pod.GeographicLocal),
 		string(enrichment.StatusComplete), string(enrichment.EvidenceInference))
 	if err != nil {
 		return nil, fmt.Errorf("list settled geography clips: %w", err)

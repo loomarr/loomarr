@@ -13,7 +13,7 @@ import (
 // future change adds one, this test (and the type surface it asserts) must be the
 // thing that has to change, loudly.
 func TestFillerNeverBecomesAProgram(t *testing.T) {
-	// A PodEntry has no TunarrProgramID→program bridge: its Kind is always a filler
+	// A pod.Entry has no TunarrProgramID→program bridge: its Kind is always a filler
 	// Kind, never a program. Assert the domain offers no way to make a program slot
 	// from a clip — the only slot constructor filler feeds is SlotFiller.
 	clip := filler.Clip{Path: "c1", Role: filler.Commercial, DurationMs: 30000}

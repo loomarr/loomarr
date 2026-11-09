@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 )
 
@@ -35,8 +35,8 @@ func (s *Server) groundOperatorTags(ctx context.Context, raw []string) ([]string
 // refusing it before the edit writes anything. Every station resolves against the directory
 // (#2059 decision 5): a local clip airs near it, and a national one keeps it as provenance.
 func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDTO) (enrichment.Geography, error) {
-	scope := filler.GeographicScope(g.Scope)
-	geo := filler.Geography{Country: g.Country}.Normalize()
+	scope := pod.GeographicScope(g.Scope)
+	geo := pod.Geography{Country: g.Country}.Normalize()
 	if err := geo.Validate(); err != nil {
 		return enrichment.Geography{}, errUnprocessable("Invalid geography", err.Error())
 	}
@@ -47,7 +47,7 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 		}
 	}
 	station := ""
-	if typed := strings.TrimSpace(g.Station); typed != "" && scope != filler.GeographicUnknown {
+	if typed := strings.TrimSpace(g.Station); typed != "" && scope != pod.GeographicUnknown {
 		dir, err := s.stationDirectory(ctx)
 		if err != nil {
 			return enrichment.Geography{}, huma.Error500InternalServerError("load broadcast stations", err)
@@ -62,13 +62,13 @@ func (s *Server) resolveOperatorGeography(ctx context.Context, g ClipGeographyDT
 		station, geo.Country = found.ID, found.Country
 	}
 	switch scope {
-	case filler.GeographicUnknown:
-		geo = filler.Geography{}
-	case filler.GeographicNational:
+	case pod.GeographicUnknown:
+		geo = pod.Geography{}
+	case pod.GeographicNational:
 		if geo.Country == "" {
 			return enrichment.Geography{}, errUnprocessable("Invalid geography", "National clips require a country.")
 		}
-	case filler.GeographicLocal:
+	case pod.GeographicLocal:
 		if station == "" {
 			return enrichment.Geography{}, errUnprocessable("Invalid geography", "Local clips require the broadcast station they belong to.")
 		}

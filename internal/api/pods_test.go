@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -24,29 +25,29 @@ import (
 // passes the id through rather than previewing some other channel.
 type fakePods struct {
 	asked      []string
-	draftAsked []filler.Selection // the draft selections PreviewDraft received
+	draftAsked []pod.Selection // the draft selections PreviewDraft received
 	// ⚠ SEPARATE from draftAsked, so a test can assert the pod and the meter were built from
 	// the SAME selection — which is the property V51f added CoverageDraft for. One shared slice
 	// would make "both got the draft" indistinguishable from "one got it twice".
-	draftCoverageAsked []filler.Selection
-	atAsked            []filler.BreakSlot // the break slots PreviewAt / PreviewAtMany received
-	batches            int                // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
-	pod                filler.Pod
-	coverage           filler.CoverageReport
-	pool               filler.PoolReport
+	draftCoverageAsked []pod.Selection
+	atAsked            []pod.BreakSlot // the break slots PreviewAt / PreviewAtMany received
+	batches            int             // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
+	pod                pod.Pod
+	coverage           pod.CoverageReport
+	pool               pod.PoolReport
 	// fits is what ClipFit returns, keyed by channel id; fitAsked records the clip paths it
 	// was asked about, so a test can prove the route resolves the id it was given.
-	fits     map[string]filler.Fit
+	fits     map[string]pod.Fit
 	fitAsked []string
 	err      error
 }
 
-func (f *fakePods) Preview(_ context.Context, channelID string) (filler.Pod, error) {
+func (f *fakePods) Preview(_ context.Context, channelID string) (pod.Pod, error) {
 	f.asked = append(f.asked, channelID)
 	return f.pod, f.err
 }
 
-func (f *fakePods) PreviewDraft(_ context.Context, channelID string, sel filler.Selection) (filler.Pod, error) {
+func (f *fakePods) PreviewDraft(_ context.Context, channelID string, sel pod.Selection) (pod.Pod, error) {
 	f.asked = append(f.asked, channelID)
 	f.draftAsked = append(f.draftAsked, sel)
 	return f.pod, f.err
@@ -54,7 +55,7 @@ func (f *fakePods) PreviewDraft(_ context.Context, channelID string, sel filler.
 
 // PreviewAt records the BREAK SLOT it was asked for, so a test can prove the guide resolves
 // each break individually rather than reusing one channel-wide pod.
-func (f *fakePods) PreviewAt(_ context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error) {
+func (f *fakePods) PreviewAt(_ context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error) {
 	f.asked = append(f.asked, channelID)
 	f.atAsked = append(f.atAsked, slot)
 	return f.pod, f.err
@@ -62,11 +63,11 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, slot filler.Br
 
 // PreviewAtMany records the batch and every break slot in it, so a test can prove the guide
 // asks once per channel row and still resolves each break individually.
-func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, slots []filler.BreakSlot) ([]filler.Pod, error) {
+func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error) {
 	f.batches++
 	f.asked = append(f.asked, channelID)
 	f.atAsked = append(f.atAsked, slots...)
-	pods := make([]filler.Pod, len(slots))
+	pods := make([]pod.Pod, len(slots))
 	for i := range pods {
 		pods[i] = f.pod
 	}
@@ -75,7 +76,7 @@ func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, slots []fi
 
 // Coverage records the channel so a test can prove the route resolves the id it was given
 // rather than reporting on some other channel's catalog.
-func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.CoverageReport, error) {
+func (f *fakePods) Coverage(_ context.Context, channelID string) (pod.CoverageReport, error) {
 	f.asked = append(f.asked, channelID)
 	return f.coverage, f.err
 }
@@ -85,9 +86,9 @@ func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.Coverag
 //
 // ⚠ It honours ctx. A double that ignores cancellation cannot catch a handler doing work through
 // a dead context, which is a class this repo has already been bitten by twice.
-func (f *fakePods) CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error) {
+func (f *fakePods) CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error) {
 	if err := ctx.Err(); err != nil {
-		return filler.CoverageReport{}, err
+		return pod.CoverageReport{}, err
 	}
 	f.asked = append(f.asked, channelID)
 	f.draftCoverageAsked = append(f.draftCoverageAsked, sel)
@@ -95,12 +96,12 @@ func (f *fakePods) CoverageDraft(ctx context.Context, channelID string, sel fill
 }
 
 // ClipFit records the clip path so a test can prove the route asks about the clip in the URL.
-func (f *fakePods) ClipFit(_ context.Context, clipPath string) (map[string]filler.Fit, error) {
+func (f *fakePods) ClipFit(_ context.Context, clipPath string) (map[string]pod.Fit, error) {
 	f.fitAsked = append(f.fitAsked, clipPath)
 	return f.fits, f.err
 }
 
-func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
+func (f *fakePods) Pool(context.Context) (pod.PoolReport, error) {
 	return f.pool, f.err
 }
 
@@ -128,13 +129,13 @@ func newPodsServer(t *testing.T) (*httptest.Server, records.Store, *fakePods) {
 // "why are my commercials wrong" (§10 fallback ladder).
 func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.pod = filler.Pod{
-		Entries: []filler.PodEntry{
+	fp.pod = pod.Pod{
+		Entries: []pod.Entry{
 			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Role: filler.Bumper, DurationMs: 5000},
 			{Hash: "h2", TunarrProgramID: "p2", Name: "Crunchlings", Role: filler.Commercial, DurationMs: 30000},
 		},
 		TotalMs:    35000,
-		MatchLevel: filler.MatchExact,
+		MatchLevel: pod.MatchExact,
 	}
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", adminToken, "")
@@ -175,8 +176,8 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	if body.TotalMs != 35000 {
 		t.Errorf("totalMs = %d, want 35000", body.TotalMs)
 	}
-	if body.MatchLevel != string(filler.MatchExact) {
-		t.Errorf("matchLevel = %q, want %q", body.MatchLevel, filler.MatchExact)
+	if body.MatchLevel != string(pod.MatchExact) {
+		t.Errorf("matchLevel = %q, want %q", body.MatchLevel, pod.MatchExact)
 	}
 	if len(fp.asked) != 1 || fp.asked[0] != "ch-1" {
 		t.Errorf("previewed %v, want exactly [ch-1]", fp.asked)
@@ -188,7 +189,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 // that never means failure.
 func TestPreviewPods_EmptyCatalogIsEmptyArray(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.pod = filler.Pod{}
+	fp.pod = pod.Pod{}
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -218,9 +219,9 @@ func TestPreviewPods_VisibleToAnyAuthenticatedUser(t *testing.T) {
 func TestPreviewPods_MemberRouteWithholdsFileSlug(t *testing.T) {
 	const slug = "commercial-widgetmax-1991"
 	srv, _, fp := newPodsServer(t)
-	fp.pod = filler.Pod{Entries: []filler.PodEntry{
+	fp.pod = pod.Pod{Entries: []pod.Entry{
 		{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Role: filler.Commercial, DurationMs: 30000},
-	}, TotalMs: 30000, MatchLevel: filler.MatchExact}
+	}, TotalMs: 30000, MatchLevel: pod.MatchExact}
 
 	read := func(method, path, body string) string {
 		t.Helper()
@@ -253,9 +254,9 @@ func TestPreviewPods_UnknownChannelIs404(t *testing.T) {
 // adapter, so the channel page can show exactly what a filler change would air before Apply.
 func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.pod = filler.Pod{Entries: []filler.PodEntry{
+	fp.pod = pod.Pod{Entries: []pod.Entry{
 		{TunarrProgramID: "p1", Name: "Pinned Ad", Role: filler.Commercial, DurationMs: 30000},
-	}, TotalMs: 30000, MatchLevel: filler.MatchExact}
+	}, TotalMs: 30000, MatchLevel: pod.MatchExact}
 
 	body := `{"filler":{"audience":"kids","categories":["toys"],"pinned":["p1"]}}`
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken, body)
@@ -305,12 +306,12 @@ func TestPreviewDraftPods_RejectsTooShortBreakDuration(t *testing.T) {
 // what makes that unrepresentable, rather than asserting a number the handler could compute twice.
 func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.coverage = filler.CoverageReport{
-		Level: filler.MatchAudience,
+	fp.coverage = pod.CoverageReport{
+		Level: pod.MatchAudience,
 		Total: 7,
-		Criteria: []filler.CriterionCoverage{
-			{Criterion: filler.CriterionAudience, Clips: 0},
-			{Criterion: filler.CriterionEra, Clips: 7},
+		Criteria: []pod.CriterionCoverage{
+			{Criterion: pod.CriterionAudience, Clips: 0},
+			{Criterion: pod.CriterionEra, Clips: 7},
 		},
 	}
 
@@ -326,13 +327,13 @@ func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 	if len(fp.draftAsked) != 1 {
 		t.Fatalf("PreviewDraft called %d times, want 1", len(fp.draftAsked))
 	}
-	pod, meter := fp.draftAsked[0], fp.draftCoverageAsked[0]
-	if pod.Audience != meter.Audience || pod.Era != meter.Era {
-		t.Errorf("pod was built from %+v but the meter from %+v — they must describe one selection", pod, meter)
+	built, meter := fp.draftAsked[0], fp.draftCoverageAsked[0]
+	if built.Audience != meter.Audience || built.Era != meter.Era {
+		t.Errorf("pod was built from %+v but the meter from %+v — they must describe one selection", built, meter)
 	}
 	// ⚠ Both bounds reach the domain: the era range is the V51f fix, and a handler that dropped
 	// `to` here would look identical to the pre-fix behaviour.
-	if meter.Era != (filler.EraRange{From: 1990, To: 1999}) {
+	if meter.Era != (pod.EraRange{From: 1990, To: 1999}) {
 		t.Errorf("era reached the domain as %+v, want 1990-1999", meter.Era)
 	}
 
@@ -367,7 +368,7 @@ func TestPreviewDraftPods_PreservesDisjointEraWindows(t *testing.T) {
 	if len(fp.draftAsked) != 1 || len(fp.draftCoverageAsked) != 1 {
 		t.Fatalf("pod/coverage calls = %d/%d, want 1/1", len(fp.draftAsked), len(fp.draftCoverageAsked))
 	}
-	want := []filler.EraRange{{From: 1970, To: 1979}, {From: 1990, To: 1999}}
+	want := []pod.EraRange{{From: 1970, To: 1979}, {From: 1990, To: 1999}}
 	if !reflect.DeepEqual(fp.draftAsked[0].EraWindows, want) || !reflect.DeepEqual(fp.draftCoverageAsked[0].EraWindows, want) {
 		t.Errorf("draft era windows = pod:%+v coverage:%+v, want %+v", fp.draftAsked[0].EraWindows, fp.draftCoverageAsked[0].EraWindows, want)
 	}
@@ -449,9 +450,9 @@ func TestClipFit_AnswersForEveryChannel(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fp.fits = map[string]filler.Fit{
-		"ch-1": {Level: filler.MatchExact},
-		"ch-2": {Level: filler.MatchBumperCard, Reason: filler.FitAudience},
+	fp.fits = map[string]pod.Fit{
+		"ch-1": {Level: pod.MatchExact},
+		"ch-2": {Level: pod.MatchBumperCard, Reason: pod.FitAudience},
 	}
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=ads%2Fcereal.mp4", adminToken, "")
@@ -498,9 +499,9 @@ func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	fp.fits = map[string]filler.Fit{}
+	fp.fits = map[string]pod.Fit{}
 	for _, id := range []string{"ch-1", "ch-2", "ch-3", "ch-4", "ch-5"} {
-		fp.fits[id] = filler.Fit{Level: filler.MatchExact}
+		fp.fits[id] = pod.Fit{Level: pod.MatchExact}
 	}
 
 	// Repeated, because map iteration order varies per RUN — one pass could agree by luck.
@@ -530,8 +531,8 @@ func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
 // hold, so an operator un-ticking "excluded" would see a pin they never made.
 func TestClipFit_ReportsPinAndExcludeAsStored(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.fits = map[string]filler.Fit{
-		"ch-1": {Level: filler.MatchBumperCard, Reason: filler.FitExcluded, Pinned: true, Excluded: true},
+	fp.fits = map[string]pod.Fit{
+		"ch-1": {Level: pod.MatchBumperCard, Reason: pod.FitExcluded, Pinned: true, Excluded: true},
 	}
 
 	rows := decodeFit(t, do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", adminToken, ""))
@@ -559,7 +560,7 @@ func TestClipFit_UnknownClipIs404(t *testing.T) {
 // which channels a clip serves; they cannot change it (the write is admin-only).
 func TestClipFit_IsReadableByAMember(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.fits = map[string]filler.Fit{"ch-1": {Level: filler.MatchExact}}
+	fp.fits = map[string]pod.Fit{"ch-1": {Level: pod.MatchExact}}
 
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 — a read-only note is member-visible", resp.StatusCode)

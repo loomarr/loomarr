@@ -225,7 +225,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   rotation, every commercial that aired re-sized every break, and the timeline walked from the
   anchor moved by tens of seconds to minutes at each reconcile (2026-10-24). Each break that airs
   is then assembled to its own slot's length, which is its hard budget. **One function owns the length**
-  (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
+  (`pod.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
   setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
   the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
   bumper together never exceed it, because the slot is cut at exactly the break length and anything
@@ -384,6 +384,6 @@ Formerly `design.md` §19.
   still backfills through the periodic sweep. One leader per channel under concurrency.
 - **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
   category variety, density, no-repeat-in-window, the holiday season and half
-  (`internal/filler/season_test.go`) and the commercial language and location
+  (`internal/filler/pod/season_test.go`) and the commercial language and location
   (`language_boundary_test.go`, `geography_test.go`); the fallback ladder degrades to a bumper card;
   filler never appears as a lineup programme; only real catalog clips are placed.

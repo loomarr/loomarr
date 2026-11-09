@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -40,9 +40,9 @@ func channelAt(country, place string) store.Channel {
 }
 
 // Invented places: "harbor" reaches fcc:1, "lakeside" reaches fcc:3.
-func retirementPolicy(country string) func() filler.Policy {
-	return func() filler.Policy {
-		return filler.Policy{Geography: filler.Geography{Country: country, Place: "harbor"},
+func retirementPolicy(country string) func() pod.Policy {
+	return func() pod.Policy {
+		return pod.Policy{Geography: pod.Geography{Country: country, Place: "harbor"},
 			LocalStations: func(_, place string) map[string]bool {
 				return map[string]map[string]bool{"harbor": {"fcc:1": true}, "lakeside": {"fcc:3": true}}[place]
 			}}

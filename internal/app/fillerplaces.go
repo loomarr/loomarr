@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -18,15 +19,15 @@ import (
 // own (#2059 decisions 7 and 8). No areas means no installation country, so nothing is bounded.
 func currentAreas(ctx context.Context, channels interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
-}, policy filler.Policy) ([]filler.Area, error) {
+}, policy pod.Policy) ([]pod.Area, error) {
 	list, err := channels.ListChannels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
 	}
-	places := make([]filler.Geography, 0, len(list))
+	places := make([]pod.Geography, 0, len(list))
 	for _, ch := range list {
 		if ch.Policy.Filler != nil && ch.Policy.Filler.Geography != nil {
-			places = append(places, filler.Geography{Country: ch.Policy.Filler.Geography.Country,
+			places = append(places, pod.Geography{Country: ch.Policy.Filler.Geography.Country,
 				Place: ch.Policy.Filler.Geography.Place})
 		}
 	}
@@ -36,7 +37,7 @@ func currentAreas(ctx context.Context, channels interface {
 // nearbyPlaceStations is every station within the radius of some current place.
 func nearbyPlaceStations(ctx context.Context, channels interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
-}, policy filler.Policy) (map[string]bool, error) {
+}, policy pod.Policy) (map[string]bool, error) {
 	areas, err := currentAreas(ctx, channels, policy)
 	if err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ type localCuratedSources struct {
 		ListChannels(ctx context.Context) ([]store.Channel, error)
 		SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
 	}
-	policy func() filler.Policy
+	policy func() pod.Policy
 	log    *slog.Logger
 }
 
@@ -91,7 +92,7 @@ type openArchiveSearch struct {
 	channels interface {
 		ListChannels(ctx context.Context) ([]store.Channel, error)
 	}
-	policy   func() filler.Policy
+	policy   func() pod.Policy
 	stations interface {
 		get(context.Context) (*station.Directory, error)
 	}
@@ -134,7 +135,7 @@ func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error)
 // nearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
 // nearby station held during an era gap, or ever when there is none. Sorted, so the searches a
 // pass rotates through are stable.
-func nearbyCallSigns(near map[string]bool, eras []filler.EraRange, directory *station.Directory) []string {
+func nearbyCallSigns(near map[string]bool, eras []pod.EraRange, directory *station.Directory) []string {
 	spans := [][2]string{{"", ""}}
 	if len(eras) > 0 {
 		spans = spans[:0]

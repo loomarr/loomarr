@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -886,7 +887,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
 	src := records.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
-	src.Geography = filler.Geography{Country: in.Body.Country}.Normalize()
+	src.Geography = pod.Geography{Country: in.Body.Country}.Normalize()
 	if err := src.Geography.Validate(); err != nil {
 		return nil, errUnprocessable("Invalid source geography", err.Error())
 	}
@@ -1014,12 +1015,12 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	// coverage is validated here and written by the branch below that owns the first refusable
 	// write: the folder's switch is a setting the environment can pin, which only the write
 	// itself can tell us, so there the coverage goes after it.
-	var geography filler.Geography
+	var geography pod.Geography
 	if in.Body.Geography != nil {
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
 		}
-		geography = filler.Geography{Country: in.Body.Geography.Country}.Normalize()
+		geography = pod.Geography{Country: in.Body.Geography.Country}.Normalize()
 		if err := geography.Validate(); err != nil {
 			return nil, errUnprocessable("Invalid source geography", err.Error())
 		}
@@ -1105,7 +1106,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 
 // setSourceGeography writes a validated coverage and names an unknown source the way every
 // source route does.
-func (s *Server) setSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
+func (s *Server) setSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
 	if err := s.store.SetFillerSourceGeography(ctx, id, geography); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return errNotFound("Source not found", "That source isn't registered — it may have been removed.")
@@ -1367,7 +1368,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	return out, nil
 }
 
-func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
+func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home pod.Geography) {
 	fetched := s.sourceProviders.Fetched(source.ID(row.Kind))
 	row.Actions = []FillerSourceAction{}
 	if row.Group {
@@ -1388,9 +1389,9 @@ func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home filler.Geogra
 	}
 
 	home = home.Normalize()
-	effective := filler.Geography{Country: row.Country}.Normalize()
+	effective := pod.Geography{Country: row.Country}.Normalize()
 	if effective.Country == "" {
-		effective = filler.Geography{Country: home.Country} // a source inherits the country, never a place
+		effective = pod.Geography{Country: home.Country} // a source inherits the country, never a place
 		if effective.Country == "" {
 			row.LocationSource = FillerSourceLocationMissing
 		} else {
@@ -1423,7 +1424,7 @@ func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home filler.Geogra
 	case home.Country == "":
 		row.Readiness = FillerSourceNeedsLocation
 		row.Actions = []FillerSourceAction{FillerSourceSetLocation}
-	case row.Country != "" && !filler.SourceGeographicallyEligible(effective, home):
+	case row.Country != "" && !pod.SourceGeographicallyEligible(effective, home):
 		row.Readiness = FillerSourceOutOfArea
 		row.Actions = []FillerSourceAction{FillerSourceEditLocation, FillerSourceDisable, FillerSourceRemove}
 	case fetched && !row.Fetchable:

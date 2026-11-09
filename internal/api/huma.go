@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -602,7 +603,7 @@ var ErrIngestUnavailable = errors.New("ingest tooling not present in this image"
 var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
 
 // PodPreviewer answers "what commercials would this channel get" without touching
-// Tunarr (§12). Implemented by filler.PodAdapter, which serves preview and the
+// Tunarr (§12). Implemented by pod.Adapter, which serves preview and the
 // reconciler from ONE code path — a preview that could diverge from what reconcile
 // attaches would be worse than none. nil ⇒ the route 501s.
 type PodPreviewer interface {
@@ -610,11 +611,11 @@ type PodPreviewer interface {
 	// using the SAME exported helpers the reconciler uses (channels.SelectionForChannel/
 	// PodSeed), so the API cannot accidentally preview a differently-seeded pod than the
 	// one that ships. This is the SAVED-state preview (GET …/pods).
-	Preview(ctx context.Context, channelID string) (filler.Pod, error)
+	Preview(ctx context.Context, channelID string) (pod.Pod, error)
 	// PreviewDraft assembles the pool for an UNSAVED draft selection (POST …/pods/preview,
 	// the sandbox), through the same assembler + seed — only the selection differs. It's
 	// what lets the channel page show exactly what a filler change would air before Apply.
-	PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error)
+	PreviewDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.Pod, error)
 	// PreviewAt assembles the pod for the break STARTING AT a specific instant — the guide's
 	// per-airing composition (§12 hover card), and what internal playout actually airs.
 	//
@@ -622,11 +623,11 @@ type PodPreviewer interface {
 	// channel draw from", while this answers "what plays in THIS break". Consecutive breaks
 	// must not replay the same adverts, which is only expressible with the start time. The pod is
 	// assembled to the slot's own length, so it never runs past the break the timeline gives it.
-	PreviewAt(ctx context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error)
+	PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error)
 	// PreviewAtMany is PreviewAt for many breaks of one channel, pod for pod, reading the
 	// channel, catalog and play history once (#1420). The guide uses it: one call per channel
 	// row instead of one per break.
-	PreviewAtMany(ctx context.Context, channelID string, slots []filler.BreakSlot) ([]filler.Pod, error)
+	PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error)
 	// Coverage reports which ladder rung this channel's breaks would draw from, and how much
 	// material each rung holds (V29a/V29b). Same catalog, same Window, same policy as Preview —
 	// it counts what is available instead of drawing from it, which is why it takes no seed.
@@ -634,7 +635,7 @@ type PodPreviewer interface {
 	// On the SAME interface as the previews deliberately: the meter's whole reason to exist is
 	// that it agrees with what airs, and splitting it onto its own service is the first step
 	// toward two implementations of "what would this channel get".
-	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
+	Coverage(ctx context.Context, channelID string) (pod.CoverageReport, error)
 	// CoverageDraft is Coverage for an UNSAVED selection — the draft half of the sandbox
 	// `PreviewDraft` already provides for pods (§10 V51f).
 	//
@@ -642,7 +643,7 @@ type PodPreviewer interface {
 	// selections during an edit: the meter read the saved policy, the timeline the draft. Both
 	// now come from one selection in one response, which is the same "cannot disagree" property
 	// `Coverage` was added for in the first place, applied to the editing path.
-	CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error)
+	CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error)
 	// ClipFit reports how ONE clip relates to EVERY channel's selection (§10 V35 item 1.7) —
 	// the override picker's per-channel note, keyed by channel id.
 	//
@@ -653,7 +654,7 @@ type PodPreviewer interface {
 	//
 	// ⚠ CLIP-centric, not channel-centric: the picker shows one clip against every channel, so
 	// a per-channel endpoint would be N requests to render one card.
-	ClipFit(ctx context.Context, clipPath string) (map[string]filler.Fit, error)
+	ClipFit(ctx context.Context, clipPath string) (map[string]pod.Fit, error)
 	// Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35):
 	// how much material exists, and what every live channel's breaks currently resolve to.
 	//
@@ -661,7 +662,7 @@ type PodPreviewer interface {
 	// called once per channel. An aggregate that computed its own would be a second opinion
 	// about the ladder, and the two would disagree on exactly the pages an operator compares
 	// when a channel looks wrong.
-	Pool(ctx context.Context) (filler.PoolReport, error)
+	Pool(ctx context.Context) (pod.PoolReport, error)
 }
 
 // GuideReader answers "what is airing now" from whichever backend streams each channel.

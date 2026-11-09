@@ -206,7 +206,7 @@ RETIRED=(
   # Anyone widening SEARCH to `web/` must add an explicit exemption for that file in the same edit,
   # or the guard fails on the one file that is right.
   'vi.stubGlobal("fetch"|V53e: use the shared MSW layer (src/test/msw) — a hand-rolled fetch stub is untyped AND unbound to a route'
-  # V51f: three `filler.Policy` fields that were set in TESTS AND NOWHERE ELSE — no settings key,
+  # V51f: three `pod.Policy` fields that were set in TESTS AND NOWHERE ELSE — no settings key,
   # no env var, no policy field, no UI. `EraStrict` is deleted outright (a narrow era range gives
   # a channel strictness through a control an operator can actually see); the duration bounds keep
   # their struct fields but are now wired to real settings, so the OLD names are what must not come

@@ -150,7 +150,7 @@ var areas = []area{
 			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
 			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
-			"filler/source/youtube", "filler/location", "filler/language",
+			"filler/source/youtube", "filler/location", "filler/language", "filler/pod",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +

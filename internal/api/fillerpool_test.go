@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 type poolBody struct {
@@ -51,13 +51,13 @@ func getPool(t *testing.T, url, token string) (*http.Response, poolBody) {
 // to fix a channel that is fine.
 func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.pool = filler.PoolReport{
+	fp.pool = pod.PoolReport{
 		Clips: 120, BreakBody: 90, Eligible: 61, Untagged: 14,
-		Channels: []filler.ChannelCoverage{
+		Channels: []pod.ChannelCoverage{
 			{ChannelID: "ch-3", Name: "Newsreel", Number: 3,
-				Report: filler.CoverageReport{Level: filler.MatchBumperCard, Total: 0}},
+				Report: pod.CoverageReport{Level: pod.MatchBumperCard, Total: 0}},
 			{ChannelID: "ch-42", Name: "Cartoons", Number: 42,
-				Report: filler.CoverageReport{Level: filler.MatchExact, Total: 44, DurationMs: 1_320_000, Categories: 5, Brands: 17}},
+				Report: pod.CoverageReport{Level: pod.MatchExact, Total: 44, DurationMs: 1_320_000, Categories: 5, Brands: 17}},
 		},
 	}
 
@@ -90,7 +90,7 @@ func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 // or every client has to guard before iterating.
 func TestFillerPool_EmptyChannelsIsAnArrayNotNull(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
-	fp.pool = filler.PoolReport{Clips: 0}
+	fp.pool = pod.PoolReport{Clips: 0}
 
 	res, err := http.DefaultClient.Do(mustGet(t, srv.URL+"/v1/filler/pool", memberToken))
 	if err != nil {

@@ -78,7 +78,7 @@ LIMIT 10;
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -1016,18 +1016,65 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `duration_ms` | An animation's length in milliseconds; 0 for a still image. | `INTEGER` |
 | `loop_count` | How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop. | `INTEGER` · may be empty |
 
-### image_refs
+### clip_images
 
-What each image is used for. An image can serve several owners (the same poster as a title's art and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
+A clip's images, such as its thumbnail. One of five tables saying what each image is used for, one per kind of owner, so each owner is a real reference; an image with no row in any of them is cleaned up.
 
-**Kept:** Kept while the thing using the image keeps it; removed when that thing drops or replaces its images, and goes with its image.
+**Kept:** Goes with its clip or its image; a clip re-keyed to new bytes keeps its rows.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
+| `clip_hash` | The clip (a clips hash). | `TEXT` · key · → `clips.hash` |
+| `role` | What the image is for, such as thumb. | `TEXT` · key |
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
-| `owner_kind` | What kind of thing uses it, such as channel, clip, library_item (a title's poster), library_candidate (a Needs you result's poster) or filler_split_proposal. | `TEXT` · key |
-| `owner_id` | The id of the thing that uses it, in that kind's own table. | `TEXT` · key |
-| `role` | What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo. | `TEXT` · key |
+
+### filler_split_proposal_images
+
+The stills a proposed split shows, one per cut.
+
+**Kept:** Goes with its proposal or its image.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `proposal_id` | The proposal (a filler_split_proposals id). | `TEXT` · key · → `filler_split_proposals.id` |
+| `role` | What the image is for, such as thumb. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### channel_images
+
+A channel's icon and watermark.
+
+**Kept:** Goes with its channel or its image; replaced when the icon or watermark changes.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `role` | What the image is for, icon or watermark. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### library_item_images
+
+A title's poster, backdrop and logo, the one record of which image each is.
+
+**Kept:** Goes with its title or its image; a kind replaces only its own role's row.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `role` | What the image is for, one of poster, backdrop or logo. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+
+### library_candidate_images
+
+The posters of what a search found for a title that Needs you.
+
+**Kept:** Goes with its title or its image.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title the candidates are for (a library_items id). | `TEXT` · key · → `library_items.id` |
+| `role` | What the image is for, poster. | `TEXT` · key |
+| `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
 
 ### image_derivatives
 

@@ -25,6 +25,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
@@ -223,7 +224,7 @@ type Resolver struct {
 // previewed (§10).
 type PodPreviewer interface {
 	// PreviewAt assembles the pod for the break starting at slot.Start, to the slot's own length.
-	PreviewAt(ctx context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error)
+	PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error)
 }
 
 // Config is what New wires a Resolver from. Every field is optional: an unset reader or setting
@@ -1159,7 +1160,7 @@ func (r *Resolver) airingFiller(
 	//
 	// gap.Offset is how far into the break we are, so the break began that long ago, and a break is
 	// assembled to its own slot, never past it (a placeholder to the configured break length).
-	pod, err := r.pods.PreviewAt(ctx, channelID, filler.BreakSlot{
+	pod, err := r.pods.PreviewAt(ctx, channelID, pod.BreakSlot{
 		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.BreakLength(),
 	})
 	if err != nil || len(pod.Entries) == 0 {

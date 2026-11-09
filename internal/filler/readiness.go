@@ -1,5 +1,7 @@
 package filler
 
+import "github.com/loomarr/loomarr/internal/filler/pod"
+
 // ReadinessAction is the highest-impact operator action for the filler system. The server owns
 // this ordering so every client presents the same diagnosis instead of reverse-engineering it
 // from counters.
@@ -42,7 +44,7 @@ type ReadinessInput struct {
 	Fetch    FetchStatus
 	Storage  StorageStatus
 	Pipeline PipelineOverview
-	Pool     PoolReport
+	Pool     pod.PoolReport
 	Runs     []AcquisitionRun
 	Repairs  AcquisitionRepairSummary
 	// NeedsYou is Incoming's needs-help total: the choices Incoming lists. Review asks for a
@@ -62,7 +64,7 @@ type Readiness struct {
 	Fetch    FetchStatus
 	Storage  StorageStatus
 	Pipeline PipelineOverview
-	Pool     PoolReport
+	Pool     pod.PoolReport
 	Runs     []AcquisitionRun
 	Repairs  AcquisitionRepairSummary
 }
@@ -97,7 +99,7 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 	case in.Pool.Eligible == 0:
 		out.Next = ReadinessAddFiller
 	default:
-		if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != MatchExact {
+		if weakest := in.Pool.Weakest(); weakest != nil && weakest.Report.Level != pod.MatchExact {
 			out.Next, out.ChannelID = ReadinessImproveCoverage, weakest.ChannelID
 			out.Count = weakest.Report.Total
 		} else {

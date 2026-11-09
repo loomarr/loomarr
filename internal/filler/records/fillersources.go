@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -97,7 +98,7 @@ type FillerSource struct {
 	FetchMaxPerRun *int
 	// Geography is asserted source coverage: the country it serves (a source has no place).
 	// Empty means unknown.
-	Geography filler.Geography
+	Geography pod.Geography
 }
 
 // EffectiveEnabled is the one source-policy projection acquisition callers use. Local sources
@@ -139,18 +140,18 @@ func (f FillerSource) MaxPerRun(global int) int {
 // An empty source value means "follow this installation", not "ask the operator to repeat the
 // same location on every row". Candidate geography is still checked independently by the pull
 // planner, so this inheritance cannot make missing or conflicting item evidence pass.
-func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
-	return filler.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
+func (f FillerSource) GeographicallyEligible(target pod.Geography) bool {
+	return pod.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
 }
 
 // EffectiveGeography resolves where a source may FETCH for: its own assertion, or the
 // installation's home geography when it asserts no country. It answers "may we pull from it",
 // never "where did its clips air": clip enrichment reads only the declared Geography, because
 // copying this inheritance into clips labelled British archive ads as US (#1670).
-func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography {
-	coverage := filler.Geography{Country: f.Geography.Normalize().Country}
+func (f FillerSource) EffectiveGeography(home pod.Geography) pod.Geography {
+	coverage := pod.Geography{Country: f.Geography.Normalize().Country}
 	if coverage.Country == "" {
-		return filler.Geography{Country: home.Normalize().Country} // a source covers a country, never a place
+		return pod.Geography{Country: home.Normalize().Country} // a source covers a country, never a place
 	}
 	return coverage
 }
@@ -158,7 +159,7 @@ func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography
 // ServesHome reports whether this source may fetch for the installation as configured: the
 // installation names a country and the source serves it. Unlike GeographicallyEligible, which
 // admits everything for an installation with no country, nothing is served before a location is set.
-func (f FillerSource) ServesHome(home filler.Geography) bool {
+func (f FillerSource) ServesHome(home pod.Geography) bool {
 	home = home.Normalize()
 	return home.Country != "" && f.GeographicallyEligible(home)
 }
@@ -464,7 +465,7 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		if n == 0 {
 			continue
 		}
-		geography := filler.Geography{Country: c.Country}.Normalize()
+		geography := pod.Geography{Country: c.Country}.Normalize()
 		res, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_sources (id, kind, uri, label, license,
 			  last_fetched_at, created_at, enabled, country)
 			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?) ON CONFLICT DO NOTHING`),
@@ -555,7 +556,7 @@ func (s *sqlStore) SwitchLocalCuratedSources(ctx context.Context, near map[strin
 }
 
 // SetFillerSourceGeography is the sole writer for an existing source's asserted coverage.
-func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
+func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography pod.Geography) error {
 	geography = geography.Normalize()
 	res, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE filler_sources SET country = ? WHERE id = ?`),

@@ -10,8 +10,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/location"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 const dbIPAttribution = "https://db-ip.com"
@@ -115,7 +115,7 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 	if policy.Filler == nil || policy.Filler.Geography == nil {
 		return nil
 	}
-	geo := filler.Geography{Country: policy.Filler.Geography.Country, Place: policy.Filler.Geography.Place}.Normalize()
+	geo := pod.Geography{Country: policy.Filler.Geography.Country, Place: policy.Filler.Geography.Place}.Normalize()
 	if geo.Place == "" {
 		return nil
 	}

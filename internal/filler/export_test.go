@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -21,7 +22,7 @@ func CertifiedShadowFixture(t *testing.T) (SplitProposal, *AutoSplitPolicy, *Str
 // binary, so they live here rather than in the package, where deadcode would report them.
 
 // Year is the single-year range — what a channel targeting "1992" means.
-func Year(y int) EraRange { return EraRange{From: y, To: y} }
+func Year(y int) pod.EraRange { return pod.EraRange{From: y, To: y} }
 
 // DefaultBudget is the budget with the historical batch sizes.
 func DefaultBudget() Budget {
