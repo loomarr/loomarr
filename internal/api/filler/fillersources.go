@@ -32,7 +32,8 @@ import (
 // which wins?" is a question with no good answer. Each row's live clip count comes from the
 // catalog itself.
 
-// FillerSourceDTO is one row of the Sources tab.
+// FillerSourceLocationSource says where a source's location came from: the installation default,
+// the source's own setting, or nowhere.
 type FillerSourceLocationSource string
 
 const (
@@ -66,6 +67,7 @@ const (
 	FillerSourceSearch       FillerSourceAction = "search"
 )
 
+// FillerSourceDTO is one row of the Sources tab.
 type FillerSourceDTO struct {
 	// ID addresses this row on PATCH/DELETE. The two DERIVED rows carry the stable literals
 	// `folder` and `library`; a remote collection carries its registry id.
@@ -1471,9 +1473,6 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 	return node
 }
 
-// sourceDetail is the operator-facing sentence under a registered source's name. Keep it true
-// across every readiness and policy state; the projected status and source workspace own whether
-// automatic downloads can currently run.
 // sourceSearchable reports whether a source of this kind can be searched in place.
 func (s *Handlers) sourceSearchable(kind string) bool {
 	_, ok := s.sourceProviders.Searcher(source.ID(kind))
@@ -1488,6 +1487,9 @@ func (s *Handlers) sourcePageURL(kind, uri string) string {
 	return ""
 }
 
+// sourceDetail is the operator-facing sentence under a registered source's name. Keep it true
+// across every readiness and policy state; the projected status and source workspace own whether
+// automatic downloads can currently run.
 func (s *Handlers) sourceDetail(kind, uri string) string {
 	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok && p.Describe().SourceDetail != "" {
 		return p.Describe().SourceDetail
