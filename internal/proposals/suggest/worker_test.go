@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,80 @@ func (w *claimSignalWorkflow) Claim(context.Context, time.Time, time.Duration, i
 	default:
 	}
 	return nil, nil
+}
+
+// lockedBuffer is a log sink the worker goroutines write while the test reads.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// failRecordingWorkflow fails the terminal Fail write with a fixed error.
+type failRecordingWorkflow struct {
+	suggest.DurableWorkflow
+	err error
+}
+
+func (w failRecordingWorkflow) Fail(context.Context, suggest.WorkflowWork, string, string, ...string) error {
+	return w.err
+}
+
+// A terminal write that fails for a real reason (the database is gone) is an error an operator must
+// see, not the "stale attempt" Info line a lost race earns.
+func TestWorker_UndurableFailureWriteLogsAtErrorAndStaleAtInfo(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		failErr   error
+		wantLevel string
+	}{
+		{"database error", errors.New("database is gone"), "level=ERROR"},
+		{"stale attempt", suggest.ErrStaleAttempt, "level=INFO"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newStore(t)
+			model := testkit.NewLLM()
+			model.Errors = []error{errors.New("model down"), errors.New("model down"), errors.New("model down")}
+			lib := marigoldLibrary()
+			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+			sug := suggest.New(model, catalog.New(lib, tm), tm, 10)
+			logs := &lockedBuffer{}
+			wf := failRecordingWorkflow{DurableWorkflow: workflow.New(st, idGen(), time.Now), err: tc.failErr}
+			svc := suggest.NewService(st, wf, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+				time.Now, slog.New(slog.NewTextHandler(logs, nil)))
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			if _, err := svc.Submit(ctx, proposals.Intent{Description: "90s action"}, "alice"); err != nil {
+				t.Fatal(err)
+			}
+			go svc.Run(ctx)
+
+			deadline := time.Now().Add(10 * time.Second)
+			for !strings.Contains(logs.String(), "Proposal Job failure") && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			var line string
+			for l := range strings.Lines(logs.String()) {
+				if strings.Contains(l, "Proposal Job failure") {
+					line = l
+				}
+			}
+			if !strings.Contains(line, tc.wantLevel) {
+				t.Fatalf("the failed terminal write logged %q, want %s", line, tc.wantLevel)
+			}
+		})
+	}
 }
 
 func TestWorkerClaimsImmediatelyOnStartup(t *testing.T) {
