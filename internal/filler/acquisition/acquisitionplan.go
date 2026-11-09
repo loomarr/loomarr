@@ -221,7 +221,7 @@ func gapFilled(c Candidate, gaps CoverageGaps) (string, bool) {
 }
 
 // observedRoles are the provider's observed roles or, failing those, the explicit role token in
-// the item's title: the same KindFromName rule intake applies to the downloaded file's name, so an
+// the item's title: the same clips.RoleFromName rule intake applies to the downloaded file's name, so an
 // item steered here as an ident is classified as one on arrival. Ranking evidence only.
 func observedRoles(c Candidate) []clips.Role {
 	if len(c.ObservedRoles) > 0 {
