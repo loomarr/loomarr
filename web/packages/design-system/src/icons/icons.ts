@@ -198,6 +198,9 @@ const icons = {
   settings: Settings,
   // A control that opens a form's finer options.
   settingsAdjust: Settings2,
+  // A show/hide toggle's chevron: down while the content is hidden, up while it shows.
+  showLess: ChevronUp,
+  showMore: ChevronDown,
   signOut: LogOut,
   skipForward: SkipForward,
   // Cutting one recording into its clips (filler's Split into clips).
