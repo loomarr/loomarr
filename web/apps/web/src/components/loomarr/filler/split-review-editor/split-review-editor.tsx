@@ -13,6 +13,7 @@ import {
   Field,
   Icon,
   icons,
+  StatusLabel,
   Tooltip,
 } from "@loomarr/design-system";
 import { useRef, useState } from "react";
@@ -418,11 +419,7 @@ const SegmentSummaryRow = ({
                   {segment.language === "none" ? "No speech" : languageName(segment.language)}
                 </Badge>
               ) : null}
-              {needsAttention ? (
-                <Badge shape="square" tone="caution">
-                  Needs a closer look
-                </Badge>
-              ) : null}
+              {needsAttention ? <StatusLabel tone="warn">Needs a closer look</StatusLabel> : null}
             </span>
           </span>
           <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />

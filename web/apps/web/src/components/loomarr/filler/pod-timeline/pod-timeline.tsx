@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, type BadgeTone, Text } from "@loomarr/design-system";
+import { Badge, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -13,11 +13,11 @@ import type { PodTimelineProps } from "./pod-timeline.type";
 // shows nothing; every other level says how far down the §10 fallback ladder assembly had
 // to go, ending at `bumper_card` — the dead-air guard, where no ad matched and the
 // embedded card stands in rather than silence.
-const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: BadgeTone } | null> = {
+const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: StatusTone } | null> = {
   exact: null,
-  widened: { label: "Era widened", tone: "caution" },
-  audience: { label: "Any era", tone: "caution" },
-  bumper_card: { label: "Bumper only", tone: "neutral" },
+  widened: { label: "Era widened", tone: "warn" },
+  audience: { label: "Any era", tone: "warn" },
+  bumper_card: { label: "Bumper only", tone: "off" },
 };
 
 // A member-readable pod withholds a name that is only a filename (#1980); the segment then reads
@@ -73,11 +73,7 @@ const PodTimeline = ({
             {audience}
           </Badge>
         ) : null}
-        {chip && (
-          <Badge shape="square" tone={chip.tone}>
-            {chip.label}
-          </Badge>
-        )}
+        {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
       </div>
 
       <ul
