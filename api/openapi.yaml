@@ -1144,6 +1144,9 @@ components:
             - 1980
           format: int64
           type: integer
+        fromRequest:
+          description: True when the channel was made from a member's request, which refine and auto-curate re-run; false for a hand-made channel
+          type: boolean
         group:
           examples:
             - Kids
@@ -1156,6 +1159,7 @@ components:
           description: True when this channel can be tuned by Loomarr's in-app player
           type: boolean
         intentRef:
+          description: The suggestion job this channel came from, while that job is kept; absent once it is purged and for a hand-made channel
           type: string
         lineup:
           description: The channel's titles, in order (the intent-level lineup, not the expanded slots)
@@ -1228,6 +1232,7 @@ components:
         - strategy
         - status
         - inAppPlayable
+        - fromRequest
         - programCount
         - pendingCount
         - breakCount
@@ -2403,21 +2408,6 @@ components:
         - name
         - titles
       type: object
-    CollectionChannelDTO:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        number:
-          format: int64
-          type: integer
-      required:
-        - id
-        - name
-        - number
-      type: object
     CollectionDTO:
       additionalProperties: false
       properties:
@@ -2448,7 +2438,7 @@ components:
         usedBy:
           description: The channels that use it, by number; it can't be deleted while any do
           items:
-            $ref: "#/components/schemas/CollectionChannelDTO"
+            $ref: "#/components/schemas/LibraryChannelDTO"
           type: array
       required:
         - id
@@ -6698,6 +6688,21 @@ components:
         - lengthMatches
         - episodesMatches
       type: object
+    LibraryChannelDTO:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - number
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -6895,6 +6900,11 @@ components:
         backdropImage:
           $ref: "#/components/schemas/ImageDTO"
           description: Its fanart; absent when it has none, or while one is still being fetched
+        channels:
+          description: The channels whose lineup holds it, by number
+          items:
+            $ref: "#/components/schemas/LibraryChannelDTO"
+          type: array
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
         files:
@@ -6933,6 +6943,7 @@ components:
         - seasons
         - match
         - detailsFrom
+        - channels
       type: object
     LibraryItemFileDTO:
       additionalProperties: false
@@ -18388,7 +18399,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: List media-server collections
+      summary: List the household's collections
       tags:
         - library
   /v1/library/hooks/{app}:
@@ -18475,6 +18486,24 @@ paths:
           schema:
             description: Part of the name, any case
             maxLength: 200
+            type: string
+        - description: Only titles with every file's details read
+          explode: false
+          in: query
+          name: ready
+          schema:
+            description: Only titles with every file's details read
+            type: boolean
+        - description: By name, or the titles written last first
+          explode: false
+          in: query
+          name: sort
+          schema:
+            default: name
+            description: By name, or the titles written last first
+            enum:
+              - name
+              - recent
             type: string
         - explode: false
           in: query

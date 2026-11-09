@@ -10,7 +10,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 const (
@@ -28,12 +27,12 @@ func (w *Workflow) Record(
 	intent proposals.Intent,
 	prop proposals.Proposal,
 	createdBy string,
-) (suggest.WorkflowProposal, error) {
+) (CommittedProposal, error) {
 	if len(prop.Lineup) == 0 {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: a recorded Proposal needs a lineup", ErrInvalidState)
+		return CommittedProposal{}, fmt.Errorf("%w: a recorded Proposal needs a lineup", ErrInvalidState)
 	}
 	if err := validateProposalIdentities(prop); err != nil {
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
 	return w.repository.RecordProposal(ctx, intent, prop, createdBy)
 }
@@ -45,7 +44,7 @@ func (w *Workflow) Submit(
 	intent proposals.Intent,
 	createdBy string,
 	cacheSince time.Time,
-) (suggest.WorkflowSubmission, error) {
+) (Submission, error) {
 	return w.repository.SubmitIntent(ctx, intent, createdBy, cacheSince)
 }
 
@@ -91,34 +90,34 @@ func (r *storeRepository) SubmitIntent(
 	intent proposals.Intent,
 	createdBy string,
 	cacheSince time.Time,
-) (suggest.WorkflowSubmission, error) {
+) (Submission, error) {
 	blob, err := json.Marshal(intent)
 	if err != nil {
-		return suggest.WorkflowSubmission{}, fmt.Errorf("marshal Intent: %w", err)
+		return Submission{}, fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
 	job := proposalstore.Job{
 		ID: r.newID(), Kind: jobKindSuggest, Status: "queued", IntentJSON: string(blob),
-		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy,
+		IntentHash: r.intentHash(intent), CreatedBy: createdBy,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if cached, findErr := r.store.FindJobByIntentHash(ctx, job.IntentHash, cacheSince); findErr == nil && cached.Status == "done" {
 		job.Status = "done"
 		cloned, cloneErr := r.store.CloneSuggestionSuccess(ctx, cached.ID, job, r.newID())
 		if cloneErr == nil {
-			return suggest.WorkflowSubmission{JobID: job.ID, CachedProposal: &suggest.WorkflowProposal{
+			return Submission{JobID: job.ID, CachedProposal: &CommittedProposal{
 				ID: cloned.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: cloned.Body, CreatedAt: cloned.CreatedAt,
 			}}, nil
 		}
 		if !errors.Is(cloneErr, store.ErrNotFound) {
-			return suggest.WorkflowSubmission{}, cloneErr
+			return Submission{}, cloneErr
 		}
 		job.Status = "queued"
 	}
 	if err := r.store.CreateJob(ctx, job); err != nil {
-		return suggest.WorkflowSubmission{}, err
+		return Submission{}, err
 	}
-	return suggest.WorkflowSubmission{JobID: job.ID}, nil
+	return Submission{JobID: job.ID}, nil
 }
 
 func (r *storeRepository) RecordProposal(
@@ -126,16 +125,16 @@ func (r *storeRepository) RecordProposal(
 	intent proposals.Intent,
 	prop proposals.Proposal,
 	createdBy string,
-) (suggest.WorkflowProposal, error) {
+) (CommittedProposal, error) {
 	prop.Intent = intent
 	intentBlob, err := json.Marshal(intent)
 	if err != nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Intent: %w", err)
+		return CommittedProposal{}, fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
 	job := proposalstore.Job{
 		ID: r.newID(), Kind: jobKindSuggest, Status: "done", IntentJSON: string(intentBlob),
-		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy,
+		IntentHash: r.intentHash(intent), CreatedBy: createdBy,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 	}
 	row := proposalstore.Proposal{
@@ -143,9 +142,9 @@ func (r *storeRepository) RecordProposal(
 		Body: prop, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := r.store.CreateSuggestionResult(ctx, job, row); err != nil {
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
-	return suggest.WorkflowProposal{
+	return CommittedProposal{
 		ID: row.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: prop, CreatedAt: now,
 	}, nil
 }
@@ -163,7 +162,7 @@ func (r *storeRepository) SubmitChannelIntent(
 	now := r.now()
 	job := proposalstore.Job{
 		ID: r.newID(), Kind: kind, Status: "queued", IntentJSON: string(blob),
-		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy, ChannelID: channelID,
+		IntentHash: r.intentHash(intent), CreatedBy: createdBy, ChannelID: channelID,
 		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := r.store.CreateJob(ctx, job); err != nil {
@@ -184,7 +183,7 @@ func (r *storeRepository) ReviseIntent(
 	}
 	now := r.now()
 	if err := r.store.ReviseSubmittedProposal(
-		ctx, jobID, proposalID, expectedAttempt, string(blob), suggest.IntentHash(intent), now, now,
+		ctx, jobID, proposalID, expectedAttempt, string(blob), r.intentHash(intent), now, now,
 	); err != nil {
 		return err
 	}

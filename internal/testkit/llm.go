@@ -2,8 +2,10 @@ package testkit
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -58,10 +60,29 @@ func (m *LLM) Prompt() string {
 	return b.String()
 }
 
-// NewLLM builds a scripted provider that returns the given responses in order,
-// one per Chat call.
-func NewLLM(responses ...llm.Response) *LLM {
-	return &LLM{turns: responses}
+// ErrUnscripted is what Chat returns when the script holds no response for the call: a test that
+// reaches the model more often than it scripted has found a call it did not expect, and a fake that
+// answered it with an empty final would pass for it.
+var ErrUnscripted = errors.New("testkit: LLM call with no scripted response left")
+
+// NewLLM builds a scripted provider that returns the given responses in order, one per Chat call.
+// A call past the script fails with ErrUnscripted, and a script (or Errors queue) the test did not
+// consume fails the test in its cleanup, so a scripted turn that never ran is as visible as a call
+// nobody scripted.
+func NewLLM(t testing.TB, responses ...llm.Response) *LLM {
+	t.Helper()
+	m := &LLM{turns: responses}
+	t.Cleanup(func() {
+		if t.Failed() {
+			return // an earlier failure explains the unconsumed script
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if len(m.turns) > 0 || len(m.Errors) > 0 {
+			t.Errorf("testkit.LLM: %d scripted response(s) and %d scripted error(s) never consumed", len(m.turns), len(m.Errors))
+		}
+	})
+	return m
 }
 
 // SetResponses resets the scripted turns for another isolated input using this fixture.
@@ -98,7 +119,7 @@ func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOpt
 		return llm.Response{}, err
 	}
 	if len(m.turns) == 0 {
-		return llm.Response{}, nil // no more scripted turns → empty final
+		return llm.Response{}, ErrUnscripted
 	}
 	next := m.turns[0]
 	m.turns = m.turns[1:]

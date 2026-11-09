@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -55,7 +54,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	workflow := newWorkflow(repo)
 
 	_, err := workflow.Complete(context.Background(), work, proposals.Proposal{})
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+	if !errors.Is(err, proposals.ErrNoGroundedTitles) {
 		t.Fatalf("Complete empty Proposal error = %v, want ErrNoGroundedTitles", err)
 	}
 	if repo.completed != nil {
@@ -165,9 +164,9 @@ func (r *executionRepositorySpy) ClaimAttempts(_ context.Context, now time.Time,
 	return append([]Work(nil), r.works...), r.claimErr
 }
 
-func (r *executionRepositorySpy) CompleteAttempt(_ context.Context, completion Completion) (suggest.WorkflowProposal, error) {
+func (r *executionRepositorySpy) CompleteAttempt(_ context.Context, completion Completion) (CommittedProposal, error) {
 	r.completed = &completion
-	return suggest.WorkflowProposal{}, r.completeErr
+	return CommittedProposal{}, r.completeErr
 }
 
 func (r *executionRepositorySpy) FailAttempt(_ context.Context, failure AttemptFailure) error {

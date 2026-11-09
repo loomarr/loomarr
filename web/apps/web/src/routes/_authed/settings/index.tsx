@@ -1,6 +1,6 @@
+import { Icon, icons } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
 import {
   type CSSProperties,
   forwardRef,
@@ -160,7 +160,7 @@ const SettingsHome = () => {
                                 {result.setting ? ` · ${result.setting.key}` : ""}
                               </span>
                             </span>
-                            <ArrowRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                            <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
                           </DestinationAnchor>
                         ))}
                       </nav>

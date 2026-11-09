@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -16,7 +16,7 @@ import (
 )
 
 func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
-	candidates := []catalog.Candidate{
+	candidates := []titlesearch.Candidate{
 		{MediaType: provision.Series, TMDBID: 90021502, Name: "Murmur Bay", InLibrary: true},
 		{MediaType: provision.Series, TMDBID: 90000540, TVDBID: 90000762, Name: "Grand Oak Hotel", InLibrary: true},
 		{MediaType: provision.Movie, Name: "Unidentified"},
@@ -35,7 +35,7 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	surfaced := map[provision.Key]catalog.Candidate{
+	surfaced := map[provision.Key]titlesearch.Candidate{
 		"series:tmdb:90021502": candidates[0], "series:tvdb:90000762": candidates[1],
 	}
 	for _, tc := range []struct {
@@ -62,7 +62,7 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 			}
 			proposal, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &proposals.DecisionTrace{}, meaning)
 			if tc.want == "" {
-				if !errors.Is(err, ErrNoGroundedTitles) || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 {
+				if !errors.Is(err, proposals.ErrNoGroundedTitles) || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 {
 					t.Fatalf("ungrounded key survived: %+v, err = %v", proposal, err)
 				}
 			} else {
@@ -82,11 +82,11 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 }
 
 func TestNamesOnlyDirectFinalReceivesCatalogKey(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{
 		MediaType: provision.Series, TMDBID: 90021502, TVDBID: 90269680, Name: "Murmur Bay", Year: 2013, InLibrary: true,
 	}}}
-	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))
-	proposal, err := New(model, catalog.New(nil, corpus), nil, 3).Suggest(context.Background(), proposals.Intent{Description: "mysteries"})
+	model := testkit.NewLLM(t, testkit.FinalResponse(`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))
+	proposal, err := New(model, titlesearch.New(nil, corpus), nil, 3).Suggest(context.Background(), proposals.Intent{Description: "mysteries"})
 	if err != nil {
 		t.Fatal(err)
 	}

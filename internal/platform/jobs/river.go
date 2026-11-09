@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -104,7 +105,15 @@ func (w *riverWorker) Work(ctx context.Context, rj *river.Job[jobArgs]) error {
 	if j.Disabled() {
 		return nil
 	}
-	if paused, err := w.s.isPaused(ctx, j.Name); err == nil && paused && !rj.Args.Manual {
+	paused, err := w.s.isPaused(ctx, j.Name)
+	if err != nil {
+		// Fail open: the run proceeds. A job with no state row yet is an ordinary first run.
+		if !errors.Is(err, store.ErrNotFound) {
+			w.s.log.Warn("scheduler: could not read the pause flag; running the job", "job", j.Name, "err", err)
+		}
+		paused = false
+	}
+	if paused && !rj.Args.Manual {
 		return nil
 	}
 	out := w.s.execute(ctx, j, rj.Args.Manual)

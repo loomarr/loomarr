@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -12,10 +12,10 @@ import (
 )
 
 func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
-	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000672: {LibraryItemID: "library-90000672", OfficialRating: "PG", Genres: []string{"Fantasy"}, SizeBytes: 4_200_000_000},
 	}}
-	adapter := approvalAdditionAdapter{presence: func() catalog.LibraryPresence { return presence }}
+	adapter := approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence { return presence }}
 
 	owned, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned", InLibrary: false, OfficialRating: "G",

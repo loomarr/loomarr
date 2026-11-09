@@ -64,6 +64,15 @@ interface LibraryTitleDetail {
   unplayable: number;
   match: LibraryTitleMatch;
   detailsFrom: LibraryTitleDetailsFrom;
+  /** The channels whose lineup holds it, by number. */
+  channels: readonly LibraryTitleChannel[];
+}
+
+/** A channel a title is on. */
+interface LibraryTitleChannel {
+  id: string;
+  name: string;
+  number: number;
 }
 
 /**
@@ -99,6 +108,7 @@ interface LibraryTitleProps {
 }
 
 export type {
+  LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,

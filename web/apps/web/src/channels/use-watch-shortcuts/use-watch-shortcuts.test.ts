@@ -38,11 +38,34 @@ describe("useWatchShortcuts", () => {
     expect(hook.result.current.sheet).toBeUndefined();
   });
 
+  it("opens Audio on A, goes to the last channel on L", () => {
+    const onLast = vi.fn();
+    const { hook, press } = setup({ onLast });
+    expect(press("a")).toBe(true);
+    expect(hook.result.current.sheet).toBe("audio");
+    expect(press("A")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+    expect(press("l")).toBe(true);
+    expect(onLast).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the open sheet on Escape, and leaves only when nothing is open", () => {
+    const onLeave = vi.fn();
+    const { hook, press } = setup({ onLeave });
+    press("g");
+    expect(press("Escape")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+    expect(onLeave).not.toHaveBeenCalled();
+    expect(press("Escape")).toBe(true);
+    expect(onLeave).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves keys it has nothing for to the player", () => {
     const { press } = setup({ hasInfo: false, channels: undefined });
     expect(press("i")).toBe(false);
     expect(press("g")).toBe(false);
     expect(press("7")).toBe(false);
+    expect(press("l")).toBe(false);
     expect(press("Escape")).toBe(false);
   });
 
@@ -73,7 +96,7 @@ describe("useWatchShortcuts", () => {
     document.body.append(opener);
     opener.focus();
     const { hook } = setup();
-    act(() => hook.result.current.toggleSheet("settings"));
+    act(() => hook.result.current.toggleSheet("more"));
     document.body.focus();
     act(() => hook.result.current.closeSheet());
     expect(opener).toHaveFocus();

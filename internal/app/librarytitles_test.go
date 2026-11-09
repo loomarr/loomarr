@@ -6,28 +6,28 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-type libraryTitlesFake []store.LibraryTitle
+type libraryTitlesFake []librarystore.LibraryTitle
 
-func (f libraryTitlesFake) LibraryTitles(_ context.Context, since time.Time) ([]store.LibraryTitle, error) {
+func (f libraryTitlesFake) LibraryTitles(_ context.Context, since time.Time) ([]librarystore.LibraryTitle, error) {
 	return f, nil
 }
 
-func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
+func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (librarystore.LibraryTitle, bool, error) {
 	for _, t := range f {
-		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
+		if t.Kind == kind && librarystore.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}
-	return store.LibraryTitle{}, false, nil
+	return librarystore.LibraryTitle{}, false, nil
 }
 
 var testLibraryTitles = libraryTitlesFake{
-	{ID: "lib-film", Kind: "movie", Name: "Film", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000001"}},
+	{ID: "lib-film", Kind: "movie", Name: "Film", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}},
 		Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
-	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []store.LibraryID{
+	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []librarystore.LibraryID{
 		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y"},
 }
 

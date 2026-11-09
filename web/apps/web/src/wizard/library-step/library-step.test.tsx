@@ -1,6 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import {
   getLibraryStatusMockHandler,
+  getListLibraryItemsMockHandler,
   getListLibraryRootsMockHandler,
   getSettingsListMockHandler,
   getSetupStatusMockHandler,
@@ -83,10 +84,26 @@ describe("LibraryStep", () => {
           },
         }),
       ),
+      getListLibraryItemsMockHandler({
+        items: [
+          {
+            id: "90000961",
+            kind: "movie",
+            name: "Quiet Harbor",
+            files: 1,
+            ready: true,
+            unplayable: 0,
+            extraCopies: 0,
+          },
+        ],
+        total: 1,
+      }),
     );
     renderStep();
 
     expect(await screen.findByText("You can carry on — titles appear as they're ready.")).toBeInTheDocument();
+    expect(await screen.findByText("Ready so far")).toBeInTheDocument();
+    expect(screen.getByText("Quiet Harbor")).toBeInTheDocument();
   });
 
   // Sonarr without an address: the step asks Seerr once, says what it filled in, and, with no

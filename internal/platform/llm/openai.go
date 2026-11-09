@@ -474,8 +474,10 @@ func toOpenAITools(tools []ToolSchema) []openaiTool {
 
 // fromOpenAIToolCalls normalizes OpenAI's JSON-STRING arguments into the decoded
 // map[string]any the suggester expects (the one shape difference from Ollama). A
-// tool call with unparseable arguments yields an empty map rather than failing —
-// the suggester's tool dispatch treats a missing arg as "not provided".
+// tool call whose arguments are not a JSON object keeps an empty map and records the
+// decode failure in ToolCall.ArgumentsError, so the dispatcher can answer the model
+// with it; the call is not dropped and the whole response does not fail. Empty
+// arguments are a call with no arguments.
 func fromOpenAIToolCalls(tcs []openaiToolCall) []ToolCall {
 	if len(tcs) == 0 {
 		return nil
@@ -483,13 +485,18 @@ func fromOpenAIToolCalls(tcs []openaiToolCall) []ToolCall {
 	out := make([]ToolCall, 0, len(tcs))
 	for _, tc := range tcs {
 		args := map[string]any{}
+		var argsErr string
 		if tc.Function.Arguments != "" {
-			_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+				args = map[string]any{}
+				argsErr = "tool arguments are not a valid JSON object: " + err.Error()
+			}
 		}
 		out = append(out, ToolCall{
-			ID:        tc.ID,
-			Name:      tc.Function.Name,
-			Arguments: args,
+			ID:             tc.ID,
+			Name:           tc.Function.Name,
+			Arguments:      args,
+			ArgumentsError: argsErr,
 		})
 	}
 	return out

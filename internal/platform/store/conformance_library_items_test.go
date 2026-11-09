@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Library → Items lists what has present files, counts a series' episodes toward it, searches by
@@ -19,6 +22,8 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		{ID: "m2", Kind: "movie", Name: "Another Film", Year: 2004},
 		{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001},
 		{ID: "gone", Kind: "movie", Name: "Gone Film"},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -153,6 +158,10 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		{ID: "fine", Kind: "movie", Name: "Fine Film"},
 		{ID: "show", Kind: "series", Name: "A Show"},
 		{ID: "shows", Kind: "series", Name: "Fine Show"},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
+		{ID: "f1", Kind: "episode", Name: "Fine Pilot"},
+		{ID: "f2", Kind: "episode", Name: "Fine Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -203,5 +212,56 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	if paged, err := st.ListLibraryItems(ctx, LibraryItemQuery{Problems: true, Limit: 1}); err != nil ||
 		paged.Total != 3 || len(paged.Items) != 1 {
 		t.Errorf("a page of problems = %d of %d, %v; want one of three", len(paged.Items), paged.Total, err)
+	}
+}
+
+// "Ready so far" lists the titles whose files are all read, the last written first; a title's
+// page names the channels whose lineup holds it, once each, by number.
+func testLibraryItemsReadyAndChannels(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	for i, it := range []LibraryItem{
+		{ID: "r1", Kind: "movie", Name: "Read First"},
+		{ID: "r2", Kind: "movie", Name: "Read Last"},
+		{ID: "p1", Kind: "movie", Name: "Pending"},
+	} {
+		if err := st.SaveLibraryItems(ctx, []LibraryItem{it}, at.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := func(path, item, header string) LibraryFile {
+		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header, SeenAt: at, ItemID: item}
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+		file("/media/r1.mkv", "r1", LibraryHeaderRead),
+		file("/media/r2.mkv", "r2", LibraryHeaderRead),
+		file("/media/p1.mkv", "p1", LibraryHeaderPending),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := st.ListLibraryItems(ctx, LibraryItemQuery{Ready: true, Recent: true, Limit: 5})
+	if err != nil || ready.Total != 2 || len(ready.Items) != 2 || ready.Items[0].ID != "r2" || ready.Items[1].ID != "r1" {
+		t.Fatalf("ready, recent first = %+v, %v; want r2 then r1", ready, err)
+	}
+
+	lineup := []schedule.LineupEntry{{Key: "movie:tmdb:90000021", Title: "Read First"}, {Key: "movie:tmdb:90000022", Title: "Read Last"}}
+	nine := sampleChannel("ch-nine", 9, time.Time{})
+	nine.Lineup = lineup
+	mustSaveChannel(t, st, nine)
+	four := sampleChannel("ch-four", 4, time.Time{})
+	four.Lineup = lineup[:1]
+	mustSaveChannel(t, st, four)
+	if err := st.UpsertTitle(ctx, provision.Record{Key: lineup[0].Key, State: provision.Available, LibraryID: "r1",
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000021, Name: "Read First"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LibraryItemChannels(ctx, "r1")
+	if err != nil || len(got) != 2 || got[0].ID != "ch-four" || got[0].Number != 4 || got[1].ID != "ch-nine" || got[1].Name != nine.Name {
+		t.Fatalf("r1's channels = %+v, %v; want ch-four then ch-nine", got, err)
+	}
+	// A lineup title with no library title yet (pending) names no item.
+	if none, err := st.LibraryItemChannels(ctx, "r2"); err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("r2's channels = %#v, %v; want none", none, err)
 	}
 }

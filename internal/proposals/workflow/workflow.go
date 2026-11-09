@@ -11,7 +11,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 const (
@@ -203,13 +202,13 @@ type Repository interface {
 	ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error)
 
 	ClaimAttempts(context.Context, time.Time, time.Duration, int) ([]Work, error)
-	CompleteAttempt(context.Context, Completion) (suggest.WorkflowProposal, error)
+	CompleteAttempt(context.Context, Completion) (CommittedProposal, error)
 	FailAttempt(context.Context, AttemptFailure) error
 
-	SubmitIntent(ctx context.Context, intent proposals.Intent, createdBy string, cacheSince time.Time) (suggest.WorkflowSubmission, error)
+	SubmitIntent(ctx context.Context, intent proposals.Intent, createdBy string, cacheSince time.Time) (Submission, error)
 	SubmitChannelIntent(ctx context.Context, channelID string, intent proposals.Intent, kind, createdBy string) (string, error)
 	ReviseIntent(ctx context.Context, jobID, proposalID string, attempts int, intent proposals.Intent) error
-	RecordProposal(ctx context.Context, intent proposals.Intent, prop proposals.Proposal, createdBy string) (suggest.WorkflowProposal, error)
+	RecordProposal(ctx context.Context, intent proposals.Intent, prop proposals.Proposal, createdBy string) (CommittedProposal, error)
 }
 
 type ListOptions struct {
@@ -399,7 +398,7 @@ func failureDetails(code FailureCode, trace proposals.DecisionTrace) (FailureRea
 			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."
 		case proposals.TerminalReferenceUnreadable:
 			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."
-		case proposals.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
+		case proposals.ReasonRetrievalEmpty, string(FailureSelectionEmpty):
 			return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "We couldn't find any titles that fit this description.", "Try a broader description or name a few shows or movies you like."
 		case proposals.TerminalNamedSetUnproven:
 			return FailureReasonNamedSetUnproven, RecoveryActionProvideExamples, "We couldn't confirm which titles belong in this lineup.", "Name a few shows or movies you expect to see, then try again."
@@ -417,7 +416,7 @@ func failureDetails(code FailureCode, trace proposals.DecisionTrace) (FailureRea
 			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr couldn't finish the suggestions.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
 		case proposals.TerminalGenerationFailure:
 			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't finish this channel.", "Try again later."
-		case suggest.FailureBudgetExhausted:
+		case string(FailureBudgetExhausted):
 			if trace.SurfacedTotal > 0 {
 				return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr found some titles but couldn't finish the suggestions.", "Try again. Your description is still here."
 			}
@@ -445,7 +444,7 @@ func PublicFailureTrace(trace proposals.DecisionTrace) proposals.DecisionTrace {
 
 func publicTerminal(terminal string) bool {
 	switch terminal {
-	case proposals.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty, suggest.FailureBudgetExhausted, proposals.TerminalProviderFailure, proposals.TerminalRetrievalFailure, proposals.TerminalReferenceUnreadable, proposals.TerminalGenerationFailure, proposals.TerminalMalformedExhausted, proposals.TerminalNamedSetUnproven, proposals.TerminalConstraintsConflict, proposals.TerminalDateSemanticsUnclear, proposals.TerminalInvalidToolCalls, proposals.TerminalProviderTimeout:
+	case proposals.ReasonRetrievalEmpty, string(FailureSelectionEmpty), string(FailureBudgetExhausted), proposals.TerminalProviderFailure, proposals.TerminalRetrievalFailure, proposals.TerminalReferenceUnreadable, proposals.TerminalGenerationFailure, proposals.TerminalMalformedExhausted, proposals.TerminalNamedSetUnproven, proposals.TerminalConstraintsConflict, proposals.TerminalDateSemanticsUnclear, proposals.TerminalInvalidToolCalls, proposals.TerminalProviderTimeout:
 		return true
 	default:
 		return false

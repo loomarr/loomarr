@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -100,7 +101,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{ClipHash: parentHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, realReviewedSplitTools{
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), realReviewedSplitTools{
 		splitFakeTools: splitFakeTools{}, ffmpeg: mediaTools,
 	}, nil, dir, func() time.Duration { return 0 }, func() string { return "real-ffmpeg-proposal" }, time.Now, nil)
 	proposal, err := splitter.Propose(ctx, parentHash)
@@ -120,15 +121,15 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	}
 	childHash := childHashes[0]
 	reviewedStart, reviewedEnd := reviewed[0].StartMs, reviewed[0].EndMs
-	stage := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, dir,
+	stage := filler.NewTranscodeStage(storeadapter.NewPipelineClips(st), probe, dir,
 		tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
 		WithConditioning(func(ctx context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 			measurement, err := mediaTools.MeasureConditioning(ctx, req)
 			t.Logf("conditioning %s: %+v err=%v", filepath.Base(req.Path), measurement, err)
 			return measurement, err
 		})
-	pipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{
-		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, dir, nil,
+	pipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), []filler.Stage{
+		filler.NewProbeStage(probe, storeadapter.NewPipelineClips(st), dir, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now), stage,
 		filler.NewFinishStage(),
 	}, filler.Budget{}, nil, time.Now, nil)

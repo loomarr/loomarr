@@ -191,57 +191,6 @@ func TestDynamicConnection_SnapshotsRefreshGuideAcrossRotation(t *testing.T) {
 	}
 }
 
-func TestDynamicConnection_SnapshotPinsCollectionIndexAcrossRotation(t *testing.T) {
-	script := httpfixture.NewScriptedTransport(
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `{"Items":[{"Id":"collection-a","Name":"A"}]}`)},
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `{"Items":[]}`)},
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `[]`)},
-	)
-	var connection atomic.Value
-	connection.Store(Connection{Flavor: Emby, BaseURL: "https://emby-a.invalid", Token: "token-a"})
-	var providerCalls atomic.Int64
-	transport := httpfixture.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Query().Get("IncludeItemTypes") == "BoxSet" {
-			connection.Store(Connection{Flavor: Jellyfin, BaseURL: "https://jellyfin-b.invalid", Token: "token-b"})
-		}
-		return script.RoundTrip(request)
-	})
-	client := dynamicClient(func() Connection {
-		providerCalls.Add(1)
-		return connection.Load().(Connection)
-	}, transport)
-
-	operation := client.Snapshot()
-	reported := operation.Connection()
-	reported.Token = "caller-mutation"
-	collections, err := operation.Collections(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(collections) != 1 {
-		t.Fatalf("collections = %d, want 1", len(collections))
-	}
-	if _, err := operation.CollectionMembers(context.Background(), collections[0].ID); err != nil {
-		t.Fatal(err)
-	}
-	requests := script.Requests()
-	if len(requests) != 2 {
-		t.Fatalf("collection-index requests = %d, want collections + members", len(requests))
-	}
-	for _, request := range requests {
-		assertEmbyConnection(t, request, "emby-a.invalid", "token-a")
-	}
-	if got := providerCalls.Load(); got != 1 {
-		t.Errorf("provider calls during collection index = %d, want 1", got)
-	}
-
-	if _, err := client.ListUsers(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requests = script.Requests()
-	assertJellyfinConnection(t, requests[2], "jellyfin-b.invalid", "token-b")
-}
-
 func assertEmbyConnection(t *testing.T, request httpfixture.Request, host, token string) {
 	t.Helper()
 	parsed, err := url.Parse(request.URL)

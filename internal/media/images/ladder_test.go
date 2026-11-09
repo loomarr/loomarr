@@ -80,3 +80,54 @@ func TestAspectRatios(t *testing.T) {
 		t.Errorf("icon aspect = %v, want 0 (no fixed shape)", got)
 	}
 }
+
+// Fanart is drawn full screen, so its ladder reaches 1920 and the TV rung 3840 (#2774); episode
+// stills keep the short ladder.
+func TestBackdropLadderReachesFullScreen(t *testing.T) {
+	if want := []int{300, 780, 1280, 1920, 3840}; !slices.Equal(RoleBackdrop.Widths(), want) {
+		t.Errorf("backdrop ladder = %v, want %v", RoleBackdrop.Widths(), want)
+	}
+	if want := []int{300, 780, 1280}; !slices.Equal(RoleThumb.Widths(), want) {
+		t.Errorf("thumb ladder = %v, want %v", RoleThumb.Widths(), want)
+	}
+}
+
+// ⚠ The server never makes a rung wider than the original: a 1280 original asked for 1920 is
+// served at 1280, and a 1920 one has no 3840 rung.
+func TestWidthsForNeverUpscale(t *testing.T) {
+	cases := []struct {
+		source int
+		want   []int
+	}{
+		{0, []int{300, 780, 1280, 1920, 3840}}, // unknown: the whole ladder
+		{100, []int{300, 780, 1280}},           // card-size rungs are kept for a small original
+		{1000, []int{300, 780, 1280}},
+		{1280, []int{300, 780, 1280}},
+		{1920, []int{300, 780, 1280, 1920}},
+		{3840, []int{300, 780, 1280, 1920, 3840}},
+	}
+	for _, c := range cases {
+		if got := RoleBackdrop.WidthsFor(c.source); !slices.Equal(got, c.want) {
+			t.Errorf("WidthsFor(%d) = %v, want %v", c.source, got, c.want)
+		}
+	}
+	if got := RoleBackdrop.NearestWidthFor(3840, 1280); got != 1280 {
+		t.Errorf("NearestWidthFor(3840, 1280) = %d, want 1280", got)
+	}
+	if got := RoleBackdrop.NearestWidthFor(100000, 1920); got != 1920 {
+		t.Errorf("NearestWidthFor(100000, 1920) = %d, want 1920", got)
+	}
+	if got := RoleBackdrop.NearestWidthFor(400, 3840); got != 780 {
+		t.Errorf("NearestWidthFor(400, 3840) = %d, want 780 (a phone gets a small rung)", got)
+	}
+}
+
+// AVIF stops at 1920: the 3840 encode is the dearest rendition and a 4K client takes WebP.
+func TestAVIFLadderStopsAt1920(t *testing.T) {
+	if got, want := RoleBackdrop.AVIFWidthsFor(3840), []int{300, 780, 1280, 1920}; !slices.Equal(got, want) {
+		t.Errorf("AVIFWidthsFor(3840) = %v, want %v", got, want)
+	}
+	if got, want := RolePoster.AVIFWidthsFor(0), RolePoster.Widths(); !slices.Equal(got, want) {
+		t.Errorf("poster AVIF ladder = %v, want the whole ladder %v", got, want)
+	}
+}

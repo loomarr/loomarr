@@ -4,6 +4,7 @@
 package arrhook
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -48,12 +49,14 @@ type payload struct {
 		FolderPath string `json:"folderPath"`
 		TMDBID     int    `json:"tmdbId"`
 	} `json:"movie"`
-	EpisodeFile         *file     `json:"episodeFile"`
-	EpisodeFiles        []file    `json:"episodeFiles"`
-	MovieFile           *file     `json:"movieFile"`
-	DeletedFiles        []file    `json:"deletedFiles"`
-	RenamedEpisodeFiles []renamed `json:"renamedEpisodeFiles"`
-	RenamedMovieFiles   []renamed `json:"renamedMovieFiles"`
+	EpisodeFile  *file  `json:"episodeFile"`
+	EpisodeFiles []file `json:"episodeFiles"`
+	MovieFile    *file  `json:"movieFile"`
+	// DeletedFiles is an upgrade's replaced files, but on a SeriesDelete or MovieDelete it is a
+	// bool saying whether the files went too, so it is read as files only when it is a list.
+	DeletedFiles        json.RawMessage `json:"deletedFiles"`
+	RenamedEpisodeFiles []renamed       `json:"renamedEpisodeFiles"`
+	RenamedMovieFiles   []renamed       `json:"renamedMovieFiles"`
 }
 
 // wholeFolder are the events that change the series' or movie's folder itself rather than one file
@@ -92,7 +95,13 @@ func Parse(body []byte) (Event, error) {
 	for _, f := range p.EpisodeFiles {
 		addFile(f)
 	}
-	for _, f := range p.DeletedFiles {
+	var deleted []file
+	if bytes.HasPrefix(bytes.TrimSpace(p.DeletedFiles), []byte("[")) {
+		if err := json.Unmarshal(p.DeletedFiles, &deleted); err != nil {
+			return Event{}, fmt.Errorf("arrhook: deletedFiles: %w", err)
+		}
+	}
+	for _, f := range deleted {
 		addFile(f)
 	}
 	for _, f := range []*file{p.EpisodeFile, p.MovieFile} {

@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 func readFile(path string) ([]byte, error) { return os.ReadFile(path) }

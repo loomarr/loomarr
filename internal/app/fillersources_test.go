@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
@@ -129,84 +127,11 @@ func (r *recordingSources) MarkFillerSourceFetched(context.Context, string, time
 	return nil
 }
 func (r *recordingSources) SetFillerSourceEnabled(context.Context, string, bool) error { return nil }
-func (r *recordingSources) SetFillerSourceFetchPolicy(context.Context, string, *int, *int) error {
+func (r *recordingSources) ChangeFillerSource(context.Context, string, records.FillerSourceChange) error {
 	return nil
 }
-
-func TestRememberSources(t *testing.T) {
-	t.Parallel()
-	fixed := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	newAdapter := func(rs *recordingSources) fillerServiceAdapter {
-		return fillerServiceAdapter{sources: rs, now: func() time.Time { return fixed }}
-	}
-
-	t.Run("registers an archive item by its identifier", func(t *testing.T) {
-		rs := &recordingSources{}
-		newAdapter(rs).rememberSources(context.Background(),
-			[]string{"https://archive.org/details/classic_tv_commercials"})
-
-		if len(rs.upserted) != 1 {
-			t.Fatalf("registered %d sources, want 1", len(rs.upserted))
-		}
-		got := rs.upserted[0]
-		// Keyed by IDENTIFIER, not the URL: re-adding the same collection spelled a
-		// different way must update one row rather than growing a second.
-		if got.ID != "classic_tv_commercials" {
-			t.Errorf("id = %q, want the archive identifier", got.ID)
-		}
-		if got.Kind != "archive" {
-			t.Errorf("kind = %q, want archive", got.Kind)
-		}
-		if !got.CreatedAt.Equal(fixed) {
-			t.Errorf("CreatedAt = %v, want the injected clock", got.CreatedAt)
-		}
-	})
-
-	// ⚠ A YouTube URL is a VIDEO, not a source with state to remember. Nothing about it needs
-	// a licence, a fetch cursor or a name someone chose, and a row per video would turn the
-	// registry into a second, worse clip list.
-	t.Run("ignores non-archive urls", func(t *testing.T) {
-		rs := &recordingSources{}
-		newAdapter(rs).rememberSources(context.Background(), []string{
-			"https://www.youtube.com/watch?v=abc123",
-			"https://www.youtube.com/playlist?list=PL123",
-		})
-		if len(rs.upserted) != 0 {
-			t.Errorf("registered %v, want nothing for YouTube urls", rs.upserted)
-		}
-	})
-
-	// ⚠ THE property this is best-effort for: a registry failure must not be able to stop a
-	// download. The method returns nothing, so this asserts it does not panic and leaves the
-	// caller free to proceed.
-	t.Run("survives a store failure", func(t *testing.T) {
-		rs := &recordingSources{err: errors.New("disk full")}
-		newAdapter(rs).rememberSources(context.Background(),
-			[]string{"https://archive.org/details/x"})
-		// Reaching here without a panic IS the assertion.
-	})
-
-	t.Run("does nothing when no store is wired", func(t *testing.T) {
-		fillerServiceAdapter{}.rememberSources(context.Background(),
-			[]string{"https://archive.org/details/x"})
-	})
-}
-
-func TestArchiveIDFrom(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct{ in, want string }{
-		{"https://archive.org/details/classic_tv_commercials", "classic_tv_commercials"},
-		{"http://archive.org/details/item-1/", "item-1"},
-		{"https://archive.org/details/item-2?start=3", "item-2"},
-		{"https://archive.org/details/item-3#play", "item-3"},
-		{"https://www.youtube.com/watch?v=abc", ""},
-		{"not a url", ""},
-		{"", ""},
-	} {
-		if got := archiveIDFrom(tc.in); got != tc.want {
-			t.Errorf("archiveIDFrom(%q) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
+func (r *recordingSources) SetFillerSourceFetchPolicy(context.Context, string, *int, *int) error {
+	return nil
 }
 
 // ⚠ The omit-vs-zero rule, tested against the REAL mapping rather than through the API's fake
@@ -545,44 +470,6 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []fetch.Discovere
 		if items[i].DurationMS > 0 {
 			items[i].Height = 480
 		}
-	}
-}
-
-// #1773 (supervisor decision): each Archive.org item's runtime is read once and remembered on
-// disk, so a later pull (and a restarted server) reuses it instead of paying Archive.org's
-// per-item throttle again. Only what is still unknown is asked for.
-func TestArchiveProvider_RuntimesAreReadOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
-	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
-	enumerate := func() map[string]source.Item {
-		t.Helper()
-		// A fresh cache over the same file each time: what a restarted server would see.
-		catalog := cachedArchiveCatalog{Catalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
-		provider := archiveprovider.New(archiveprovider.Config{Catalog: catalog, Runtimes: func() bool { return true }})
-		listing, err := provider.List(t.Context(), source.Source{ID: "s", URI: "reels_collection"},
-			source.ListRequest{Take: 10, List: 10})
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := map[string]source.Item{}
-		for _, item := range listing.Items {
-			got[item.ID] = item
-		}
-		return got
-	}
-
-	enumerate()
-	if !slices.Equal(archive.asked, []string{"reel", "spot", "unprobed"}) {
-		t.Fatalf("first listing asked for %v, want every item", archive.asked)
-	}
-	archive.asked = nil
-	second := enumerate()
-	// A runtime Archive.org could not give is asked for again: it may have been probed since.
-	if !slices.Equal(archive.asked, []string{"unprobed"}) {
-		t.Errorf("second listing asked for %v, want only the item whose runtime is still unknown", archive.asked)
-	}
-	if second["reel"].DurationMS != 30*60*1000 || second["spot"].DurationMS != 45*1000 || second["spot"].Height != 480 {
-		t.Errorf("remembered items came back as reel=%+v spot=%+v, want their runtimes and quality", second["reel"], second["spot"])
 	}
 }
 

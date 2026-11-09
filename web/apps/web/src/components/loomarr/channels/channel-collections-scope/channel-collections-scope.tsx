@@ -3,7 +3,6 @@ import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action, Text } from "@loomarr/design-system";
-import { X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
@@ -119,14 +118,15 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
                 >
                   <span>{labelOf(id)}</span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${labelOf(id)}`}
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => commit(selected.filter((c) => c !== id))}
+                  <Action
+                    compact
+                    icon="close"
+                    layout="icon"
+                    onPress={() => commit(selected.filter((c) => c !== id))}
+                    variant="ghost"
                   >
-                    <X className="size-3.5" aria-hidden />
-                  </button>
+                    {`Remove ${labelOf(id)}`}
+                  </Action>
                 </li>
               ))}
             </ul>

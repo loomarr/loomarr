@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // ErrMatroskaIndex reports a Matroska file whose index is present but does not parse.

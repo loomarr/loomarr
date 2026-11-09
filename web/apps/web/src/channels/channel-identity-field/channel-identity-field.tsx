@@ -42,8 +42,11 @@ const ChannelIdentityField = ({
     setSeeded(committed);
   }
 
+  // What a save sends, and so what the server stores: dirty compares this, not the raw draft, so a
+  // padded draft stops being dirty once its trimmed value comes back as `value`.
+  const normalised = type === "number" ? Number(draft) : draft.trim();
   const validationError = validate?.(draft);
-  const dirty = draft !== committed;
+  const dirty = String(normalised) !== committed;
   const canSave = dirty && !validationError && !saving;
 
   const reset = () => {
@@ -56,9 +59,10 @@ const ChannelIdentityField = ({
     setSaving(true);
     setServerError(undefined);
     try {
-      await onSave(type === "number" ? Number(draft) : draft.trim());
-      // Success: the parent's mutation updated the source; `committed` will follow on the next
-      // render. Nothing to reset here — dirty resolves once `value` reflects the save.
+      await onSave(normalised);
+      // Success: the parent's mutation updated the source; `committed` follows on the next render.
+      // The input shows the value that was saved.
+      setDraft(String(normalised));
     } catch (e) {
       setServerError(e instanceof Error ? e.message : "Couldn't save. Try a different value.");
     } finally {
@@ -130,7 +134,11 @@ const ChannelIdentityField = ({
           </div>
         )}
       </div>
-      {error && <p className="text-onair-300 text-xs">{error}</p>}
+      {error && (
+        <p className="text-onair-300 text-xs" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 };

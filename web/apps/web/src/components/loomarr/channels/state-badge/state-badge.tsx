@@ -35,9 +35,9 @@ const LABEL: Record<ProvisioningState, string> = {
   drift: "Drift",
 };
 
-// The uppercase + letter-spacing is CSS-only, so the DOM text stays sentence-case
-// ("Downloading") — that IS the accessible name a screen reader speaks (§5.3), so no aria-label
-// is needed (and aria-label on a generic <span> isn't ARIA-valid).
+// The DOM text is the sentence-case label ("Downloading") — that IS the accessible name a screen
+// reader speaks (§5.3), so no aria-label is needed (and aria-label on a generic <span> isn't
+// ARIA-valid).
 const StateBadge = ({ state, className }: StateBadgeProps) => (
   <Badge
     shape="square"

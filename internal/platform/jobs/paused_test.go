@@ -1,8 +1,11 @@
 package jobs
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,6 +53,44 @@ func TestPaused_ScheduledRunSkippedUntilResumed(t *testing.T) {
 	}
 	if n := ran.Load(); n != 1 {
 		t.Errorf("resumed job ran %d times, want 1", n)
+	}
+}
+
+// pauseReadFailsStore fails the pause-flag read with a database error.
+type pauseReadFailsStore struct{ *fakeStore }
+
+func (pauseReadFailsStore) GetScheduledJob(context.Context, string) (jobstore.ScheduledJob, error) {
+	return jobstore.ScheduledJob{}, errors.New("database is locked")
+}
+
+// A failed pause-flag read fails open (the run proceeds: one skipped run is not worth silencing every
+// job on a database hiccup) but says so; a job that has simply never run has no row and says nothing.
+func TestPaused_ReadErrorFailsOpenAndIsLogged(t *testing.T) {
+	var logs bytes.Buffer
+	clk := &fakeClock{t: time.Unix(1000, 0)}
+	var ran atomic.Int64
+	s := New(pauseReadFailsStore{newFakeStore()}, NewRegistry().Add(pausableJob(&ran)), nil, clk.now,
+		slog.New(slog.NewTextHandler(&logs, nil)))
+	w := riverWorker{s: s}
+
+	if err := w.Work(context.Background(), &river.Job[jobArgs]{Args: jobArgs{Name: "reconcile"}}); err != nil {
+		t.Fatal(err)
+	}
+	if ran.Load() != 1 {
+		t.Errorf("job ran %d times after a pause-flag read error, want 1 (fail open)", ran.Load())
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "database is locked") {
+		t.Errorf("the pause-flag read error was not logged at Warn:\n%s", logs.String())
+	}
+
+	// No row yet is the ordinary first run: nothing to report.
+	logs.Reset()
+	fresh := New(newFakeStore(), NewRegistry().Add(pausableJob(&ran)), nil, clk.now, slog.New(slog.NewTextHandler(&logs, nil)))
+	if err := (&riverWorker{s: fresh}).Work(context.Background(), &river.Job[jobArgs]{Args: jobArgs{Name: "reconcile"}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logs.String(), "pause") {
+		t.Errorf("a never-run job logged about its pause flag:\n%s", logs.String())
 	}
 }
 

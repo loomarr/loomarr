@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { RestartOverlay } from "./restart-overlay";
 
 describe("RestartOverlay", () => {
@@ -42,6 +43,9 @@ describe("RestartOverlay", () => {
 
   it("renders nothing when idle", () => {
     const { container } = render(<RestartOverlay restarting={false} />);
-    expect(container).toBeEmptyDOMElement();
+    // The theme provider's wrapper spans stay; the overlay itself draws nothing.
+    expect(container.textContent).toBe("");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

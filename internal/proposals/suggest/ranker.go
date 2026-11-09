@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -28,7 +28,7 @@ const (
 )
 
 type rankedCandidate struct {
-	candidate   catalog.Candidate
+	candidate   titlesearch.Candidate
 	key         provision.Key
 	relevance   int
 	preference  int
@@ -42,17 +42,17 @@ type rankedCandidates struct {
 }
 
 type RankedCandidates struct {
-	Candidates []catalog.Candidate
+	Candidates []titlesearch.Candidate
 	Trace      proposals.DecisionTrace
 }
 
-func RankGroundedCandidatesWithTrace(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
+func RankGroundedCandidatesWithTrace(intent string, candidates []titlesearch.Candidate, signals []FeedbackSignal) RankedCandidates {
 	return rankGroundedCandidatesWithTrace(rankQuery{request: intentWordSet(intent)}, candidates, signals)
 }
 
-func rankGroundedCandidatesWithTrace(query rankQuery, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
+func rankGroundedCandidatesWithTrace(query rankQuery, candidates []titlesearch.Candidate, signals []FeedbackSignal) RankedCandidates {
 	ranked := rankDetailed(query, candidates, signals)
-	result := make([]catalog.Candidate, 0, len(ranked.included))
+	result := make([]titlesearch.Candidate, 0, len(ranked.included))
 	for _, item := range ranked.included {
 		result = append(result, item.candidate)
 	}
@@ -88,7 +88,7 @@ func ownership(inLibrary bool) string {
 // #493. Relevance is the primary sort key, so a taste signal cannot promote an
 // unrelated title above a relevant one. Feedback and novelty only order
 // candidates within the same relevance band; identity is the final tie-break.
-func RankGroundedCandidates(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) []catalog.Candidate {
+func RankGroundedCandidates(intent string, candidates []titlesearch.Candidate, signals []FeedbackSignal) []titlesearch.Candidate {
 	return RankGroundedCandidatesWithTrace(intent, candidates, signals).Candidates
 }
 
@@ -119,11 +119,11 @@ func (q rankQuery) match(candidate map[string]bool) proposals.ConstraintMatches 
 	}
 }
 
-func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []FeedbackSignal) rankedCandidates {
+func rankDetailed(query rankQuery, candidates []titlesearch.Candidate, signals []FeedbackSignal) rankedCandidates {
 	effective := make(map[provision.Key]FeedbackAction, len(signals))
 	lessGenres := map[string]bool{}
 	surpriseTargets := map[provision.Key]bool{}
-	byKey := make(map[provision.Key]catalog.Candidate, len(candidates))
+	byKey := make(map[provision.Key]titlesearch.Candidate, len(candidates))
 	for _, candidate := range candidates {
 		if key, err := candidate.Key(); err == nil {
 			byKey[key] = candidate
@@ -183,7 +183,7 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 	return result
 }
 
-func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, proposals.ConstraintMatches) {
+func relevanceForCandidate(query rankQuery, candidate titlesearch.Candidate) (int, proposals.ConstraintMatches) {
 	candidateTerms := candidateWordSet(candidate, query)
 	return overlap(query.all(), candidateTerms), query.match(candidateTerms)
 }
@@ -194,7 +194,7 @@ func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, p
 // World as if they were ghost stories. Title words matching a must-include,
 // tone, era or refinement term still count, and explicit title requests
 // resolve elsewhere (reference.go, name_grounding.go) without this overlap.
-func candidateWordSet(candidate catalog.Candidate, query rankQuery) map[string]bool {
+func candidateWordSet(candidate titlesearch.Candidate, query rankQuery) map[string]bool {
 	terms := wordSet(strings.Join([]string{
 		candidate.Overview,
 		strings.Join(candidate.Genres, " "),

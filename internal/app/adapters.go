@@ -13,19 +13,18 @@ import (
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
@@ -177,16 +176,16 @@ func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 	}
 }
 
-// searchAdapter maps catalog.Catalog to api.SearchService (converts candidates
+// searchAdapter maps titlesearch.Catalog to api.SearchService (converts candidates
 // to the API's dependency-light shape).
-type searchAdapter struct{ cat *catalog.Catalog }
+type searchAdapter struct{ cat *titlesearch.Catalog }
 
 func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequest) ([]httpcore.SearchCandidate, error) {
-	var cands []catalog.Candidate
+	var cands []titlesearch.Candidate
 	var err error
 	if request.Discovery != nil {
 		discovery := request.Discovery
-		cands, err = a.cat.Discover(ctx, catalog.DiscoveryQuery{
+		cands, err = a.cat.Discover(ctx, titlesearch.DiscoveryQuery{
 			MediaType: provision.MediaType(discovery.MediaType), Keywords: discovery.Keywords, Genres: discovery.Genres,
 			YearFrom: discovery.YearFrom, YearTo: discovery.YearTo,
 			OriginalLanguage: discovery.OriginalLanguage, OriginCountry: discovery.OriginCountry,
@@ -195,9 +194,9 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 			Network: discovery.Network, Cast: discovery.Cast, Creators: discovery.Creators,
 		}, request.Limit)
 	} else {
-		cands, err = a.cat.Search(ctx, request.Query, catalog.ParseScope(request.Scope), request.Limit)
+		cands, err = a.cat.Search(ctx, request.Query, titlesearch.ParseScope(request.Scope), request.Limit)
 		if request.MediaType != "" {
-			filtered := make([]catalog.Candidate, 0, len(cands))
+			filtered := make([]titlesearch.Candidate, 0, len(cands))
 			for _, candidate := range cands {
 				if candidate.MediaType == provision.MediaType(request.MediaType) {
 					filtered = append(filtered, candidate)
@@ -216,7 +215,7 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 	return out, nil
 }
 
-type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
+type movieCollectionAdapter struct{ resolver *tmdb.CollectionResolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,
@@ -246,7 +245,7 @@ func (a movieCollectionAdapter) ResolveMovieCollections(
 	return out, nil
 }
 
-func searchCandidateFromCatalog(c catalog.Candidate) httpcore.SearchCandidate {
+func searchCandidateFromCatalog(c titlesearch.Candidate) httpcore.SearchCandidate {
 	return httpcore.SearchCandidate{
 		MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
@@ -259,7 +258,7 @@ func searchCandidateFromCatalog(c catalog.Candidate) httpcore.SearchCandidate {
 }
 
 type approvalAdditionAdapter struct {
-	presence catalog.LibraryPresenceSource
+	presence titlesearch.LibraryPresenceSource
 }
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
@@ -326,7 +325,7 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 // lineup entry's content rating by the entry's Key, for the reconcile-time heal of unrated entries
 // (§389 amendment), from the Library's own title (#2151 step 16), so the rating is never a guess.
 type libraryRatings struct {
-	titles store.LibraryTitleReader
+	titles librarystore.LibraryTitleReader
 }
 
 func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
@@ -342,7 +341,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	t, ok, err := catalog.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
+	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
 	if err != nil || !ok {
 		return "", false, err
 	}
@@ -402,28 +401,26 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 
 // ownMember reads a household collection's title as a search result, so its keys come from the
 // one derivation every title uses.
-func ownMember(m store.LibraryCollectionMember) library.SearchResult {
+func ownMember(m librarystore.LibraryCollectionMember) library.SearchResult {
 	r := library.SearchResult{MediaType: library.Movie}
 	if m.Kind == "series" {
 		r.MediaType = library.Series
 	}
 	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TVDB)))
+	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TVDB)))
 	return r
 }
 
 // ownCollections is the household's collections (#2151 step 12), as the collection scope reads
 // them.
 type ownCollections interface {
-	LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
-	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
+	LibraryCollectionMemberIDs(ctx context.Context) ([]librarystore.LibraryCollectionMember, error)
+	ListLibraryCollections(ctx context.Context) ([]librarystore.LibraryCollection, error)
 }
 
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
-// picker (programming-design §2.2): the household's collections (#2151 step 16). The media
-// server's own collections are not consulted: its hand-made ones live in the Library, and its
-// TMDB ones are the Library's ready-made sets.
+// picker (programming-design §2.2): the household's collections (#2151 step 16).
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an

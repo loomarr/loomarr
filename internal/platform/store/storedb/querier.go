@@ -17,6 +17,9 @@ type Querier interface {
 // callers defer it straight after Begin.
 type Tx interface {
 	Querier
+	// PrepareContext prepares a statement for repeated execution inside the transaction, for the
+	// bulk writes that run one statement per row.
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	Commit() error
 	Rollback() error
 }

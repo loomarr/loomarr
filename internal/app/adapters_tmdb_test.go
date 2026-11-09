@@ -6,23 +6,22 @@ import (
 
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
-	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 func TestSearchAdapterCarriesGroundedEditorialEvidence(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999,
 		Genres: []string{"Science Fiction"}, Overview: "A florist's coded orders.",
 		OriginalLanguage: "en", OriginCountries: []string{"US"}, RuntimeMinutes: 136,
 		VoteAverage: 8.2, VoteCount: 27_000, Keywords: []string{"secret code"},
 	}}}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
+	got, err := (searchAdapter{cat: titlesearch.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Query: "marigold", Scope: "tmdb", Limit: 20,
 	})
 	if err != nil {
@@ -41,12 +40,12 @@ func TestMovieCollectionAdapterUsesAuthoritativeTMDBRoster(t *testing.T) {
 	tmdbServer.AddMovie(90000672, "Wren Halloway and the Sunken Library", 2002, []int{12, 14}, "The second school year.")
 	tmdbServer.AddMovie(90000673, "Wren Halloway and the Glass Orchard", 2004, []int{12, 14}, "A runaway gardener shadows the school.")
 	tmdbServer.SetMovieCollection(90001241, "Wren Halloway Collection", 90000671, 90000672, 90000673)
-	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{
 		90000672: {LibraryItemID: "library-672", OfficialRating: "PG"},
 	}}
 	client := tmdb.NewWithBase(tmdbServer.URL, "key")
-	adapter := movieCollectionAdapter{resolver: moviecollections.New(client).WithPresenceSource(
-		func() catalog.LibraryPresence { return presence },
+	adapter := movieCollectionAdapter{resolver: tmdb.NewCollectionResolver(client).WithPresenceSource(
+		func() titlesearch.LibraryPresence { return presence },
 	)}
 
 	got, err := adapter.ResolveMovieCollections(context.Background(), libraryapi.MovieCollectionRequest{
@@ -64,14 +63,14 @@ func TestMovieCollectionAdapterUsesAuthoritativeTMDBRoster(t *testing.T) {
 }
 
 func TestSearchAdapterUsesCatalogDiscoveryForStructuredRequests(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{
 		MediaType: provision.Series, TMDBID: 90_020_001, Name: "Signal House", Networks: []string{"Kestrel One"},
 	}}}
 	discovery := &catalogapi.SearchDiscovery{
 		MediaType: "series", Genres: []string{"Comedy"}, Network: "Kestrel One", OriginCountry: "US",
 	}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
+	got, err := (searchAdapter{cat: titlesearch.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Scope: "all", Limit: 12, Discovery: discovery,
 	})
 	if err != nil {
@@ -94,12 +93,12 @@ func TestSearchAdapterUsesCatalogDiscoveryForStructuredRequests(t *testing.T) {
 }
 
 func TestSearchAdapterNarrowsTitleResultsByMediaType(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Movie"},
 		{MediaType: provision.Series, TMDBID: 90000002, Name: "Series"},
 	}}
 
-	got, err := (searchAdapter{cat: catalog.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
+	got, err := (searchAdapter{cat: titlesearch.New(nil, corpus)}).Search(context.Background(), catalogapi.SearchRequest{
 		Query: "shared title", MediaType: "series", Scope: "tmdb", Limit: 20,
 	})
 	if err != nil {

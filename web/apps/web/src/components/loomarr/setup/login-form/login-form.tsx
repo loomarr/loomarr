@@ -81,8 +81,7 @@ const LoginForm = ({
         Forgot password?
       </a>
 
-      {/* A real submit button under Action's look, so Enter in a field still submits. */}
-      <Action disabled={isPending} render={<button disabled={isPending} type="submit" />}>
+      <Action disabled={isPending} submit>
         {isPending ? "Signing in…" : "Sign in"}
       </Action>
 

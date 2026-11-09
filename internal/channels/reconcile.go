@@ -159,19 +159,64 @@ type reconcileRun struct {
 	qualityJobID       string
 }
 
+// reconcileOnce is one attempt against one snapshot of the channel, in three steps: plan the
+// desired lineup, project it onto Tunarr (only when Tunarr is the backend), and commit the row.
+// A stale or conflicting commit returns to the caller, which restarts from the winning row.
 func (e *Engine) reconcileOnce(
 	ctx context.Context,
 	channelID string,
 	run *reconcileRun,
 	opts reconcileOptions,
 ) error {
+	plan, err := e.planReconcile(ctx, channelID, run, opts)
+	if err != nil || plan == nil {
+		return err
+	}
+	if !plan.playsInternally {
+		if err := e.projectToTunarr(ctx, plan, run); err != nil {
+			return err
+		}
+	}
+	return e.commitReconcile(ctx, plan, run)
+}
+
+// reconcilePlan is what the planning step decided: the channel snapshot with its healed lineup and
+// next anchor, the lineup it should air, and the facts the later steps compare against what the
+// channel airs now.
+type reconcilePlan struct {
+	ch              channelstore.Channel
+	previousStatus  schedule.ChannelStatus
+	nextStatus      schedule.ChannelStatus
+	playsInternally bool
+	desired         schedule.DesiredLineup
+	chDomain        schedule.Channel
+	fillerIDs       []string
+	// acceptedSlots and acceptedAnchor are what the channel airs right now, as the encoder walks
+	// it; turnAnchor is where the rolling window leaves the anchor.
+	acceptedSlots  []schedule.Slot
+	acceptedAnchor time.Time
+	turnAnchor     time.Time
+	// desiredChangedLocally and channelListChangedLocally stay attempt-local so a stale commit
+	// publishes no freshness; the retry recomputes them from the winning row.
+	desiredChangedLocally     bool
+	channelListChangedLocally bool
+}
+
+// planReconcile loads the channel and works out its desired lineup (steps 1–3). It returns a nil
+// plan when the channel is not reconcilable or an operator's pin wins over a fleet-default move.
+func (e *Engine) planReconcile(
+	ctx context.Context,
+	channelID string,
+	run *reconcileRun,
+	opts reconcileOptions,
+) (*reconcilePlan, error) {
 
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return fmt.Errorf("load channel %s: %w", channelID, err)
+		return nil, fmt.Errorf("load channel %s: %w", channelID, err)
 	}
 	if !ch.Status.Reconcilable() {
-		return nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
+		return nil, nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
 	}
 	if opts.observeProposalQuality {
 		run.qualityEligible = false
@@ -193,7 +238,7 @@ func (e *Engine) reconcileOnce(
 		}
 	}
 	if opts.inheritedOnly && schedule.HasExplicitPlayoutBackend(ch.Policy) {
-		return nil // a concurrent operator pin wins over a fleet-default transition
+		return nil, nil // a concurrent operator pin wins over a fleet-default transition
 	}
 	previousStatus := ch.Status
 	// Resolve ONCE for this attempt from the same channel snapshot all work below uses.
@@ -204,7 +249,7 @@ func (e *Engine) reconcileOnce(
 	if !opts.inheritedOnly {
 		globalBackend, err = e.playoutBackendFor(ctx)
 		if err != nil {
-			return fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
+			return nil, fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
 		}
 	}
 	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
@@ -270,7 +315,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
 	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 	if err != nil {
-		return fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
@@ -333,12 +378,23 @@ func (e *Engine) reconcileOnce(
 	internalCatalogMembershipChanged := playsInternally &&
 		(ch.Status == schedule.StatusEmpty) != (nextStatus == schedule.StatusEmpty)
 	channelListChangedLocally := ch.Status == schedule.StatusBuilding || internalCatalogMembershipChanged
+	return &reconcilePlan{
+		ch: ch, previousStatus: previousStatus, nextStatus: nextStatus, playsInternally: playsInternally,
+		desired: desired, chDomain: chDomain, fillerIDs: fillerIDs,
+		acceptedSlots: acceptedSlots, acceptedAnchor: acceptedAnchor, turnAnchor: turnAnchor,
+		desiredChangedLocally: desiredChangedLocally, channelListChangedLocally: channelListChangedLocally,
+	}, nil
+}
 
-	// 4–5 are the optional Tunarr PROJECTION. Internal playout consumes the local
-	// schedule directly through CyclePreview and must not touch Programmer, including a
-	// historical TunarrID retained from an earlier backend choice. Keeping that id and
-	// remote row intact makes a backend switch reversible; only explicit purge deletes it.
-	if !playsInternally {
+// projectToTunarr is steps 4–5, the optional Tunarr PROJECTION. Internal playout consumes the local
+// schedule directly through CyclePreview and must not touch Programmer, including a historical
+// TunarrID retained from an earlier backend choice, so the caller runs this only for a Tunarr-backed
+// channel. Keeping that id and remote row intact makes a backend switch reversible; only explicit
+// purge deletes it. It updates plan.ch with the number and Tunarr id the remote settled on.
+func (e *Engine) projectToTunarr(ctx context.Context, plan *reconcilePlan, run *reconcileRun) error {
+	ch, desired, chDomain, fillerIDs := plan.ch, plan.desired, plan.chDomain, plan.fillerIDs
+	channelID := ch.ID
+	{
 		spec := tunarr.ChannelSpec{
 			TunarrID: ch.TunarrID,
 			Number:   ch.Number,
@@ -415,6 +471,17 @@ func (e *Engine) reconcileOnce(
 			run.channelAffecting = true
 		}
 	}
+	plan.ch = ch
+	return nil
+}
+
+// commitReconcile is steps 6–7: persist the row (a compare-and-swap on its revision), then tell the
+// packager, the UI and the media server what changed, all best-effort after the commit.
+func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *reconcileRun) error {
+	ch, desired, channelID := plan.ch, plan.desired, plan.ch.ID
+	nextStatus, previousStatus, playsInternally := plan.nextStatus, plan.previousStatus, plan.playsInternally
+	acceptedSlots, acceptedAnchor, turnAnchor := plan.acceptedSlots, plan.acceptedAnchor, plan.turnAnchor
+	desiredChangedLocally, channelListChangedLocally := plan.desiredChangedLocally, plan.channelListChangedLocally
 
 	// 6: persist. Status reflects drift; a channel with any real program is live.
 	ch.Desired = desired.Slots
@@ -456,13 +523,6 @@ func (e *Engine) reconcileOnce(
 		e.premeasureAhead(ctx, ch)
 	}
 
-	// Tell the UI the channel changed so it updates live (no manual refresh — the
-	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a
-	// latency concern, never a correctness one (GET /v1/channels is the truth on load).
-	if e.notify != nil {
-		e.notify.ChannelChanged(ch.ID, string(previousStatus), string(ch.Status))
-	}
-
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local
 	// Building marker changes the tuner list for either backend. Retry-carried flags,
 	// however, describe Tunarr effects and count only when the winning attempt is still
@@ -472,6 +532,15 @@ func (e *Engine) reconcileOnce(
 	if !playsInternally {
 		channelListChanged = channelListChanged || run.channelListChanged
 		channelAffecting = channelAffecting || run.channelAffecting
+	}
+
+	// Tell the UI the channel changed so it updates live (no manual refresh — the
+	// "self-maintaining" model, §9). Only a sweep that changed something emits: a status
+	// transition, a new desired lineup, or a Tunarr-side effect; a no-op sweep stays silent.
+	// Best-effort: nil notifier / a dropped frame is a latency concern, never a correctness
+	// one (GET /v1/channels is the truth on load).
+	if e.notify != nil && (previousStatus != ch.Status || channelListChanged || channelAffecting) {
+		e.notify.ChannelChanged(ch.ID, string(previousStatus), string(ch.Status))
 	}
 	if channelListChanged {
 		e.rescanTuner(ctx, channelID)

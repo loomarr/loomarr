@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -25,27 +26,27 @@ import (
 type conditioningRekeyCrashStore struct {
 	st         records.Store
 	afterRekey bool
-	target     cliplibrary.StoreClip
+	target     clipstore.Clip
 }
 
-func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
-	return fillerPipelineClipAdapter{st: s.st}.GetClip(ctx, hash)
+func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
+	return storeadapter.NewPipelineClips(s.st).GetClip(ctx, hash)
 }
 
-func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target cliplibrary.StoreClip) error {
+func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target clipstore.Clip) error {
 	s.target = target
 	if s.afterRekey {
-		if err := (fillerPipelineClipAdapter{st: s.st}).ReplaceClipIdentity(ctx, oldHash, target); err != nil {
+		if err := (storeadapter.NewPipelineClips(s.st)).ReplaceClipIdentity(ctx, oldHash, target); err != nil {
 			return err
 		}
 	}
 	return errors.New("injected conditioning transaction failure")
 }
 
-func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target cliplibrary.StoreClip) error {
+func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target clipstore.Clip) error {
 	s.target = target
 	if s.afterRekey {
-		if err := (fillerPipelineClipAdapter{st: s.st}).CommitConditioningPublication(ctx, publication, target); err != nil {
+		if err := (storeadapter.NewPipelineClips(s.st)).CommitConditioningPublication(ctx, publication, target); err != nil {
 			return err
 		}
 	}
@@ -163,7 +164,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				return stage
 			}
 			first := newStage(crashStore)
-			out, err := first.Run(ctx, cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := first.Run(ctx, clipstore.Clip{Clip: clips.Clip{
 				Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child",
 				Role: clips.Commercial, ParentHash: parentHash,
 			}})
@@ -195,7 +196,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 					},
 					Artwork: func(context.Context, string, string, string, float64) error { return nil },
 				}
-				if _, err := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, time.Now, nil).Sync(ctx); err != nil {
+				if _, err := filler.NewSyncer(source, storeadapter.NewSync(st), layout, time.Now, nil).Sync(ctx); err != nil {
 					t.Fatal(err)
 				}
 				if target, err := st.GetClip(ctx, crashStore.target.Hash); err != nil || !target.Held {
@@ -210,8 +211,8 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			restarted := newStage(fillerPipelineClipAdapter{st})
-			result, err := restarted.Run(ctx, cliplibrary.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
+			restarted := newStage(storeadapter.NewPipelineClips(st))
+			result, err := restarted.Run(ctx, clipstore.Clip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
 			if err != nil || result.Verdict != pipelinestate.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
 				t.Fatalf("restart result = %+v, %v; want committed target %s", result, err, crashStore.target.Hash)
 			}
@@ -253,12 +254,12 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
 	parentTranscodeCalls := 0
-	parentProbe := filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
+	parentProbe := filler.NewProbeStage(probe, storeadapter.NewPipelineClips(st), drop, nil,
 		func() time.Duration { return 45 * time.Second }, time.Now)
-	parentTranscode := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, drop,
+	parentTranscode := filler.NewTranscodeStage(storeadapter.NewPipelineClips(st), probe, drop,
 		tools.DefaultMezzanine(), func() string { parentTranscodeCalls++; return ffmpeg },
 		func() float64 { return -23 }, time.Now)
-	parentPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{parentProbe, parentTranscode},
+	parentPipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), []filler.Stage{parentProbe, parentTranscode},
 		filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
 	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
 		ClipHash: compHash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
@@ -279,7 +280,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("composite source changed before split: %q, %v", parentBytes, err)
 	}
 
-	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []tools.Chapter{
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 10_000, EndMs: 40_000, Title: "Reviewed advert"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
 		func() string { return "conditioning-proposal" }, time.Now, nil)
@@ -299,7 +300,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	}
 
 	transcode := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, probe, drop, tools.DefaultMezzanine(),
+		storeadapter.NewPipelineClips(st), probe, drop, tools.DefaultMezzanine(),
 		func() string { return ffmpeg }, func() float64 { return -23 }, time.Now,
 	)
 	var measured []tools.ConditioningRequest
@@ -319,14 +320,14 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		measurement.Cuts[0].Intended = req.IntendedCuts[0]
 		return measurement, nil
 	})
-	pipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{
-		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
+	pipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), []filler.Stage{
+		filler.NewProbeStage(probe, storeadapter.NewPipelineClips(st), drop, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now),
 		transcode,
 		filler.NewFinishStage(),
 	}, filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
 	app := fillerServiceAdapter{
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,
+		splitter: splitter, splitClips: storeadapter.NewSplit(st, nil), pipeline: pipeline,
 	}
 	segments := append([]split.Segment(nil), proposal.Segments...)
 	segments[0].Era = 1994

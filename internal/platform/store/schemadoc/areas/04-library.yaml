@@ -72,8 +72,8 @@ tables:
         confirm them. A held file still counts as present.
       seen_at_ms: When a walk last found the file, in Unix milliseconds.
       missing_at_ms: When a walk stopped finding the file, in Unix milliseconds; 0 means it is present.
-      inventory_item_id: The title the file was last written as (a library_items id); empty until known.
-      inventory_series_id: For an episode, its show (a library_items id); empty otherwise or until known.
+      inventory_item_id: The title the file was last written as (a library_items id); null until known.
+      inventory_series_id: For an episode, its show (a library_items id); null otherwise or until known.
 
   - name: library_items
     about: >
@@ -138,7 +138,7 @@ tables:
       series_key: An episode's show, by the folder part of the show's scan origin; empty otherwise.
       series_id: >
         An episode's show (a library_items id), filled once both the episode and the show are written;
-        empty otherwise.
+        null otherwise.
       unnumbered: >
         1 for an episode its show's catalog could not number, because the catalog numbers the show in
         more than one order or its seasons end elsewhere than the disk's, and nobody has said which
@@ -261,20 +261,6 @@ tables:
       year: The year it came out; 0 when unknown.
       role: What they did on it, one of actor, creator, director or writer.
       character_name: An actor's part; empty for crew or when unknown.
-
-  - name: library_id_map
-    about: >
-      The cutover's id map: each media-server item id Loomarr may have stored, and the library item
-      it names. Movies and episodes pair by file path through the derived path map; a series pairs
-      through its episodes. Replaced whole on each pass while the media server still lists the
-      catalog, and read once by the cutover's rewrite.
-    retention: The whole table is replaced on each mapping pass; only the last pass is kept.
-    columns:
-      media_id: The media server's item id.
-      kind: movie, episode or series.
-      item_id: The library item it names (a library_items id); empty when it did not pair.
-      reason: Why it did not pair; empty when it did.
-      mapped_at_ms: When the pass that wrote it ran, in Unix milliseconds.
 
   - name: library_credits
     about: >

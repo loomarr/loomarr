@@ -25,7 +25,7 @@ func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	ch := sampleChannel("ch-owner", 1, time.Time{})
-	ch.IntentRef = "job-origin"
+	ch.IntentRef, ch.FromRequest = "job-origin", true
 	ch.IntentJSON = `{"description":"90s action"}`
 	ch.RequestedBy = "u-member"
 	saved := mustSaveChannel(t, s, ch)
@@ -64,9 +64,11 @@ func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || forRefine.ID != saved.ID {
 		t.Fatalf("GetChannelForJob(refine) = %+v, %v; want ch-owner", forRefine.ID, err)
 	}
-	forOrigin, err := s.GetChannelForJob(ctx, "job-origin")
-	if err != nil || forOrigin.ID != saved.ID {
-		t.Fatalf("GetChannelForJob(purged origin) = %+v, %v; want ch-owner", forOrigin.ID, err)
+	// The purge clears the channel's origin binding (intent_ref is SET NULL, #2793); that a
+	// request made it is kept in from_request, which refine and auto-curate ask.
+	if got.IntentRef != "" || !got.FromRequest {
+		t.Errorf("channel after its origin job was purged = intentRef %q fromRequest %v; want none, true",
+			got.IntentRef, got.FromRequest)
 	}
 	if _, err := s.GetChannelForJob(ctx, "job-unbound"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetChannelForJob(unbound) = %v, want ErrNotFound", err)
@@ -79,12 +81,16 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	mustUsers(t, s, "u-member")
+	mustOriginJobs(t, s, "job-origin", "job-other")
 	ch := sampleChannel("ch-named", 1, time.Time{})
-	ch.IntentRef = "job-origin"
+	ch.IntentRef, ch.FromRequest = "job-origin", true
 	ch.IntentJSON = `{"description":"first"}`
 	ch.RequestedBy = "u-member"
 	saved := mustSaveChannel(t, s, ch)
-	other := mustSaveChannel(t, s, sampleChannel("ch-other", 2, time.Time{}))
+	other := sampleChannel("ch-other", 2, time.Time{})
+	other.IntentRef, other.FromRequest = "job-other", true
+	other = mustSaveChannel(t, s, other)
 
 	if err := s.CreateJob(ctx, Job{
 		ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-named",
@@ -117,13 +123,32 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("channel after refine approval = ref %q intent %q requestedBy %q", got.IntentRef, got.IntentJSON, got.RequestedBy)
 	}
 
+	// A job cannot name a channel that is not there, and goes with the channel it names.
 	if err := s.CreateJob(ctx, Job{
 		ID: "job-orphan", Kind: "recurate", Status: "done", ChannelID: "ch-removed",
-	}); err != nil {
+	}); err == nil {
+		t.Error("created a job naming a channel that does not exist; the foreign key is missing")
+	}
+	again, err := s.GetChannel(ctx, "ch-named")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.GetChannelForJob(ctx, "job-orphan"); !errors.Is(err, ErrJobChannelGone) || errors.Is(err, ErrNotFound) {
-		t.Errorf("GetChannelForJob(removed channel) = %v, want ErrJobChannelGone and not ErrNotFound", err)
+	if err := s.DeleteChannel(ctx, again.ID, again.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetJob(ctx, "job-refine"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("refine job after its channel was deleted = %v, want ErrNotFound", err)
+	}
+}
+
+// mustOriginJobs saves a settled suggestion job for each id, for channels made from them:
+// intent_ref is a foreign key to the job (#2793).
+func mustOriginJobs(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.CreateJob(context.Background(), Job{ID: id, Kind: "suggest", Status: "done"}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -134,6 +159,9 @@ func testChannelHasUnfinishedJob(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	for i, id := range []string{"ch-a", "ch-b", "ch-c", "ch-d"} {
+		mustSaveChannel(t, s, sampleChannel(id, i+1, time.Time{}))
+	}
 	idle := func(channelID string) {
 		t.Helper()
 		got, err := s.ChannelHasUnfinishedJob(ctx, channelID)
@@ -191,6 +219,7 @@ func testPurgeKeepsJobsAwaitingADecision(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	old := time.Now().Add(-100 * 24 * time.Hour)
+	mustSaveChannel(t, s, sampleChannel("ch-1", 1, time.Time{}))
 	for _, j := range []Job{
 		{ID: "j-waiting", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
 		{ID: "j-approved", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
@@ -232,11 +261,12 @@ func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	mustOriginJobs(t, s, "job-origin", "job-elsewhere")
 	ch := sampleChannel("ch-super", 1, time.Time{})
-	ch.IntentRef = "job-origin"
+	ch.IntentRef, ch.FromRequest = "job-origin", true
 	saved := mustSaveChannel(t, s, ch)
 	other := sampleChannel("ch-elsewhere", 2, time.Time{})
-	other.IntentRef = "job-elsewhere"
+	other.IntentRef, other.FromRequest = "job-elsewhere", true
 	otherSaved := mustSaveChannel(t, s, other)
 
 	for _, j := range []Job{

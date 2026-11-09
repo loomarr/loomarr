@@ -27,13 +27,13 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -171,7 +171,7 @@ type Resolver struct {
 	libraryVideo LibraryVideoReader
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
-	itemFacts store.LibraryItemFactsReader
+	itemFacts librarystore.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -256,7 +256,7 @@ type Config struct {
 	// LibraryVideo is a Library item's video format as the scanner read it.
 	LibraryVideo LibraryVideoReader
 	// ItemFacts answers the guide's metadata for a library item id.
-	ItemFacts store.LibraryItemFactsReader
+	ItemFacts librarystore.LibraryItemFactsReader
 
 	// Tier, Encoder and ToneCurve read playout.quality_tier, playout.encoder and
 	// playout.tone_curve live.
@@ -411,6 +411,10 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 	return airing, input, nil
 }
 
+// servedWriteTimeout bounds the airing-history write RecordAiringServed makes after its caller's
+// context may have ended.
+const servedWriteTimeout = 5 * time.Second
+
 // RecordAiringServed records that a viewer received segments of an airing AiringAt resolved at
 // `resolvedAt`. It is the ONLY writer of airing history and of a filler clip's play count: every
 // resolve is a read (the admin Info page's /tracks, the packager's lookups for a neighbour warm),
@@ -433,6 +437,10 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 //
 // Telemetry, never correctness: a failed write is logged and the airing carries on.
 func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, airing playout.Airing, resolvedAt time.Time) {
+	// The serve that fired this runs under the channel packager's context, which ends the moment the
+	// last viewer leaves; the write has already been earned, so it runs detached and bounded.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), servedWriteTimeout)
+	defer cancel()
 	switch {
 	case airing.Kind == schedule.SlotFiller:
 		if airing.Identity == "" || r.clipPlays == nil {
@@ -456,7 +464,7 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 			recordedAt = startedAt
 		}
 		if err := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); err != nil && r.log != nil {
-			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
+			r.log.Warn("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
 		}
 	}
 }
@@ -1325,7 +1333,7 @@ func readableFile(path string) bool {
 
 // LibraryVideoReader is the store's read of the video a Library item plays.
 type LibraryVideoReader interface {
-	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
+	LibraryPlayingVideo(ctx context.Context, itemID string) (librarystore.LibraryStream, bool, error)
 }
 
 // libraryFormat is a library item's video format as the scanner read its playing file's header
@@ -1350,7 +1358,7 @@ func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.Me
 
 // LibraryAudioReader is the store's one Library read audio selection makes.
 type LibraryAudioReader interface {
-	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]librarystore.LibraryStream, bool, error)
 }
 
 // libraryAudioTracks is a local file's audio tracks as the Library lists them, when the scanner

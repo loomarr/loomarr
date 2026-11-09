@@ -2,7 +2,7 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibraryDetailsFromDTODescription } from "@loomarr/api/models/libraryDetailsFromDTODescription";
 import { LibraryMatchDTOApp } from "@loomarr/api/models/libraryMatchDTOApp";
 import { unwrap } from "@loomarr/api/unwrap";
-import { LibraryTitle } from "@loomarr/ui";
+import { LibraryTitle, StatePanel } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -29,12 +29,6 @@ const SOURCE_NAMES: Record<LibraryDetailsFromDTODescription, string> = {
 };
 const sourceName = (source?: LibraryDetailsFromDTODescription) => (source ? SOURCE_NAMES[source] : undefined);
 
-// A call that answers with an error status still resolves; this makes it a rejection, so the page
-// says it didn't go through.
-const done = (res: { status: number }) => {
-  if (res.status !== 204) throw new Error(`status ${res.status}`);
-};
-
 const LibraryTitlePage = ({ id }: { id: string }) => {
   const navigate = useNavigate();
   const router = useRouter();
@@ -44,7 +38,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   useDocumentTitle(body?.item.name ?? "Library");
 
   if (detail.error) return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
-  if (!body) return null;
+  if (!body) return <StatePanel kind="loading" title="Loading this title" />;
 
   // An answer moves the title in and out of Needs you and can rename it on the shelf.
   const refresh = () =>
@@ -54,8 +48,9 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() }),
       queryClient.invalidateQueries({ queryKey: ["/v1/library/items"] }),
     ]);
-  const act = async (call: Promise<{ status: number }>) => {
-    done(await call);
+  // A call that answers with an error status rejects, so the page says it didn't go through.
+  const act = async (call: Promise<unknown>) => {
+    await call;
     await refresh();
   };
 
@@ -88,6 +83,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         unplayable: item.unplayable,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
+        channels: body.channels,
         detailsFrom: {
           description: sourceName(body.detailsFrom.description),
           rating: sourceName(body.detailsFrom.rating),

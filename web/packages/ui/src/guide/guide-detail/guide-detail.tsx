@@ -1,8 +1,8 @@
 import {
   formatGuideEpisode,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   type GuideAiringLayout,
-  guideAiringLabel,
   guideFillerEntryLabel,
 } from "@loomarr/core/guide";
 import { type BadgeTone, Surface, Text } from "@loomarr/design-system";
@@ -75,7 +75,7 @@ const GuideProgrammeDetail = ({
             selectedAiring.progressRatio === undefined ? undefined : selectedAiring.progressRatio * 100,
           seriesTitle: source.series,
           timeLabel: formatGuideTimeRange(source.startMs, source.stopMs, layout.timezone),
-          title: source.title.trim() || guideAiringLabel(source),
+          title: source.title.trim() || formatProgrammeTitle(source),
         }}
       />
       {source.kind === "filler" && source.pod?.entries.length ? (

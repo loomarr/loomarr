@@ -1,6 +1,5 @@
-import type { StatusTone } from "@loomarr/design-system";
+import { Icon, icons, type StatusTone } from "@loomarr/design-system";
 import { CardStatus, RowCard } from "@loomarr/ui";
-import { Tv } from "lucide-react";
 import type { RequestEntry } from "@/queue/use-requests";
 import type { RequestRowProps } from "./request-row.type";
 
@@ -19,7 +18,7 @@ const REQUEST_ROW_TONE: Record<RequestEntry["status"]["tone"], StatusTone> = {
 const RequestRow = ({ action, meta = [], status, title }: RequestRowProps) => (
   <RowCard
     action={action}
-    lead={<Tv aria-hidden size={20} style={{ color: "var(--contentSecondary)" }} />}
+    lead={<Icon decorative glyph={icons.channels} size="default" tone="secondary" />}
     meta={[<CardStatus key="status" label={status.line} tone={REQUEST_ROW_TONE[status.tone]} />, ...meta]}
     title={title}
   />

@@ -3,15 +3,15 @@ package scan
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Collection is one of the household's collections (#2151 decision 28) with its titles in the
 // household's order. A member whose title has left the library is not among Titles; it stays a
 // member, so the title comes back in its place.
 type Collection struct {
-	store.LibraryCollection
-	Titles []store.LibraryItemSummary
+	librarystore.LibraryCollection
+	Titles []librarystore.LibraryItemSummary
 }
 
 // Collections lists the household's collections, by name.
@@ -29,7 +29,7 @@ func (l *Library) Collection(ctx context.Context, id string) (Collection, error)
 	if err != nil {
 		return Collection{}, err
 	}
-	out, err := l.withTitles(ctx, []store.LibraryCollection{row})
+	out, err := l.withTitles(ctx, []librarystore.LibraryCollection{row})
 	if err != nil {
 		return Collection{}, err
 	}
@@ -38,7 +38,7 @@ func (l *Library) Collection(ctx context.Context, id string) (Collection, error)
 
 // CreateCollection saves a new collection of items, in order, and returns its id.
 func (l *Library) CreateCollection(ctx context.Context, name, description string, items []string) (string, error) {
-	return l.CollectionStore.CreateLibraryCollection(ctx, store.LibraryCollection{
+	return l.CollectionStore.CreateLibraryCollection(ctx, librarystore.LibraryCollection{
 		Name: name, Description: description, Members: items,
 	}, l.now())
 }
@@ -46,7 +46,7 @@ func (l *Library) CreateCollection(ctx context.Context, name, description string
 // UpdateCollection replaces a collection's name, description and items; store.ErrNotFound when
 // there is none.
 func (l *Library) UpdateCollection(ctx context.Context, id, name, description string, items []string) error {
-	return l.CollectionStore.UpdateLibraryCollection(ctx, store.LibraryCollection{
+	return l.CollectionStore.UpdateLibraryCollection(ctx, librarystore.LibraryCollection{
 		ID: id, Name: name, Description: description, Members: items,
 	}, l.now())
 }
@@ -58,14 +58,14 @@ func (l *Library) DeleteCollection(ctx context.Context, id string) error {
 }
 
 // withTitles reads every collection's titles in one query and puts them in each one's order.
-func (l *Library) withTitles(ctx context.Context, rows []store.LibraryCollection) ([]Collection, error) {
+func (l *Library) withTitles(ctx context.Context, rows []librarystore.LibraryCollection) ([]Collection, error) {
 	var ids []string
 	for _, c := range rows {
 		ids = append(ids, c.Members...)
 	}
-	byID := map[string]store.LibraryItemSummary{}
+	byID := map[string]librarystore.LibraryItemSummary{}
 	if len(ids) > 0 {
-		page, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{IDs: ids})
+		page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{IDs: ids})
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +75,7 @@ func (l *Library) withTitles(ctx context.Context, rows []store.LibraryCollection
 	}
 	out := make([]Collection, 0, len(rows))
 	for _, c := range rows {
-		titles := []store.LibraryItemSummary{}
+		titles := []librarystore.LibraryItemSummary{}
 		for _, id := range c.Members {
 			if it, ok := byID[id]; ok {
 				titles = append(titles, it)

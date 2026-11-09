@@ -16,8 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Tooltip } from "@loomarr/design-system";
-import { GripVertical } from "lucide-react";
+import { Action, CompactSelect, Icon, icons, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
@@ -180,7 +179,7 @@ const RuleRow = ({
           aria-label={`Reorder ${label}`}
           className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <GripVertical className="size-4" aria-hidden />
+          <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
         </button>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
         <Tooltip content="Remove this rule">

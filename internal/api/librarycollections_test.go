@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 type collectionBody struct {
@@ -53,21 +53,21 @@ func TestReadyMadeSets(t *testing.T) {
 	h := newLibraryHarness(t)
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	set := store.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
-	movie := func(id string) store.LibraryCatalogKey {
-		return store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: id}
+	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
+	movie := func(id string) librarystore.LibraryCatalogKey {
+		return librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: id}
 	}
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000021", Kind: "movie", Name: "Returns", Catalog: movie("90000613"), Set: set},
 		{ID: "90000022", Kind: "movie", Name: "Keeper", Catalog: movie("90000612"), Set: set},
 		{ID: "90000023", Kind: "movie", Name: "Harbour", Catalog: movie("90000620")},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	var files []store.LibraryFile
+	var files []librarystore.LibraryFile
 	for _, id := range []string{"90000021", "90000022", "90000023"} {
-		files = append(files, store.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
-			Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: id})
+		files = append(files, librarystore.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
+			Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestReadyMadeSets(t *testing.T) {
 		{"Kind":"movie","IDs":[{"Namespace":"tmdb","Value":"90000612"}]},
 		{"Kind":"movie","IDs":[{"Namespace":"tmdb","Value":"90000613"}]},
 		{"Kind":"movie","IDs":[{"Namespace":"tmdb","Value":"90000614"}]}]}`
-	if err := h.Store.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
+	if err := h.Store.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{set}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.Store.SaveLibraryCatalog(ctx, set, record, 0, "en-US", at); err != nil {
@@ -122,17 +122,17 @@ func TestCollections(t *testing.T) {
 	h := newLibraryHarness(t)
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000011", Kind: "movie", Name: "Alpha"},
 		{ID: "90000012", Kind: "movie", Name: "Bravo"},
 		{ID: "90000013", Kind: "series", Name: "Charlie"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	var files []store.LibraryFile
+	var files []librarystore.LibraryFile
 	for _, id := range []string{"90000011", "90000012", "90000013"} {
-		files = append(files, store.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
-			Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: id})
+		files = append(files, librarystore.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
+			Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)

@@ -1,7 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
-import { ExternalLink } from "lucide-react";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -111,7 +110,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                       rel="noopener noreferrer"
                       className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                     >
-                      {source.title} <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                      {source.title} <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
                     </a>
                   ))}
                 </div>
@@ -131,7 +130,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                   rel="noopener noreferrer"
                   className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                 >
-                  View original <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                  View original <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
                 </a>
               ) : null}
             </dd>

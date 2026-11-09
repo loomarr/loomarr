@@ -152,6 +152,31 @@ describe("LibrarySettings", () => {
     paused.cleanup();
   });
 
+  it("shows the first five titles ready so far while the import runs, and none while paused", () => {
+    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
+    const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
+      (name, i) => ({ id: `9000095${i}`, name }),
+    );
+    const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar });
+    expect(adding.host.textContent).toContain("Ready so far");
+    expect(adding.host.textContent).toContain("Alpha");
+    expect(adding.host.textContent).not.toContain("Zulu");
+    adding.cleanup();
+
+    const none = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar: [] });
+    expect(none.host.textContent).not.toContain("Ready so far");
+    none.cleanup();
+
+    const paused = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...reading, paused: true },
+      readySoFar,
+    });
+    expect(paused.host.textContent).not.toContain("Ready so far");
+    paused.cleanup();
+  });
+
   it("holds a removal until the maintainer answers", () => {
     const { host, props, button, cleanup } = render({
       health: "ok",
@@ -195,6 +220,34 @@ describe("LibrarySettings", () => {
     expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/missing");
     expect(host.textContent).toContain("Loomarr can't open that folder");
     expect(input.value).toBe("/mnt/missing");
+    cleanup();
+  });
+
+  it("saves a path-map change once when Enter is followed by leaving the field", () => {
+    const { host, props, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    const input = host.querySelector('input[aria-label="Sonarr /tv maps to"]') as El;
+    const dom = globalThis as unknown as {
+      KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => Event;
+      FocusEvent: new (type: string, init: { bubbles: boolean }) => Event;
+    };
+    const enter = () =>
+      act(() => {
+        input.dispatchEvent(new dom.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        input.dispatchEvent(new dom.FocusEvent("focusout", { bubbles: true }));
+      });
+    type(input, "/srv/tv");
+    enter();
+    expect(props.onMapFolder).toHaveBeenCalledTimes(1);
+    expect(props.onMapFolder).toHaveBeenCalledWith({
+      authority: "sonarr",
+      authorityPath: "/tv",
+      localPath: "/srv/tv",
+    });
+    // A save that failed leaves the map as it was; typing the folder again sends it again.
+    type(input, "/srv/t");
+    type(input, "/srv/tv");
+    enter();
+    expect(props.onMapFolder).toHaveBeenCalledTimes(2);
     cleanup();
   });
 });

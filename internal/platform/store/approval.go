@@ -316,8 +316,8 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Policy.Validate(); err != nil {
 		return fmt.Errorf("invalid channel policy: %w", err)
 	}
-	if ch.IntentRef == "" {
-		return fmt.Errorf("channel %s has no intent ref", ch.ID)
+	if !ch.FromRequest {
+		return fmt.Errorf("channel %s was not made from a request", ch.ID)
 	}
 	return nil
 }

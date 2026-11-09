@@ -23,6 +23,8 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 		{ID: "m2", Kind: "movie", Name: "Mystery Film", Origin: origin("/media/b/b.mkv")},
 		{ID: "s1", Kind: "series", Name: "Mystery Show", Origin: origin("/media/show")},
 		{ID: "m3", Kind: "movie", Name: "Gone Film", Origin: origin("/media/c/c.mkv")},
+		{ID: "e1", Kind: "episode", Name: "Pilot"},
+		{ID: "e2", Kind: "episode", Name: "Second"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +127,32 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	want.By = AnsweredByYou
 	if got, ok, err := st.LibraryAnswerFor(ctx, link.Origin); err != nil || !ok || got != want {
 		t.Fatalf("answer = %+v, %v, %v; want %+v", got, ok, err, want)
+	}
+	// A search never replaces the maintainer's answer, even one given after the Matcher looked
+	// (decision 58); a person's answer replaces a search's.
+	search := LibraryAnswer{Origin: link.Origin, Kind: "movie", ID: LibraryID{Namespace: "tmdb", Value: "90000203"},
+		AnsweredAt: at.Add(time.Second), By: AnsweredBySearch}
+	if err := st.SaveLibraryAnswer(ctx, search); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := st.LibraryAnswerFor(ctx, link.Origin); err != nil || got != want {
+		t.Fatalf("answer after a search = %+v, %v; want the maintainer's %+v", got, err, want)
+	}
+	searched := search
+	searched.Origin = origin("/media/c/c.mkv")
+	if err := st.SaveLibraryAnswer(ctx, searched); err != nil {
+		t.Fatal(err)
+	}
+	mine := searched
+	mine.ID, mine.By = LibraryID{Namespace: "tmdb", Value: "90000204"}, AnsweredByYou
+	if err := st.SaveLibraryAnswer(ctx, mine); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := st.LibraryAnswerFor(ctx, mine.Origin); err != nil || got != mine {
+		t.Fatalf("answer over a search = %+v, %v; want %+v", got, err, mine)
+	}
+	if err := st.DeleteLibraryAnswer(ctx, mine.Origin); err != nil {
+		t.Fatal(err)
 	}
 	ignore := LibraryAnswer{Origin: origin("/media/show"), Kind: "series", Ignored: true, AnsweredAt: at}
 	if err := st.SaveLibraryAnswer(ctx, ignore); err != nil {
