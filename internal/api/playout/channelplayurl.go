@@ -24,8 +24,9 @@ import (
 // media server already serves, and the signed URL is scoped to one channel and expires — so
 // this grants strictly less than the media-server client every viewer already has.
 
-// registerChannelPlayURL mounts the play-url op. Split from registerChannels only so the Watch
-// surface's routes live beside their handler; it is called from the same Register sweep.
+// registerChannelPlayURL mounts the play-url and tracks ops. They are channel-addressed but belong
+// to the Watch surface, so they live in this package beside their handlers rather than with the
+// channel routes in api/channels; Register calls it.
 func (s *Handlers) registerChannelPlayURL(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "channel-play-url", Method: http.MethodPost, Path: "/v1/channels/{id}/play-url",

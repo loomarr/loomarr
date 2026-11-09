@@ -5,7 +5,7 @@ import "net/http"
 // DocsHandler serves the interactive API reference at /v1/reference (aliased at /docs) with NO
 // external assets (§7.1 offline rule — Huma's default Stoplight page loads from a CDN, which
 // breaks air-gapped LAN installs). This is a minimal self-contained page that links to the
-// machine-readable spec; the full Vite SPA (Phase 13) embeds a richer viewer. Everything here
+// machine-readable spec; the Vite SPA embeds a richer viewer. Everything here
 // is inline — no CDN, no fonts, no scripts.
 //
 // ⚠ The spec links must track cfg.OpenAPIPath (huma.go). They are hardcoded here because the

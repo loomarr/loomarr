@@ -6,10 +6,10 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 )
 
-// Resolving a channel's `logo` URL back to an image record (§22, V52 phase 5).
+// Resolving a channel's `logo` URL back to an image record (§22, V52).
 //
-// A channel's logo is a URL STRING and always has been. It can point at this instance's image
-// service (an upload, or — from phase 7 — an adopted remote), or it can be an arbitrary external
+// A channel's logo is a URL STRING. It can point at this instance's image
+// service (an upload, or an adopted remote), or it can be an arbitrary external
 // URL an operator pasted. The frontend's `<Image>` primitive needs the whole record (real
 // width/height, the ThumbHash, both srcsets), which a URL alone cannot provide, so the channel
 // resource carries an optional `logoImage` alongside the URL.

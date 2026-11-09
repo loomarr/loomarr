@@ -6,11 +6,10 @@ import (
 
 // Route authorization (§11): the role a route needs is part of REGISTERING it.
 //
-// ⚠ **The old shape put the requirement in two places that nothing connected.** Intent lived
-// in an operation's `Description: "Admin only."`; enforcement lived in a `requireAdmin(ctx)`
-// call at the top of a handler body, 250 lines away. Nothing bound them, so the requirement
-// could be documented and not enforced — or, more often, neither. Probing found 27 of 83
-// operations consulting no role at all, including `POST /v1/proposals`, which returned 200
+// ⚠ **The requirement lives on the operation, in ONE place.** A requirement split between an
+// operation's `Description: "Admin only."` and a check at the top of a handler body has nothing
+// binding the two, so it can be documented and not enforced — or neither. Probing once found 27
+// of 83 operations consulting no role at all, including `POST /v1/proposals`, which returned 200
 // to an anonymous caller and spent LLM tokens.
 //
 // ⚠ **Anonymous is denied by DEFAULT.** `roleForOperation` returns RoleAdmin — the most
@@ -38,8 +37,8 @@ const RolePublic Role = "public"
 // scripts and support work, so the client-coverage audit (#1568) should not flag it.
 const OperatorAPI = "Operator and automation API: no Loomarr client calls it."
 
-// WithRole stamps the required role onto an operation. Every huma.Register call in this
-// package goes through it.
+// WithRole stamps the required role onto an operation. Every huma.Register call in the
+// api packages goes through it (directly, or through RawOp).
 func WithRole(op huma.Operation, role Role) huma.Operation {
 	if op.Metadata == nil {
 		op.Metadata = map[string]any{}
@@ -84,21 +83,10 @@ func AuthorizeRole(want, have Role) bool {
 	}
 }
 
-// ⚠ **`requireRole` USED TO LIVE HERE, AND ITS DELETION IS THE POINT OF THIS WORK.**
-//
-// It was the plain-mux twin of the middleware above: the same rule, written a second time, for
-// the handlers Huma never saw. It existed because two hand-written guards had already diverged
-// on what a nil authorizer means — `backupHandler` denied, `eventsHandler` allowed, one package
-// apart — so consolidating them into one function was an improvement over three copies.
-//
-// One function was still one too many. Every route it guarded is now a Huma operation carrying
-// its required role in Metadata, enforced once in registerMiddleware, which ALSO applies the
-// CSRF check the raw handlers had to hand-roll and fails closed for an operation that declared
-// nothing. When the SSE stream and the multipart icon upload moved, the last two callers went
-// with them and the linter reported the function unused — which is the shape of this being
-// finished rather than merely started.
-//
-// ⚠ **Do not reintroduce it.** A route that streams bytes, redirects, or takes multipart still
-// belongs on the Huma API: use `rawOp` (rawop.go), which keeps the raw `(w, r)` signature and
-// takes the required role as an argument. There is one authorization path now; a second one
-// cannot disagree with the first if it does not exist.
+// ⚠ **There is no second, hand-written role guard — do not add one.** A route that streams
+// bytes, redirects, or takes multipart still belongs on the Huma API: use `RawOp` (rawop.go),
+// which keeps the raw `(w, r)` signature and takes the required role as an argument. The role
+// is enforced once, in the request middleware (internal/api/middleware.go), which ALSO applies
+// the CSRF check and fails closed for an operation that declared nothing. Two hand-written guards
+// once disagreed on what a nil authorizer means; a second authorization path cannot disagree
+// with the first if it does not exist.

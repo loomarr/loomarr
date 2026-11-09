@@ -80,8 +80,8 @@ type setupStatusOutput struct {
 }
 
 // setupStatus runs the full connection checklist (§13): the connection probes
-// (reusing the §8 setup/test registry), the Tunarr wiring checks, and the webhook
-// handshake. Every dependency the wizard needs is one structured call — each
+// (reusing the §8 setup/test registry) and the Tunarr wiring checks. Every
+// dependency the wizard needs is one structured call — each
 // result carries an actionable hint + a Troubleshooting deep-link. Services that
 // aren't wired (unit tests, unconfigured installs) contribute no check rather than
 // a false failure.

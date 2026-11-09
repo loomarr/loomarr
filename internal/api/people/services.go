@@ -16,7 +16,7 @@ type UserSyncer interface {
 	Sync(ctx context.Context) (int, error)
 }
 
-// LoginService verifies credentials and issues a session (Phase 9, §11).
+// LoginService verifies credentials and issues a session (§11).
 type LoginService interface {
 	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error)
 	// DevLogin issues a session for an existing admin with no credential (§11).

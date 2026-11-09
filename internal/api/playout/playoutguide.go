@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
-// GET /playout/guide.xml — XMLTV listings (§9.1, V6b).
+// GET /v1/playout/guide.xml — XMLTV listings (§9.1, V6b).
 //
 // The tuner M3U tells a media server WHICH channels exist; this tells it WHAT IS ON. Without it
 // a channel appears in Live TV, tunes, plays — and shows "no information" forever, which reads
@@ -22,7 +22,7 @@ import (
 // Predator is playing" is the kind of bug nobody can reproduce on demand.
 
 // PlayoutGuide resolves a channel's programme timeline for the EPG. Implemented by an adapter
-// over channels.Engine; abstracted so the api package need not import it.
+// over channels.Engine; abstracted so internal/api need not import it.
 type PlayoutGuide interface {
 	// BroadcastsBetween returns the programmes airing on a channel across [from, to), with
 	// absolute wall-clock times. Programmes already in progress at `from` report their REAL

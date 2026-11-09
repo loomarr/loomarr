@@ -60,8 +60,6 @@ type BackendTransitioner interface {
 	Reconnect(ctx context.Context) (tunersReset int, err error)
 }
 
-// SettingEntry is the API view of one setting (config-design §8). For a secret,
-// Value is empty and Set/Preview carry the masked state — the value never appears.
 // SettingEnumOption is one choice of an enum setting: the stored value + its display
 // label (config-design §5). The label is registry-owned so the UI never re-derives it.
 type SettingEnumOption struct {
@@ -76,6 +74,8 @@ type SettingPreset struct {
 	Label string `json:"label"`
 }
 
+// SettingEntry is the API view of one setting (config-design §8). For a secret,
+// Value is empty and Set/Preview carry the masked state — the value never appears.
 type SettingEntry struct {
 	Key          string              `json:"key"`
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`

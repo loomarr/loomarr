@@ -16,14 +16,11 @@ import (
 // what puts them behind the single authorization middleware, the CSRF check, and the request-id
 // error stamping that every other operation already gets.
 //
-// ⚠ **This generalises the playout `streamOp` (V47), which learned the lesson first.** The
-// plain-mux world it replaced "duplicated auth per handler and … put these routes outside the
-// SPA's origin" (see registerPlayout) — and two authorization paths is exactly the shape that
-// let `backupHandler` and `eventsHandler` sit in one package disagreeing about whether a nil
-// authorizer denies or allows.
+// ⚠ **Plain-mux handlers duplicate auth per handler and sit outside the SPA's origin**, and two
+// authorization paths is exactly the shape that once let two hand-written guards disagree about
+// whether a nil authorizer denies or allows. Hence one path for every route.
 //
-// Handler bodies keep their `(w, r)` signature and are reused verbatim. Only the mounting
-// changes.
+// Handler bodies keep their `(w, r)` signature; only the mounting differs from a typed operation.
 
 // RawOp registers one raw-byte operation: method + path + required role, an optional middleware
 // chain, and the stdlib handler that writes the response itself.
@@ -32,8 +29,8 @@ import (
 // input struct and does NOT cross-check it against the `{placeholders}` in Path. An operation
 // registered with `struct{}` on a path like `/v1/filler/thumb/{hash}` therefore emits a path retired-ok
 // template whose parameter is declared nowhere — invalid OpenAPI 3.1, and a generated client
-// that cannot fill in the URL. The playout routes got away with `struct{}` only because they
-// were Hidden. Declare the params; the handler may still read them via r.PathValue.
+// that cannot fill in the URL. A Hidden route can hide the omission, but only until it is
+// unhidden. Declare the params; the handler may still read them via r.PathValue.
 func RawOp[I any](
 	api huma.API,
 	op huma.Operation,

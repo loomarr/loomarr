@@ -52,10 +52,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		ready = func() (bool, string) { return true, "ok" }
 	}
 
-	// ⚠ The ops surface (liveness, readiness, Prometheus, the profiler, the API reference) now
-	// registers with everything else, in registerOps — under /v1, with its bare paths kept as
-	// hidden aliases. It was the last of the raw-mux world; see ops.go for why the aliases are
-	// not optional and why moving these reverses a decision that was pinned on purpose.
+	// ⚠ The ops surface (liveness, readiness, Prometheus, the profiler, the API reference)
+	// registers with everything else, through opsapi.Handlers — under /v1, with its bare paths
+	// kept as hidden aliases. See api/ops/ops.go for why the aliases are not optional.
 
 	// The Huma API (§7.1): /v1 operations, /v1/openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
@@ -197,16 +196,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	opsapi.New(opsDeps, false).Register(humaAPI)
 	setupRoutes.Register(humaAPI)
 
-	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
-	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp
-	// (rawop.go). They stream bytes and keep the (w, r) signature that http.ServeContent needs,
-	// but they mount on the SAME Huma API as every other route, so they are covered by the one
+	// ⚠ The byte-streaming routes (/v1/backup, the backup download, the clip byte routes, the
+	// channel-icon serve) are registered by their own domain's Handlers as httpcore.RawOp
+	// (api/httpcore/rawop.go). They keep the (w, r) signature that http.ServeContent needs, but
+	// they mount on the SAME Huma API as every other route, so they are covered by the one
 	// authorization middleware and appear in api/openapi.yaml. Splitting one resource across two
 	// registration mechanisms is what let /v1/system/backups be spec'd while its download was not.
 	//
-	// Internal playout (§9.1) mounts the same way — see registerPlayout.
+	// Internal playout (§9.1) mounts the same way — see playout.Handlers.Register.
 
-	// The embedded SPA at / (§12): the catch-all, and now the ONLY raw mux registration —
+	// The embedded SPA at / (§12): the catch-all, and the ONLY raw mux registration —
 	// it serves embedded static assets and is not an API route. Guard the prefix-based API
 	// surfaces so an unmatched path under one 404s as an API error rather than silently
 	// serving index.html. Exact routes already win by ServeMux specificity and never reach here.
@@ -242,8 +241,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 
 	// Outermost so it observes total handling time; it reads r.Pattern after the
 	// mux has matched (§18 request metrics). withRequestID wraps everything so the
-	// correlation id exists for every handler — typed Huma ops AND the plain-mux ones
-	// (/v1/events, /v1/backup) — and is echoed on the response header.
+	// correlation id exists for every handler — typed Huma ops, RawOps (/v1/backup),
+	// SSE (/v1/events) AND the SPA catch-all — and is echoed on the response header.
 	// FanoutMiddleware sits outside the Recorder middleware and every handler: it installs the
 	// per-request outbound counter that the instrumented transport increments, so
 	// `loomarr_http_outbound_fanout{route=…}` answers "how many downstream calls does this
