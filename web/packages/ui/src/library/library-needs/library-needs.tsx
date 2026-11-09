@@ -348,7 +348,7 @@ const OrderRow = ({ need, onOpenNeeds }: { need: LibraryOrderNeed; onOpenNeeds: 
         <Text textRole="body">{orderLine(need)}</Text>
       </Stack>
     </Line>
-    <Action onPress={onOpenNeeds} variant="secondary">
+    <Action onPress={onOpenNeeds} variant="outline">
       {onlyCatalog(need) ? "See why" : "Choose"}
     </Action>
   </Line>
@@ -378,7 +378,7 @@ const OrderCard = ({
   const wide = useWindowWidth() >= 640;
   const waiting = need.files.length;
   const chosen = options.find((o) => o.key === picked);
-  const tone = primary ? { tone: "primary" as const } : { variant: "secondary" as const };
+  const tone = primary ? { tone: "primary" as const } : { variant: "outline" as const };
   const files = options.find((o) => o.key === FILES);
   const card = (
     <Surface gap="control" padding="section">
@@ -409,7 +409,7 @@ const OrderCard = ({
                 <Action onPress={() => files && onChoose(files)} {...tone}>
                   That's fine
                 </Action>
-                <Action onPress={() => onOpenTitle(need.id)} variant="secondary">
+                <Action onPress={() => onOpenTitle(need.id)} variant="outline">
                   See the show
                 </Action>
               </Line>
@@ -514,7 +514,7 @@ const StripRow = ({
         <StatusDot label="Done" tone="ok" />
       ) : best ? (
         <Line>
-          <Action onPress={onYes} variant="secondary">
+          <Action onPress={onYes} variant="outline">
             Yes, that's it
           </Action>
           <Action onPress={onOpenNeeds} variant="ghost">
@@ -522,7 +522,7 @@ const StripRow = ({
           </Action>
         </Line>
       ) : (
-        <Action onPress={onOpenNeeds} variant="secondary">
+        <Action onPress={onOpenNeeds} variant="outline">
           Find it
         </Action>
       )}
@@ -539,7 +539,7 @@ const ProblemRow = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle: 
         <Text textRole="body">{entry.line}</Text>
       </Stack>
     </Line>
-    <Action onPress={() => onOpenTitle(entry.id)} variant="secondary">
+    <Action onPress={() => onOpenTitle(entry.id)} variant="outline">
       See why
     </Action>
   </Line>
@@ -670,16 +670,16 @@ const NeedCard = ({
                     <Action
                       onPress={onYes}
                       tone={primary ? "primary" : undefined}
-                      variant={primary ? undefined : "secondary"}
+                      variant={primary ? undefined : "outline"}
                     >
                       Yes, that's it
                     </Action>
-                    <Action onPress={() => setOther(!other)} variant="secondary">
+                    <Action onPress={() => setOther(!other)} variant="outline">
                       Pick a different title
                     </Action>
                   </>
                 ) : (
-                  <Action onPress={() => setOther(!other)} variant="secondary">
+                  <Action onPress={() => setOther(!other)} variant="outline">
                     Find it
                   </Action>
                 )}
@@ -730,7 +730,7 @@ const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle:
             {entry.reason}
           </Text>
           <Line>
-            <Action onPress={() => onOpenTitle(entry.id)} variant="secondary">
+            <Action onPress={() => onOpenTitle(entry.id)} variant="outline">
               See why
             </Action>
           </Line>

@@ -91,13 +91,13 @@ const DiscoveryFeedbackControls = ({
             disabled={disabled}
             onPress={() => onSet(action)}
             // Flat until chosen, so four of them fit beside a title in a lineup row.
-            variant={selected === action ? "secondary" : "ghost"}
+            variant={selected === action ? "outline" : "ghost"}
           >
             {compact && action === "less" ? "Less" : compact && action === "surprise" ? "Surprise" : label}
           </Action>
         ))}
         {canClear && (
-          <Action disabled={disabled} onPress={onClear} variant="link">
+          <Action disabled={disabled} onPress={onClear} variant="ghost">
             Undo
           </Action>
         )}

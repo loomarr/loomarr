@@ -45,7 +45,7 @@ const SessionList = ({
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
         </p>
         {onRevokeAll && confirming !== ALL && (
-          <Action onPress={() => setConfirming(ALL)} variant="destructive">
+          <Action onPress={() => setConfirming(ALL)} tone="danger" variant="outline">
             Sign out everywhere
           </Action>
         )}
@@ -97,7 +97,8 @@ const SessionList = ({
                 disabled={revoking === s.id}
                 icon={revoking === s.id ? "loading" : undefined}
                 onPress={() => setConfirming(s.id)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 {s.current ? "Sign out (this device)" : "Sign out"}
               </Action>

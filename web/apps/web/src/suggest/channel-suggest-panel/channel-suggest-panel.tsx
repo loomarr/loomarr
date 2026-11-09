@@ -160,12 +160,12 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   <Action
                     accessibilityRole="link"
                     render={<Link to="/settings/connections" search={{ focus: "tmdb" }} />}
-                    variant="link"
+                    variant="ghost"
                   >
                     Connect TMDB
                   </Action>
                 ) : (
-                  <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="link">
+                  <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="ghost">
                     Set up AI
                   </Action>
                 ))}
@@ -223,13 +223,13 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
               </Action>
             )}
             {run.actions.includes("check_ai") && (
-              <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="link">
+              <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="ghost">
                 Check AI settings
               </Action>
             )}
             {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
                 failure, whatever its reason, can always fall back to building by hand. */}
-            <Action onPress={flow.buildManually} variant="suggest">
+            <Action onPress={flow.buildManually} tone="suggest">
               Build it manually instead
             </Action>
           </div>

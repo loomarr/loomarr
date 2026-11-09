@@ -200,7 +200,8 @@ const AccountScreen = () => {
                       <Action
                         disabled={revoke.isPending}
                         onPress={() => setConfirmingSession(s.id)}
-                        variant="destructive"
+                        tone="danger"
+                        variant="outline"
                       >
                         Sign out
                       </Action>

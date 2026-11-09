@@ -15,7 +15,7 @@ const ActionCompactSubmitWorkshop = () => (
         <Action disabled submit>
           Save
         </Action>
-        <Action submit variant="suggest">
+        <Action submit tone="suggest">
           Suggest
         </Action>
       </form>

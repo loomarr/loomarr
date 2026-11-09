@@ -28,7 +28,7 @@ const PolicyFieldSource = ({
         accessibilityLabel={`Reset to default (${label})`}
         layout="text"
         onPress={onReset}
-        variant="link"
+        variant="ghost"
       >
         Reset to default
       </Action>

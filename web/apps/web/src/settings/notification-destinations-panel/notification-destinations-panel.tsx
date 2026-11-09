@@ -669,7 +669,8 @@ const ProviderRow = ({
               <Action
                 disabled={deleteConfirmation !== provider.label || remove.isPending}
                 onPress={() => void deleteProvider().catch(() => undefined)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 Delete provider
               </Action>

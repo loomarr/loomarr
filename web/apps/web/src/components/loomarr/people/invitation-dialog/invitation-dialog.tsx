@@ -355,7 +355,13 @@ const InvitationDialog = ({
               {problem != null && <ErrorState error={problem} className="p-4" />}
 
               <DialogFooter spread>
-                <Action disabled={busy} icon="delete" onPress={() => void revoke()} variant="destructive">
+                <Action
+                  disabled={busy}
+                  icon="delete"
+                  onPress={() => void revoke()}
+                  tone="danger"
+                  variant="outline"
+                >
                   Revoke invitation
                 </Action>
                 <div className="flex flex-wrap gap-2">

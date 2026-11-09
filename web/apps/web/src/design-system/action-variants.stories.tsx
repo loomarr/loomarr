@@ -15,17 +15,25 @@ const ActionVariantsWorkshop = () => (
         flexWrap="wrap"
         gap="control"
       >
-        {(["suggest", "destructive", "outline", "secondary", "ghost", "link"] as const).map((variant) => (
-          <Action key={variant} onPress={() => undefined} variant={variant}>
-            {variant}
-          </Action>
-        ))}
+        <Action onPress={() => undefined}>filled</Action>
+        <Action onPress={() => undefined} tone="suggest">
+          suggest
+        </Action>
+        <Action onPress={() => undefined} variant="outline">
+          outline
+        </Action>
+        <Action onPress={() => undefined} tone="danger" variant="outline">
+          danger outline
+        </Action>
+        <Action onPress={() => undefined} variant="ghost">
+          ghost
+        </Action>
       </Surface>
     </Surface>
     <Surface gap="control" padding="section">
       <Text textRole="title">Icon only</Text>
       <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="control">
-        <Action icon="success" layout="icon" onPress={() => undefined} variant="suggest">
+        <Action icon="success" layout="icon" onPress={() => undefined}>
           Save
         </Action>
         <Action icon="close" layout="icon" onPress={() => undefined} variant="ghost">
@@ -68,7 +76,7 @@ const ActionVariantsWorkshop = () => (
         <Badge shape="square" tone="override">
           Channel override
         </Badge>
-        <Action layout="text" onPress={() => undefined} variant="link">
+        <Action layout="text" onPress={() => undefined} variant="ghost">
           Reset to default
         </Action>
       </Surface>
@@ -82,7 +90,7 @@ const ActionVariantsWorkshop = () => (
         <Badge shape="square" tone="neutral">
           Default
         </Badge>
-        <Action disabled layout="text" onPress={() => undefined} variant="link">
+        <Action disabled layout="text" onPress={() => undefined} variant="ghost">
           Reset to default
         </Action>
       </Surface>

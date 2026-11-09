@@ -51,7 +51,8 @@ const EncryptionSettings = () => {
           <Action
             disabled={!encryption?.enabled || rotate.isPending}
             onPress={() => setConfirming(true)}
-            variant="destructive"
+            tone="danger"
+            variant="outline"
           >
             {rotate.isPending ? "Rotating…" : "Rotate data key"}
           </Action>

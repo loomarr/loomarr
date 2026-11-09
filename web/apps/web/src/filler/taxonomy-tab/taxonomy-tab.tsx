@@ -118,7 +118,7 @@ const TaxonTree = ({
                 layout="text"
                 onPress={() => onEdit(taxon)}
                 style={{ alignSelf: "flex-start" }}
-                variant="link"
+                variant="ghost"
               >
                 {taxon.label}
               </Action>
@@ -448,7 +448,7 @@ const TaxonEditor = ({
             <Action
               disabled={busy || review.impact.deleteBlocked}
               onPress={applyReview}
-              variant={review.action === "delete" ? "destructive" : undefined}
+              {...(review.action === "delete" ? { variant: "outline", tone: "danger" } : {})}
             >
               {busy
                 ? "Applying…"

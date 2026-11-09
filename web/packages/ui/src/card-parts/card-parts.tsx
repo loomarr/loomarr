@@ -71,7 +71,7 @@ const CardMeta = ({ parts }: { parts: ReactNode[] }) => (
 // The one action at the trailing edge: quiet at rest, a secondary button when the item needs attention.
 const CardAction = ({ attention = false, ...props }: CardActionProps) => (
   <Surface backgroundColor="transparent" borderWidth={0} flexShrink={0}>
-    <Action variant={attention ? "secondary" : "ghost"} {...props} />
+    <Action variant={attention ? "outline" : "ghost"} {...props} />
   </Surface>
 );
 

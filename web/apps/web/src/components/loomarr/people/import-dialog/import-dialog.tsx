@@ -106,7 +106,9 @@ const ImportDialog = ({
   // the Dialog returns focus to it on close all the same.
   return (
     <>
-      <Action onPress={() => setOpen(true)}>Import from Emby/Jellyfin</Action>
+      <Action onPress={() => setOpen(true)} variant="outline">
+        Import from Emby/Jellyfin
+      </Action>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent layout="sectioned" portalContainer={portalContainer} size="reading">
           <DialogHeader>

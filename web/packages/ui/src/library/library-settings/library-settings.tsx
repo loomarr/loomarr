@@ -354,7 +354,7 @@ const LibraryFolderCard = ({
     )}
     <Line gap="control">
       {folder.readable ? null : (
-        <Action disabled={checking} onPress={onCheckAgain} variant="secondary">
+        <Action disabled={checking} onPress={onCheckAgain} variant="outline">
           Check again
         </Action>
       )}
@@ -363,7 +363,7 @@ const LibraryFolderCard = ({
           Stop using
         </Action>
       ) : folder.readable ? (
-        <Action onPress={() => onUseFolder(folder.path, true)} variant="secondary">
+        <Action onPress={() => onUseFolder(folder.path, true)} variant="outline">
           Use this folder
         </Action>
       ) : null}

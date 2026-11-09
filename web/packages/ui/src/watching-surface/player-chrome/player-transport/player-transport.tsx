@@ -5,6 +5,7 @@ import {
   type IconName,
   icons,
   playerChrome,
+  semanticRadius,
   Text,
   useFocusLook,
 } from "@loomarr/design-system";
@@ -132,7 +133,8 @@ const ToolButton = ({
           : hovered
             ? playerChrome.surfaceHover
             : "transparent",
-        borderRadius: 999,
+        // Icon-ghost (#2777): a square well like every other icon-ghost button, not a circle.
+        borderRadius: semanticRadius.control,
         height: size,
         justifyContent: "center",
         opacity: disabled ? 0.3 : 1,

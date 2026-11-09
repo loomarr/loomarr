@@ -128,7 +128,7 @@ const AddTitle = ({
         <Line flexWrap="nowrap" key={r.id}>
           <Thumb member={r} />
           <NameYear member={r} />
-          <Action accessibilityLabel={`Add ${r.name}`} onPress={() => onAdd(r)} variant="secondary">
+          <Action accessibilityLabel={`Add ${r.name}`} onPress={() => onAdd(r)} variant="outline">
             Add
           </Action>
         </Line>

@@ -155,7 +155,7 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
           }}
         />
       ) : (
-        <Action disabled={busy} onPress={() => setConfirming(true)} variant="destructive">
+        <Action disabled={busy} onPress={() => setConfirming(true)} tone="danger" variant="outline">
           {busy ? "Removing…" : "Remove"}
         </Action>
       )}

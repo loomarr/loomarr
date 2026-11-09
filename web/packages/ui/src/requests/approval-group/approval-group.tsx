@@ -106,7 +106,7 @@ const ApprovalGroup = ({
                 disabled={busy}
                 onPress={() => onApprove(row.id)}
                 style={{ flex: 1 }}
-                tone="primary"
+                variant="outline"
               >
                 {busy ? "Approving…" : "Approve"}
               </Action>

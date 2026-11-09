@@ -150,14 +150,14 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
               disabled={unhide.isPending}
               layout="text"
               onPress={() => unhide.mutate({ ideaId: hidden.id })}
-              variant="link"
+              variant="ghost"
             >
               Undo
             </Action>
           </>
         )}
         {ideas.length > PAGE && (
-          <Action onPress={() => setPage((p) => p + 1)} variant="link">
+          <Action onPress={() => setPage((p) => p + 1)} variant="ghost">
             Different ideas
           </Action>
         )}

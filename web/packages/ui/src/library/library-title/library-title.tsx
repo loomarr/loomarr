@@ -109,7 +109,7 @@ const WrongTitle = ({
         <Text textRole="body">{`${app} decides what this is. Change it in ${app}.`}</Text>
         {onOpenApp ? (
           <Line>
-            <Action onPress={onOpenApp} variant="secondary">
+            <Action onPress={onOpenApp} variant="outline">
               {`Open ${app}`}
             </Action>
           </Line>
@@ -195,10 +195,10 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
   return (
     <Stack gap="control">
       <Line>
-        <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
+        <Action onPress={() => run("update", onUpdateDetails)} variant="outline">
           {busy === "update" ? "Updating…" : "Update details"}
         </Action>
-        <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
+        <Action onPress={() => run("check", onCheckFiles)} variant="outline">
           {busy === "check" ? "Checking…" : checked ? "Checked just now" : "Check files again"}
         </Action>
         <Action onPress={() => setWrong(!wrong)} variant="ghost">
@@ -388,7 +388,7 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
               <StatusDot label="Needs you" tone="warn" />
               <Text textRole="compact">We're not sure which order these episodes are in.</Text>
             </Line>
-            <Action onPress={actions.onChooseOrder} variant="secondary">
+            <Action onPress={actions.onChooseOrder} variant="outline">
               Choose
             </Action>
           </Line>

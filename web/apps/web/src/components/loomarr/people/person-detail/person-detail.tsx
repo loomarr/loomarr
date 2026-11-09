@@ -393,7 +393,8 @@ const PersonDetail = ({
           disabled={busy || isSelf}
           onPress={() => onToggleDisabled?.(!user.disabled)}
           style={{ alignSelf: "flex-start" }}
-          variant={user.disabled ? "outline" : "destructive"}
+          tone={user.disabled ? undefined : "danger"}
+          variant="outline"
         >
           {user.disabled ? "Enable account" : "Disable account"}
         </Action>
