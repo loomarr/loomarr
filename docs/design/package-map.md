@@ -135,7 +135,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `playout` | `channels/schedule`, `media/encode`, `platform/diagnostics`, `provision` |
 | `playout/tunarr` | `channels/schedule`, `platform/httpx`, `platform/metrics` |
 | `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
-| `proposals/accept` | `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
+| `proposals/accept` | `library/titlesearch`, `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`, `provision` |
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `channels/schedule`, `library/titlesearch`, `library/tmdb`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/quality`, `provision` |
 | `provision` | — |

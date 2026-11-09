@@ -37,7 +37,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "library/arrhook", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
+			"library", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
 			"provision", "library/provisionbackstop", "library/requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -59,7 +59,7 @@ var areas = []area{
 			"the GPU encoder, and the one pipeline every image goes through. It also holds the checks " +
 			"that judge a clip's picture, sound and level, and whether two adverts are the same one.",
 		Packages: []string{
-			"media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen",
+			"media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen", "media/images/storeadapter",
 			"media/encode", "media/bgexec", "media/proctree", "media/creative",
 			"media/defects",
 		},

@@ -9,9 +9,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 const (
@@ -34,7 +36,8 @@ const (
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
 // an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
-func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Service, st imageStore, layout cliplibrary.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
+func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Service, clips store.Store, layout cliplibrary.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
+	st := storeadapter.New(clips)
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return settings.ImagesRemoteFetchEnabled.Get(set) },
 		func() int { return imageRemoteConcurrency },
@@ -49,10 +52,10 @@ func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Serv
 
 	// ⚠ The adoption pass, and it is what makes the clip half of §22 real: without it, artwork
 	// keeps living only as files under FILLER_DIR and every clip surface stays on the legacy route.
-	// `st.st` is the underlying store rather than the image-shaped adapter — this job speaks to the
+	// `clips` is the underlying store rather than the image-shaped adapter — this job speaks to the
 	// CLIPS table, which the image adapter deliberately knows nothing about.
 	reg.Add(images.AdoptJobSpec(images.NewAdoptJob(svc, artworkAdoptStore{
-		st:        st.st,
+		st:        clips,
 		fillerDir: layout.ClipDir(),
 	}, nil, log)))
 

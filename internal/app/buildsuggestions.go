@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -95,11 +96,11 @@ func buildSuggestions(
 	overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupPassed,
 		"required worker certified", "", "")
 	result.imageFetcher = registerImageJobs(
-		rootCtx, registry, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
+		rootCtx, registry, result.images, st, fillerLayout, set, activityRecorder, log,
 	)
 	result.timelineThumbs = playoutresolve.NewTimelineThumbs(rootCtx, tmdbClient, result.images, result.imageFetcher, log)
 	if engine, ok := channelService.(*channels.Engine); ok {
-		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
+		engine.WithFranchises(resolvers.NewFranchises(tmdbClient))
 	}
 
 	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
@@ -136,7 +137,7 @@ func buildSuggestions(
 	service = service.WithAutoApprove(accept.NewAutoApprover(
 		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,
 	))
-	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))
+	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurate.NewSettingsThresholds(set), log))
 	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
 
 	result.suggest = service
