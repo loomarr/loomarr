@@ -1,5 +1,7 @@
 export type { AppStateSource } from "./src/app-foreground";
 export { useAppForeground } from "./src/app-foreground";
+export type { LaunchGateOptions, LaunchStageProps } from "./src/launch-stage";
+export { LaunchStage, useLaunchGate } from "./src/launch-stage";
 export type { NativeApp, NativeAppOptions } from "./src/native-app";
 export {
   createNativeApp,

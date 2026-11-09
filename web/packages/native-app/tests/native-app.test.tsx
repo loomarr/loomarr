@@ -11,27 +11,41 @@ const native = vi.hoisted(() => ({
   setting: undefined as string | undefined,
 }));
 
-vi.mock("react-native", () => ({
-  AppState: { addEventListener: () => ({ remove: () => undefined }) },
-  Platform: {
-    constants: { Model: "Model", Release: "27.0" },
-    get OS() {
-      return native.os;
+vi.mock("react-native", async () => {
+  const { createElement, useEffect } = await import("react");
+  return {
+    // A View that reports its layout once mounted, as the native one does.
+    View: ({ children, onLayout }: { children?: unknown; onLayout?: () => void }) => {
+      useEffect(() => onLayout?.(), [onLayout]);
+      return createElement("div", null, children as never);
     },
-    get isTV() {
-      return native.isTV;
+    AppState: { addEventListener: () => ({ remove: () => undefined }) },
+    Platform: {
+      constants: { Model: "Model", Release: "27.0" },
+      get OS() {
+        return native.os;
+      },
+      get isTV() {
+        return native.isTV;
+      },
+      Version: "27.0",
     },
-    Version: "27.0",
-  },
-  Settings: { get: () => native.setting },
-}));
+    Settings: { get: () => native.setting },
+  };
+});
 vi.mock("react-native-safe-area-context", () => ({
   SafeAreaProvider: ({ children }: { children: unknown }) => children,
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }));
-vi.mock("@loomarr/design-system", () => ({
-  LoomarrProvider: ({ children }: { children: unknown }) => children,
-}));
+vi.mock("@loomarr/design-system", async () => {
+  const { createElement } = await import("react");
+  return {
+    // The launch identity: it plays until the test finishes it.
+    BrandLaunch: ({ onFinished }: { onFinished?: () => void }) =>
+      createElement("button", { onClick: onFinished, type: "button" }, "launch identity"),
+    LoomarrProvider: ({ children }: { children: unknown }) => children,
+  };
+});
 vi.mock("@loomarr/crash-reports-native", () => ({
   createNativeCrashSource: () => undefined,
   forwardNativeCrashes: async () => 0,
@@ -70,6 +84,7 @@ vi.mock("expo-file-system", () => {
 
 const {
   createNativeApp,
+  LaunchStage,
   nativeCrashPlatform,
   nativeDiagnosticsIdentity,
   NativeAppRoot,
@@ -342,5 +357,95 @@ describe("useAppForeground", () => {
 
     await view.unmount();
     expect(appState.listeners.size).toBe(0);
+  });
+});
+
+describe("LaunchStage", () => {
+  const mount = async (minimumMs = 1_200) => {
+    vi.useFakeTimers();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const { act, createElement, useEffect } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const log: string[] = [];
+    const App = () => {
+      useEffect(() => {
+        log.push("app mounted");
+        return () => void log.push("app unmounted");
+      }, []);
+      return createElement("span", null, "app");
+    };
+    const hideNativeSplash = vi.fn();
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const render = () =>
+      act(async () =>
+        root.render(
+          createElement(LaunchStage, {
+            children: createElement(App),
+            density: "tv",
+            hideNativeSplash,
+            minimumMs,
+          }),
+        ),
+      );
+    await render();
+    return {
+      advance: (ms: number) => act(async () => void vi.advanceTimersByTime(ms)),
+      finishAnimation: () =>
+        act(
+          async () =>
+            void container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+        ),
+      hideNativeSplash,
+      identityShowing: () => container.textContent?.includes("launch identity") ?? false,
+      log,
+      render,
+      unmount: () => act(async () => root.unmount()),
+    };
+  };
+
+  it("mounts the app under the identity at once, so pairing starts while it plays", async () => {
+    const stage = await mount();
+    expect(stage.identityShowing()).toBe(true);
+    expect(stage.log).toEqual(["app mounted"]);
+    await stage.unmount();
+  });
+
+  it("hides the native splash once, at the first layout", async () => {
+    const stage = await mount();
+    expect(stage.hideNativeSplash).toHaveBeenCalledTimes(1);
+    await stage.render();
+    await stage.advance(5_000);
+    expect(stage.hideNativeSplash).toHaveBeenCalledTimes(1);
+    await stage.unmount();
+  });
+
+  it("keeps the identity up for its minimum even when the animation ends first, and never remounts the app", async () => {
+    const stage = await mount(1_200);
+    await stage.finishAnimation();
+    await stage.advance(1_199);
+    expect(stage.identityShowing()).toBe(true);
+
+    await stage.advance(1);
+    expect(stage.identityShowing()).toBe(false);
+    expect(stage.log).toEqual(["app mounted"]);
+    await stage.unmount();
+  });
+
+  it("keeps the identity up for its animation even when the minimum has passed", async () => {
+    const stage = await mount(1_200);
+    await stage.advance(10_000);
+    expect(stage.identityShowing()).toBe(true);
+
+    await stage.finishAnimation();
+    expect(stage.identityShowing()).toBe(false);
+    await stage.unmount();
+  });
+
+  it("cancels the minimum's timer when the app goes away", async () => {
+    const stage = await mount();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    await stage.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

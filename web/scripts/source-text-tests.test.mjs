@@ -10,13 +10,10 @@ const WEB = fileURLToPath(new URL("..", import.meta.url));
 // sourceTextAllowlist maps a web-relative test file to why it still reads source as text. It is a
 // ratchet: an entry that no longer reads source fails, and a new entry needs a reason.
 //
-// TEMPORARY entries are owed a conversion. The native app shells (apps/*/app, apps/tv/src) and the
-// on-device workshop (.rnstorybook, native-stories) resolve their imports only through an app's
-// Metro bundle, so no JS test runner here can load them yet; each converts once its logic moves
-// into a vitest-covered package or the workshop gets a resolvable test home.
+// TEMPORARY entries are owed a conversion. The on-device workshop (.rnstorybook, native-stories)
+// resolves its imports only through an app's Metro bundle, so no JS test runner here can load it
+// yet; each converts once the workshop gets a resolvable test home.
 const sourceTextAllowlist = {
-  "apps/tv/tests/config.test.mjs":
-    "TEMPORARY: matches the TV app root's source (src/app.tsx) and paired-client.ts; move shell wiring into @loomarr/player and test it there",
   "packages/design-system/tests/native-story-theme.test.ts":
     "TEMPORARY: matches .rnstorybook/preview.tsx and native-stories CSF; load them as modules once the workshop resolves outside Metro",
   "scripts/capture-tv-native-references.test.mjs":
