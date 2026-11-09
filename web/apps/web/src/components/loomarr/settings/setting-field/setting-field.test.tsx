@@ -91,7 +91,7 @@ describe("SettingField", () => {
     );
     const amount = screen.getByLabelText("Sign-in lifetime");
     expect(amount).toHaveValue("30");
-    expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveTextContent("days");
+    expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveValue("days");
     fireEvent.change(amount, { target: { value: "14" } });
     expect(onChange).toHaveBeenLastCalledWith("1209600s");
   });
@@ -267,6 +267,138 @@ describe("SettingField", () => {
     expect(screen.getByText("GiB")).toBeInTheDocument();
     fireEvent.change(amount, { target: { value: "60" } });
     expect(onChange).toHaveBeenLastCalledWith("60");
+  });
+
+  it("edits a whole number of seconds in a unit and still stores seconds", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "filler.cooldown_seconds",
+          kind: "int",
+          unit: "seconds",
+          label: "Repeat spacing",
+        })}
+        value="14400"
+        onChange={onChange}
+      />,
+    );
+    const amount = screen.getByLabelText("Repeat spacing");
+    expect(amount).toHaveValue("4");
+    expect(screen.getByLabelText("Repeat spacing unit")).toHaveValue("hours");
+    fireEvent.change(amount, { target: { value: "6" } });
+    expect(onChange).toHaveBeenLastCalledWith("21600");
+    fireEvent.change(screen.getByLabelText("Repeat spacing unit"), { target: { value: "minutes" } });
+    expect(onChange).toHaveBeenLastCalledWith("240");
+  });
+
+  it("offers only units a stored whole number of hours can hold", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "guide.retention_hours", kind: "int", unit: "hours", label: "Past listings" })}
+        value="48"
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByLabelText("Past listings")).toHaveValue("2");
+    const unit = screen.getByLabelText("Past listings unit");
+    expect(unit).toHaveValue("days");
+    expect([...unit.querySelectorAll("option")].map((option) => option.value)).toEqual(["days", "hours"]);
+    fireEvent.change(screen.getByLabelText("Past listings"), { target: { value: "3" } });
+    expect(onChange).toHaveBeenLastCalledWith("72");
+  });
+
+  it("keeps the chosen unit of a zero duration instead of snapping back to hours", () => {
+    const Controlled = () => {
+      const [raw, setRaw] = useState("0s");
+      return (
+        <SettingField
+          entry={entry({ key: "filler.min_clip_duration", kind: "duration", label: "Shortest clip" })}
+          value={raw}
+          onChange={setRaw}
+        />
+      );
+    };
+    render(<Controlled />);
+    const unit = screen.getByLabelText("Shortest clip unit");
+    expect(unit).toHaveValue("seconds");
+    fireEvent.change(unit, { target: { value: "minutes" } });
+    expect(unit).toHaveValue("minutes");
+    fireEvent.change(screen.getByLabelText("Shortest clip"), { target: { value: "2" } });
+    expect(screen.getByLabelText("Shortest clip")).toHaveValue("2");
+    expect(unit).toHaveValue("minutes");
+  });
+
+  it("picks a timezone from the server's zones and keeps a stored zone the list lacks", () => {
+    const onChange = vi.fn();
+    const presets = [
+      { value: "", label: "Each viewer's device" },
+      { value: "America/New_York", label: "America/New York" },
+      { value: "Europe/London", label: "Europe/London" },
+    ];
+    const { rerender } = render(
+      <SettingField
+        entry={entry({
+          key: "guide.timezone",
+          kind: "string",
+          presentation: "timezone",
+          label: "Timezone",
+          presets,
+        })}
+        value=""
+        onChange={onChange}
+      />,
+    );
+    const zone = screen.getByLabelText("Timezone");
+    expect(zone.tagName).toBe("SELECT");
+    expect(zone).toHaveValue("");
+    fireEvent.change(zone, { target: { value: "Europe/London" } });
+    expect(onChange).toHaveBeenLastCalledWith("Europe/London");
+
+    rerender(
+      <LoomarrProvider theme="dark">
+        <SettingField
+          entry={entry({
+            key: "guide.timezone",
+            kind: "string",
+            presentation: "timezone",
+            label: "Timezone",
+            presets,
+          })}
+          value="US/Eastern"
+          onChange={onChange}
+        />
+      </LoomarrProvider>,
+    );
+    expect(screen.getByLabelText("Timezone")).toHaveValue("US/Eastern");
+  });
+
+  it("names the audio languages in the viewer's language, with the first-track choice first", () => {
+    render(
+      <SettingField
+        entry={entry({
+          key: "playout.audio_language",
+          kind: "string",
+          presentation: "language",
+          label: "Preferred audio language",
+          presets: [
+            { value: "", label: "First track in the file" },
+            { value: "en", label: "en" },
+            { value: "fr", label: "fr" },
+          ],
+        })}
+        value="fr"
+        onChange={vi.fn()}
+      />,
+    );
+    const language = screen.getByLabelText("Preferred audio language");
+    expect(language).toHaveValue("fr");
+    expect([...language.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+      "First track in the file",
+      "English",
+      "French",
+    ]);
   });
 
   it("emits edits as strings", async () => {

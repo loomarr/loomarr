@@ -11328,8 +11328,7 @@ components:
           description: "Conditional visibility: show only when a named key's current value is listed (§5)."
           type: object
         unit:
-          description: What a plain number counts, shown beside its input, e.g. GiB, MiB or %. Empty for a bare count.
-          type: string
+          $ref: "#/components/schemas/SettingUnit"
         updatedAt:
           description: RFC3339; empty for env/system writes.
           type: string
@@ -11708,6 +11707,7 @@ components:
         - path
         - language
         - switch
+        - timezone
         - filler_download_schedule
       type: string
     SettingPreset:
@@ -11740,6 +11740,15 @@ components:
         - key
         - status
       type: object
+    SettingUnit:
+      description: What a plain number counts, e.g. GiB, MiB, %, seconds or hours. A time unit is edited with a unit picker; the others are shown beside the input. Absent for a bare count.
+      enum:
+        - GiB
+        - MiB
+        - "%"
+        - seconds
+        - hours
+      type: string
     SettingsEnvOverrideInputBody:
       additionalProperties: false
       properties:

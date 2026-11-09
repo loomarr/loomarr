@@ -88,6 +88,17 @@ func fillerLanguageOptions() []EnumOption {
 	}
 }
 
+// audioLanguagePresets is playout.audio_language's choices: the file's own first track, then the
+// same languages every other picker offers. Presets rather than an enum, so a pinned or stored code
+// outside the catalog still saves and still matches its track.
+func audioLanguagePresets() []Preset {
+	out := []Preset{preset("", "First track in the file")}
+	for _, o := range fillerLanguageOptions() {
+		out = append(out, preset(o.Value, o.Label))
+	}
+	return out
+}
+
 // autoSplitConfidenceRange bounds `filler.autosplit.min_confidence` to 50–95 (§10 V43).
 // The lower bound is load-bearing: an ungrounded era is capped below 50, so no reachable
 // threshold can accept a cut on the strength of an invented era.
@@ -593,9 +604,9 @@ func declared() []Setting {
 		},
 		{
 			Key: "playout.audio_language", Label: "Preferred audio language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationLanguage, Default: "eng",
+			Kind: KindString, Presentation: PresentationLanguage, Presets: audioLanguagePresets(), Default: "en",
 			Doc:    "Which audio language channels play when a film has more than one.",
-			Detail: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
+			Detail: "Preferred audio language for internal playout. Any ISO 639 code saves (en, eng and fra all work). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
 		},
 		{
 			Key: "playout.quality_tier", Label: "Maximum playback quality", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -738,7 +749,7 @@ func declared() []Setting {
 			// It is also the wall clock the rolling-window grid is laid on (#1675), so a daily
 			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
-			Kind: KindString, Default: "",
+			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "",
 			Doc:    "The timezone the TV guide shows times in and each channel's day starts in.",
 			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
 		},
@@ -749,10 +760,10 @@ func declared() []Setting {
 			// CURRENT lineup, so a distant "as aired" view would be fiction — the lineup has
 			// been reconciled since. A day is honest; a month would be invention presented as
 			// history.
-			Key: "guide.retention_hours", Label: "Past listings (hours)", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
-			Kind: KindInt, Default: "24",
+			Key: "guide.retention_hours", Label: "Past listings", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
+			Kind: KindInt, Unit: UnitHours, Default: "24",
 			Doc:    "How far back the TV guide lets you scroll.",
-			Detail: "In hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
+			Detail: "Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
 		},
 
 		// --- Backup (§16, §15 — added by V4) ---
@@ -1356,8 +1367,8 @@ func declared() []Setting {
 			Detail: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
-			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
-			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
+			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
+			Kind: KindInt, Unit: UnitSeconds, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc:    "How long before a commercial you've seen can air again on any channel.",
 			Detail: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},

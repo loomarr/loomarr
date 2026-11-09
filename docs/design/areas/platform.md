@@ -35,7 +35,7 @@ One area of the [package map](../package-map.md#start-here).
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`platform/jobs`** · 6 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`platform/langcode`** · 3 importers
+- **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
 - **`platform/llm`** · 9 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -51,7 +51,7 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 16 importers · → `library`, `platform/buildinfo`, `platform/config`
+- **`platform/settings`** · 16 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 8 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
