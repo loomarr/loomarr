@@ -268,6 +268,14 @@ const Settings: Story = {
 // station's era and place.
 const StationId: Story = { args: { ident: true, visible: false } };
 
+// The channel block in the channel's decade colour (#2767); without one it is amber (Playing).
+const Decade1970: Story = { args: { band: { ...liveData.band, decade: 1970 } } };
+const Decade1980: Story = { args: { band: { ...liveData.band, decade: 1980 } } };
+const Decade1990: Story = { args: { band: { ...liveData.band, decade: 1990 } } };
+const StationIdDecade: Story = {
+  args: { band: { ...liveData.band, decade: 1990 }, ident: true, visible: false },
+};
+
 const Info: Story = {
   args: {
     sheet: liveData.info ? (
@@ -311,4 +319,19 @@ const OffAir: Story = {
 };
 
 export default meta;
-export { Behind, Commercials, Info, NoSchedule, OffAir, Playing, Settings, StationId, StreamStopped, Touch };
+export {
+  Behind,
+  Commercials,
+  Decade1970,
+  Decade1980,
+  Decade1990,
+  Info,
+  NoSchedule,
+  OffAir,
+  Playing,
+  Settings,
+  StationId,
+  StationIdDecade,
+  StreamStopped,
+  Touch,
+};

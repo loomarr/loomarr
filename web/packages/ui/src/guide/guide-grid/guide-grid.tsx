@@ -26,6 +26,7 @@ import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, use
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
+import { GuideNumberBlock } from "../guide-number-block";
 import { guideRailWidth } from "../guide-rail";
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
@@ -411,7 +412,11 @@ const Row = memo(
             onPress={() => onOpenChannelInfo?.(channel.source.channelId)}
             style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
-            <Text textRole="guideNumber">{channel.source.number}</Text>
+            <GuideNumberBlock
+              decade={channel.source.decade}
+              number={channel.source.number}
+              textRole="guideNumber"
+            />
             <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} textRole="cardLabel">
                 {channel.source.name}

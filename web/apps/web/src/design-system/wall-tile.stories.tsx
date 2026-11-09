@@ -79,5 +79,29 @@ const CompactLast: Story = {
   decorators: Compact.decorators ?? [],
 };
 
+// The number block in the channel's decade colour (#2767), the only place the tile shows it. OnAir is
+// the channel with no single-decade era: a neutral block.
+const Decade1970: Story = { args: { ...OnAir.args, decade: 1970 } };
+const Decade1980: Story = { args: { ...OnAir.args, decade: 1980 } };
+const Decade1990: Story = { args: { ...OnAir.args, decade: 1990 } };
+
+// Every decade and none side by side. The decade colours are the same in both themes; the tile has
+// no light story because its words over the picture take the theme's foreground.
+const Decades: Story = {
+  render: (args) => (
+    <div style={{ display: "grid", gap: 12 }}>
+      {[1970, 1980, 1990, undefined].map((decade, i) => (
+        <WallTile
+          key={decade ?? "none"}
+          {...args}
+          art={<Still hue={[40, 0, 190, 205][i] ?? 205} />}
+          number={String(3 + i * 2).padStart(2, "0")}
+          {...(decade === undefined ? {} : { decade })}
+        />
+      ))}
+    </div>
+  ),
+};
+
 export default meta;
-export { Compact, CompactLast, FillingUp, LastWatched, OnAir };
+export { Compact, CompactLast, Decade1970, Decade1980, Decade1990, Decades, FillingUp, LastWatched, OnAir };

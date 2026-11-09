@@ -219,6 +219,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const chromeData = playbarFromTimeline({
     airings,
     channel: {
+      ...(osdChannel.decade === undefined ? {} : { decade: osdChannel.decade }),
       era: filler?.era,
       name: osdChannel.name,
       number: String(osdChannel.number),

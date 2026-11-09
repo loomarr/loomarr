@@ -2,6 +2,8 @@
 
 import { layoutGuide } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -132,6 +134,72 @@ describe("GuideNowNext", () => {
     expect(html).toContain(">Later tonight<");
     expect(html).toContain(">—<");
     expect(html).toContain(">3 hr 13 min left<");
+  });
+});
+
+describe("GuideNowNext number block", () => {
+  type El = { parentElement: El | null; textContent: string | null };
+  const g = globalThis as unknown as {
+    document: {
+      body: { append(n: unknown): void; querySelectorAll(s: string): ArrayLike<El> };
+      createElement(t: string): Parameters<typeof createRoot>[0] & { remove(): void };
+    };
+    getComputedStyle(n: El): { backgroundColor: string; color: string };
+    IS_REACT_ACT_ENVIRONMENT: boolean;
+  };
+
+  it("fills a channel's number with its decade colour and leaves the rest clear", async () => {
+    g.IS_REACT_ACT_ENVIRONMENT = true;
+    const eraLayout = layoutGuide(
+      {
+        channels: [
+          {
+            airings: [],
+            channelId: "eighties",
+            decade: 1980,
+            name: "Late Night Sci-Fi",
+            number: 3,
+            pendingCount: 0,
+            status: "live" as const,
+          },
+          {
+            airings: [],
+            channelId: "plain",
+            name: "Nature Hour",
+            number: 12,
+            pendingCount: 0,
+            status: "live" as const,
+          },
+        ],
+        fromMs: FROM,
+        timezone: "UTC",
+        toMs: at(240),
+      },
+      NOW,
+    );
+    const host = g.document.createElement("div");
+    g.document.body.append(host);
+    const root = createRoot(host);
+    await act(async () =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <GuideNowNext layout={eraLayout} nowMs={NOW} onWatch={vi.fn()} />
+        </LoomarrProvider>,
+      ),
+    );
+    const number = (text: string) => {
+      const el = Array.from(g.document.body.querySelectorAll("span")).find(
+        (n) => n.textContent === text,
+      ) as El;
+      return {
+        fill: g.getComputedStyle(el.parentElement as El).backgroundColor.toLowerCase(),
+        ink: g.getComputedStyle(el).color.toLowerCase(),
+      };
+    };
+    expect(number("3")).toEqual({ fill: "var(--decade1980)", ink: "var(--decadeink)" });
+    expect(number("12")).toEqual({ fill: "rgba(0, 0, 0, 0)", ink: "var(--contentsecondary)" });
+    await act(async () => root.unmount());
+    host.remove();
   });
 });
 

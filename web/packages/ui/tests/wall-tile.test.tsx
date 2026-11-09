@@ -14,15 +14,26 @@ import { WallTile } from "../index";
 type Node = {
   click(): void;
   getAttribute(name: string): string | null;
+  parentElement: Node | null;
   querySelector(s: string): Node | null;
   tagName: string;
   textContent: string | null;
 };
 type Doc = {
-  body: Node & { append(node: unknown): void; replaceChildren(): void };
+  body: Node & {
+    append(node: unknown): void;
+    querySelectorAll(s: string): ArrayLike<Node>;
+    replaceChildren(): void;
+  };
   createElement(tag: string): Parameters<typeof createRoot>[0];
 };
 const doc = (globalThis as unknown as { document: Doc }).document;
+const computed = (node: Node) =>
+  (
+    globalThis as unknown as {
+      getComputedStyle(n: Node): { backgroundColor: string; color: string };
+    }
+  ).getComputedStyle(node);
 
 const mount = async (node: ReactNode) => {
   const container = doc.createElement("div");
@@ -71,6 +82,36 @@ describe("WallTile", () => {
     );
     expect(doc.body.querySelector("a")?.getAttribute("href")).toBe("/watch/c1");
     expect(doc.body.querySelector("button")).toBeNull();
+  });
+
+  // jsdom reports a theme colour as the CSS variable it reads (and lower-cases the name).
+  const numberColours = () => {
+    const number = Array.from(doc.body.querySelectorAll("span")).find((n) => n.textContent === "07") as Node;
+    return {
+      fill: computed(number.parentElement as Node).backgroundColor.toLowerCase(),
+      ink: computed(number).color.toLowerCase(),
+    };
+  };
+
+  it("fills the number block with the channel's decade colour, the number in the decade ink", async () => {
+    await mount(<WallTile art={null} channelName="A" decade={1980} number="07" title="T" />);
+    expect(numberColours()).toEqual({ fill: "var(--decade1980)", ink: "var(--decadeink)" });
+  });
+
+  it("keeps the number block neutral without a decade, or for a decade with no colour", async () => {
+    for (const decade of [undefined, 2000]) {
+      doc.body.replaceChildren();
+      await mount(
+        <WallTile
+          art={null}
+          channelName="A"
+          number="07"
+          title="T"
+          {...(decade === undefined ? {} : { decade })}
+        />,
+      );
+      expect(numberColours()).toEqual({ fill: "var(--artworkscrimstrong)", ink: "var(--contentprimary)" });
+    }
   });
 
   it("marks the last channel, shorter when compact", async () => {

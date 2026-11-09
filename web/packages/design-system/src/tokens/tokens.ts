@@ -79,6 +79,16 @@ const semanticThemes = {
       onAir: "#E5484D",
       reconciling: "#FFC14D",
     },
+    // A channel's era colour, drawn only on its number block (#2767). The decade picks the first
+    // colour of the on-screen logo's era palette (internal/playout/watermark/design.go eraPalettes),
+    // from the brand chroma, so it is the same in both themes; a decade with no palette is neutral.
+    // The number on it is the brand ground.
+    decade: {
+      "1970": brandChroma[1],
+      "1980": brandChroma[5],
+      "1990": brandChroma[3],
+      ink: brandContract.ground,
+    },
   },
   light: {
     surface: {
@@ -151,6 +161,12 @@ const semanticThemes = {
       clipPlain: "#D2D6DE",
       onAir: "#E5484D",
       reconciling: "#FFC14D",
+    },
+    decade: {
+      "1970": brandChroma[1],
+      "1980": brandChroma[5],
+      "1990": brandChroma[3],
+      ink: brandContract.ground,
     },
   },
 } as const;

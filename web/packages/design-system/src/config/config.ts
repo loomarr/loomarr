@@ -58,6 +58,10 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   guideClipPlain: semanticThemes[mode].guide.clipPlain,
   guideOnAir: semanticThemes[mode].guide.onAir,
   guideReconciling: semanticThemes[mode].guide.reconciling,
+  decade1970: semanticThemes[mode].decade["1970"],
+  decade1980: semanticThemes[mode].decade["1980"],
+  decade1990: semanticThemes[mode].decade["1990"],
+  decadeInk: semanticThemes[mode].decade.ink,
 });
 
 const tamaguiTheme = (mode: keyof typeof semanticThemes) => {

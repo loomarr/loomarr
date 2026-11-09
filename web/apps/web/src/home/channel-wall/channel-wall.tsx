@@ -181,6 +181,7 @@ const ChannelWall = ({ lastChannelId, layout, nowMs }: ChannelWallProps) => {
               number={String(channel.source.number).padStart(2, "0")}
               render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
               title={entry.title}
+              {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
               {...(entry.detail ? { detail: entry.detail } : {})}
               {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
             />
