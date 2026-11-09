@@ -27,7 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
 
-// Service is the channel-bug service (#1512 phase 1d): the GPU overlay self-check per encoder, and
+// Service is the channel-bug service (#1512): the GPU overlay self-check per encoder, and
 // the channel packager's per-item resolver.
 //
 // The self-check runs once per encoder, in the background, on the first programme that encoder
@@ -394,8 +394,7 @@ func (b bugDesign) colours(color string) (watermark.Colour, watermark.Palette) {
 
 // source picks the bug's image: a custom upload (its own shape; the look does not apply, and no
 // holiday version), else the generated callsign bug in the resolved look, colour and holiday
-// version. The automatic TMDB network logo (between the two in the maintainer's order) is not
-// wired yet.
+// version. There is no automatic TMDB network logo step between the two.
 func (c *Service) source(ctx context.Context, ch channelstore.Channel, res schedule.ResolvedWatermark, design bugDesign) (string, func() (bugRenderer, error)) {
 	if res.Image != "" && c.originals != nil {
 		return "image:" + res.Image, func() (bugRenderer, error) {
