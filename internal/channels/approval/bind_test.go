@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -95,7 +95,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate keeps an available title the model did not re-pick",
 			in: approval.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
+				Proposal: proposalFrom(accept.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Existing: existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}),
 				Now:      bindNow,
 			},
@@ -104,7 +104,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate drops a title the intent excludes, ignoring case and padding",
 			in: approval.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{
+				Proposal: proposalFrom(accept.AutoCuratedBy, proposals.Proposal{
 					Intent: proposals.Intent{MustExclude: []string{"  oNe "}},
 					Lineup: []proposals.ProposalItem{item(2, "Two")},
 				}),
@@ -117,7 +117,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate drops a title that left the library pipeline",
 			in: approval.BindInput{
-				Proposal:    proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
+				Proposal:    proposalFrom(accept.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Existing:    existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}, schedule.LineupEntry{Key: key(3), Title: "Three"}),
 				Unavailable: map[provision.Key]bool{key(1): true},
 				Now:         bindNow,
@@ -128,7 +128,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate applies the turnstile's retirement to an available title",
 			in: approval.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{
+				Proposal: proposalFrom(accept.AutoCuratedBy, proposals.Proposal{
 					Lineup:  []proposals.ProposalItem{item(2, "Two")},
 					Retired: []provision.Key{key(1)},
 				}),
@@ -141,7 +141,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate with no channel yet binds like a first approval",
 			in: approval.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
+				Proposal: proposalFrom(accept.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Number:   3, Now: bindNow,
 			},
 			wantTitles: []string{"Two"},
@@ -283,7 +283,7 @@ func TestBindIsDeterministicAndLeavesItsInputAlone(t *testing.T) {
 	t.Parallel()
 	existing := existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"})
 	in := approval.BindInput{
-		Proposal:    proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}, Retired: []provision.Key{key(1)}}),
+		Proposal:    proposalFrom(accept.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}, Retired: []provision.Key{key(1)}}),
 		Existing:    existing,
 		Unavailable: map[provision.Key]bool{key(1): true},
 		Now:         bindNow,

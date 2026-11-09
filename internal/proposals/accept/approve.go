@@ -1,4 +1,7 @@
-package suggest
+// Package accept is how a proposal becomes a channel: a person's approval (with optional edits),
+// the per-user auto-approve grant, and the pending-acquisition quota that bounds the grant. It sits
+// beside suggest, which produces proposals and reaches the grant only through its own interface.
+package accept
 
 import (
 	"context"
@@ -11,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -26,7 +30,7 @@ var ErrSuperseded = store.ErrProposalSuperseded
 // ErrProposalJobGone reports a proposal whose job no longer exists, so approving it cannot create
 // its channel: housekeeping once purged done jobs while their proposals were still submitted. It is
 // a refusal the admin can act on (deny the proposal, ask again), not a server fault. The binder
-// returns it; the suggest package owns it so callers need not import channels/approval.
+// returns it; the accept package owns it so callers need not import channels/approval.
 var ErrProposalJobGone = errors.New("suggest: the proposal's job no longer exists")
 
 // ErrRevisionActive reports a proposal whose replacement generation currently
@@ -174,7 +178,7 @@ type approvalCommit func(context.Context, store.ProposalApproval) (int, error)
 
 // ChannelBinder plans the local channel mutation that approval commits, then runs the
 // best-effort work that is only legal after that commit. *approval.Binder implements this
-// structurally; suggest declares the seam so it never imports binder back.
+// structurally; accept declares the seam so it never imports binder back.
 type ChannelBinder interface {
 	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is
 	// about to commit, including edits and its approvedBy stamp, so it never has to discover
@@ -199,7 +203,7 @@ type Approver struct {
 	store     ApproveStore
 	channels  ChannelBinder
 	now       func() time.Time
-	notify    ProposalNotifier
+	notify    Notifier
 	quality   ProposalApprovalQuality
 	additions ApprovalAdditionResolver
 	holidays  holidayvocab.Source
@@ -223,7 +227,13 @@ type ProposalApprovalQuality interface {
 	ProposalApproved(context.Context, string, time.Time)
 }
 
-func (a *Approver) WithProposalNotifier(notifier ProposalNotifier) *Approver {
+// Notifier is told when a proposal's approval has committed. suggest.ProposalNotifier satisfies it.
+type Notifier interface {
+	ProposalApproved(context.Context, store.Proposal, string)
+}
+
+// WithProposalNotifier publishes the approval to the product's notification surface.
+func (a *Approver) WithProposalNotifier(notifier Notifier) *Approver {
 	a.notify = notifier
 	return a
 }
@@ -435,9 +445,9 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	// series from the Proposal's original Intent after additions/drops, at this one approval
 	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
 	// crafted selector before either the durable approved JSON or the binder can observe it.
-	stampEpisodeSelection(body.Lineup, body.Intent, holidays)
-	stampEpisodeSelection(body.Acquisitions, body.Intent, holidays)
-	stampEpisodeSelection(body.Alternates, body.Intent, holidays)
+	suggest.StampEpisodeSelection(body.Lineup, body.Intent, holidays)
+	suggest.StampEpisodeSelection(body.Acquisitions, body.Intent, holidays)
+	suggest.StampEpisodeSelection(body.Alternates, body.Intent, holidays)
 	p.Body = body
 	if summary != "" {
 		p.ModSummary = summary

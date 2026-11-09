@@ -12,13 +12,14 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 type approvalBuild struct {
 	binder          *approval.Binder
-	approver        *suggest.Approver
+	approver        *accept.Approver
 	decisionQuality *quality.ProposalDecisionRecorder
 }
 
@@ -52,7 +53,7 @@ func buildApproval(
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
 	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
-	approver := suggest.NewApprover(st, channelBinder, time.Now).
+	approver := accept.NewApprover(st, channelBinder, time.Now).
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)

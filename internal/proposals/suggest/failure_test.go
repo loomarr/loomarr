@@ -9,8 +9,8 @@ import (
 )
 
 func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
-	trace := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+	trace := proposals.DecisionTrace{Version: proposals.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001"}, Disposition: proposals.DispositionSelected, Reason: "selected"}}}
 	err := suggest.NewFailure("provider_failure", trace, errors.New("provider detail"))
 	trace.Candidates[0].Key = "mutated"
 	var failure *suggest.Failure
@@ -20,7 +20,7 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 	if _, err := failure.TraceJSON(); err != nil {
 		t.Fatalf("valid trace rejected: %v", err)
 	}
-	malformed := suggest.NewFailure("selection_empty", proposals.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 2, Candidates: []proposals.DecisionCandidate{{Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}}, nil)
+	malformed := suggest.NewFailure("selection_empty", proposals.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 2, Candidates: []proposals.DecisionCandidate{{Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID}}}, nil)
 	var malformedFailure *suggest.Failure
 	if !errors.As(malformed, &malformedFailure) {
 		t.Fatal("malformed outcome lost typed failure")
@@ -29,8 +29,8 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 		t.Fatalf("keyless malformed evidence rejected: %v", err)
 	}
 	for name, trace := range map[string]proposals.DecisionTrace{
-		"keyed malformed evidence":     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}},
-		"keyful not-surfaced evidence": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
+		"keyed malformed evidence":     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID}}},
+		"keyful not-surfaced evidence": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonNotSurfaced}}},
 	} {
 		failureErr := suggest.NewFailure("selection_empty", trace, nil)
 		var traceFailure *suggest.Failure
@@ -53,15 +53,15 @@ func TestFailureTraceJSONFailsClosedAndCopiesCandidates(t *testing.T) {
 		"bounds":                   {Version: 1, SurfacedTotal: 65, RecordedTotal: 65, Truncated: false},
 		"recorded bounds":          {Version: 1, SurfacedTotal: 64, RecordedTotal: 65, Truncated: false},
 		"totals":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: -1},
-		"reason":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Disposition: suggest.DispositionSelected, Reason: suggest.ReasonNever}}},
+		"reason":                   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Disposition: proposals.DispositionSelected, Reason: proposals.ReasonNever}}},
 		"terminal":                 {Version: 1, Terminal: "provider-secret"},
-		"total-bound":              {Version: 1, SurfacedTotal: suggest.DecisionTraceMaxTotal + 1, RecordedTotal: suggest.DecisionTraceMaxTotal + 1, Truncated: true},
-		"rank":                     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001", Preference: 4}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
-		"relevance without match":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001", Relevance: 1}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
-		"match without relevance":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001"}, Constraints: proposals.ConstraintMatches{Request: true}, Disposition: suggest.DispositionSelected, Reason: "selected"}}},
-		"rankless malformed match": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Constraints: proposals.ConstraintMatches{Tone: true}, Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonMalformedID}}},
-		"rankless dropped match":   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Constraints: proposals.ConstraintMatches{Era: true}, Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
-		"invalid not-surfaced key": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "not-a-canonical-key", Disposition: suggest.DispositionValidationDropped, Reason: suggest.ReasonNotSurfaced}}},
+		"total-bound":              {Version: 1, SurfacedTotal: proposals.DecisionTraceMaxTotal + 1, RecordedTotal: proposals.DecisionTraceMaxTotal + 1, Truncated: true},
+		"rank":                     {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001", Preference: 4}, Disposition: proposals.DispositionSelected, Reason: "selected"}}},
+		"relevance without match":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001", Relevance: 1}, Disposition: proposals.DispositionSelected, Reason: "selected"}}},
+		"match without relevance":  {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000001"}, Constraints: proposals.ConstraintMatches{Request: true}, Disposition: proposals.DispositionSelected, Reason: "selected"}}},
+		"rankless malformed match": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Constraints: proposals.ConstraintMatches{Tone: true}, Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonMalformedID}}},
+		"rankless dropped match":   {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Constraints: proposals.ConstraintMatches{Era: true}, Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonNotSurfaced}}},
+		"invalid not-surfaced key": {Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "not-a-canonical-key", Disposition: proposals.DispositionValidationDropped, Reason: proposals.ReasonNotSurfaced}}},
 	} {
 		badErr := suggest.NewFailure("provider_failure", bad, nil)
 		var badFailure *suggest.Failure

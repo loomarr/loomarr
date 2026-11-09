@@ -1,4 +1,4 @@
-package suggest_test
+package accept_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -28,16 +28,16 @@ func TestResolveApprovalEditDropsSizeFromUnownedAdditions(t *testing.T) {
 		{Item: owned, Owned: true},
 	}}
 
-	for name, resolver := range map[string]suggest.ApprovalAdditionResolver{
+	for name, resolver := range map[string]accept.ApprovalAdditionResolver{
 		"no resolver":  nil,
 		"pass-through": passThrough,
 	} {
 		t.Run(name, func(t *testing.T) {
-			edit := &suggest.ApprovalEdit{Add: []proposals.ProposalItem{forged, owned}}
+			edit := &accept.ApprovalEdit{Add: []proposals.ProposalItem{forged, owned}}
 			if resolver == nil {
 				edit.Add = edit.Add[:1]
 			}
-			resolved, err := suggest.ResolveApprovalEdit(context.Background(), edit, resolver)
+			resolved, err := accept.ResolveApprovalEdit(context.Background(), edit, resolver)
 			if err != nil {
 				t.Fatal(err)
 			}

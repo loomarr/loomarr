@@ -22,7 +22,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -141,7 +141,7 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 
 // PlanSubmittedChannel derives an unsaved channel for a pending proposal outlook.
 // It shares approval planning while preserving the submitted status and performs
-// no writes or post-commit work. Callers first use suggest.PrepareApproval.
+// no writes or post-commit work. Callers first use accept.PrepareApproval.
 func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
 	if p.Status != "submitted" {
 		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
@@ -170,7 +170,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		// surface, not a "no channel yet" answer that replans.
 		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
 			return store.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
-				suggest.ErrProposalJobGone, p.ID, intentRef)
+				accept.ErrProposalJobGone, p.ID, intentRef)
 		} else if jerr != nil {
 			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
 		}

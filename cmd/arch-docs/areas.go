@@ -95,11 +95,12 @@ var areas = []area{
 		Description: "Turning \"I want a channel that feels like X\" into a lineup a person can approve. " +
 			"The suggester checks every title against the real library and catalog, the workflow tracks " +
 			"each request through to the household's first channel, and the outlook explains a pending " +
-			"proposal before anyone approves it. The quality and planner-reference packages measure how " +
-			"good the suggestions are.",
+			"proposal before anyone approves it. Accepting a proposal, by a person's approval or the " +
+			"auto-approve grant within its pending-acquisition quota, is its own package. The quality " +
+			"and planner-reference packages measure how good the suggestions are.",
 		Packages: []string{
 			"proposals", "proposals/workflow", "proposals/outlook", "proposals/suggest",
-			"proposals/webreference", "proposals/quality",
+			"proposals/accept", "proposals/webreference", "proposals/quality",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +

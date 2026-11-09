@@ -1,4 +1,4 @@
-package suggest_test
+package accept_test
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -34,14 +34,14 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 		{Item: owned, Owned: true},
 		{Item: missing, Owned: false},
 	}}
-	approver := suggest.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
+	approver := accept.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
 	p := store.Proposal{
 		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000671, Name: "Existing", InLibrary: true, LibraryItemID: "library-90000671"},
 		}},
 	}
-	edit := &suggest.ApprovalEdit{Add: []proposals.ProposalItem{
+	edit := &accept.ApprovalEdit{Add: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition", InLibrary: false},
 		{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
 	}}
@@ -74,7 +74,7 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 				ch.ID = "ch-approved"
 				return ch
 			}}
-			approver := suggest.NewApprover(st, channels, time.Now)
+			approver := accept.NewApprover(st, channels, time.Now)
 			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 			result, err := approver.Approve(context.Background(), p, nil, "admin")
@@ -110,10 +110,10 @@ func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 		},
 	}
 	channels := &testkit.ApprovalChannels{}
-	approver := suggest.NewApprover(st, channels, time.Now)
+	approver := accept.NewApprover(st, channels, time.Now)
 
 	_, err := approver.Approve(context.Background(), p, nil, "admin")
-	if !errors.Is(err, suggest.ErrSuperseded) {
+	if !errors.Is(err, accept.ErrSuperseded) {
 		t.Fatalf("error = %v, want ErrSuperseded", err)
 	}
 	if len(st.Commits) != 1 || len(channels.Plans) != 1 {
@@ -134,7 +134,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	decisionAt := time.Unix(1_800_000_000, 0).UTC()
 	qualitySink := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
-	approver := suggest.NewApprover(st, channels, func() time.Time { return decisionAt }).
+	approver := accept.NewApprover(st, channels, func() time.Time { return decisionAt }).
 		WithDecisionQuality(decisionQuality)
 	p := store.Proposal{
 		ID: "p1", JobID: "job1", Status: "submitted",
@@ -170,7 +170,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{PlanError: errors.New("cannot plan")}
-	approver := suggest.NewApprover(st, channels, time.Now)
+	approver := accept.NewApprover(st, channels, time.Now)
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
@@ -186,7 +186,7 @@ func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	channels := &testkit.ApprovalChannels{}
 	qualitySink := &testkit.QualityRecorder{}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
-	approver := suggest.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
+	approver := accept.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {

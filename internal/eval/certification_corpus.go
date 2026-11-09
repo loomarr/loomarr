@@ -397,7 +397,7 @@ func validateCertificationExtension(extension certificationCorpusExtension, corp
 		if !known[id] {
 			return fmt.Errorf("certification extension proposal terminal references unknown case %q", id)
 		}
-		if terminal != suggest.TerminalConstraintsConflict && terminal != suggest.TerminalDateSemanticsUnclear {
+		if terminal != proposals.TerminalConstraintsConflict && terminal != proposals.TerminalDateSemanticsUnclear {
 			return fmt.Errorf("certification extension proposal terminal for %q is unsupported", id)
 		}
 		if _, ok := dateScopes[id]; ok || len(extension.ProposalKeys[id]) != 0 || !families[id].AllowAbstention {

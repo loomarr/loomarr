@@ -12,8 +12,8 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
@@ -82,7 +82,7 @@ func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) 
 			{MediaType: provision.Movie, TMDBID: 90000202, Name: "New Two", InLibrary: true, LibraryItemID: "lib-new-2", EditorialRole: proposals.EditorialDiscovery},
 		},
 	}}
-	edit := &suggest.ApprovalEdit{
+	edit := &accept.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000201", "movie:tmdb:90000202"},
 		Add:      picks,
 	}
@@ -151,7 +151,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		})
 		ownedProposal := p
 		ownedProposal.Body = proposals.Proposal{Intent: proposals.Intent{Description: "An owned movie"}, Lineup: []proposals.ProposalItem{}}
-		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []proposals.ProposalItem{
+		got, err := ownedService.Assess(ctx, ownedProposal, &accept.ApprovalEdit{Add: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition", InLibrary: false},
 		}})
 		if err != nil {
