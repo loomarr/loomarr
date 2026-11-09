@@ -1,25 +1,39 @@
-package app
+package operator
 
 import (
 	"context"
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
-// fillerChannelWake is the shared post-commit latency path for every non-HTTP eligibility change.
-// It deliberately depends on only Reconcile: pipeline code does not need the API's wider channel
-// management surface merely to announce that pod eligibility changed.
-type fillerChannelWake struct {
-	st       store.Store
-	channels interface {
-		Reconcile(context.Context, string) error
-	}
-	log *slog.Logger
+// ChannelLister lists the channels a wake may reconcile.
+type ChannelLister interface {
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 }
 
-func (w *fillerChannelWake) Run(ctx context.Context, snapshots []clips.Clip) {
+// Reconciler reconciles one channel.
+type Reconciler interface {
+	Reconcile(context.Context, string) error
+}
+
+// ChannelWake is the shared post-commit latency path for every non-HTTP eligibility change.
+// It deliberately depends on only Reconcile: pipeline code does not need the API's wider channel
+// management surface merely to announce that pod eligibility changed.
+type ChannelWake struct {
+	st       ChannelLister
+	channels Reconciler
+	log      *slog.Logger
+}
+
+// NewChannelWake returns the wake over the channel list and a reconciler. A reconciler that also
+// reconciles a filler change directly is used for it.
+func NewChannelWake(st ChannelLister, channels Reconciler, log *slog.Logger) *ChannelWake {
+	return &ChannelWake{st: st, channels: channels, log: log}
+}
+
+func (w *ChannelWake) Run(ctx context.Context, snapshots []clips.Clip) {
 	if w == nil || w.st == nil || w.channels == nil {
 		return
 	}

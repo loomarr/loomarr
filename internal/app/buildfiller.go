@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/capability"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/routine"
@@ -164,7 +165,7 @@ func buildFetcher(set resolved, layout cliplibrary.Layout, log *slog.Logger, art
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, wake *operator.ChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -256,7 +257,7 @@ func intakeLanguages(st interface {
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
 func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
-	splitter *filler.Splitter, wake *fillerChannelWake,
+	splitter *filler.Splitter, wake *operator.ChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
 	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
