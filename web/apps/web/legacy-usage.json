@@ -44,7 +44,7 @@
       "tailwindClasses": 30
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 164
+      "tailwindClasses": 184
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 54
@@ -94,7 +94,7 @@
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
       "tailwindClasses": 62,
-      "legacyUi": 2
+      "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
       "tailwindClasses": 47
@@ -237,13 +237,8 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-<<<<<<< HEAD
       "tailwindClasses": 131,
       "legacyUi": 2
-=======
-      "tailwindClasses": 126,
-      "legacyUi": 1
->>>>>>> origin/ds-select-sweep-3
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 14
@@ -362,7 +357,7 @@
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 116,
-      "legacyUi": 1
+      "legacyUi": 2
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 48,
@@ -370,7 +365,7 @@
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
       "tailwindClasses": 108,
-      "legacyUi": 1
+      "legacyUi": 2
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
