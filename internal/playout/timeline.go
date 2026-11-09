@@ -272,10 +272,6 @@ func (b Broadcast) ClipTo(from, to time.Time) (Broadcast, bool) {
 	return b, b.Stop.After(b.Start)
 }
 
-// ContentIdentity is the same scheduler-owned identity used by live Airings and ScheduleBlockID.
-// A caller holding a Broadcast gets the identity without re-deriving it in the composition layer.
-func (b Broadcast) ContentIdentity() string { return broadcastIdentity(b) }
-
 // ScheduledBlockID is the one schedule-to-diagnostics correlation function. Callers provide the
 // scheduler-owned facts they already have; no diagnostic layer performs a lookup to invent them.
 func ScheduledBlockID(channelID string, startedAt time.Time, kind schedule.SlotKind, contentIdentity string) string {

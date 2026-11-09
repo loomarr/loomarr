@@ -405,8 +405,8 @@ func (s *Store) AttachTunarrChannel(
 // uniform codec the timeline normalizes to, computed from the library titles' codecs at curation.
 //
 // A targeted single-column UPDATE rather than a read-modify-write SaveChannel: the codec is
-// derived state written after the lineup is bound, and the binder is the ONE lineup writer
-// (loomarr-one-lineup-writer). Reusing SaveChannel here would mean re-reading the whole row and
+// derived state written after the lineup is bound, and the binder is the ONE lineup writer.
+// Reusing SaveChannel here would mean re-reading the whole row and
 // racing the reconciler's own writes for no benefit — this only ever touches the one derived column.
 func (s *Store) SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error) {
 	if codec == "" {
