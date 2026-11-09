@@ -31,8 +31,10 @@ import (
 //  2. Recompute desired from the approved lineup + current availability (pure).
 //  3. Revalidate program slots against the library — a vanished program demotes
 //     to a placeholder and flags the channel drifted (§9 slot revalidation).
-//  4. For a Tunarr-backed channel only, ensure the remote channel exists and diff
-//     + push its lineup. Internal playout consumes the local desired state directly.
+//  4. For a Tunarr-backed channel only, ensure the remote channel exists (and attach its
+//     filler list, 4b). Internal playout consumes the local desired state directly.
+//  5. For a Tunarr-backed channel only, diff the desired lineup against Tunarr's and push
+//     on a difference.
 //  6. Persist the (possibly updated) channel: new TunarrID, desired snapshot,
 //     status, next reconcile deadline.
 //  7. Nudge the media server after committed local or Tunarr changes (best-effort,
@@ -643,11 +645,10 @@ func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntr
 
 // BreaksPerHourFor resolves a channel's commercial-break density (§10, V51f).
 //
-// ⚠ **One writer, because there were two identical copies and a third would have been easy.**
-// `reconcile.go` and `preview.go` each carried the same `= 0; if hasFillerPool { = global }`
-// three-liner — fine while there was one global value to read, and exactly the shape that grows a
-// quiet disagreement the moment a per-channel override exists. Preview claiming a density
-// reconcile does not apply is the drift preview exists to prevent.
+// ⚠ **One writer.** Reconcile and preview both call this rather than each carrying a copy of
+// "no pool ⇒ 0, else the global value": that shape grows a quiet disagreement the moment a
+// per-channel override exists. Preview claiming a density reconcile does not apply is the
+// drift preview exists to prevent.
 //
 // ⚠ **The dead-air rule wins over the operator's override, deliberately.** No pool means no
 // breaks whatever the policy says: break gaps with nothing to fill them leave empty flex that
@@ -714,14 +715,10 @@ func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Dur
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.
 //
-// ⚠ **It is exported because this rule had THREE implementations, and they did not agree.**
-// This one applied the scope era; `api.fillerSelectionToDomain` (self-described as "mirroring
-// channels.SelectionForChannel") did not; `app.podPreviewAdapter.PreviewDraft` applied it again.
-// The API's omission was invisible because the adapter below it put the era back — two copies
-// cancelling out, which is the worst kind of agreement because nothing looks wrong. It stops
-// working the instant "explicitly any era" exists: a fallback keyed on `Era == 0` cannot tell an
-// unset era from a chosen one, so it would overwrite the operator's answer with the channel's.
-// One writer, called from every derivation, is the only version of this that stays true.
+// ⚠ **It is exported so every derivation (saved channel, draft, pod preview) shares one rule.**
+// Parallel copies drift, and two copies can cancel each other's mistakes so nothing looks wrong
+// until "explicitly any era" is chosen: a fallback keyed on `Era == 0` cannot tell an unset era
+// from a chosen one, so it would overwrite the operator's answer with the channel's.
 //
 // `derived` is what the channel's programming implies (schedule.DeriveFiller). It fills ONLY what
 // the operator left unset — an explicit audience or era, including an explicit "any" era, is never
@@ -740,12 +737,12 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 		}
 		sel.Language = language.Normalize(f.Language)
 		if f.Era != nil {
-			// ⚠ **PRESENCE is the opt-in, and that is what finally makes "any era" reachable
+			// ⚠ **PRESENCE is the opt-in, and that is what makes "any era" reachable
 			// (§10, V51f).** A present range means the operator has ANSWERED the era question —
-			// including answering "any" with `{0,0}`. Only absence inherits. Before this, the
-			// scope default keyed off `sel.Era == 0`, so clearing the field re-inherited on the
-			// very next derivation and a channel with a programming era had no way to say "draw
-			// from the whole catalog". Same pattern as `AutoCurate`, for the same reason.
+			// including answering "any" with `{0,0}`. Only absence inherits. Keying the scope
+			// default off `sel.Era == 0` would re-inherit on the very next derivation, leaving a
+			// channel with a programming era no way to say "draw from the whole catalog". Same
+			// pattern as `AutoCurate`, for the same reason.
 			inheritEra = false
 			sel.Era = pod.EraRange{From: f.Era.From, To: f.Era.To}
 		} else if len(f.EraWindows) > 0 {
@@ -917,27 +914,25 @@ func (e *Engine) freeNumberFor(ctx context.Context, localChannelID string, want 
 
 // statusFor derives the channel's Loomarr-side status from its desired lineup.
 //
-// ⚠ AN EMPTY DECK IS NOT `live`. This used to return `live` without ever looking at
-// the slots, so a channel that computed to nothing still reported healthy — and the
-// operator's only symptom was an empty grid, with no hint that filtering was the
-// cause. That is how a seasonal-bench bug hid: six titles on the lineup, every one
-// benched `out_of_season`, `desired_json` literally `[]`, status `live`.
+// ⚠ AN EMPTY DECK IS NOT `live`. A channel that computed to nothing must not report healthy:
+// the operator's only symptom would be an empty grid, with no hint that filtering was the
+// cause (a seasonal bench hid exactly that way: six titles on the lineup, every one benched
+// `out_of_season`, `desired_json` literally `[]`).
 //
 // Checked AFTER drift, because drift is the more specific claim: a channel that both
 // drifted and emptied is better described by what changed under it.
 //
-// This does not collide with `building`, which is set once at create time
-// (api/channels.go) and never by this function — reconcile only ever runs on a channel
+// This does not collide with `building`, which is set at create time and by edits
+// (channels/edit) and never by this function — reconcile only ever runs on a channel
 // that has already been created, so "no slots yet" here means filtering removed them,
 // not that the channel is still on its way.
 func (e *Engine) statusFor(d schedule.DesiredLineup, drifted bool) schedule.ChannelStatus {
 	if drifted {
 		return schedule.StatusDrifted
 	}
-	// ⚠ Counts PROGRAMMES, not slots. `len(d.Slots) == 0` was the obvious predicate and
-	// the wrong one: a deck with nothing to play still carries SlotFiller entries
-	// (breaks/flex), so it is non-empty while airing no content. Caught by the test
-	// below, which reported `live` against that first version.
+	// ⚠ Counts PROGRAMMES, not slots. `len(d.Slots) == 0` would be the wrong predicate:
+	// a deck with nothing to play still carries SlotFiller entries (breaks/flex), so it is
+	// non-empty while airing no content.
 	for _, s := range d.Slots {
 		if s.Kind == schedule.SlotProgram {
 			return schedule.StatusLive
@@ -977,12 +972,12 @@ func (e *Engine) rescanTuner(ctx context.Context, channelID string) {
 //
 // The comparison is against the freshly-computed ELIGIBLE set — every key the
 // library can currently supply for this channel — NOT the aired `Slots` (§6.5).
-// This is the curation-rule/rolling-window drift fix: with rules or a rolling
+// With rules or a rolling
 // window, a program legitimately leaves `Slots` because the active rule narrowed
 // scope, a seasonal bench removed it, or the window rotated to a different slice —
 // none of which is drift. A key is stale ONLY when it is absent from `eligible`,
-// i.e. the library actually lost the title. Comparing against `Slots` (as an
-// earlier version did) would false-flag every daypart/window rotation as
+// i.e. the library actually lost the title. Comparing against `Slots`
+// would false-flag every daypart/window rotation as
 // StatusDrifted. A nil `eligible` (policy-free path never populates it) falls back
 // to treating any prev program as still-eligible (no drift) — the whole-run,
 // no-window case where prev ⊆ next holds anyway.
@@ -1025,9 +1020,8 @@ func pushEqual(want, got schedule.Slot) bool {
 
 // pushShape returns the (tunarr-type, item-id) a slot renders to, matching
 // tunarr.slotToItem's logic. Kept here (not exported from tunarr) so the
-// diff is expressed in domain terms. Since the §10 redesign moved filler into a
-// Tunarr filler-list, filler slots are ALWAYS flex in the pushed lineup — only a
-// program is content.
+// diff is expressed in domain terms. Filler lives in a Tunarr filler-list (§10), so
+// filler slots are ALWAYS flex in the pushed lineup — only a program is content.
 func pushShape(s schedule.Slot) (string, string) {
 	if s.Kind == schedule.SlotProgram {
 		return "content", s.LibraryItemID

@@ -81,12 +81,11 @@ type PodFiller interface {
 	// HasPool reports whether the channel has ANY playable commercials — the question
 	// "should breaks be interleaved at all?".
 	//
-	// Separate from BuildFillerList since §9.1, because the two ask different questions and
-	// sharing one method conflated them. BuildFillerList is Tunarr-specific: it returns only
-	// clips carrying a Tunarr program uuid, since that is what a filler-list references. On an
-	// internal-playout install with no Tunarr, no clip has one — so a channel with a perfectly
-	// good pod would report "no pool" and get NO BREAKS AT ALL, which is exactly the inverted
-	// dependency §9.1 set out to remove, one level up.
+	// Separate from BuildFillerList (§9.1) because the two ask different questions.
+	// BuildFillerList is Tunarr-specific: it returns only clips carrying a Tunarr program uuid,
+	// since that is what a filler-list references. On an internal-playout install with no
+	// Tunarr, no clip has one — so a channel with a perfectly good pod would report "no pool"
+	// and get NO BREAKS AT ALL.
 	HasPool(ctx context.Context, channelID string, seed int64, sel pod.Selection) bool
 	// PlayableDurationMs reports how much real media the deterministic pod contains.
 	// It excludes the generated fallback card, which has no bytes to air.
@@ -104,8 +103,7 @@ type Engine struct {
 	guide GuidePoker
 	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
 	// ratings heals an approved lineup entry that reached the scheduler UNRATED
-	// (an acquisition that hadn't landed at proposal time, or a pre-fix cached
-	// proposal — §389). Optional: nil ⇒ no heal (the entry stays unrated and a
+	// (an acquisition that hadn't landed at proposal time — §389). Optional: nil ⇒ no heal (the entry stays unrated and a
 	// fail-closed audience gate drops it). Bounded to unrated entries, so a
 	// normally-stamped channel never calls it.
 	ratings RatingResolver
@@ -302,8 +300,7 @@ func (e *Engine) WithBoxSets(r BoxSetResolver) *Engine {
 }
 
 // WithPods enables ad-pod assembly for filler gaps (§10). Without it the engine
-// leaves filler slots as flex (the Phase-10 default). Returns the engine for
-// chaining. Kept as a setter so New's signature stays stable for Phase-10 callers.
+// leaves filler slots as flex. Returns the engine for chaining.
 func (e *Engine) WithPods(p PodFiller) *Engine {
 	e.pods = p
 	return e
@@ -385,13 +382,13 @@ type storeAvailability struct {
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
 	// durations is the BULK form of `duration`, used to prewarm durMemo before a layout so the
 	// per-key Resolve calls all hit the memo instead of issuing one HTTP request each. Optional:
-	// nil ⇒ no prewarm and the per-item path behaves exactly as before.
+	// nil ⇒ no prewarm; every key takes the per-item path.
 	durations DurationsResolver
 	episodes  EpisodeResolver // optional; nil ⇒ series resolve to a pending slot
 
 	// Memo over the three lookups a cycle layout repeats. ComputeDesiredAt walks the lineup
-	// several times while laying out a cycle, and each miss used to be a fresh round-trip to
-	// the media server: ONE guide request issued 72 library calls.
+	// several times while laying out a cycle, and without the memo each miss is a fresh
+	// round-trip to the media server (one guide request issued 72 library calls).
 	//
 	// ⚠ LIFETIME. The composition root builds ONE of these at boot with the process-lifetime
 	// `rootCtx` (app.go), so this memo lives for the life of the process — it is NOT
@@ -400,10 +397,9 @@ type storeAvailability struct {
 	// re-encoded item would keep its old duration until a restart.
 	//
 	// The TTL is deliberately SHORT. It exists to collapse the repeats inside one operation
-	// (the thing that was costing 72 calls), not to serve as a real cache — the durable answer
+	// (the thing that cost 72 calls), not to serve as a real cache — the durable answer
 	// for episode enumeration is the Library's own tables. Set it longer and this quietly
-	// becomes a cache with no invalidation signal, which is the bug this comment used to
-	// describe as a safety property.
+	// becomes a cache with no invalidation signal.
 	//
 	// Guarded by a mutex: the guide resolves channels concurrently, and a map is not safe
 	// under that on its own.
@@ -449,10 +445,8 @@ type DurationResolver func(ctx context.Context, libraryItemID string) (int64, er
 // 375ms, which was the whole of GET /v1/guide's cold latency — the arrangement itself is
 // microseconds.
 //
-// The media server has supported this all along: library.ItemMetadataByID already requests
-// RunTimeTicks and returns RuntimeMs for a comma-separated id list ("120 episodes returned in
-// 24ms"). Nothing new is asked of the server; the bulk answer was simply never wired to the
-// scheduler's duration path.
+// The media server answers this in one call: library.ItemMetadataByID requests RunTimeTicks and
+// returns RuntimeMs for a comma-separated id list ("120 episodes returned in 24ms").
 //
 // Missing ids may be absent from the result — the caller treats an absent id as an unknown
 // duration (0) exactly as a failed single lookup does.
@@ -480,10 +474,8 @@ func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur Duratio
 // WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
 // (see DurationsResolver / PrewarmDurations), and returns the same Availability for chaining.
 //
-// A SETTER rather than a NewStoreAvailability parameter on purpose: the constructor already has
-// four arguments and a dozen call sites across the tests, and every one of them would have had to
-// grow a `nil` for a capability they do not use. Optional-by-construction also keeps the
-// degradation honest — an install that never calls this behaves exactly as it did before.
+// A SETTER rather than a NewStoreAvailability parameter on purpose: callers that do not use the
+// capability need not pass a `nil`, and an install that never calls this simply skips the prewarm.
 //
 // Takes an Availability (not the unexported concrete type) so the composition root can call it
 // without reaching inside this package; a non-storeAvailability implementation is returned
@@ -711,8 +703,8 @@ func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy)
 // land without rewriting what is on air: the deck loops from the channel's anchor forever. Such a
 // channel keeps its seeded order and reads no history.
 //
-// BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to the
-// positional rotation it used before the signal existed. A history read must never be able to
+// BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to
+// positional rotation. A history read must never be able to
 // fail a reconcile — the channel still has to air something.
 //
 // Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
