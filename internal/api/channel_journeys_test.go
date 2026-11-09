@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -74,10 +73,6 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore
 		Approver: accept.NewApprover(st, b, channeljourney.Clock),
 	}))
 	t.Cleanup(srv.Close)
-	// Approving makes the proposal's author the channel's requester, a foreign key to users.
-	if err := st.UpsertUser(ctx, store.User{ID: "alice", Name: "Alice", Role: store.RoleMember}); err != nil {
-		t.Fatal(err)
-	}
 	if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
 		ID: "reference", JobID: "reference-job", Status: "submitted",
 		Body: tc.Proposal, CreatedBy: "alice",

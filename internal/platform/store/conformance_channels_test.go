@@ -278,11 +278,23 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	if g, err := s.GetChannel(ctx, "ch-ghost"); err != nil || g.RequestedBy != "" {
 		t.Errorf("channel whose requester was deleted = %q, %v; want kept with no requester", g.RequestedBy, err)
 	}
-	// A requester must be a person.
+	// A request outlives its author, and a channel read before they went may be saved after: either
+	// save records no requester rather than failing.
 	stray := sampleChannel("ch-stray", 4, time.Time{})
-	stray.RequestedBy = "u-never"
-	if _, err := s.SaveChannel(ctx, stray); err == nil {
-		t.Error("saved a channel whose requester is no person; the foreign key is missing")
+	stray.IntentRef, stray.RequestedBy = "job-stray", "u-gone"
+	mustSaveChannel(t, s, stray)
+	ghost.Revision = 1
+	ghost.Name = "Ghost, renamed"
+	mustSaveChannel(t, s, ghost)
+	for _, id := range []string{"ch-stray", "ch-ghost"} {
+		if g, err := s.GetChannel(ctx, id); err != nil || g.RequestedBy != "" {
+			t.Errorf("%s saved naming a deleted requester = %q, %v; want no requester", id, g.RequestedBy, err)
+		}
+	}
+	// Underneath, a requester must be a person: the column is a foreign key.
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`UPDATE channels SET requested_by = ? WHERE id = ?`),
+		"u-never", "ch-stray"); err == nil {
+		t.Error("wrote a requester who is no person; the foreign key is missing")
 	}
 
 	got, err := s.GetChannel(ctx, "ch-req")

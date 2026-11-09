@@ -49,7 +49,6 @@ type Invalidations interface {
 	NotifyChannel() string
 }
 
-
 // Store is the channel persistence over one storedb.Handle.
 type Store struct {
 	h        storedb.Handle
@@ -120,14 +119,19 @@ type Channel struct {
 	CreatedAt time.Time
 }
 
+// requesterValue writes a channel's requester: the member, or NULL when no member has that id.
+// requested_by is a foreign key whose person going leaves the channel with no requester (SET
+// NULL, #2793); a request outlives its author, and a channel read before they went may be saved
+// after, so a save records the same "no requester" rather than failing.
+const requesterValue = `(SELECT id FROM users WHERE id = ?)`
+
 // ChannelRequesters maps each channel made from a member's request to that person's name, read
 // from the channel's own `requested_by`. One query for every channel; a hand-made channel, or
 // one whose requester no longer exists, has no entry (#1663).
 func (s *Store) ChannelRequesters(ctx context.Context) (map[string]string, error) {
 	rows, err := s.h.QueryContext(ctx,
 		`SELECT c.id, u.name FROM channels c
-		 JOIN users u ON u.id = c.requested_by
-		 WHERE c.requested_by <> ''`)
+		 JOIN users u ON u.id = c.requested_by`)
 	if err != nil {
 		return nil, fmt.Errorf("channel requesters: %w", err)
 	}
@@ -305,7 +309,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -327,7 +331,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	expected := ch.Revision
 	query :=
 		`UPDATE channels SET
-		   intent_ref=?, intent_json=?, requested_by=?, name=?, number=?, grp=?, logo=?, strategy=?,
+		   intent_ref=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
