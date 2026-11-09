@@ -218,7 +218,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
-  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
+  top, or in a season folder there, is the show its name gives before `S01E02`
+  (`Example.Show.S01E02.mkv` is "Example Show"); a season folder never names a show. A file nothing grounds is
   still written, with no ids. Only movies and episodes are titles (0047): extras (trailers,
   `-trailer` files, `extras/` folders and the like) and theme videos (`backdrops/`) are not
   imported, and a skipped extra does not take a movie's folder art from it. An origin whose ids later name another item of its kind
