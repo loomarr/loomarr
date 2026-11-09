@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 type consumedAcquisitionAuthority struct {
@@ -53,7 +55,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 		t.Fatal(err)
 	}
 	masterRel := filepath.ToSlash(filepath.Join(
-		MediaAssetRootName, mediaMasterDirName, sourceSHA[:2], sourceSHA[2:4], sourceSHA+".mp4",
+		split.MediaAssetRootName, mediaMasterDirName, sourceSHA[:2], sourceSHA[2:4], sourceSHA+".mp4",
 	))
 	masterPath := filepath.Join(root, filepath.FromSlash(masterRel))
 	if err := os.MkdirAll(filepath.Dir(masterPath), 0o755); err != nil {

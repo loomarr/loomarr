@@ -52,6 +52,59 @@ interface LibraryProblem {
   extraBytes: number;
 }
 
+/** What kind of order one of TMDB's other episode orders is. */
+type LibraryOrderKind = "aired" | "absolute" | "dvd" | "digital" | "story" | "production" | "tv";
+
+/** How many episodes one season has. */
+interface LibrarySeasonSize {
+  /** 0 is specials. */
+  season: number;
+  episodes: number;
+}
+
+/** One order a show's files may follow (#2151 decision 53). */
+interface LibraryOrderChoice {
+  /** `catalog` is TMDB's own seasons; `order` is one of its other orders. */
+  choice: "catalog" | "order";
+  /** The order to send back; only with `order`. */
+  orderId?: string;
+  /** Only with `order`. */
+  kind?: LibraryOrderKind;
+  /** TMDB's name for it; only with `order`. */
+  name?: string;
+  /** Its layout; empty while it is being fetched. */
+  seasons: readonly LibrarySeasonSize[];
+  /** How many episodes it has in all. */
+  episodes: number;
+  /** Every season on disk ends where its season does. */
+  fits: boolean;
+}
+
+/** A file of an episode that keeps its file's name and number, numbered as the file says. */
+interface LibraryOrderFile {
+  path: string;
+  season: number;
+  episode: number;
+}
+
+/** A show whose files don't say which of TMDB's orders they follow. */
+interface LibraryOrderNeed {
+  /** The library show's id: what an answer is for. */
+  id: string;
+  name: string;
+  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  poster?: ReactNode;
+  /** How far each season runs on disk, by season. */
+  disk: readonly LibrarySeasonSize[];
+  /** The episodes that wait on the answer, in path order. */
+  files: readonly LibraryOrderFile[];
+  /** TMDB's own seasons, then its other orders; empty while the show's details are fetched. */
+  choices: readonly LibraryOrderChoice[];
+}
+
+/** An answer to which order a show's files follow; `files` keeps the names in the files. */
+type LibraryOrderAnswer = { choice: "catalog" } | { choice: "order"; orderId: string } | { choice: "files" };
+
 /** What a search for a title found: guesses without their posters. */
 type LibraryNeedSearch = (query: string, kind: LibraryKind) => Promise<readonly LibraryNeedCandidate[]>;
 
@@ -60,10 +113,14 @@ interface LibraryNeedsAnswers {
   onLink: (id: string, externalId: LibraryExternalId) => Promise<void>;
   /** Says it isn't a title. Resolves once saved; a rejection puts the question back. */
   onIgnore: (id: string) => Promise<void>;
+  /** Says which order a show's files follow. Resolves once saved; a rejection puts the question back. */
+  onChooseOrder: (id: string, answer: LibraryOrderAnswer) => Promise<void>;
 }
 
 interface LibraryNeedsStripProps extends Pick<LibraryNeedsAnswers, "onLink"> {
   needs: readonly LibraryNeed[];
+  /** Shows whose episode order to say; Choose opens Needs you. */
+  orders: readonly LibraryOrderNeed[];
   problems: readonly LibraryProblem[];
   /** Opens Needs you, where a different title can be picked. */
   onOpenNeeds: () => void;
@@ -73,6 +130,7 @@ interface LibraryNeedsStripProps extends Pick<LibraryNeedsAnswers, "onLink"> {
 
 interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   needs: readonly LibraryNeed[];
+  orders: readonly LibraryOrderNeed[];
   problems: readonly LibraryProblem[];
   onSearch: LibraryNeedSearch;
   /** See why: opens a title's page. */
@@ -87,5 +145,11 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryOrderAnswer,
+  LibraryOrderChoice,
+  LibraryOrderFile,
+  LibraryOrderKind,
+  LibraryOrderNeed,
   LibraryProblem,
+  LibrarySeasonSize,
 };

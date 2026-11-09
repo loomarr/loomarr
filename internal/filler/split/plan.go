@@ -1,4 +1,4 @@
-package filler
+package split
 
 import (
 	"errors"
@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary, claims []StructureRoleClaim, discards []StructureDiscardClaim, observations []StructureObservation, authority *structureDecisionProjectionAuthority) ([]StructurePlanSegment, error) {
+func buildStructurePlan(source SourceAsset, boundaries []Boundary, claims []RoleClaim, discards []DiscardClaim, observations []Observation, authority *structureDecisionProjectionAuthority) ([]PlanSegment, error) {
 	durationMs := source.DurationMs
-	cutStatuses := map[int64]StructureBoundaryStatus{0: BoundaryResolved, durationMs: BoundaryResolved}
+	cutStatuses := map[int64]BoundaryStatus{0: BoundaryResolved, durationMs: BoundaryResolved}
 	for _, boundary := range boundaries {
 		if prior, exists := cutStatuses[boundary.AtMs]; !exists || prior == BoundaryResolved {
 			cutStatuses[boundary.AtMs] = boundary.Status
@@ -35,16 +35,16 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 		cuts = append(cuts, cut)
 	}
 	slices.Sort(cuts)
-	claimBySpan := make(map[[2]int64]StructureRoleClaim, len(claims))
-	discardBySpan := make(map[[2]int64]StructureDiscardClaim, len(discards))
-	knownEvidence := make(map[string]StructureObservation, len(observations))
+	claimBySpan := make(map[[2]int64]RoleClaim, len(claims))
+	discardBySpan := make(map[[2]int64]DiscardClaim, len(discards))
+	knownEvidence := make(map[string]Observation, len(observations))
 	for _, o := range observations {
 		knownEvidence[o.ID] = o
 	}
 	for _, claim := range claims {
 		claim.Reason = strings.TrimSpace(claim.Reason)
-		claim.EvidenceIDs = uniqueStrings(claim.EvidenceIDs)
-		if claim.StartMs < 0 || claim.EndMs <= claim.StartMs || claim.EndMs > durationMs || !validStructureSegmentRole(claim.Role) || claim.Reason == "" || len(claim.EvidenceIDs) == 0 {
+		claim.EvidenceIDs = UniqueStrings(claim.EvidenceIDs)
+		if claim.StartMs < 0 || claim.EndMs <= claim.StartMs || claim.EndMs > durationMs || !ValidRole(claim.Role) || claim.Reason == "" || len(claim.EvidenceIDs) == 0 {
 			return nil, errors.New("source structure: invalid role claim")
 		}
 		for _, id := range claim.EvidenceIDs {
@@ -59,7 +59,7 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 		claimBySpan[key] = claim
 	}
 	for _, discard := range discards {
-		discard.EvidenceIDs = uniqueStrings(discard.EvidenceIDs)
+		discard.EvidenceIDs = UniqueStrings(discard.EvidenceIDs)
 		if discard.StartMs < 0 || discard.EndMs <= discard.StartMs || discard.EndMs > durationMs || !validStructureDiscardReason(discard.Reason) || len(discard.EvidenceIDs) == 0 {
 			return nil, errors.New("source structure: invalid discard claim")
 		}
@@ -77,11 +77,11 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 		}
 		discardBySpan[key] = discard
 	}
-	plan := make([]StructurePlanSegment, 0, len(cuts)-1)
+	plan := make([]PlanSegment, 0, len(cuts)-1)
 	usedClaims, usedDiscards := 0, 0
 	for i := 0; i+1 < len(cuts); i++ {
-		segment := StructurePlanSegment{
-			Index: i, StartMs: cuts[i], EndMs: cuts[i+1], Disposition: StructureUnresolved,
+		segment := PlanSegment{
+			Index: i, StartMs: cuts[i], EndMs: cuts[i+1], Disposition: DispositionUnresolved,
 			StartStatus: cutStatuses[cuts[i]], EndStatus: cutStatuses[cuts[i+1]],
 			Reason: "structure or role remains unresolved",
 		}
@@ -90,13 +90,13 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 			segment.Role, segment.EvidenceIDs, segment.Reason = claim.Role, claim.EvidenceIDs, claim.Reason
 			if segment.StartStatus == BoundaryResolved && segment.EndStatus == BoundaryResolved {
 				switch claim.Role {
-				case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial:
+				case RoleCommercial, RolePromo, RoleBumper, RoleStationID, RolePSA, RoleTrailer, RoleInterstitial:
 					if structureRoleClaimHasExactEvidence(claim, source, knownEvidence) || authority.authorizesKeep(claim, knownEvidence) {
-						segment.Disposition, segment.Reason = StructureKeep, claim.Reason
+						segment.Disposition, segment.Reason = DispositionKeep, claim.Reason
 					}
-				case SegmentRoleProgrammeFragment, SegmentRoleNonFiller:
-					segment.Disposition, segment.Reason = StructureDiscard, claim.Reason
-					if claim.Role == SegmentRoleProgrammeFragment {
+				case RoleProgrammeFragment, RoleNonFiller:
+					segment.Disposition, segment.Reason = DispositionDiscard, claim.Reason
+					if claim.Role == RoleProgrammeFragment {
 						segment.DiscardReason = DiscardProgrammeMaterial
 					} else {
 						segment.DiscardReason = DiscardNonFiller
@@ -106,7 +106,7 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 		}
 		if discard, ok := discardBySpan[[2]int64{segment.StartMs, segment.EndMs}]; ok {
 			usedDiscards++
-			segment.Disposition, segment.Reason = StructureDiscard, string(discard.Reason)
+			segment.Disposition, segment.Reason = DispositionDiscard, string(discard.Reason)
 			segment.DiscardReason, segment.EvidenceIDs = discard.Reason, discard.EvidenceIDs
 		}
 		plan = append(plan, segment)
@@ -120,12 +120,12 @@ func buildStructurePlan(source SplitSourceAsset, boundaries []StructureBoundary,
 	return plan, validateStructureCoverage(plan, durationMs)
 }
 
-func (authority *structureDecisionProjectionAuthority) authorizesKeep(claim StructureRoleClaim, observations map[string]StructureObservation) bool {
+func (authority *structureDecisionProjectionAuthority) authorizesKeep(claim RoleClaim, observations map[string]Observation) bool {
 	if authority == nil {
 		return false
 	}
 	interval, ok := authority.intervals[[2]int64{claim.StartMs, claim.EndMs}]
-	if !ok || interval.disposition != StructureKeep || interval.role != claim.Role {
+	if !ok || interval.disposition != DispositionKeep || interval.role != claim.Role {
 		return false
 	}
 	for _, id := range claim.EvidenceIDs {
@@ -139,7 +139,7 @@ func (authority *structureDecisionProjectionAuthority) authorizesKeep(claim Stru
 	return false
 }
 
-func structureRoleClaimHasExactEvidence(claim StructureRoleClaim, source SplitSourceAsset, observations map[string]StructureObservation) bool {
+func structureRoleClaimHasExactEvidence(claim RoleClaim, source SourceAsset, observations map[string]Observation) bool {
 	for _, id := range claim.EvidenceIDs {
 		observation := observations[id]
 		if observation.Kind != ObservationSegmentRole || observation.RoleEvidence == nil {
@@ -153,44 +153,44 @@ func structureRoleClaimHasExactEvidence(claim StructureRoleClaim, source SplitSo
 	return false
 }
 
-func reduceStructureKind(assessment SourceStructureAssessment) SourceStructureKind {
+func reduceStructureKind(assessment Assessment) Kind {
 	if assessment.UnusableReason != "" {
-		return StructureUnusable
+		return KindUnusable
 	}
 	for _, boundary := range assessment.Boundaries {
 		if boundary.Status != BoundaryResolved {
-			return StructureAmbiguous
+			return KindAmbiguous
 		}
 	}
 	allResolved := true
 	fillers, programmes := 0, 0
 	for _, segment := range assessment.Plan {
-		if segment.Disposition == StructureUnresolved || segment.Role == SegmentRoleAmbiguous || segment.Role == SegmentRoleUnusable || segment.Disposition == StructureKeep && segment.Role == "" {
+		if segment.Disposition == DispositionUnresolved || segment.Role == RoleAmbiguous || segment.Role == RoleUnusable || segment.Disposition == DispositionKeep && segment.Role == "" {
 			allResolved = false
 		}
-		if segment.Disposition == StructureKeep {
+		if segment.Disposition == DispositionKeep {
 			fillers++
 		}
-		if segment.Role == SegmentRoleProgrammeFragment {
+		if segment.Role == RoleProgrammeFragment {
 			programmes++
 		}
 	}
 	if !allResolved {
-		return StructureAmbiguous
+		return KindAmbiguous
 	}
 	if programmes > 0 && fillers > 0 {
-		return StructureProgrammeSpots
+		return KindProgrammeSpots
 	}
 	if len(assessment.Plan) == 1 {
-		return StructureSingleUnit
+		return KindSingleUnit
 	}
 	if fillers >= 2 && programmes == 0 {
-		return StructureCompilationBreak
+		return KindCompilationBreak
 	}
-	return StructureAmbiguous
+	return KindAmbiguous
 }
 
-func validateStructureCoverage(plan []StructurePlanSegment, durationMs int64) error {
+func validateStructureCoverage(plan []PlanSegment, durationMs int64) error {
 	if durationMs <= 0 || len(plan) == 0 || plan[0].StartMs != 0 || plan[len(plan)-1].EndMs != durationMs {
 		return errors.New("source structure: plan does not cover the complete source")
 	}
@@ -198,40 +198,41 @@ func validateStructureCoverage(plan []StructurePlanSegment, durationMs int64) er
 		if segment.Index != i || segment.StartMs < 0 || segment.EndMs <= segment.StartMs || i > 0 && segment.StartMs != plan[i-1].EndMs || !validStructureDisposition(segment.Disposition) || !validStructureBoundaryStatus(segment.StartStatus) || !validStructureBoundaryStatus(segment.EndStatus) {
 			return fmt.Errorf("source structure: invalid plan segment %d", i)
 		}
-		if segment.Disposition != StructureUnresolved && strings.TrimSpace(segment.Reason) == "" {
+		if segment.Disposition != DispositionUnresolved && strings.TrimSpace(segment.Reason) == "" {
 			return fmt.Errorf("source structure: resolved plan segment %d lacks a reason", i)
 		}
-		if segment.Disposition == StructureKeep && segment.Role == "" {
+		if segment.Disposition == DispositionKeep && segment.Role == "" {
 			return fmt.Errorf("source structure: kept plan segment %d lacks a role", i)
 		}
-		if segment.Disposition == StructureDiscard && !validStructureDiscardReason(segment.DiscardReason) {
+		if segment.Disposition == DispositionDiscard && !validStructureDiscardReason(segment.DiscardReason) {
 			return fmt.Errorf("source structure: discarded plan segment %d lacks a closed reason", i)
 		}
 	}
 	return nil
 }
 
-func validSourceStructureKind(kind SourceStructureKind) bool {
-	return kind == StructureSingleUnit || kind == StructureCompilationBreak || kind == StructureProgrammeSpots || kind == StructureAmbiguous || kind == StructureUnusable
+func validSourceStructureKind(kind Kind) bool {
+	return kind == KindSingleUnit || kind == KindCompilationBreak || kind == KindProgrammeSpots || kind == KindAmbiguous || kind == KindUnusable
 }
 
-func validStructureSegmentRole(role StructureSegmentRole) bool {
+// ValidRole reports whether role is one of the closed segment roles.
+func ValidRole(role Role) bool {
 	switch role {
-	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial, SegmentRoleProgrammeFragment, SegmentRoleNonFiller, SegmentRoleAmbiguous, SegmentRoleUnusable:
+	case RoleCommercial, RolePromo, RoleBumper, RoleStationID, RolePSA, RoleTrailer, RoleInterstitial, RoleProgrammeFragment, RoleNonFiller, RoleAmbiguous, RoleUnusable:
 		return true
 	default:
 		return false
 	}
 }
 
-func validStructureDisposition(disposition StructureSegmentDisposition) bool {
-	return disposition == StructureKeep || disposition == StructureDiscard || disposition == StructureUnresolved
+func validStructureDisposition(disposition Disposition) bool {
+	return disposition == DispositionKeep || disposition == DispositionDiscard || disposition == DispositionUnresolved
 }
 
-func validStructureBoundaryStatus(status StructureBoundaryStatus) bool {
+func validStructureBoundaryStatus(status BoundaryStatus) bool {
 	return status == BoundaryResolved || status == BoundaryUnresolved || status == BoundaryConflicted
 }
 
-func validStructureDiscardReason(reason StructureDiscardReason) bool {
+func validStructureDiscardReason(reason DiscardReason) bool {
 	return reason == DiscardBelowClipFloor || reason == DiscardDuplicate || reason == DiscardProgrammeMaterial || reason == DiscardNonFiller || reason == DiscardUnusableFragment
 }

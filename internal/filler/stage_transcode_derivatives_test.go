@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -105,7 +106,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	childFull := filepath.Join(dir, filepath.FromSlash(childRel))
 	if err := WriteSidecarTags(childFull, SidecarTags{ConditioningLineage: &ConditioningLineage{
 		ChildHash: childHash, ParentHash: parentHash,
-		ParentAssetRole: string(SplitSourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: evidence.Asset.SHA256,
 		IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 	}}, false); err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
@@ -27,12 +28,12 @@ func validateSplitProposalStructureAssessment(proposal filler.SplitProposal) err
 	if proposal.Structure == nil {
 		return nil
 	}
-	strictErr := filler.ValidateSourceStructureAssessment(*proposal.Structure)
+	strictErr := split.ValidateAssessment(*proposal.Structure)
 	if strictErr == nil {
 		return nil
 	}
 	if proposal.StructureDecision != nil {
-		if err := filler.ValidateStructureDecisionProjection(*proposal.Structure, *proposal.StructureDecision); err == nil {
+		if err := split.ValidateDecisionProjection(*proposal.Structure, *proposal.StructureDecision); err == nil {
 			return nil
 		}
 	}

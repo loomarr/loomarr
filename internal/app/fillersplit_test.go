@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -498,7 +499,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 			"empty-hash upsert bug (%+v)", len(segments), segments)
 	}
 	seen := map[string]bool{}
-	intendedByName := make(map[string]filler.SplitSegment, len(prop.Segments))
+	intendedByName := make(map[string]split.Segment, len(prop.Segments))
 	for _, intended := range prop.Segments {
 		intendedByName[intended.Name] = intended
 	}
@@ -581,7 +582,7 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 	}
 	proposal := filler.SplitProposal{
 		ID: "proposal-concurrent", ClipHash: compHash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Name: "one"}},
 	}
 	if err := st.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)

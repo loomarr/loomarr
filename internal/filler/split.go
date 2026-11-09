@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
@@ -68,25 +69,6 @@ func (f segmentFloor) admits(startMs, endMs int64) bool { return endMs-startMs >
 // ms is the floor in milliseconds, for the error messages that quote the number.
 func (f segmentFloor) ms() int64 { return int64(f) }
 
-// boundarySource is which detector(s) put a cut where it is — a bitmask, because the merges below
-// are naturally unions and because "black AND silence agreed" is the single most useful fact the
-// detection pass produces (§10 V34, the confidence ladder).
-type boundarySource uint8
-
-const (
-	srcBlack boundarySource = 1 << iota
-	srcSilence
-	srcChapter
-	srcTranscript
-	// srcReelEdge is the file's own start or end — declared by the container, not inferred.
-	srcReelEdge
-	// srcTruncated marks an edge an overlap resolution MOVED. The span is real; this particular
-	// end of it was chosen by arithmetic rather than observed.
-	srcTruncated
-	// srcOperator is a boundary a human typed. It carries no score — see `boundaryScore`.
-	srcOperator
-)
-
 // Evidence ceilings (§10 V34). Each is the most a boundary with that evidence may score.
 //
 // ⚠ **Measured, not chosen**, for the three that matter: 9 of 12 fades in the sampled reel were
@@ -108,22 +90,22 @@ const (
 )
 
 // edgeCeiling is the best a single boundary can score, given what found it.
-func edgeCeiling(src boundarySource) int {
+func edgeCeiling(src split.BoundarySource) int {
 	switch {
-	case src&srcOperator != 0:
+	case src&split.SrcOperator != 0:
 		// ⚠ Zero, not 100. A human typing a timecode is not evidence Loomarr collected, and
 		// scoring it would let the machine auto-confirm a cut on the strength of the operator's
 		// own half-finished edit. An operator-touched segment goes back to them.
 		return 0
-	case src&srcChapter != 0, src&srcReelEdge != 0:
+	case src&split.SrcChapter != 0, src&split.SrcReelEdge != 0:
 		return confDeclared
-	case src&srcBlack != 0 && src&srcSilence != 0:
+	case src&split.SrcBlack != 0 && src&split.SrcSilence != 0:
 		return confCorroborated
-	case src&srcTruncated != 0:
+	case src&split.SrcTruncated != 0:
 		return confTruncated
-	case src&srcBlack != 0, src&srcSilence != 0:
+	case src&split.SrcBlack != 0, src&split.SrcSilence != 0:
 		return confSingle
-	case src&srcTranscript != 0:
+	case src&split.SrcTranscript != 0:
 		return confTranscript
 	}
 	return 0
@@ -133,23 +115,23 @@ func edgeCeiling(src boundarySource) int {
 //
 // ⚠ A closed vocabulary on the wire, but typed as a plain string rather than an enum: adding a
 // source later must not be a breaking codegen change for every client.
-func evidenceToken(src boundarySource) string {
+func evidenceToken(src split.BoundarySource) string {
 	switch {
-	case src&srcOperator != 0:
+	case src&split.SrcOperator != 0:
 		return "operator"
-	case src&srcChapter != 0:
+	case src&split.SrcChapter != 0:
 		return "chapter"
-	case src&srcReelEdge != 0:
+	case src&split.SrcReelEdge != 0:
 		return "reel edge"
-	case src&srcBlack != 0 && src&srcSilence != 0:
+	case src&split.SrcBlack != 0 && src&split.SrcSilence != 0:
 		return "black + silence"
-	case src&srcTruncated != 0:
+	case src&split.SrcTruncated != 0:
 		return "truncated"
-	case src&srcBlack != 0:
+	case src&split.SrcBlack != 0:
 		return "black only"
-	case src&srcSilence != 0:
+	case src&split.SrcSilence != 0:
 		return "silence only"
-	case src&srcTranscript != 0:
+	case src&split.SrcTranscript != 0:
 		return "transcript"
 	}
 	return ""
@@ -168,12 +150,12 @@ func evidenceToken(src boundarySource) string {
 //
 // Within a boundary the best evidence wins; across the two the WORST does, because a cut is only as
 // trustworthy as its weaker end. Segment facts then cap it.
-func boundaryScore(s SplitSegment) int {
-	score := min(edgeCeiling(s.startSrc), edgeCeiling(s.endSrc))
+func boundaryScore(s split.Segment) int {
+	score := min(edgeCeiling(s.StartSrc), edgeCeiling(s.EndSrc))
 	// ⚠ The rescue's confirmation LIFTS this cap rather than adding points — the measured 121s
 	// infomercial is genuinely one advert, and capping it for being long would refuse the very
 	// case the rescue exists to settle.
-	if s.overlong() && !s.rescueConfirmedWhole {
+	if overlong(s) && !s.RescueConfirmedWhole {
 		score = min(score, confOverlong)
 	}
 	if s.Unsplittable {
@@ -183,11 +165,11 @@ func boundaryScore(s SplitSegment) int {
 }
 
 // scoreBoundaries stamps the confidence and its evidence onto every segment, in place.
-func scoreBoundaries(segs []SplitSegment) {
+func scoreBoundaries(segs []split.Segment) {
 	for i := range segs {
 		segs[i].BoundaryConfidence = boundaryScore(segs[i])
-		segs[i].StartEvidence = evidenceToken(segs[i].startSrc)
-		segs[i].EndEvidence = evidenceToken(segs[i].endSrc)
+		segs[i].StartEvidence = evidenceToken(segs[i].StartSrc)
+		segs[i].EndEvidence = evidenceToken(segs[i].EndSrc)
 	}
 }
 
@@ -209,135 +191,14 @@ func (d *dropTally) add(startMs, endMs int64) {
 	d.Spans = append(d.Spans, Interval{StartMs: startMs, EndMs: endMs})
 }
 
-// SplitSegment is one proposed clip inside a compilation (§10 V34). The detector
-// authors it; the reviewer edits it; only confirm writes it to the catalog.
-type SplitSegment struct {
-	Index   int   `json:"index"`
-	StartMs int64 `json:"startMs"`
-	EndMs   int64 `json:"endMs"`
-	// Name is the proposed display name. Its origin says whether it came from the source, exact
-	// segment evidence, a deterministic fallback, or the operator. NameEvidence is deliberately
-	// descriptive only: it cannot authorize a cut, classification, or admission.
-	Name         string `json:"name"`
-	NameOrigin   string `json:"nameOrigin,omitempty"`
-	NameEvidence string `json:"nameEvidence,omitempty"`
-	// Era/Audience/Tags come from the SAME Classify the tag job uses, over the
-	// segment's transcript. Era is grounded (year in the text) or zero — an
-	// ungrounded guess is carried ONLY as SuggestedEra (§10 era rule).
-	Era          int      `json:"era,omitempty"`
-	SuggestedEra int      `json:"suggestedEra,omitempty"`
-	Audience     Audience `json:"audience,omitempty"`
-	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
-	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
-	// the same Classify the tag job uses.
-	Tags     []string `json:"tags,omitempty"`
-	Category string   `json:"category,omitempty"`
-	// BoundaryConfidence is how much Loomarr trusts WHERE this was cut, 0–100 (§10 V34 ladder).
-	// `0` means never scored — every proposal detected before V54 deserialises that way, and the
-	// review surface must treat "unscored" as "no opinion", never as "doubtful".
-	//
-	// It answers "did we cut in the right place?", nothing about what the segment is.
-	BoundaryConfidence int `json:"boundaryConfidence,omitempty"`
-	// StartEvidence/EndEvidence say WHY, in the operator's words ("black + silence", "silence only").
-	//
-	// ⚠ **Two fields because a segment has two boundaries**, and they routinely disagree — a cut
-	// can start on a chapter marker and end on a lone silence. One field would have to pick a
-	// winner, and the number already picks the worse of the two; the evidence is what tells the
-	// operator WHICH end to look at, so collapsing it throws away the actionable half.
-	StartEvidence string `json:"startEvidence,omitempty"`
-	EndEvidence   string `json:"endEvidence,omitempty"`
-	// HoldReason is why this segment was kept back when its reel was partly confirmed (§10 V54) —
-	// the same vocabulary `AutoSplitReject` uses, so the review says "a segment's era is a guess"
-	// rather than leaving the operator to work out why 5 of 52 are still here.
-	HoldReason string `json:"holdReason,omitempty"`
-	// startSrc/endSrc are the bitmask the two fields above are rendered from. Unexported: the wire
-	// carries the rendered tokens and the score, never the bitmask, so adding a source is not a
-	// breaking API change.
-	startSrc boundarySource
-	endSrc   boundarySource
-	// rescueConfirmedWhole means the transcript rescue looked at this over-long span and reported
-	// exactly ONE advert. It lifts the over-long cap — see `boundaryScore`.
-	rescueConfirmedWhole bool
-	// Looked records that the split-time grounder ALREADY examined this segment's frames —
-	// whether or not it came back with anything (§10 V54).
-	//
-	// ⚠ **Inference cannot replace this flag.** `Category != "" || Era > 0` conflates *never
-	// looked at* with *looked at and grounded nothing*, and treating those alike is exactly what
-	// makes a resumable budget never converge: the ungroundable segments would be retried every
-	// pass, forever, and the reel would never reach a verdict.
-	//
-	// ⚠ It is set even when the frame extraction or the JSON parse FAILED. A transient ffmpeg
-	// error therefore retires that segment permanently for this proposal. That is deliberate — it
-	// is what bounds the loop — and the remedy is a re-detect, which replaces the proposal. The
-	// provider-error path does NOT set it, because a failing backend fails for every segment and
-	// should be retried next pass rather than poisoning the reel.
-	Looked bool `json:"looked,omitempty"`
-	// RoleEvidence is the exact, independently attributable frame judgement for THIS span. It is
-	// intentionally not flattened into Category or copied from the parent: the source-structure
-	// reducer consumes it as a segment_role observation and decides whether the span is keepable.
-	// nil means no valid role evidence was produced, even when Looked is true.
-	RoleEvidence *StructureRoleEvidence `json:"-"`
-	// DupOf is the path of an existing catalog clip this segment duplicates
-	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
-	// stage then discards it before classification because it cannot add a new catalog clip.
-	DupOf string `json:"dupOf,omitempty"`
-	// Unsplittable means the segment is over-long AND the rescue could not run or
-	// found nothing (no whisper, whisper/LLM failure). The review must say so —
-	// the alternative is guessing, which is exactly what the era rule forbids in
-	// tag form.
-	Unsplittable bool `json:"unsplittable,omitempty"`
-	// Transcript is the segment's whisper text, when the rescue ran. Carried on
-	// the proposal so the reviewer can SEE why a boundary was proposed; not
-	// persisted to the catalog on confirm.
-	Transcript string `json:"transcript,omitempty"`
-	// Language is the language heard inside this exact proposed span. LanguageChecked keeps a
-	// checked-but-unknown answer distinct from a legacy segment that has never been heard.
-	Language        string `json:"language,omitempty"`
-	LanguageChecked bool   `json:"languageChecked,omitempty"`
-	// LanguageReason is a stable machine-readable explanation when a check produced no language.
-	// LanguageNote retains optional technical detail for diagnostics; clients must not parse it to
-	// decide what happened or expose it as primary copy.
-	LanguageReason string `json:"languageReason,omitempty"`
-	LanguageNote   string `json:"languageNote,omitempty"`
-	// ArtworkImageHash is the shared image-service identity of the representative frame for this
-	// exact proposed span. It is persisted beside the proposal but never accepted from the wire:
-	// API output resolves it to a complete ImageDTO, while confirmation remains only a cut-list
-	// command. ArtworkChecked distinguishes an extraction failure from work that has not run yet.
-	ArtworkImageHash string `json:"-"`
-	ArtworkChecked   bool   `json:"-"`
-}
-
 // SplitSegmentArtwork is the persisted binding between one exact proposal span and its temporary
-// representative still. Keeping it outside SplitSegment's JSON contract prevents artwork
+// representative still. Keeping it outside split.Segment's JSON contract prevents artwork
 // lifecycle fields from becoming operator-editable confirmation input.
 type SplitSegmentArtwork struct {
 	StartMs   int64  `json:"startMs"`
 	EndMs     int64  `json:"endMs"`
 	ImageHash string `json:"imageHash,omitempty"`
 	Checked   bool   `json:"checked"`
-}
-
-// SplitDetectionProgress is the private durable checkpoint for coarse boundary detection. It is
-// stored with a proposal but never exposed through the review interface: until this becomes nil,
-// the proposal is detector work rather than a cut list an operator can judge.
-type SplitDetectionProgress struct {
-	ScannedThroughMs int64      `json:"scannedThroughMs"`
-	Black            []Interval `json:"black,omitempty"`
-	Silence          []Interval `json:"silence,omitempty"`
-	// ChapterEdges retains every declared edge, including the bounds of a below-floor chapter
-	// omitted from CoarseSegments. V67 needs those facts to account for the omitted interval.
-	ChapterEdges []int64 `json:"chapterEdges,omitempty"`
-	// Discarded retains exact below-floor spans across the durable detection checkpoint. The old
-	// in-memory aggregate remains display data; these intervals are structure authority.
-	Discarded []Interval `json:"discarded,omitempty"`
-	// Chapters says CoarseSegments came from container-authored chapter boundaries. It is private
-	// checkpoint provenance, not review data, and lets a resume restore scoring evidence even when
-	// a source supplied one untitled chapter (otherwise indistinguishable from a whole-reel
-	// boundary fallback after JSON removed the private source bitmask).
-	Chapters bool `json:"chapters,omitempty"`
-	// CoarseSegments is set once chapter/boundary triage is complete. Persisting it before
-	// transcript rescue means a timeout in the next phase never repeats the timeline scan.
-	CoarseSegments []SplitSegment `json:"coarseSegments,omitempty"`
 }
 
 // SplitLanguageProgress is the private durable cursor between boundary detection and review.
@@ -400,9 +261,9 @@ type SplitProposal struct {
 	// ⚠ The CATALOG PATH still comes from the clip row rather than being reconstructed from this
 	// identity. V66 additionally persists `Source` below: that is the exact evidence/playback asset
 	// reviewed by detection, not a second competing catalog location.
-	ClipHash  string         `json:"clipHash"`
-	CreatedAt time.Time      `json:"createdAt"`
-	Segments  []SplitSegment `json:"segments"`
+	ClipHash  string          `json:"clipHash"`
+	CreatedAt time.Time       `json:"createdAt"`
+	Segments  []split.Segment `json:"segments"`
 	// LanguagePreference is the set of languages (language.IntakeSet, comma-joined) this finished
 	// proposal was checked against. It lets review disclose a later change, to the setting or to the
 	// channels, and offer an explicit recheck rather than silently presenting an old decision as
@@ -418,10 +279,10 @@ type SplitProposal struct {
 	ArtworkPrepared bool `json:"-"`
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
-	Source SplitSourceAsset `json:"-"`
+	Source split.SourceAsset `json:"-"`
 	// Structure is the V67 exact-source, complete-timeline assessment. nil is a legacy proposal or
 	// a V34 shadow proposal that has not reached structure reduction yet.
-	Structure *SourceStructureAssessment `json:"-"`
+	Structure *split.Assessment `json:"-"`
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.
 	StructureDecision *structure.Artifact `json:"-"`
@@ -431,7 +292,7 @@ type SplitProposal struct {
 	Spawned []string `json:"-"`
 	// Detection is persisted inside the store document, not served in OpenAPI. nil means the
 	// proposal is complete and reviewable; non-nil means the pipeline must resume detection.
-	Detection *SplitDetectionProgress `json:"-"`
+	Detection *split.DetectionProgress `json:"-"`
 	// Language is non-nil while detected spans are still being checked against the installation
 	// language. It is stored with Detection but never exposed through the review API.
 	Language *SplitLanguageProgress `json:"-"`
@@ -455,14 +316,14 @@ func (p SplitProposal) Ready() bool { return p.Detection == nil && p.Language ==
 //
 // Boundaries are taken at the gap's MIDPOINT: blackdetect reports the whole
 // fade interval, and cutting at its start would shave the advert's tail frame.
-func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentFloor) ([]SplitSegment, dropTally) {
+func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentFloor) ([]split.Segment, dropTally) {
 	cuts := boundaryCuts(gaps, durationMs)
-	var out []SplitSegment
+	var out []split.Segment
 	var dropped dropTally
 	start := int64(0)
 	// ⚠ The first segment starts at the REEL'S OWN EDGE, which is declared by the container rather
 	// than detected — the strongest evidence there is. Same for the last segment's end below.
-	startSrc := srcReelEdge
+	startSrc := split.SrcReelEdge
 	for _, cut := range cuts {
 		if seg, ok := makeSegment(len(out), start, cut.Ms, floor, startSrc, cut.Src); ok {
 			out = append(out, seg)
@@ -476,7 +337,7 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 		// drop costs real recording, which is why the tally is reported (§10 V45).
 		start = cut.Ms
 	}
-	if seg, ok := makeSegment(len(out), start, durationMs, floor, startSrc, srcReelEdge); ok {
+	if seg, ok := makeSegment(len(out), start, durationMs, floor, startSrc, split.SrcReelEdge); ok {
 		out = append(out, seg)
 	} else {
 		dropped.add(start, durationMs)
@@ -496,13 +357,13 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 // is used in ~110 places, none of which care who found a gap.
 type detectedGap struct {
 	Interval
-	Src boundarySource
+	Src split.BoundarySource
 }
 
 // boundaryCut is a cut position and the evidence that put it there.
 type boundaryCut struct {
 	Ms  int64
-	Src boundarySource
+	Src split.BoundarySource
 }
 
 // boundaryCuts merges overlapping/adjacent gaps and returns their midpoints as
@@ -557,24 +418,24 @@ func midpoint(g Interval, durationMs int64) int64 {
 	return m
 }
 
-func makeSegment(index int, start, end int64, floor segmentFloor, startSrc, endSrc boundarySource) (SplitSegment, bool) {
+func makeSegment(index int, start, end int64, floor segmentFloor, startSrc, endSrc split.BoundarySource) (split.Segment, bool) {
 	if !floor.admits(start, end) {
-		return SplitSegment{}, false
+		return split.Segment{}, false
 	}
-	return SplitSegment{Index: index, StartMs: start, EndMs: end, startSrc: startSrc, endSrc: endSrc}, true
+	return split.Segment{Index: index, StartMs: start, EndMs: end, StartSrc: startSrc, EndSrc: endSrc}, true
 }
 
 // segmentsFromChapters turns embedded chapters into segments (the triage step —
 // a pre-chaptered source splits for free). Chapters that abut produce no gaps;
 // slivers are dropped as usual. Chapters carry their own titles, which beat any
 // generated name.
-func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]SplitSegment, dropTally) {
-	var out []SplitSegment
+func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]split.Segment, dropTally) {
+	var out []split.Segment
 	var dropped dropTally
 	for _, ch := range chapters {
 		// ⚠ Stamped HERE rather than by the caller: a chapter's boundaries are DECLARED by the
 		// container, and that is a fact about where they came from, not a decision `triage` makes.
-		seg, ok := makeSegment(len(out), ch.StartMs, ch.EndMs, floor, srcChapter, srcChapter)
+		seg, ok := makeSegment(len(out), ch.StartMs, ch.EndMs, floor, split.SrcChapter, split.SrcChapter)
 		if !ok {
 			dropped.add(ch.StartMs, ch.EndMs)
 			continue
@@ -591,7 +452,7 @@ func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]SplitSegmen
 // overlong reports whether a segment is far longer than a plausible advert and
 // therefore needs the transcript rescue (§10 — boundaries that exist only in
 // language).
-func (s SplitSegment) overlong() bool { return s.EndMs-s.StartMs > OverlongSegmentMs }
+func overlong(s split.Segment) bool { return s.EndMs-s.StartMs > OverlongSegmentMs }
 
 // TranscriptText renders a transcript as timestamped lines for the LLM prompt
 // ("[01:23] …"). mm:ss is what the model reads most reliably, and it is what the

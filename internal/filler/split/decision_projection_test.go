@@ -1,4 +1,4 @@
-package filler
+package split
 
 import (
 	"slices"
@@ -11,9 +11,9 @@ import (
 
 func TestProjectConfirmedStructureDecisionUsesOnlyArtifactBoundaries(t *testing.T) {
 	source := structureSource(60_000)
-	detector, err := AssessSourceStructure(SourceStructureInput{
+	detector, err := Assess(Input{
 		Source: source,
-		Observations: []StructureObservation{
+		Observations: []Observation{
 			structureObservation("detector-black", ObservationBlackInterval, ObservationProposesBoundary, 27_900, 28_100),
 			structureObservation("detector-silence", ObservationSilenceInterval, ObservationProposesBoundary, 27_900, 28_100),
 		},
@@ -32,11 +32,11 @@ func TestProjectConfirmedStructureDecisionUsesOnlyArtifactBoundaries(t *testing.
 			{StartMS: 31_000, EndMS: 60_000, Role: structure.RolePromo},
 		})
 
-	assessment, err := ProjectConfirmedStructureDecision(source, &detector, artifact)
+	assessment, err := ProjectConfirmedDecision(source, &detector, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Kind != StructureCompilationBreak || len(assessment.Boundaries) != 1 || assessment.Boundaries[0].AtMs != 30_000 ||
+	if assessment.Kind != KindCompilationBreak || len(assessment.Boundaries) != 1 || assessment.Boundaries[0].AtMs != 30_000 ||
 		len(assessment.Plan) != 2 || assessment.Plan[0].EndMs != 30_000 || assessment.Plan[1].StartMs != 30_000 {
 		t.Fatalf("projected assessment = %+v", assessment)
 	}
@@ -45,11 +45,11 @@ func TestProjectConfirmedStructureDecisionUsesOnlyArtifactBoundaries(t *testing.
 			t.Fatalf("detector observation retained a boundary vote: %+v", observation)
 		}
 	}
-	if err := ValidateStructureDecisionProjection(assessment, artifact); err != nil {
+	if err := ValidateDecisionProjection(assessment, artifact); err != nil {
 		t.Fatal(err)
 	}
 
-	replayed, err := ProjectConfirmedStructureDecision(source, &assessment, artifact)
+	replayed, err := ProjectConfirmedDecision(source, &assessment, artifact)
 	if err != nil || replayed.SHA256 != assessment.SHA256 {
 		t.Fatalf("replayed projection digest=%s want=%s error=%v", replayed.SHA256, assessment.SHA256, err)
 	}
@@ -63,15 +63,15 @@ func TestProjectConfirmedStructureDecisionKeepsProgrammeOutOfFillerPlan(t *testi
 		{StartMS: 50_000, EndMS: 70_000, Role: structure.RoleProgrammeFragment},
 	}
 	artifact := projectedStructureArtifact(t, source, structure.UnitProgrammeSpots, segments, segments)
-	assessment, err := ProjectConfirmedStructureDecision(source, nil, artifact)
+	assessment, err := ProjectConfirmedDecision(source, nil, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []StructureSegmentDisposition{StructureDiscard, StructureKeep, StructureDiscard}
-	got := []StructureSegmentDisposition{
+	want := []Disposition{DispositionDiscard, DispositionKeep, DispositionDiscard}
+	got := []Disposition{
 		assessment.Plan[0].Disposition, assessment.Plan[1].Disposition, assessment.Plan[2].Disposition,
 	}
-	if assessment.Kind != StructureProgrammeSpots || !slices.Equal(got, want) ||
+	if assessment.Kind != KindProgrammeSpots || !slices.Equal(got, want) ||
 		assessment.Plan[0].DiscardReason != DiscardProgrammeMaterial || assessment.Plan[2].DiscardReason != DiscardProgrammeMaterial {
 		t.Fatalf("programme projection = %+v", assessment)
 	}
@@ -84,12 +84,12 @@ func TestProjectConfirmedStructureDecisionKeepsInterstitialRole(t *testing.T) {
 		{StartMS: 30_000, EndMS: 60_000, Role: structure.RoleCommercial},
 	}
 	artifact := projectedStructureArtifact(t, source, structure.UnitCompilation, segments, segments)
-	assessment, err := ProjectConfirmedStructureDecision(source, nil, artifact)
+	assessment, err := ProjectConfirmedDecision(source, nil, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Kind != StructureCompilationBreak || assessment.Plan[0].Disposition != StructureKeep ||
-		assessment.Plan[0].Role != SegmentRoleInterstitial {
+	if assessment.Kind != KindCompilationBreak || assessment.Plan[0].Disposition != DispositionKeep ||
+		assessment.Plan[0].Role != RoleInterstitial {
 		t.Fatalf("interstitial projection = %+v", assessment)
 	}
 }
@@ -106,7 +106,7 @@ func TestProjectConfirmedStructureDecisionRejectsHeldOrDriftedEvidence(t *testin
 	if held.Decision.Status != structure.StatusHeld {
 		t.Fatalf("filler against programme confirmed: %+v", held.Decision)
 	}
-	if _, err := ProjectConfirmedStructureDecision(source, nil, held); err == nil {
+	if _, err := ProjectConfirmedDecision(source, nil, held); err == nil {
 		t.Fatal("held artifact projected")
 	}
 
@@ -117,28 +117,28 @@ func TestProjectConfirmedStructureDecisionRejectsHeldOrDriftedEvidence(t *testin
 	if roleless.Decision.Status != structure.StatusConfirmed || roleless.Decision.Segments[1].Role != "" {
 		t.Fatalf("subtype disagreement decision = %+v", roleless.Decision)
 	}
-	if _, err := ProjectConfirmedStructureDecision(source, nil, roleless); err == nil {
+	if _, err := ProjectConfirmedDecision(source, nil, roleless); err == nil {
 		t.Fatal("a role-less interval projected into a role-bearing plan")
 	}
 
 	confirmed := projectedStructureArtifact(t, source, structure.UnitCompilation, first, first)
 	drifted := source
 	drifted.SHA256 = strings.Repeat("f", 64)
-	if _, err := ProjectConfirmedStructureDecision(drifted, nil, confirmed); err == nil {
+	if _, err := ProjectConfirmedDecision(drifted, nil, confirmed); err == nil {
 		t.Fatal("source-drifted artifact projected")
 	}
 
-	detector, err := ProjectConfirmedStructureDecision(source, nil, confirmed)
+	detector, err := ProjectConfirmedDecision(source, nil, confirmed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	detector.SHA256 = strings.Repeat("0", 64)
-	if _, err := ProjectConfirmedStructureDecision(source, &detector, confirmed); err == nil {
+	if _, err := ProjectConfirmedDecision(source, &detector, confirmed); err == nil {
 		t.Fatal("invalid detector context projected")
 	}
 }
 
-func projectedStructureArtifact(t *testing.T, source SplitSourceAsset, unit structure.Unit, first, second []structure.Segment) structure.Artifact {
+func projectedStructureArtifact(t *testing.T, source SourceAsset, unit structure.Unit, first, second []structure.Segment) structure.Artifact {
 	t.Helper()
 	coreSource := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	media := structure.AssessmentMedia{SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs, ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64)}

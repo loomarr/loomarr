@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -323,7 +324,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	app := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,
 	}
-	segments := append([]filler.SplitSegment(nil), proposal.Segments...)
+	segments := append([]split.Segment(nil), proposal.Segments...)
 	segments[0].Era = 1994
 	segments[0].Tags = []string{"toys"}
 	if err := app.ConfirmSplit(ctx, proposal.ID, segments); err != nil {

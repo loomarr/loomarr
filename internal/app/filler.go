@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/creative"
@@ -1255,7 +1256,7 @@ func (a fillerServiceAdapter) persistInteractiveOperation(ctx context.Context, o
 // through to the splitter, whose validation errors (filler.ErrSplitValidation),
 // filed parent (filler.ErrSplitParentNotHeld) and missing-proposal
 // (store.ErrNotFound) the API maps to 422/409/404.
-func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error {
+func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID string, segments []split.Segment) error {
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}

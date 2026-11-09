@@ -4,6 +4,7 @@ import {
   type LibraryNeed,
   LibraryNeedsCards,
   LibraryNeedsStrip,
+  type LibraryOrderNeed,
   type LibraryProblem,
   LibraryShelf,
   type LibraryShelfProps,
@@ -158,6 +159,65 @@ const PROBLEMS: LibraryProblem[] = [
   },
 ];
 
+// Shows whose episode order to say (#2151 decision 53): one TMDB lists in several orders, the DVD
+// one fitting the disk, and one whose second season on disk runs a file longer than TMDB's.
+const tideFile = (episode: number) => ({
+  path: `/media/tv/Tidewater/Season 02/Tidewater.S02E${String(episode).padStart(2, "0")}.mkv`,
+  season: 2,
+  episode,
+});
+const ORDERS: LibraryOrderNeed[] = [
+  {
+    id: "90000821",
+    name: "Tidewater",
+    poster: art("#3b4a63"),
+    disk: [
+      { season: 1, episodes: 12 },
+      { season: 2, episodes: 14 },
+    ],
+    files: [tideFile(6), tideFile(7), tideFile(8), tideFile(9), tideFile(10)],
+    choices: [
+      {
+        choice: "catalog",
+        seasons: [
+          { season: 1, episodes: 13 },
+          { season: 2, episodes: 13 },
+        ],
+        episodes: 26,
+        fits: false,
+      },
+      {
+        choice: "order",
+        orderId: "90000799a",
+        kind: "dvd",
+        name: "DVD Order",
+        seasons: [
+          { season: 1, episodes: 12 },
+          { season: 2, episodes: 14 },
+        ],
+        episodes: 26,
+        fits: true,
+      },
+      {
+        choice: "order",
+        orderId: "90000799b",
+        kind: "absolute",
+        name: "Absolute Order",
+        seasons: [{ season: 1, episodes: 26 }],
+        episodes: 26,
+        fits: false,
+      },
+    ],
+  },
+  {
+    id: "90000822",
+    name: "Kestrel Bay",
+    disk: [{ season: 1, episodes: 14 }],
+    files: [{ path: "/media/tv/Kestrel Bay/Kestrel.Bay.S01E14.mkv", season: 1, episode: 14 }],
+    choices: [{ choice: "catalog", seasons: [{ season: 1, episodes: 13 }], episodes: 13, fits: false }],
+  },
+];
+
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
@@ -173,6 +233,7 @@ const NeedsStrip: Story = {
         onLink={answered}
         onOpenNeeds={() => {}}
         onOpenTitle={() => {}}
+        orders={ORDERS}
         problems={PROBLEMS}
       />
     ),
@@ -186,10 +247,12 @@ const NeedsCards: Story = {
     needs: (
       <LibraryNeedsCards
         needs={NEEDS}
+        onChooseOrder={answered}
         onIgnore={answered}
         onLink={answered}
         onOpenTitle={() => {}}
         onSearch={search}
+        orders={ORDERS}
         problems={PROBLEMS}
       />
     ),
@@ -202,10 +265,12 @@ const NothingNeedsYou: Story = {
     needs: (
       <LibraryNeedsCards
         needs={[]}
+        onChooseOrder={answered}
         onIgnore={answered}
         onLink={answered}
         onOpenTitle={() => {}}
         onSearch={search}
+        orders={[]}
         problems={[]}
       />
     ),

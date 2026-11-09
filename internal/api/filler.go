@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -1287,7 +1288,7 @@ type getFillerSplitInput struct {
 // remain the one generated contract used by confirmation; Artwork is server-authored presentation
 // evidence and is never accepted back on the write path.
 type SplitReviewSegmentDTO struct {
-	filler.SplitSegment
+	split.Segment
 	Artwork *ImageDTO `json:"artwork,omitempty" doc:"Representative still from this exact proposed span; absent when extraction was unavailable"`
 }
 
@@ -1334,8 +1335,8 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 	segments := make([]SplitReviewSegmentDTO, 0, len(p.Segments))
 	for _, segment := range p.Segments {
 		segments = append(segments, SplitReviewSegmentDTO{
-			SplitSegment: segment,
-			Artwork:      byHash[segment.ArtworkImageHash],
+			Segment: segment,
+			Artwork: byHash[segment.ArtworkImageHash],
 		})
 	}
 	// The current set only decides whether review offers a recheck, so a failed read must not make
@@ -1362,9 +1363,14 @@ type confirmFillerSplitInput struct {
 		// Segments is the operator's REVIEWED cut list: the proposal as returned,
 		// possibly edited. It is re-validated server-side (§10 — the review gate's
 		// teeth live on the write path, not in the UI).
-		Segments []filler.SplitSegment `json:"segments" minItems:"1"`
+		Segments []SplitSegment `json:"segments" minItems:"1"`
 	}
 }
+
+// SplitSegment is split.Segment under the schema name the OpenAPI document and its generated
+// clients publish for a proposed clip; the schema is named after the Go type, and `Segment` alone
+// would say nothing there.
+type SplitSegment split.Segment
 type confirmFillerSplitOutput struct {
 	Body struct {
 		// Clips is how many catalog clips the confirm created — the confirmation
@@ -1381,7 +1387,11 @@ func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitI
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before confirming a split.")
 	}
-	if err := s.filler.ConfirmSplit(ctx, in.ProposalID, in.Body.Segments); err != nil {
+	segments := make([]split.Segment, len(in.Body.Segments))
+	for i, segment := range in.Body.Segments {
+		segments[i] = split.Segment(segment)
+	}
+	if err := s.filler.ConfirmSplit(ctx, in.ProposalID, segments); err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			return nil, errNotFound("Split proposal not found",

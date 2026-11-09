@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -303,7 +304,7 @@ func TestFillerIncoming_ProjectsAndPagesOnlyReadySplitsAsDurableHelp(t *testing.
 		putClip(t, st, filler.Clip{Hash: hash, Path: hash + ".mp4", Name: fmt.Sprintf("Reel %02d", i), Held: true, IsComposite: true})
 		if err := st.UpsertSplitProposal(t.Context(), filler.SplitProposal{
 			ID: fmt.Sprintf("split-%02d", i), ClipHash: hash, CreatedAt: now.Add(time.Duration(i) * time.Second),
-			Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
+			Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "first clip"}},
 		}); err != nil {
 			t.Fatal(err)
 		}

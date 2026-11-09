@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
@@ -31,10 +32,10 @@ func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, ce
 		return certifiedSplitReject(p.Segments, RejectStructureMissing)
 	}
 	assessment := *p.Structure
-	if validateSourceStructureAssessmentOrProjection(assessment, p.StructureDecision) != nil || assessment.Source != p.Source {
+	if split.ValidateAssessmentOrProjection(assessment, p.StructureDecision) != nil || assessment.Source != p.Source {
 		return certifiedSplitReject(p.Segments, RejectStructureInvalid)
 	}
-	if assessment.Kind != StructureCompilationBreak && assessment.Kind != StructureProgrammeSpots {
+	if assessment.Kind != split.KindCompilationBreak && assessment.Kind != split.KindProgrammeSpots {
 		return certifiedSplitReject(p.Segments, RejectStructureAmbiguous)
 	}
 	if len(p.Spawned) > 0 {
@@ -49,7 +50,7 @@ func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, ce
 	if p.StructureDecision == nil {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
-	if ValidateStructureDecisionProjection(assessment, *p.StructureDecision) != nil {
+	if split.ValidateDecisionProjection(assessment, *p.StructureDecision) != nil {
 		return SplitPartition{Reject: RejectStructureMismatch, Hold: keep, Discard: discard}
 	}
 	if verifyStructureMaterializationAuthority(*p.StructureDecision, certification) != nil {
@@ -87,9 +88,9 @@ func verifyStructureMaterializationAuthority(artifact structure.Artifact, policy
 	}
 }
 
-func projectCertifiedStructureSegments(existing []SplitSegment, plan []StructurePlanSegment) ([]SplitSegment, []SplitSegment, error) {
+func projectCertifiedStructureSegments(existing []split.Segment, plan []split.PlanSegment) ([]split.Segment, []split.Segment, error) {
 	type span struct{ start, end int64 }
-	metadata := make(map[span]SplitSegment, len(existing))
+	metadata := make(map[span]split.Segment, len(existing))
 	for _, segment := range existing {
 		key := span{segment.StartMs, segment.EndMs}
 		if _, duplicate := metadata[key]; duplicate {
@@ -97,18 +98,18 @@ func projectCertifiedStructureSegments(existing []SplitSegment, plan []Structure
 		}
 		metadata[key] = segment
 	}
-	var keep, discard []SplitSegment
+	var keep, discard []split.Segment
 	for _, planned := range plan {
 		segment := metadata[span{planned.StartMs, planned.EndMs}]
 		segment.Index, segment.StartMs, segment.EndMs = planned.Index, planned.StartMs, planned.EndMs
 		segment.HoldReason = ""
 		switch planned.Disposition {
-		case StructureKeep:
-			if !certifiedFillerRole(planned.Role) {
+		case split.DispositionKeep:
+			if !split.CertifiedFillerRole(planned.Role) {
 				return nil, nil, fmt.Errorf("certified split projection has a non-filler keep interval")
 			}
 			keep = append(keep, segment)
-		case StructureDiscard:
+		case split.DispositionDiscard:
 			discard = append(discard, segment)
 		default:
 			return nil, nil, fmt.Errorf("certified split projection has an unresolved interval")
@@ -117,7 +118,7 @@ func projectCertifiedStructureSegments(existing []SplitSegment, plan []Structure
 	return keep, discard, nil
 }
 
-func certifiedPlanMaterializable(segments []SplitSegment, policy *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
+func certifiedPlanMaterializable(segments []split.Segment, policy *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
 	if policy == nil || policy.Enabled == nil || !policy.Enabled() {
 		return SplitPartition{Reject: RejectDisabled, Hold: segments}
 	}
@@ -146,7 +147,7 @@ func certifiedPlanMaterializable(segments []SplitSegment, policy *AutoSplitPolic
 		for _, held := range partition.Hold {
 			reasons[span{held.StartMs, held.EndMs}] = held.HoldReason
 		}
-		allHeld := append([]SplitSegment(nil), segments...)
+		allHeld := append([]split.Segment(nil), segments...)
 		for index := range allHeld {
 			allHeld[index].HoldReason = reasons[span{allHeld[index].StartMs, allHeld[index].EndMs}]
 			if allHeld[index].HoldReason == "" {
@@ -163,7 +164,7 @@ func certifiedPlanMaterializable(segments []SplitSegment, policy *AutoSplitPolic
 // structureMaterializationSegmentVerdict checks only whether the decided interval can become a
 // held child. Role came from the certified complete-timeline plan; category, audience, era, safety,
 // rights, and playback facts belong to the child pipeline and cannot be required before it exists.
-func structureMaterializationSegmentVerdict(segment SplitSegment, minClipDuration, maxDuration time.Duration) AutoSplitReject {
+func structureMaterializationSegmentVerdict(segment split.Segment, minClipDuration, maxDuration time.Duration) AutoSplitReject {
 	if segment.DupOf != "" {
 		return RejectDuplicate
 	}
@@ -177,19 +178,10 @@ func structureMaterializationSegmentVerdict(segment SplitSegment, minClipDuratio
 	return AutoSplitOK
 }
 
-func certifiedSplitReject(segments []SplitSegment, reason AutoSplitReject) SplitPartition {
-	hold := append([]SplitSegment(nil), segments...)
+func certifiedSplitReject(segments []split.Segment, reason AutoSplitReject) SplitPartition {
+	hold := append([]split.Segment(nil), segments...)
 	for i := range hold {
 		hold[i].HoldReason = string(reason)
 	}
 	return SplitPartition{Reject: reason, Hold: hold}
-}
-
-func certifiedFillerRole(role StructureSegmentRole) bool {
-	switch role {
-	case SegmentRoleCommercial, SegmentRolePromo, SegmentRoleBumper, SegmentRoleStationID, SegmentRolePSA, SegmentRoleTrailer, SegmentRoleInterstitial:
-		return true
-	default:
-		return false
-	}
 }

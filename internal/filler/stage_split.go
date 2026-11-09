@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
@@ -70,7 +71,7 @@ type SplitStage struct {
 type StructureRuntime struct {
 	// Decisioner independently assesses the complete retained source once. nil leaves detector
 	// structure in place and makes no provider request.
-	Decisioner CompleteTimelineStructureDecisioner
+	Decisioner split.CompleteTimelineDecisioner
 	// Materialization verifies the only gate that can materialize held children. A nil policy
 	// holds the proposal; compatibility is never application authority.
 	Materialization *StructureMaterializationPolicy
@@ -152,7 +153,7 @@ func (s *SplitStage) currentStructureRuntime() StructureRuntime {
 // The implementation owns derivative extraction, request limits, strict decoding, and evidence
 // attribution; the caller knows only that an exact unresolved span may gain one role observation.
 type SegmentRoleEscalator interface {
-	EscalateRole(context.Context, SplitSourceAsset, string, SplitSegment, time.Time) (*StructureRoleEvidence, error)
+	EscalateRole(context.Context, split.SourceAsset, string, split.Segment, time.Time) (*split.RoleEvidence, error)
 }
 
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
@@ -190,7 +191,7 @@ type TaxaLister interface {
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source SplitSourceAsset, segs []SplitSegment) groundPass {
+func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source split.SourceAsset, segs []split.Segment) groundPass {
 	if s.vision == nil {
 		return s.groundAt(ctx, c, "", source, segs)
 	}
@@ -202,7 +203,7 @@ func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source S
 	return s.groundAt(ctx, c, file, source, segs)
 }
 
-func countPendingGrounding(segs []SplitSegment) int {
+func countPendingGrounding(segs []split.Segment) int {
 	n := 0
 	for i := range segs {
 		if !segs[i].Looked {
@@ -212,7 +213,7 @@ func countPendingGrounding(segs []SplitSegment) int {
 	return n
 }
 
-func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source SplitSourceAsset, segs []SplitSegment) groundPass {
+func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
 	pending := func() int {
 		return countPendingGrounding(segs)
 	}
@@ -256,7 +257,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		if segs[i].Looked {
 			continue // ⚠ THE RESUME: an earlier pass already spent a look on this one.
 		}
-		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
+		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, split.VisionKeyframes)
 		if err != nil || len(frames) == 0 {
 			segs[i].Looked, looked = true, looked+1
 			noFrames++
@@ -308,7 +309,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 			unreadable++
 		}
 		v := groundVisionTags(out, forest)
-		var roleEvidence *StructureRoleEvidence
+		var roleEvidence *split.RoleEvidence
 		var roleErr error
 		if parsed {
 			roleEvidence, roleErr = structureRoleEvidenceFromVision(source, segs[i], splitVisionPromptVersion, prompt, frames, resp, out, s.structureAssessedAt())
@@ -366,8 +367,8 @@ type groundTally struct {
 	providerErr                                                            error
 }
 
-func (s *SplitStage) escalateSegmentRole(ctx context.Context, source SplitSourceAsset, file string, segment SplitSegment) (*StructureRoleEvidence, bool, error) {
-	if s.vision == nil || s.vision.RoleEscalator == nil || source.validate() != nil {
+func (s *SplitStage) escalateSegmentRole(ctx context.Context, source split.SourceAsset, file string, segment split.Segment) (*split.RoleEvidence, bool, error) {
+	if s.vision == nil || s.vision.RoleEscalator == nil || source.Validate() != nil {
 		return nil, false, nil
 	}
 	evidence, err := s.vision.RoleEscalator.EscalateRole(ctx, source, file, segment, s.structureAssessedAt())
@@ -439,7 +440,7 @@ func (s *SplitStage) pendingFor(ctx context.Context, hash string) (*SplitProposa
 }
 
 // countPending counts segments the grounder has never looked at.
-func countPending(segs []SplitSegment) int {
+func countPending(segs []split.Segment) int {
 	n := 0
 	for i := range segs {
 		if !segs[i].Looked {
@@ -468,8 +469,8 @@ type splitDiscards struct {
 
 // discardDeterministic removes outcomes that cannot become useful new clips. Ambiguous or
 // unsplittable spans remain for review; known duplicates and below-floor fragments do not.
-func discardDeterministic(segs []SplitSegment, minClipDuration time.Duration) ([]SplitSegment, splitDiscards) {
-	kept := make([]SplitSegment, 0, len(segs))
+func discardDeterministic(segs []split.Segment, minClipDuration time.Duration) ([]split.Segment, splitDiscards) {
+	kept := make([]split.Segment, 0, len(segs))
 	var discarded splitDiscards
 	for _, seg := range segs {
 		if seg.DupOf != "" {
@@ -737,7 +738,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	return StageResult{Verdict: VerdictContinue, Spawned: spawned, Note: note}, nil
 }
 
-func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []SplitSegment) error {
+func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []split.Segment) error {
 	_, err := s.splitter.Reground(ctx, proposalID, held)
 	return err
 }

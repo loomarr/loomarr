@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 )
 
@@ -57,7 +58,7 @@ func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningEvidence(ctx
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningEvidence(ctx context.Context, evidenceSHA256 string) (SegmentScreeningEvidence, error) {
-	if r == nil || r.files == nil || !filler.IsContentHash(evidenceSHA256) {
+	if r == nil || r.files == nil || !split.IsContentHash(evidenceSHA256) {
 		return SegmentScreeningEvidence{}, fmt.Errorf("segment screening evidence identity is invalid")
 	}
 	raw, err := r.files.ReadBlob(ctx, segmentScreeningEvidenceKind, evidenceSHA256, segmentScreeningEvidenceMaxBytes)

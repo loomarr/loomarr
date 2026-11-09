@@ -3,40 +3,38 @@ package identitystore
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
-// PurgeOrphanNotificationReferenceRecipients deletes requesters of a title or channel that no
-// longer exists, or who no longer exist themselves: news about it can never reach them. A row
-// recorded after `before` is left alone, because approval records the requester before
-// provisioning writes the title.
-func (s *Store) PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error) {
-	res, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM notification_reference_recipients
-		WHERE created_at < ? AND (
-		    NOT EXISTS (SELECT 1 FROM users u WHERE u.id = notification_reference_recipients.person_id)
-		 OR (reference_kind = ? AND NOT EXISTS (SELECT 1 FROM titles t
-		        WHERE t.key = notification_reference_recipients.reference_id))
-		 OR (reference_kind = ? AND NOT EXISTS (SELECT 1 FROM channels c
-		        WHERE c.id = notification_reference_recipients.reference_id)))`),
-		epoch(before), notifications.ReferenceTitle, notifications.ReferenceChannel)
-	if err != nil {
-		return 0, fmt.Errorf("purge orphan notification reference recipients: %w", err)
+// requesters is where one reference kind's requesters live: a table whose reference column is a
+// foreign key to the title or channel, so a requester goes with what they asked for, and with
+// themselves (#2793).
+type requesters struct{ table, column string }
+
+func requesterTable(kind notifications.ReferenceKind) (requesters, error) {
+	switch kind {
+	case notifications.ReferenceTitle:
+		return requesters{"title_requesters", "title_key"}, nil
+	case notifications.ReferenceChannel:
+		return requesters{"channel_requesters", "channel_id"}, nil
 	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
+	return requesters{}, fmt.Errorf("no requesters are recorded for %q", kind)
 }
 
+// ListNotificationReferenceRecipients returns who asked for the title or channel referenceID
+// names, by person id.
 func (s *Store) ListNotificationReferenceRecipients(
 	ctx context.Context,
 	kind notifications.ReferenceKind,
 	referenceID string,
 ) ([]string, error) {
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT person_id
-		FROM notification_reference_recipients
-		WHERE reference_kind = ? AND reference_id = ?
-		ORDER BY person_id`), kind, referenceID)
+	t, err := requesterTable(kind)
+	if err != nil {
+		return nil, fmt.Errorf("list notification reference recipients: %w", err)
+	}
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT person_id FROM `+t.table+`
+		WHERE `+t.column+` = ? ORDER BY person_id`), referenceID)
 	if err != nil {
 		return nil, fmt.Errorf("list notification reference recipients: %w", err)
 	}

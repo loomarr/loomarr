@@ -1,4 +1,4 @@
-package filler
+package split
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 )
 
 type structureDecisionProjectionInterval struct {
-	role          StructureSegmentRole
-	disposition   StructureSegmentDisposition
+	role          Role
+	disposition   Disposition
 	observationID string
 }
 
@@ -21,7 +21,7 @@ type structureDecisionProjectionAuthority struct {
 	intervals      map[[2]int64]structureDecisionProjectionInterval
 }
 
-func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact structure.Artifact) (*structureDecisionProjectionAuthority, error) {
+func newStructureDecisionProjectionAuthority(source SourceAsset, artifact structure.Artifact) (*structureDecisionProjectionAuthority, error) {
 	if err := source.validate(); err != nil {
 		return nil, err
 	}
@@ -45,12 +45,12 @@ func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact s
 	}
 	end := int64(0)
 	for index, segment := range decision.Segments {
-		role := StructureSegmentRole(segment.Role)
+		role := Role(segment.Role)
 		disposition, err := projectedStructureDisposition(segment.Disposition)
-		if err != nil || !validStructureSegmentRole(role) || segment.StartMS != end || segment.EndMS <= segment.StartMS || segment.EndMS > source.DurationMs {
+		if err != nil || !ValidRole(role) || segment.StartMS != end || segment.EndMS <= segment.StartMS || segment.EndMS > source.DurationMs {
 			return nil, fmt.Errorf("source structure decision interval %d is invalid", index)
 		}
-		if disposition == StructureKeep && !certifiedFillerRole(role) || disposition == StructureDiscard && role != SegmentRoleProgrammeFragment && role != SegmentRoleNonFiller {
+		if disposition == DispositionKeep && !CertifiedFillerRole(role) || disposition == DispositionDiscard && role != RoleProgrammeFragment && role != RoleNonFiller {
 			return nil, fmt.Errorf("source structure decision interval %d role and disposition disagree", index)
 		}
 		span := [2]int64{segment.StartMS, segment.EndMS}
@@ -69,14 +69,14 @@ func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact s
 	return authority, nil
 }
 
-// ValidateStructureDecisionProjection proves that the proposal assessment is an exact projection
+// ValidateDecisionProjection proves that the proposal assessment is an exact projection
 // of one replayable, confirmed independent-assessor decision. It grants no certification itself.
-func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, artifact structure.Artifact) error {
+func ValidateDecisionProjection(assessment Assessment, artifact structure.Artifact) error {
 	authority, err := newStructureDecisionProjectionAuthority(assessment.Source, artifact)
 	if err != nil {
 		return err
 	}
-	if err := validateSourceStructureAssessment(assessment, authority); err != nil {
+	if err := validateAssessment(assessment, authority); err != nil {
 		return err
 	}
 	decision := artifact.Decision
@@ -88,43 +88,45 @@ func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, a
 		planned := assessment.Plan[index]
 		disposition, err := projectedStructureDisposition(decided.Disposition)
 		if err != nil || planned.StartMs != decided.StartMS || planned.EndMs != decided.EndMS ||
-			planned.Role != StructureSegmentRole(decided.Role) || planned.Disposition != disposition {
+			planned.Role != Role(decided.Role) || planned.Disposition != disposition {
 			return fmt.Errorf("source structure decision interval %d does not match", index)
 		}
 	}
 	return nil
 }
 
-func validateSourceStructureAssessmentOrProjection(assessment SourceStructureAssessment, artifact *structure.Artifact) error {
-	strictErr := ValidateSourceStructureAssessment(assessment)
+// ValidateAssessmentOrProjection accepts assessment when it either reduces strictly from its own
+// observations or is an exact projection of artifact, which may be nil.
+func ValidateAssessmentOrProjection(assessment Assessment, artifact *structure.Artifact) error {
+	strictErr := ValidateAssessment(assessment)
 	if strictErr == nil {
 		return nil
 	}
-	if artifact != nil && ValidateStructureDecisionProjection(assessment, *artifact) == nil {
+	if artifact != nil && ValidateDecisionProjection(assessment, *artifact) == nil {
 		return nil
 	}
 	return strictErr
 }
 
-func projectedStructureKind(unit structure.Unit) (SourceStructureKind, error) {
+func projectedStructureKind(unit structure.Unit) (Kind, error) {
 	switch unit {
 	case structure.UnitStandalone, structure.UnitProgrammeExcerpt:
-		return StructureSingleUnit, nil
+		return KindSingleUnit, nil
 	case structure.UnitCompilation:
-		return StructureCompilationBreak, nil
+		return KindCompilationBreak, nil
 	case structure.UnitProgrammeSpots:
-		return StructureProgrammeSpots, nil
+		return KindProgrammeSpots, nil
 	default:
 		return "", fmt.Errorf("source structure decision unit %q cannot be projected", unit)
 	}
 }
 
-func projectedStructureDisposition(disposition structure.Disposition) (StructureSegmentDisposition, error) {
+func projectedStructureDisposition(disposition structure.Disposition) (Disposition, error) {
 	switch disposition {
 	case structure.DispositionFillerCandidate:
-		return StructureKeep, nil
+		return DispositionKeep, nil
 	case structure.DispositionNonFiller:
-		return StructureDiscard, nil
+		return DispositionDiscard, nil
 	default:
 		return "", fmt.Errorf("source structure decision disposition %q cannot be projected", disposition)
 	}

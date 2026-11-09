@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 const (
@@ -130,8 +131,8 @@ func (c *SegmentScreeningCertification) AuthoritySHA256() string {
 
 func ValidateSegmentScreeningReleaseAuthority(authority SegmentScreeningReleaseAuthority) error {
 	if authority.SchemaVersion != SegmentScreeningReleaseSchemaVersion || authority.ContractVersion != SegmentScreeningReleaseContractVersion ||
-		!filler.IsContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != SegmentScreeningContractVersion ||
-		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !filler.IsContentHash(authority.AirworthinessAuthoritySHA256) ||
+		!split.IsContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != SegmentScreeningContractVersion ||
+		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !split.IsContentHash(authority.AirworthinessAuthoritySHA256) ||
 		authority.SHA256 != SegmentScreeningReleaseAuthoritySHA256(authority) {
 		return fmt.Errorf("segment screening release authority identity is invalid")
 	}

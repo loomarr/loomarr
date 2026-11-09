@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
@@ -17,11 +18,11 @@ import (
 
 type capturedStructureDecisioner struct {
 	artifact structure.Artifact
-	media    []filler.StructureAssessmentSource
+	media    []split.AssessmentSource
 	err      error
 }
 
-func (d *capturedStructureDecisioner) Assess(_ context.Context, media filler.StructureAssessmentSource) (structure.Artifact, error) {
+func (d *capturedStructureDecisioner) Assess(_ context.Context, media split.AssessmentSource) (structure.Artifact, error) {
 	d.media = append(d.media, media)
 	return d.artifact, d.err
 }
@@ -56,7 +57,7 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 	if len(decisioner.media) != 1 || decisioner.media[0].Source != proposal.Source ||
 		decisioner.media[0].FullPath != filepath.Join(drop, filepath.FromSlash(clip.Path)) || stored.StructureDecision == nil ||
 		stored.StructureDecision.SHA256 != decisioner.artifact.SHA256 || stored.Structure == nil ||
-		stored.Structure.Kind != filler.StructureCompilationBreak || len(stored.Structure.Plan) != 2 ||
+		stored.Structure.Kind != split.KindCompilationBreak || len(stored.Structure.Plan) != 2 ||
 		stored.Structure.Plan[0].EndMs != 30_000 || stored.Structure.Plan[1].StartMs != 30_000 {
 		t.Fatalf("media=%+v stored=%+v", decisioner.media, stored)
 	}
@@ -271,14 +272,14 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 		t.Fatal(err)
 	}
 	if stored.StructureDecision == nil || stored.StructureDecision.Decision.Input.Kind != structure.AssessmentInputWindowMediaSet ||
-		stored.Structure == nil || stored.Structure.Kind != filler.StructureCompilationBreak || len(stored.Structure.Plan) != 2 ||
+		stored.Structure == nil || stored.Structure.Kind != split.KindCompilationBreak || len(stored.Structure.Plan) != 2 ||
 		stored.Structure.Plan[0].StartMs != 0 || stored.Structure.Plan[0].EndMs != 150_000 ||
 		stored.Structure.Plan[1].StartMs != 150_000 || stored.Structure.Plan[1].EndMs != 300_000 {
 		t.Fatalf("stored proposal=%+v", stored)
 	}
 }
 
-func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64, disagree bool) structure.Artifact {
+func structureDecisionArtifact(t *testing.T, source split.SourceAsset, joinMS int64, disagree bool) structure.Artifact {
 	t.Helper()
 	core := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	media := structure.AssessmentMedia{
@@ -321,7 +322,7 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 	return artifact
 }
 
-func structureWindowDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64) structure.Artifact {
+func structureWindowDecisionArtifact(t *testing.T, source split.SourceAsset, joinMS int64) structure.Artifact {
 	t.Helper()
 	core := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	plan, err := window.NewPlan(core, cut.SoftwareProfile())
