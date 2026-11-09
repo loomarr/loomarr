@@ -1,4 +1,4 @@
-package app
+package currenthealth
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 type healthSettingStore struct{ fail bool }
@@ -20,6 +21,20 @@ func (s *healthSettingStore) GetSetting(context.Context, string) (string, error)
 	return "", nil
 }
 
+// settingValues is a fixed settings view keyed by setting key; a key it lacks reads its default.
+type settingValues map[string]any
+
+func (v settingValues) Value(key string) any { return v[key] }
+
+func fixedSettings(t *testing.T, values map[string]string) settings.Reader {
+	t.Helper()
+	out := make(settingValues, len(values))
+	for k, v := range values {
+		out[k] = v
+	}
+	return out
+}
+
 func TestCompleteStartupIntegrationsDistinguishesUnconfiguredAndUnavailable(t *testing.T) {
 	now := time.Unix(100, 0)
 	startup := diagnostics.NewStartup(now, 1, "dev", []diagnostics.StartupCheck{
@@ -29,8 +44,8 @@ func TestCompleteStartupIntegrationsDistinguishesUnconfiguredAndUnavailable(t *t
 		{Key: diagnostics.StartupCheckLLM, Required: false},
 		{Key: diagnostics.StartupCheckTMDB, Required: false},
 	}, func() time.Time { return now })
-	set := visionSet(t, map[string]string{"library.url": "http://media.example"})
-	completeStartupIntegrations(context.Background(), startup, set, map[string]func(context.Context) (bool, string){
+	set := fixedSettings(t, map[string]string{"library.url": "http://media.example"})
+	CompleteStartupIntegrations(context.Background(), startup, set, map[string]func(context.Context) (bool, string){
 		diagnostics.StartupCheckMediaServer: func(context.Context) (bool, string) {
 			return false, "could not reach the media server"
 		},
@@ -56,8 +71,8 @@ func TestCompleteStartupIntegrationsUsesExistingProbeSuccess(t *testing.T) {
 	startup := diagnostics.NewStartup(now, 1, "dev", []diagnostics.StartupCheck{
 		{Key: diagnostics.StartupCheckTunarr, Required: false},
 	}, func() time.Time { return now })
-	set := visionSet(t, map[string]string{"tunarr.url": "http://tunarr.example"})
-	completeStartupIntegrations(context.Background(), startup, set, map[string]func(context.Context) (bool, string){
+	set := fixedSettings(t, map[string]string{"tunarr.url": "http://tunarr.example"})
+	CompleteStartupIntegrations(context.Background(), startup, set, map[string]func(context.Context) (bool, string){
 		diagnostics.StartupCheckTunarr: func(context.Context) (bool, string) { return true, "" },
 	})
 	check := startup.Snapshot().Checks[0]
@@ -74,7 +89,7 @@ func TestCurrentHealthRunnerConfirmsDatabaseFailureAndRecovers(t *testing.T) {
 	}}, func() time.Time { return now })
 	health.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupPassed, "available", "", "")
 	st := &healthSettingStore{fail: true}
-	runner := newCurrentHealthRunner(health, st, visionSet(t, nil), nil)
+	runner := NewRunner(health, st, fixedSettings(t, nil), nil)
 
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -111,9 +126,9 @@ func TestCurrentHealthRunnerDegradesAndNamesStarvedTasks(t *testing.T) {
 	}, func() time.Time { return now })
 	health.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupPassed, "available", "", "")
 	health.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped, "", "", "")
-	runner := newCurrentHealthRunner(health, &healthSettingStore{}, visionSet(t, nil), nil)
+	runner := NewRunner(health, &healthSettingStore{}, fixedSettings(t, nil), nil)
 	tasks := &starvedTasks{{Name: "library-scan", Title: "Full library scan"}, {Name: "recurate", Title: "Re-curate channels"}}
-	runner.watchTasks(tasks)
+	runner.WatchTasks(tasks)
 
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -139,10 +154,10 @@ func TestCurrentHealthRunnerDegradesAndNamesStarvedTasks(t *testing.T) {
 
 func TestCurrentHealthFreshnessTracksConfiguredSchedule(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 1, 0, time.UTC)
-	if got, want := currentHealthFreshness("", now), time.Minute+startupIntegrationTimeout; got != want {
+	if got, want := currentHealthFreshness("", now), time.Minute+IntegrationTimeout; got != want {
 		t.Fatalf("default freshness = %s, want %s", got, want)
 	}
-	if got, want := currentHealthFreshness("0 */5 * * * *", now), 10*time.Minute+startupIntegrationTimeout; got != want {
+	if got, want := currentHealthFreshness("0 */5 * * * *", now), 10*time.Minute+IntegrationTimeout; got != want {
 		t.Fatalf("freshness = %s, want %s", got, want)
 	}
 	if got := currentHealthFreshness("not cron", now); got != 3*time.Minute {

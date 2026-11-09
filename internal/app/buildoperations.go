@@ -23,7 +23,9 @@ import (
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/platform/backup"
 	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/databasemigration"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
@@ -51,9 +53,12 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 	if st == nil {
 		return nil
 	}
-	return newDatabaseService(st, func() string { return settings.BackupDir.Get(set) }, eventBus).
+	service := databasemigration.New(
+		store.DialectOf(st), store.BackupWriter(st),
+		func() string { return settings.BackupDir.Get(set) }, databaseEvents{bus: eventBus}).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
+	return databaseAPI{service: service}
 }
 
 type residentLLMBuild struct {
@@ -270,16 +275,17 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 
 func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
-		service := &backupsService{
-			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
-			retain: func() int { return settings.BackupRetain.Get(set) },
-			sched:  func() string { return settings.BackupSchedule.Get(set) },
-		}
+		service := backup.New(backup.Config{
+			Writer:   writer,
+			Dir:      func() string { return settings.BackupDir.Get(set) },
+			Retain:   func() int { return settings.BackupRetain.Get(set) },
+			Schedule: func() string { return settings.BackupSchedule.Get(set) },
+		})
 		registry.Add(service.Job(log))
-		return service
+		return backupsAPI{service: service}
 	}
 	if st != nil {
-		registry.Add(unavailableBackupJob(
+		registry.Add(backup.UnavailableJob(
 			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
 	return nil

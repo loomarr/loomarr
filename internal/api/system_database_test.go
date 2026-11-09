@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/platform/databasemigration"
 )
 
 // errFake stands in for any copy failure the engine can report.
@@ -97,7 +98,7 @@ func TestSystemDatabase_NotConfigured501(t *testing.T) {
 // ⚠ THE PHASE GATE: the backup cannot be skipped, and it is the SERVER that says so.
 // A client that ignores the disabled button and POSTs straight to /migrate is refused.
 func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: system.ErrNoBackup}
+	fake := &fakeDatabase{migrateErr: databasemigration.ErrNoBackup}
 	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
@@ -120,7 +121,7 @@ func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
 // A target that has not passed preflight is refused for the same reason and separately,
 // so the operator learns which precondition is missing.
 func TestSystemDatabase_PreflightRequired(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: system.ErrPreflightFailed}
+	fake := &fakeDatabase{migrateErr: databasemigration.ErrPreflightFailed}
 	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
@@ -140,11 +141,11 @@ func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
 	}{
 		{
 			name: "preflight", path: "/v1/system/database/preflight",
-			configure: func(f *fakeDatabase) { f.preflightErr = system.ErrNotSQLite },
+			configure: func(f *fakeDatabase) { f.preflightErr = databasemigration.ErrNotSQLite },
 		},
 		{
 			name: "migrate", path: "/v1/system/database/migrate",
-			configure: func(f *fakeDatabase) { f.migrateErr = system.ErrNotSQLite },
+			configure: func(f *fakeDatabase) { f.migrateErr = databasemigration.ErrNotSQLite },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -223,7 +224,7 @@ func TestSystemDatabase_MigrationFailureIsAConflictNotA500(t *testing.T) {
 }
 
 func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: system.ErrDatabaseURLPinned}
+	fake := &fakeDatabase{migrateErr: databasemigration.ErrDatabaseURLPinned}
 	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
@@ -241,7 +242,7 @@ func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
 }
 
 func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
-	fake := &fakeDatabase{migrateErr: system.ErrMigrationUnavailable}
+	fake := &fakeDatabase{migrateErr: databasemigration.ErrMigrationUnavailable}
 	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
