@@ -288,6 +288,14 @@ func TestChannelDataStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channeldatastore")
 }
 
+// internal/platform/store/channelstore is the channel cluster (the channels table). It builds on the
+// storedb kernel, in the same direction as the clusters above; store embeds it and re-exports Channel
+// and its errors. The approval transaction reaches it through exported call-ins, so there is no import
+// edge back.
+func TestChannelStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channelstore")
+}
+
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
 // source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the

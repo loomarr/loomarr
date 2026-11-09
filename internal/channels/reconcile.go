@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -134,7 +135,7 @@ func (e *Engine) reconcile(ctx context.Context, channelID string, opts reconcile
 	const maxAttempts = 4
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		err = e.reconcileOnce(ctx, channelID, &state, opts)
-		if !errors.Is(err, store.ErrChannelStale) && !errors.Is(err, store.ErrChannelConflict) {
+		if !errors.Is(err, channelstore.ErrChannelStale) && !errors.Is(err, channelstore.ErrChannelConflict) {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
@@ -142,7 +143,7 @@ func (e *Engine) reconcile(ctx context.Context, channelID string, opts reconcile
 		}
 	}
 	return fmt.Errorf("reconcile channel %s conflicted during %d attempts: %w",
-		channelID, maxAttempts, store.ErrChannelStale)
+		channelID, maxAttempts, channelstore.ErrChannelStale)
 }
 
 // reconcileRun carries remote effects across a stale-snapshot restart. A Tunarr
@@ -378,14 +379,14 @@ func (e *Engine) reconcileOnce(
 				// therefore create different remote channels before either checkpoint wins. If
 				// another replica attached its id first, this create is ours but is not durable
 				// anywhere; delete it before replanning so Tunarr does not accumulate an orphan.
-				if createdRemote && (errors.Is(aerr, store.ErrChannelStale) || errors.Is(aerr, store.ErrChannelConflict)) {
+				if createdRemote && (errors.Is(aerr, channelstore.ErrChannelStale) || errors.Is(aerr, channelstore.ErrChannelConflict)) {
 					e.discardUnattachedCreate(ctx, channelID, tunarrID)
 				}
 				return fmt.Errorf("checkpoint Tunarr id for channel %s: %w", channelID, aerr)
 			}
 			ch.Revision = revision
 			if revision != priorRevision+1 {
-				return store.ErrChannelStale
+				return channelstore.ErrChannelStale
 			}
 		}
 
@@ -540,7 +541,7 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 // than leaving empty flex. Best-effort: a filler error is logged, never returned — the
 // channel still plays (§9 resilience), and EnsureFillerList is internally idempotent so a
 // stable pool makes no Tunarr write.
-func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string, breaksPerHour int, breakDuration time.Duration) {
+func (e *Engine) attachFillerList(ctx context.Context, ch channelstore.Channel, ids []string, breaksPerHour int, breakDuration time.Duration) {
 	// The channel's own commercial spacing, not just the install-wide one, is what Tunarr should
 	// hold its clips back for — and the adapter needs the airing rate to know how much of it the
 	// list can honour.
@@ -621,7 +622,7 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // Exported so the §12 pod PREVIEW derives the selection identically. If preview computed
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
-func SelectionForChannel(ch store.Channel) pod.Selection {
+func SelectionForChannel(ch channelstore.Channel) pod.Selection {
 	return SelectionForPolicy(ch.Policy, ch.Lineup)
 }
 
@@ -683,7 +684,7 @@ const MidRollFreezeHorizon = 30 * time.Minute
 // pinnedCutsAt is the split every programme on air or about to be must keep (schedule.PinnedCuts),
 // read from the accepted Desired cycle with the encoder's own arithmetic. Nil before a channel has
 // an anchored cycle, or on Tunarr, which never splits.
-func pinnedCutsAt(ch store.Channel, playsInternally bool, at time.Time) map[string][]int64 {
+func pinnedCutsAt(ch channelstore.Channel, playsInternally bool, at time.Time) map[string][]int64 {
 	if !playsInternally || ch.PlayoutAnchor.IsZero() || len(ch.Desired) == 0 {
 		return nil
 	}

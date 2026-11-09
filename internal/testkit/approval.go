@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -111,13 +112,13 @@ type ApprovalChannels struct {
 	Plans     []store.Proposal
 	Committed []string
 	PlanError error
-	PlanFunc  func(store.Proposal, int) store.Channel
+	PlanFunc  func(store.Proposal, int) channelstore.Channel
 }
 
-func (c *ApprovalChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (store.Channel, error) {
+func (c *ApprovalChannels) PlanApprovedChannel(_ context.Context, p store.Proposal) (channelstore.Channel, error) {
 	c.Plans = append(c.Plans, p)
 	if c.PlanError != nil {
-		return store.Channel{}, c.PlanError
+		return channelstore.Channel{}, c.PlanError
 	}
 	if c.PlanFunc != nil {
 		return c.PlanFunc(p, len(c.Plans)), nil
@@ -127,8 +128,8 @@ func (c *ApprovalChannels) PlanApprovedChannel(_ context.Context, p store.Propos
 
 // ApprovedChannel is a channel plan the store accepts for p, numbered number. A PlanFunc starts
 // from it and changes only what its test is about.
-func ApprovedChannel(p store.Proposal, number int) store.Channel {
-	ch := store.Channel{}
+func ApprovedChannel(p store.Proposal, number int) channelstore.Channel {
+	ch := channelstore.Channel{}
 	ch.ID = "ch_" + p.ID
 	ch.IntentRef = p.JobID
 	ch.Name = "Approved channel"

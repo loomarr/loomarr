@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -12,7 +12,7 @@ import (
 // 1–10" (it used to drop it — the entry looked unscoped even though the scheduler
 // enforced the window).
 func TestChannelToDTO_SurfacesSeasonWindow(t *testing.T) {
-	ch := store.Channel{Lineup: []schedule.LineupEntry{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("series:tvdb:90071663"), Title: "Kettle Kids", SeasonMin: 1, SeasonMax: 10},
 	}}
 	dto := channelToDTO(ch, nil, nil)

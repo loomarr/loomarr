@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 11 imports — the store, the language model, the holiday vocabulary and whole-word matching the suggester checks titles with, the audience rating ladder its ceilings are drawn from, and the storage governor's size confidence
+- **platform** · 14 imports — the store, the language model, the holiday vocabulary and whole-word matching the suggester checks titles with, the audience rating ladder its ceilings are drawn from, and the storage governor's size confidence
 - **library** · 9 imports — grounding each suggested title in the real library, catalog, TMDB and collections, and the `provision` records for titles the household lacks
 - **channels** · 5 imports — the `channels/schedule` values a proposal describes, and the reconcile engine the outlook runs to preview a proposal before approval
 
@@ -16,13 +16,13 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`proposals`** · 11 importers · → `channels/schedule`, `platform/storagegovernor`, `provision`
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
-- **`proposals/accept`** · 6 importers · → `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
+- **`proposals/accept`** · 6 importers · → `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `proposals`, `proposals/suggest`, `provision`
   How a proposal becomes a channel: a person's approval (with optional edits), the per-user auto-approve grant, and the pending-acquisition quota that bounds the grant.
-- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/accept`, `provision`
+- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `proposals`, `proposals/accept`, `provision`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposals/quality`** · 6 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
-- **`proposals/suggest`** · 6 importers · → `catalog`, `channels/schedule`, `moviecollections`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `tmdb`
+- **`proposals/suggest`** · 6 importers · → `catalog`, `channels/schedule`, `moviecollections`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`proposals/webreference`** · 4 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.

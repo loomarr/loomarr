@@ -79,11 +79,6 @@ var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
 // guarantees that no orphan proposal was persisted.
 var ErrJobNotRunning = errors.New("store: suggestion job is not running")
 
-// ErrJobChannelGone reports a refine or re-curation job whose channel was removed
-// before the job's proposal could be approved. It is not ErrNotFound: that answer
-// means "no channel yet" and makes approval create one.
-var ErrJobChannelGone = errors.New("store: the job's channel no longer exists")
-
 // ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
 // with different facts.
 var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
@@ -92,16 +87,6 @@ var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
 // from the requester persisted on its job. It prevents a worker/store wiring
 // mistake from moving generated content across user audit lifecycles.
 var ErrJobOwnershipMismatch = errors.New("store: suggestion job ownership mismatch")
-
-// ErrChannelConflict reports that a channel write lost a uniqueness race (normally
-// number or non-empty intent binding). Approval transactions have rolled back
-// completely when returning it, so their caller may safely reload and replan.
-var ErrChannelConflict = errors.New("store: channel conflict")
-
-// ErrChannelStale reports that a channel mutation was planned from an older
-// revision than the row now holds. The row still exists; callers may reload and
-// either reapply their domain merge or surface a conflict to the operator.
-var ErrChannelStale = errors.New("store: stale channel revision")
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.

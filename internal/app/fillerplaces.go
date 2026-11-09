@@ -12,13 +12,13 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // currentAreas resolves every current place to its area: the installation's, then each channel's
 // own (#2059 decisions 7 and 8). No areas means no installation country, so nothing is bounded.
 func currentAreas(ctx context.Context, channels interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 }, policy pod.Policy) ([]pod.Area, error) {
 	list, err := channels.ListChannels(ctx)
 	if err != nil {
@@ -36,7 +36,7 @@ func currentAreas(ctx context.Context, channels interface {
 
 // nearbyPlaceStations is every station within the radius of some current place.
 func nearbyPlaceStations(ctx context.Context, channels interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 }, policy pod.Policy) (map[string]bool, error) {
 	areas, err := currentAreas(ctx, channels, policy)
 	if err != nil {
@@ -56,7 +56,7 @@ func nearbyPlaceStations(ctx context.Context, channels interface {
 // for its local sources). A source the operator switched either way stays as they left it.
 type localCuratedSources struct {
 	store interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 		SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
 	}
 	policy func() pod.Policy
@@ -90,7 +90,7 @@ type openArchiveSearch struct {
 		Search(ctx context.Context, query string, limit int) (fetch.DiscoveryResult, error)
 	}
 	channels interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	}
 	policy   func() pod.Policy
 	stations interface {

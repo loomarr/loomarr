@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -57,7 +57,7 @@ type nowNextRouter struct {
 	// channels maps a Loomarr channel id to its record, for the backend decision.
 	channels channelLister
 	// internalFor reports whether a channel is served by internal playout.
-	internalFor func(store.Channel) bool
+	internalFor func(channelstore.Channel) bool
 	// appliedBackend reads the durable checkpoint once per router operation. Production uses this
 	// seam so a request on any Postgres replica routes from the published backend.
 	appliedBackend func(context.Context) (string, error)
@@ -80,8 +80,8 @@ type broadcastReader interface {
 
 // channelLister is the one store read the router makes.
 type channelLister interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 }
 
 // NowNext returns what is on and what follows, per channel, from the right backend.
@@ -135,7 +135,7 @@ func (r nowNextRouter) NowNext(ctx context.Context, now time.Time) (map[string]a
 // An install that has moved every channel to internal playout should not pay a round trip to
 // Tunarr on every list render — and, more importantly, should not have its list view degraded by
 // a Tunarr that is slow or down when nothing on screen depends on it.
-func (r nowNextRouter) anyOnTunarr(channels []store.Channel, applied string) bool {
+func (r nowNextRouter) anyOnTunarr(channels []channelstore.Channel, applied string) bool {
 	for _, ch := range channels {
 		if ch.Status.Reconcilable() && ch.Status != schedule.StatusEmpty &&
 			ch.TunarrID != "" && !r.isInternal(ch, applied) {
@@ -151,7 +151,7 @@ func (r nowNextRouter) anyOnTunarr(channels []store.Channel, applied string) boo
 // containment test is written out rather than assuming ordering, matching guideAdapter — an
 // overlapping or out-of-order timeline must not mislabel what is airing.
 func (r nowNextRouter) internalNowNext(
-	ctx context.Context, ch store.Channel, now time.Time,
+	ctx context.Context, ch channelstore.Channel, now time.Time,
 ) (api.ChannelNowNext, bool) {
 	if r.internal == nil {
 		return api.ChannelNowNext{}, false
@@ -215,7 +215,7 @@ func (r nowNextRouter) resolveApplied(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func (r nowNextRouter) isInternal(ch store.Channel, applied string) bool {
+func (r nowNextRouter) isInternal(ch channelstore.Channel, applied string) bool {
 	if r.appliedBackend != nil {
 		return schedule.PlaysInternally(ch.Policy, applied)
 	}
@@ -226,7 +226,7 @@ func (r nowNextRouter) isInternal(ch store.Channel, applied string) bool {
 }
 
 func (r nowNextRouter) internalUpcoming(
-	ctx context.Context, ch store.Channel, now time.Time, limit int,
+	ctx context.Context, ch channelstore.Channel, now time.Time, limit int,
 ) ([]api.NowNextEntry, error) {
 	// A wider window than now/next: the strip lists several programmes, and gaps are dropped
 	// below so the span has to cover more than `limit` blocks' worth of wall clock.

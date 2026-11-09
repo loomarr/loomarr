@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // A curated source names stations by hand, so a typo would switch it on for nobody. Every id must be
@@ -54,7 +54,7 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 		{ID: "fcc:9", Country: "US", CallSigns: []station.CallSign{{Sign: "WZZZ"}}},
 	})
 	search := openArchiveSearch{
-		channels: &retirementFake{channels: []store.Channel{channelAt("US", "lakeside")}},
+		channels: &retirementFake{channels: []channelstore.Channel{channelAt("US", "lakeside")}},
 		policy:   retirementPolicy("US"), stations: fixedDirectory{directory},
 		languages: func(context.Context) (string, error) { return "en", nil },
 	}

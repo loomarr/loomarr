@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -158,7 +159,7 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 
 func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
 	t.Helper()
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
 	}); err != nil {
 		t.Fatal(err)
@@ -242,7 +243,7 @@ func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
 func TestGuide_RowCarriesReadyAndPendingTitleCounts(t *testing.T) {
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: &fakeXMLTVGuide{}})
 	srv, st := harness.Server, harness.Store
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch1", Name: "ch1", Number: 1, Strategy: "sequential", Status: schedule.StatusLive},
 		Desired: []schedule.Slot{
 			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000101", Title: "Ready"},
@@ -270,7 +271,7 @@ func TestGuide_RowCarriesTheEraDecade(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	save := func(id string, number int, policy schedule.ChannelPolicy) {
 		t.Helper()
-		if _, err := st.SaveChannel(context.Background(), store.Channel{
+		if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 			Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
 			Policy:  policy,
 		}); err != nil {
@@ -446,7 +447,7 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential", Status: schedule.StatusLive},
 		Policy: schedule.ChannelPolicy{
 			OperatorPolicy: schedule.OperatorPolicy{

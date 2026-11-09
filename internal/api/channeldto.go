@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -129,7 +129,7 @@ type entryAcq struct {
 // store-backed resolver; the list passes nil to skip the per-entry lookups it does not need).
 // logoImage, when non-nil, resolves the channel's logo URL to an image record — pre-resolved by
 // the caller precisely so the list handler does not turn into an N+1 (see logoImageResolver).
-func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
+func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
 	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
@@ -164,7 +164,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 
 // channelDTOAt is every handler's channel rendering. requesters comes from channelRequesters, so
 // each response that carries a channel names its requester the same way.
-func (s *Server) channelDTOAt(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint BackendCheckpoint) ChannelDTO {
+func (s *Server) channelDTOAt(ch channelstore.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
 	out.InAppPlayable = inAppPlayableAt(ch, checkpoint)
 	out.RequestedBy = requesters[ch.ID]
@@ -181,7 +181,7 @@ func (s *Server) channelRequesters(ctx context.Context) map[string]string {
 	return requesters
 }
 
-func inAppPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func inAppPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	if !playsInternallyAt(ch, checkpoint) {
 		return false
 	}

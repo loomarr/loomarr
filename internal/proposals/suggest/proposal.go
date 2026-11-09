@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -68,7 +68,7 @@ var ErrChannelIntentUnavailable = errors.New("suggest: the channel's original re
 
 // IntentOfChannel reads the approved intent a channel stores, ready to seed a refine or a
 // re-curation. It returns ErrChannelIntentUnavailable when the channel has none.
-func IntentOfChannel(ch store.Channel) (proposals.Intent, error) {
+func IntentOfChannel(ch channelstore.Channel) (proposals.Intent, error) {
 	if ch.IntentJSON == "" {
 		return proposals.Intent{}, ErrChannelIntentUnavailable
 	}

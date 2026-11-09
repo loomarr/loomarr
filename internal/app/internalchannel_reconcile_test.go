@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -63,7 +63,7 @@ func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ch := store.Channel{Lineup: []schedule.LineupEntry{{
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{
 		Key: key, Title: title.Name, Year: title.Year, DurationMs: int64((136 * time.Minute) / time.Millisecond),
 	}}}
 	ch.ID, ch.Name, ch.Number = "internal-only", "Internal only", 42

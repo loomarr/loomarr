@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -53,22 +53,22 @@ func (c *countingCycle) count() int {
 // gone live has a zero PlayoutAnchor, and a test that needs an anchored channel sets one (#1639).
 type stubChannels struct {
 	mu sync.Mutex
-	ch store.Channel
+	ch channelstore.Channel
 }
 
-func (s *stubChannels) GetChannel(context.Context, string) (store.Channel, error) {
+func (s *stubChannels) GetChannel(context.Context, string) (channelstore.Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ch, nil
 }
 
-func (s *stubChannels) set(mutate func(*store.Channel)) {
+func (s *stubChannels) set(mutate func(*channelstore.Channel)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	mutate(&s.ch)
 }
 
-func cachedResolver(t *testing.T, ch store.Channel) (*Resolver, *countingCycle, *stubChannels) {
+func cachedResolver(t *testing.T, ch channelstore.Channel) (*Resolver, *countingCycle, *stubChannels) {
 	t.Helper()
 	eng := &countingCycle{slots: []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 600_000},
@@ -82,8 +82,8 @@ func cachedResolver(t *testing.T, ch store.Channel) (*Resolver, *countingCycle, 
 	}, eng, chans
 }
 
-func testChannel() store.Channel {
-	return store.Channel{
+func testChannel() channelstore.Channel {
+	return channelstore.Channel{
 		Lineup: []schedule.LineupEntry{{Key: provision.Key("tmdb:tv:1"), Title: "A"}},
 	}
 }
@@ -117,7 +117,7 @@ func TestCycleCache_ChangedLineupIsRearranged(t *testing.T) {
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	chans.set(func(c *store.Channel) {
+	chans.set(func(c *channelstore.Channel) {
 		c.Lineup = append(c.Lineup, schedule.LineupEntry{Key: provision.Key("tmdb:tv:2"), Title: "B"})
 	})
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
@@ -141,7 +141,7 @@ func TestCycleCache_ChangedPolicyIsRearranged(t *testing.T) {
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	chans.set(func(c *store.Channel) {
+	chans.set(func(c *channelstore.Channel) {
 		c.Policy.Rules = append(c.Policy.Rules, schedule.SchedulingRule{ID: "r1", Label: "Marathon"})
 	})
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
@@ -164,7 +164,7 @@ func TestCycleCache_ChangedEntryMetadataIsRearranged(t *testing.T) {
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	chans.set(func(c *store.Channel) { c.Lineup[0].CollectionID = 42 })
+	chans.set(func(c *channelstore.Channel) { c.Lineup[0].CollectionID = 42 })
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
@@ -289,22 +289,22 @@ func TestCycleCache_ClockInputsThatChangeTheArrangementSplitTheKey(t *testing.T)
 	july := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name   string
-		mutate func(*store.Channel)
+		mutate func(*channelstore.Channel)
 		window time.Duration
 		a, b   time.Time
 		want   int
 	}{
-		{"holiday window opens (empty seasonal policy)", func(*store.Channel) {}, 0,
+		{"holiday window opens (empty seasonal policy)", func(*channelstore.Channel) {}, 0,
 			july, time.Date(2026, time.December, 20, 12, 0, 0, 0, time.UTC), 2},
-		{"rule boundary crossed", func(c *store.Channel) {
+		{"rule boundary crossed", func(c *channelstore.Channel) {
 			c.Policy.Rules = []schedule.SchedulingRule{{ID: "late", When: schedule.WhenPredicate{HourFrom: 21, HourTo: 23}}}
 		}, 0, july, july.Add(10 * time.Hour), 2},
-		{"rule boundary NOT crossed", func(c *store.Channel) {
+		{"rule boundary NOT crossed", func(c *channelstore.Channel) {
 			c.Policy.Rules = []schedule.SchedulingRule{{ID: "late", When: schedule.WhenPredicate{HourFrom: 21, HourTo: 23}}}
 		}, 0, july, july.Add(2 * time.Hour), 1},
-		{"rolling window rotates", func(*store.Channel) {}, 24 * time.Hour,
+		{"rolling window rotates", func(*channelstore.Channel) {}, 24 * time.Hour,
 			july, july.Add(25 * time.Hour), 2},
-		{"same rolling window", func(*store.Channel) {}, 24 * time.Hour,
+		{"same rolling window", func(*channelstore.Channel) {}, 24 * time.Hour,
 			july, july.Add(2 * time.Hour), 1},
 	}
 	for _, c := range cases {

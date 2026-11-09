@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // fakePods records the channel it was asked about, so a test can prove the handler
@@ -109,7 +110,7 @@ func newPodsServer(t *testing.T) (*httptest.Server, records.Store, *fakePods) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Cartoons", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -445,7 +446,7 @@ func decodeFit(t *testing.T, resp *http.Response) []api.ChannelFitDTO {
 // The route resolves the clip in the URL, and answers per channel.
 func TestClipFit_AnswersForEveryChannel(t *testing.T) {
 	srv, st, fp := newPodsServer(t)
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-2", Name: "Late Night", Number: 7, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -493,7 +494,7 @@ func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
 		id  string
 		num int
 	}{{"ch-2", 2}, {"ch-3", 3}, {"ch-4", 4}, {"ch-5", 5}} {
-		if _, err := st.SaveChannel(context.Background(), store.Channel{
+		if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 			Channel: schedule.Channel{ID: ch.id, Name: ch.id, Number: ch.num, Status: "live"},
 		}); err != nil {
 			t.Fatal(err)
@@ -574,7 +575,7 @@ func TestClipFit_IsReadableByAMember(t *testing.T) {
 func TestPreviewDraftPods_SelectionMatchesWhatReconcileBuilds(t *testing.T) {
 	srv, st, fp := newPodsServer(t)
 	spacing := schedule.Duration(45 * time.Minute)
-	saved := store.Channel{
+	saved := channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-2", Name: "Saturday", Number: 43, Status: "live"},
 		Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
 			Filler:            &schedule.FillerSelection{Audience: "kids"},

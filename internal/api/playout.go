@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -491,11 +492,11 @@ func (s *Server) legacyBackendCheckpoint() BackendCheckpoint {
 	}
 }
 
-func playsInternallyAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func playsInternallyAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	return schedule.PlaysInternally(ch.Policy, checkpoint.Applied)
 }
 
-func transportPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {
+func transportPlayableAt(ch channelstore.Channel, checkpoint BackendCheckpoint) bool {
 	return schedule.InternalTransportPlayable(ch.Status, ch.Policy, checkpoint.PublishedInternal)
 }
 

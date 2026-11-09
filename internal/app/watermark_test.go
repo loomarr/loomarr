@@ -13,20 +13,20 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/channelbug"
 	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
 
 // testWatermarks is the watermark service over the install's default settings, its NVENC self-check
 // verdict set to gatePassed (colour verified).
-func testWatermarks(t *testing.T, ch store.Channel, gatePassed bool) *channelWatermarks {
+func testWatermarks(t *testing.T, ch channelstore.Channel, gatePassed bool) *channelWatermarks {
 	return testWatermarksWith(t, visionSet(t, nil), ch, gatePassed)
 }
 
 // testWatermarksWith reads the install-wide opacity and look from set, a live settings service over
 // the declared registry, the way the build wires it.
-func testWatermarksWith(t *testing.T, set resolved, ch store.Channel, gatePassed bool) *channelWatermarks {
+func testWatermarksWith(t *testing.T, set resolved, ch channelstore.Channel, gatePassed bool) *channelWatermarks {
 	svc := channelbug.New(channelbug.Config{Dir: t.TempDir(), Channels: staticChannelReader{channel: ch},
 		Log: slog.New(slog.DiscardHandler), Install: watermarkInstall(set)})
 	svc.SetGateResult(encode.EncoderNVENC, gatePassed, false)
@@ -49,7 +49,7 @@ func TestWatermarkInstall_ReadsTheSettingsLive(t *testing.T) {
 
 // The channel page's options leave the service as the API's own types, every field carried over.
 func TestChannelWatermarks_OptionsAreTheAPIShape(t *testing.T) {
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	ch.Policy.Seasonal = schedule.SeasonalPolicy{Holidays: []string{"halloween"}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "ghost"}}

@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Channel watermark UPLOAD (#1512 phase 1d): a custom bug, which wins over the automatic image
@@ -66,7 +66,7 @@ func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermark
 	}
 	// The same edit rules as a PATCH of the policy, so the new bug reaches playout on the
 	// auto-reconcile rather than waiting for the sweep.
-	if err := s.linkUploadToChannel(ctx, in.ID, "image", func(ch *store.Channel) error {
+	if err := s.linkUploadToChannel(ctx, in.ID, "image", func(ch *channelstore.Channel) error {
 		wm := schedule.WatermarkPolicy{}
 		if ch.Policy.Watermark != nil {
 			wm = *ch.Policy.Watermark
