@@ -62,10 +62,9 @@ const (
 	// channel has NOTHING to air. Distinct from `building` (which is on its way) and
 	// from `live` (which is playing).
 	//
-	// ⚠ This exists because the alternative was silence. `statusFor` used to return
-	// `live` without ever looking at the deck, so a channel could report healthy while
-	// broadcasting nothing — which is exactly how a seasonal-bench bug hid: six titles
-	// on the lineup, `desired_json` literally `[]`, status `live`, and an empty grid
+	// ⚠ This exists because the alternative is silence: a channel could report healthy
+	// while broadcasting nothing — which is how a seasonal-bench bug hid: six titles
+	// on the lineup, `desired_json` literally `[]`, and an empty grid
 	// as the operator's only symptom. The reason is already computed (the
 	// ExclusionReport names each benched entry and why); this status is what makes it
 	// worth surfacing.
